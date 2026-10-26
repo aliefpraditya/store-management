@@ -1,0 +1,1043 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Diagram BPMN dan ERD</title>
+<style>
+:root{--bg:#f4f6f8;--ink:#1f2933;--line:#c9d0d8;--panel:#fff;--mute:#6b7785}
+@media (prefers-color-scheme:dark){:root{--bg:#161b22;--ink:#e6edf3;--line:#30363d;--panel:#0d1117;--mute:#8b949e}}
+body{margin:0;font:14px/1.5 system-ui,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+header{padding:14px 24px;border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{margin:0;font-size:17px}header p{margin:2px 0 0;color:var(--mute)}
+nav{display:flex;flex-wrap:wrap;gap:6px;padding:10px 24px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+nav a{font-size:12px;padding:3px 10px;border:1px solid var(--line);border-radius:12px;color:var(--ink);text-decoration:none}
+nav a:hover{background:var(--bg)}
+main{padding:18px 24px 60px;max-width:1500px;margin:auto}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin-bottom:18px;overflow:auto}
+section h2{margin:0 0 10px;font-size:15px}
+.mermaid{text-align:center}
+</style></head><body>
+<header><h1>Diagram BPMN dan ERD</h1><p>Dirender dari blok Mermaid di analisis-sistem.md. Sumber kebenaran tetap file markdown.</p></header>
+<nav><a href="#d0">5.1 BPMN-0 — Gambaran Besar</a><a href="#d1">5.2 BPMN-1 — Setup Toko Baru</a><a href="#d2">5.3 BPMN-2 — Login &amp; Routing per Role</a><a href="#d3">5.4 BPMN-3 — Input / Ubah Barang &amp; Harga (per toko)</a><a href="#d4">5.5 BPMN-4 — Penerimaan Kontainer Multi-Supplier (R2)</a><a href="#d5">5.6 BPMN-5 — Stok Opname (per Gudang)</a><a href="#d6">5.7 BPMN-6 — Transfer Antar-Gudang (Satu Toko) (R2)</a><a href="#d7">5.8 BPMN-7 — Penjualan Kasir (jalur offline = Fase 1b)</a><a href="#d8">5.9 BPMN-8 — Sinkronisasi Offline ke Server (Fase 1b)</a><a href="#d9">5.10 BPMN-9 — Buka &amp; Tutup Shift (2 Shift per Hari)</a><a href="#d10">5.11 BPMN-10 — Batal &amp; Void Nota</a><a href="#d11">5.12 BPMN-11 — Retur: Refund / Tukar Barang &amp; Disposisi Stok</a><a href="#d12">5.13 BPMN-12 — Pembelian dari Supplier &amp; Penerimaan (Full / Partial) (R2)</a><a href="#d13">5.14 BPMN-13 — Cek Stok Barang di Semua Toko (Master)</a><a href="#d14">5.15 BPMN-14 — Costing FIFO: Layer Masuk, Keluar &amp; Pembalikan (R2)</a><a href="#d15">5.16 BPMN-15 — Surat Jalan (Pengantaran Barang)</a><a href="#d16">5.17 BPMN-16 — Pengeluaran</a><a href="#d17">5.18 BPMN-17 — Tutup Hari</a><a href="#d18">6.1 DB Pusat (1 database)</a><a href="#d19">6.2 DB Toko — a. Master barang &amp; harga (milik toko)</a><a href="#d20">6.3 DB Toko — b. Gudang, stok &amp; transfer</a><a href="#d21">6.3b DB Toko — b2. Layer modal FIFO</a><a href="#d22">6.4 DB Toko — c. Pembelian, penerimaan kontainer &amp; opname</a><a href="#d23">6.5 DB Toko — d. Penjualan, pembatalan &amp; retur</a><a href="#d24">6.5b DB Toko — d2. Surat jalan</a><a href="#d25">6.6 DB Toko — e. Shift, pengeluaran &amp; tutup hari</a><a href="#d26">6.7 DB Toko — f. Pendukung</a></nav>
+<main>
+<section id="d0"><h2>5.1 BPMN-0 — Gambaran Besar</h2><pre class="mermaid">flowchart LR
+    subgraph PUSAT["Aplikasi Pusat"]
+        P1(["Login"]) --&gt; P2{"Super Admin?"}
+        P2 --&gt;|"Ya"| P3["Dashboard Pusat: tombol toko, Master Toko, Cek Stok, User"]
+    end
+    subgraph TOKO["Di dalam Toko (DB toko)"]
+        T0["Halaman Toko sesuai role"]
+        T1["Barang &amp; Harga"]
+        T2["Penerimaan / Opname / Transfer Gudang"]
+        T3["Kasir (online; offline di Fase 1b) + Shift"]
+        T4["Retur"]
+        T5["Pembelian dari Supplier"]
+        K[("Kartu Stok per Gudang")]
+        T1 --&gt; T2
+        T2 --&gt; K
+        T3 --&gt;|"stok berkurang"| K
+        T4 --&gt;|"stok kembali: dijual / dead stock"| K
+        T5 --&gt; T2
+    end
+    P2 --&gt;|"Tidak: langsung ke toko"| T0
+    P3 --&gt;|"klik toko"| T0
+    T0 --&gt; T1
+    T0 --&gt; T3
+    AUD[("Audits tiap DB")]
+    TOKO -.-&gt; AUD</pre></section>
+<section id="d1"><h2>5.2 BPMN-1 — Setup Toko Baru</h2><pre class="mermaid">flowchart TD
+    subgraph SA["Super Admin"]
+        A1(["Mulai"]) --&gt; A2["Isi form toko: kode, nama, alamat, telepon"]
+        A2 --&gt; A3["Tentukan admin toko + register kasir + modal kas tetap"]
+        A9(["Toko aktif, tombolnya tampil di Dashboard Pusat"])
+    end
+    subgraph SYS["Sistem"]
+        S1{"Kode toko unik?"}
+        S2["Buat database store_kode (kode = snake_case dari nama toko)"]
+        S3["Migrasi skema + tabel audits + seeder"]
+        S3b["Buat gudang default: Main Warehouse dan Dead Stock, register, pengaturan"]
+        S4{"Berhasil?"}
+        S5["Rollback, status failed, simpan log"]
+        S6["Simpan status active + audit"]
+        S7["Opsional: impor barang awal dari Excel"]
+    end
+    A3 --&gt; S1
+    S1 --&gt;|"Tidak"| A2
+    S1 --&gt;|"Ya"| S2 --&gt; S3 --&gt; S3b --&gt; S4
+    S4 --&gt;|"Gagal"| S5 --&gt; A2
+    S4 --&gt;|"Ya"| S6 --&gt; S7 --&gt; A9</pre></section>
+<section id="d2"><h2>5.3 BPMN-2 — Login &amp; Routing per Role</h2><pre class="mermaid">flowchart TD
+    subgraph U["Pengguna"]
+        U1(["Buka aplikasi"]) --&gt; U2["Isi email dan password"]
+        U9(["Bekerja"])
+    end
+    subgraph SYS["Sistem"]
+        S1{"Kredensial valid?"}
+        S2{"Super Admin?"}
+        S3["Dashboard Pusat: tombol toko + Master Toko, Cek Stok, User"]
+        S4{"Berapa toko yang boleh diakses?"}
+        S5["Tolak: tidak punya akses toko"]
+        S6["Pilih toko (kasus multi-toko, kelak)"]
+        S7["Set koneksi DB toko, muat role di toko itu"]
+        S8{"Role di toko?"}
+        S9["Layar Kasir saja, tanpa menu samping"]
+        S10["Dashboard Toko sesuai menu role"]
+    end
+    U2 --&gt; S1
+    S1 --&gt;|"Tidak"| U2
+    S1 --&gt;|"Ya"| S2
+    S2 --&gt;|"Ya"| S3 --&gt; U9
+    S2 --&gt;|"Tidak"| S4
+    S4 --&gt;|"0"| S5
+    S4 --&gt;|"1: langsung"| S7
+    S4 --&gt;|"lebih dari 1"| S6 --&gt; S7
+    S7 --&gt; S8
+    S8 --&gt;|"cashier"| S9 --&gt; U9
+    S8 --&gt;|"admin / warehouse"| S10 --&gt; U9</pre></section>
+<section id="d3"><h2>5.4 BPMN-3 — Input / Ubah Barang &amp; Harga (per toko)</h2><pre class="mermaid">flowchart TD
+    subgraph ADM["Admin Toko"]
+        A1(["Tambah / ubah barang"]) --&gt; A2["Isi info: sku, nama, kategori, merek"]
+        A2 --&gt; A3["Pilih satuan dasar, tambah satuan lain + konversi + barcode satuan"]
+        A3 --&gt; A4["Tandai satuan boleh dibeli dan boleh dijual"]
+        A4 --&gt; A5["Isi harga beli terakhir per satuan dasar, lalu harga jual per satuan: nominal atau persen margin"]
+        A5 --&gt; A6["Simpan"]
+        A12(["Selesai: barang + histori harga + persen untung (margin)"])
+    end
+    subgraph SYS["Sistem"]
+        S1{"Validasi: sku/barcode unik, 1 satuan dasar, konversi lebih dari 0 maks 3 desimal, minimal satu satuan jual dan satu satuan beli"}
+        S4["Hitung harga persen margin = modal / (1 - margin), tanpa pembulatan"]
+        S5{"Harga jual di bawah modal?"}
+        S6["Peringatan, butuh konfirmasi"]
+        S7{"Harga berubah?"}
+        S8["Tulis price_histories (lama, baru, sumber, user)"]
+        S9["Simpan barang + satuan, audit"]
+    end
+    A6 --&gt; S1
+    S1 --&gt;|"Tidak lolos"| A2
+    S1 --&gt;|"Lolos"| S4 --&gt; S5
+    S5 --&gt;|"Ya"| S6 --&gt; A5
+    S5 --&gt;|"Tidak"| S7
+    S7 --&gt;|"Ya"| S8 --&gt; S9
+    S7 --&gt;|"Tidak / barang baru"| S9
+    S9 --&gt; A12</pre></section>
+<section id="d4"><h2>5.5 BPMN-4 — Penerimaan Kontainer Multi-Supplier (R2)</h2><pre class="mermaid">flowchart TD
+    subgraph GD["Petugas Gudang"]
+        G1(["Kontainer dikirim / tiba"]) --&gt; G2["Buat penerimaan: no. kontainer, tanggal kirim, tanggal sampai, gudang tujuan"]
+        G2 --&gt; G3["Tambah blok supplier: PT, no. dokumen, tanggal dokumen; opsional Ambil dari pembelian (full atau partial)"]
+        G3 --&gt; G4["Mulai bongkar: catat tanggal/jam mulai"]
+        G4 --&gt; G5["Per supplier: baris dari pembelian (qty diterima maksimal sisa, harga ikut pembelian) atau barang tanpa pembelian (harga manual); qty dokumen, diterima, rusak"]
+        G5 --&gt; G6{"Ada supplier lain di kontainer ini?"}
+        G6 --&gt;|"Ya"| G3
+        G6 --&gt;|"Tidak"| G7["Input biaya kontainer: freight, bea masuk, bongkar, lainnya"]
+        G7 --&gt; G8["Selesai bongkar, ajukan"]
+    end
+    subgraph ADM["Admin Toko"]
+        A1["Periksa selisih dokumen vs aktual dan biaya"]
+        A2{"Disetujui?"}
+        A3["Posting"]
+    end
+    subgraph SYS["Sistem"]
+        S1["Konversi qty ke satuan dasar"]
+        S2["Tulis stock_movements goods_receipt, buat stock_layers (modal per satuan dasar, dari harga pembelian) di gudang tujuan, update stocks dan status pembelian terkait"]
+        S3{"Harga beli dasar berubah?"}
+        S4["Update cost_price, tulis price_histories sumber goods_receipt"]
+        S5["Hitung ulang harga jual berbasis persen + histori"]
+        S6(["Status received, dokumen terkunci. Biaya kontainer tersimpan, belum dialokasikan"])
+    end
+    G8 --&gt; A1 --&gt; A2
+    A2 --&gt;|"Tidak: kembalikan"| G5
+    A2 --&gt;|"Ya"| A3 --&gt; S1 --&gt; S2 --&gt; S3
+    S3 --&gt;|"Ya"| S4 --&gt; S5 --&gt; S6
+    S3 --&gt;|"Tidak"| S6</pre></section>
+<section id="d5"><h2>5.6 BPMN-5 — Stok Opname (per Gudang)</h2><pre class="mermaid">flowchart TD
+    subgraph ADM["Admin Toko"]
+        A1(["Buat opname: gudang, tanggal, cakupan semua / kategori / barang terpilih"]) --&gt; A2["Mulai: snapshot stok"]
+        A6["Review selisih, isi alasan"]
+        A7{"Setujui?"}
+        A8["Posting"]
+    end
+    subgraph PT["Petugas Hitung"]
+        P1["Hitung fisik per barang"] --&gt; P2["Input qty fisik (boleh campur satuan)"]
+        P3["Tandai selesai hitung"]
+    end
+    subgraph SYS["Sistem"]
+        S1["Simpan snapshot per barang"]
+        S2["Saat posting: stok sistem = snapshot + mutasi sejak snapshot"]
+        S3["Selisih = fisik - stok sistem (satuan dasar)"]
+        S4["Tulis stock_movements opname_adjustment, update stocks"]
+        S5(["Sesi ditutup, laporan selisih"])
+    end
+    A2 --&gt; S1 --&gt; P1
+    P2 --&gt; P3 --&gt; A6 --&gt; A7
+    A7 --&gt;|"Tidak"| P1
+    A7 --&gt;|"Ya"| A8 --&gt; S2 --&gt; S3 --&gt; S4 --&gt; S5</pre></section>
+<section id="d6"><h2>5.7 BPMN-6 — Transfer Antar-Gudang (Satu Toko) (R2)</h2><pre class="mermaid">flowchart TD
+    subgraph GD["Petugas Gudang / Admin"]
+        G1(["Buat transfer: gudang asal, gudang tujuan"]) --&gt; G2["Pilih barang, satuan, qty"]
+        G2 --&gt; G3["Posting"]
+        G9(["Selesai"])
+    end
+    subgraph SYS["Sistem"]
+        S1{"Stok gudang asal cukup?"}
+        S2["Satu transaksi DB: transfer_out di asal + transfer_in di tujuan"]
+        S3["Update stocks kedua gudang, audit"]
+        S4["Tolak: stok tidak cukup"]
+    end
+    G3 --&gt; S1
+    S1 --&gt;|"Tidak"| S4 --&gt; G2
+    S1 --&gt;|"Ya"| S2 --&gt; S3 --&gt; G9</pre></section>
+<section id="d7"><h2>5.8 BPMN-7 — Penjualan Kasir (jalur offline = Fase 1b)</h2><pre class="mermaid">flowchart TD
+    subgraph KS["Kasir"]
+        K1(["Buka layar Kasir"]) --&gt; K2{"Shift terbuka?"}
+        K3["Buka shift: konfirmasi modal kas tetap"]
+        K4["Cari / scan barang, pilih satuan dan qty"]
+        K5{"Tambah barang lagi?"}
+        K6["Isi nama pelanggan (opsional, teks bebas)"]
+        K8["Bayar: tunai / transfer / QRIS / EDC"]
+        K9["Batalkan transaksi sebelum bayar + pilih alasan"]
+        K12["Serahkan nota"]
+    end
+    subgraph DEV["Perangkat (cache lokal)"]
+        D1["Ambil harga dari cache (hanya satuan boleh dijual)"]
+        D2{"Stok lokal cukup?"}
+        D3["Online: blokir"]
+        D3b["Offline: peringatan saja, boleh lanjut"]
+        D4["Hitung total tanpa pembulatan"]
+        D5["Simpan lokal: client_uuid, nomor per register, snapshot harga"]
+        D6["Cetak nota (browser print)"]
+        D7["Masuk outbox + tulis backup file lokal"]
+        D10["Catat sale_cancellations: item, total, user, alasan"]
+    end
+    K2 --&gt;|"Tidak"| K3 --&gt; K4
+    K2 --&gt;|"Ya"| K4
+    K4 --&gt; D1 --&gt; D2
+    D2 --&gt;|"Kurang, online"| D3 --&gt; K4
+    D2 --&gt;|"Kurang, offline"| D3b --&gt; D4
+    D2 --&gt;|"Cukup"| D4 --&gt; K5
+    K5 --&gt;|"Ya"| K4
+    K5 --&gt;|"Batalkan"| K9 --&gt; D10 --&gt; K1
+    K5 --&gt;|"Selesai"| K6 --&gt; K8 --&gt; D5 --&gt; D6 --&gt; K12 --&gt; K1
+    D5 --&gt; D7</pre></section>
+<section id="d8"><h2>5.9 BPMN-8 — Sinkronisasi Offline ke Server (Fase 1b)</h2><pre class="mermaid">flowchart TD
+    subgraph DEV["PC Kasir"]
+        D1(["Koneksi kembali / tombol Sinkron"]) --&gt; D2["Kirim batch berurutan: shift, penjualan, pembatalan, kas"]
+        D8["Tandai synced, hapus dari outbox"]
+        D9["Tarik delta barang, harga, stok (updated_since)"]
+        D10["Simpan di antrean masalah, tampilkan ke Admin"]
+    end
+    subgraph SRV["Server"]
+        S1{"client_uuid sudah ada?"}
+        S2["Balas duplicate, aman"]
+        S3{"Register aktif dan shift dikenal?"}
+        S4["Tolak dengan alasan"]
+        S5["Simpan sales + items (pakai snapshot harga dari payload)"]
+        S6["Kurangi stocks, tulis stock_movements, hitung HPP FIFO (konsumsi layer tertua)"]
+        S7{"Stok jadi minus?"}
+        S8["Tetap terima, buat sync_issues negative_stock"]
+        S11["Balas accepted"]
+    end
+    D2 --&gt; S1
+    S1 --&gt;|"Ya"| S2 --&gt; D8
+    S1 --&gt;|"Tidak"| S3
+    S3 --&gt;|"Tidak"| S4 --&gt; D10
+    S3 --&gt;|"Ya"| S5 --&gt; S6 --&gt; S7
+    S7 --&gt;|"Ya"| S8 --&gt; S11
+    S7 --&gt;|"Tidak"| S11
+    S11 --&gt; D8 --&gt; D9</pre></section>
+<section id="d9"><h2>5.10 BPMN-9 — Buka &amp; Tutup Shift (2 Shift per Hari)</h2><pre class="mermaid">flowchart TD
+    subgraph KS["Kasir"]
+        K0(["Awal shift: Buka Shift"]) --&gt; K0b["Konfirmasi modal kas tetap ada di laci"]
+        K1(["Akhir shift: Tutup Shift"]) --&gt; K2["Lihat ringkasan: tunai, transfer, QRIS, EDC, retur, pengeluaran laci"]
+        K3["Hitung uang tunai di laci, input"]
+        K5["Isi catatan selisih"]
+        K7["Setor tunai di atas modal tetap ke Admin"]
+        K8["Terima laporan Z"]
+    end
+    subgraph SYS["Sistem"]
+        S0["Simpan cash_shifts open dengan opening_cash = modal tetap register"]
+        S1{"Masih ada nota belum tersinkron?"}
+        S1b["Minta sinkron dulu (jika offline: tutup tertunda, pending sync)"]
+        S2["Tunai seharusnya = modal + tunai masuk - refund tunai - pengeluaran laci"]
+        S3{"Selisih tidak nol?"}
+        S4["Simpan closed + setoran, difference_status pending_approval"]
+        S4b["Simpan closed + setoran, difference_status none"]
+        S5["Cetak laporan Z"]
+    end
+    subgraph ADM["Admin Toko"]
+        A1{"Setujui selisih kas?"}
+        A2["difference_status approved + catatan"]
+        A3["difference_status rejected, tindak lanjut"]
+    end
+    K0b --&gt; S0
+    K1 --&gt; K2 --&gt; S1
+    S1 --&gt;|"Ya"| S1b --&gt; K2
+    S1 --&gt;|"Tidak"| K3 --&gt; S2 --&gt; S3
+    S3 --&gt;|"Ya"| K5 --&gt; S4
+    S3 --&gt;|"Tidak"| S4b
+    S4 --&gt; K7
+    S4b --&gt; K7
+    K7 --&gt; S5 --&gt; K8
+    S4 --&gt; A1
+    A1 --&gt;|"Ya"| A2
+    A1 --&gt;|"Tidak"| A3</pre></section>
+<section id="d10"><h2>5.11 BPMN-10 — Batal &amp; Void Nota</h2><pre class="mermaid">flowchart TD
+    subgraph KS["Kasir"]
+        K1(["Transaksi bermasalah"]) --&gt; K2{"Sudah dibayar?"}
+        K3["Batalkan langsung + alasan"]
+        K4["Ajukan void + alasan (online)"]
+    end
+    subgraph ADM["Admin Toko"]
+        A1{"Setujui void?"}
+    end
+    subgraph SYS["Sistem"]
+        S1["Catat sale_cancellations + audit, tanpa pengaruh stok/kas"]
+        S0{"Nota di shift yang masih terbuka?"}
+        S0b["Tolak: gunakan Retur"]
+        S2["Tandai sales voided + alasan, user, waktu"]
+        S3["stock_movements sale_void: stok kembali ke gudang asal; kas dibalik"]
+        S4(["Nota ber-stempel VOID"])
+        S5(["Ditolak"])
+    end
+    K2 --&gt;|"Belum"| K3 --&gt; S1
+    K2 --&gt;|"Sudah"| K4 --&gt; S0
+    S0 --&gt;|"Tidak"| S0b
+    S0 --&gt;|"Ya"| A1
+    A1 --&gt;|"Ya"| S2 --&gt; S3 --&gt; S4
+    A1 --&gt;|"Tidak"| S5</pre></section>
+<section id="d11"><h2>5.12 BPMN-11 — Retur: Refund / Tukar Barang &amp; Disposisi Stok</h2><pre class="mermaid">flowchart TD
+    subgraph KS["Kasir / Admin"]
+        R1(["Cari nota asli"]) --&gt; R2["Pilih item dan qty yang diretur + alasan"]
+        R3["Per item pilih: tetap dijual ATAU dead stock"]
+        R4{"Penyelesaian?"}
+        R5["Refund: pilih metode pengembalian"]
+        R6["Tukar: pilih barang pengganti di kasir"]
+        R7["Bayar tambahan, atau terima kembalian tunai bila pengganti lebih murah"]
+    end
+    subgraph ADM["Admin Toko"]
+        A1{"Setujui retur?"}
+    end
+    subgraph SYS["Sistem"]
+        S1{"Qty tidak melebihi terjual dikurangi sudah diretur?"}
+        S2["Tolak"]
+        S3["stock_movements sale_return: resellable ke gudang jual, dead_stock ke gudang Dead Stock"]
+        S4["Hitung nilai dari snapshot harga nota asli, update sales.return_status"]
+        S4d{"Penyelesaian yang dipilih?"}
+        S5["Refund: tunai dicatat sebagai kas keluar di shift berjalan"]
+        S6["Tukar: buat penjualan baru, nilai retur dipotong otomatis (return_credit), selisih dibayar/dikembalikan"]
+        S7["Audit + cetak bukti retur"]
+        S8(["Selesai"])
+        S9(["Ditolak"])
+    end
+    R1 --&gt; R2 --&gt; R3 --&gt; R4
+    R4 --&gt;|"Refund"| R5 --&gt; S1
+    R4 --&gt;|"Tukar"| R6 --&gt; R7 --&gt; S1
+    S1 --&gt;|"Tidak"| S2
+    S1 --&gt;|"Ya"| A1
+    A1 --&gt;|"Tidak"| S9
+    A1 --&gt;|"Ya"| S3 --&gt; S4 --&gt; S4d
+    S4d --&gt;|"Refund"| S5
+    S4d --&gt;|"Tukar"| S6
+    S5 --&gt; S7
+    S6 --&gt; S7
+    S7 --&gt; S8</pre></section>
+<section id="d12"><h2>5.13 BPMN-12 — Pembelian dari Supplier &amp; Penerimaan (Full / Partial) (R2)</h2><pre class="mermaid">flowchart TD
+    subgraph ADM["Admin Toko"]
+        A1(["Buat pembelian: supplier, no. nota supplier, tanggal, perkiraan tiba"]) --&gt; A2["Isi barang: satuan (hanya yang boleh dibeli), qty, harga beli"]
+        A3["Konfirmasi pembelian (status ordered)"]
+        A9["Tutup sisa (short close) bila sisa tidak akan datang"]
+    end
+    subgraph GD["Petugas Gudang"]
+        G1(["Barang tiba: buat penerimaan kontainer"]) --&gt; G2["Tambah blok supplier lalu pilih Ambil dari pembelian"]
+        G3["Isi qty diterima per baris pembelian, maksimal sisa"]
+    end
+    subgraph SYS["Sistem"]
+        S1["Simpan purchases dan purchase_items, hitung total"]
+        S2["Penerimaan diposting: tambah stok + layer FIFO memakai harga dari pembelian"]
+        S3["Perbarui received_base_quantity tiap baris pembelian"]
+        S4{"Semua baris pembelian sudah diterima penuh?"}
+        S5["Status received"]
+        S6["Status partially_received, sisa tetap terbuka; penerimaan berikutnya mengulang alur dari Buat penerimaan"]
+        S7["Status closed, sisa dianggap batal"]
+    end
+    A2 --&gt; S1 --&gt; A3
+    A3 --&gt; G1
+    G1 --&gt; G2 --&gt; G3 --&gt; S2 --&gt; S3 --&gt; S4
+    S4 --&gt;|"Ya"| S5
+    S4 --&gt;|"Tidak"| S6
+    S6 --&gt; A9 --&gt; S7</pre></section>
+<section id="d13"><h2>5.14 BPMN-13 — Cek Stok Barang di Semua Toko (Master)</h2><pre class="mermaid">flowchart TD
+    subgraph SA["Super Admin"]
+        A1(["Buka Cek Stok Barang di Dashboard Pusat"]) --&gt; A2["Cari barang: sku / barcode / nama"]
+        A9(["Lihat stok per toko dan gudang"])
+    end
+    subgraph SYS["Sistem Pusat"]
+        S1["Ambil sku / barcode dari kotak cari"]
+        S2["Untuk setiap toko aktif: buka koneksi toko dengan timeout pendek"]
+        S3{"Toko terjangkau dan punya barang dengan sku itu?"}
+        S4["Baca stocks per gudang, harga jual default, stok minimum"]
+        S5["Tandai: tidak dijual di toko ini, atau tidak dapat dihubungi"]
+        S6["Gabungkan hasil, hitung total stok jual dan total dead stock"]
+        S7["Sertakan waktu sinkron register terakhir, beri peringatan bila tertinggal"]
+    end
+    A2 --&gt; S1 --&gt; S2 --&gt; S3
+    S3 --&gt;|"Ya"| S4 --&gt; S6
+    S3 --&gt;|"Tidak"| S5 --&gt; S6
+    S6 --&gt; S7 --&gt; A9</pre></section>
+<section id="d14"><h2>5.15 BPMN-14 — Costing FIFO: Layer Masuk, Keluar &amp; Pembalikan (R2)</h2><pre class="mermaid">flowchart TD
+    subgraph IN["Barang masuk"]
+        I1["Penerimaan diposting / saldo awal / opname lebih / transfer masuk / retur dead stock"] --&gt; I2["Buat stock_layers: qty awal, sisa, modal per satuan dasar, tanggal masuk"]
+    end
+    subgraph OUT["Barang keluar"]
+        O1["Penjualan diposting di server (online atau hasil sinkron), transfer keluar, opname kurang"] --&gt; O2["Ambil layer gudang itu, urut tanggal masuk tertua dengan sisa lebih dari 0 (row lock)"]
+        O2 --&gt; O3{"Sisa layer cukup?"}
+        O3 --&gt;|"Ya"| O4["Kurangi sisa layer, catat stock_layer_allocations consume"]
+        O3 --&gt;|"Tidak"| O5["Habiskan layer, lanjut ke layer berikutnya"]
+        O5 --&gt; O7{"Semua layer habis, masih kurang?"}
+        O7 --&gt;|"Ya"| O8["Layer defisit bermodal harga beli terakhir, is_cost_estimated, buat sync_issues"]
+        O7 --&gt;|"Tidak"| O4
+        O4 --&gt; O6["HPP item = jumlah (qty alokasi x modal layer)"]
+        O8 --&gt; O6
+    end
+    subgraph REV["Pembalikan"]
+        R1["Void atau retur tetap dijual"] --&gt; R2["Pulihkan sisa pada layer yang dipakai nota asli, dari alokasi terakhir mundur"]
+        R3["Retur dead stock atau transfer gudang"] --&gt; R4["Buat layer baru di gudang tujuan dengan modal dan tanggal masuk asal"]
+    end
+    I2 --&gt; O2
+    O6 --&gt; R1</pre></section>
+<section id="d15"><h2>5.16 BPMN-15 — Surat Jalan (Pengantaran Barang)</h2><pre class="mermaid">flowchart TD
+    subgraph KS["Kasir / Admin"]
+        K1(["Nota selesai, barang akan diantar"]) --&gt; K2["Pilih Buat surat jalan dari layar bayar atau Riwayat Nota"]
+        K2 --&gt; K3["Isi penerima, telepon, alamat, sopir, no. kendaraan"]
+        K3 --&gt; K4["Pilih item dan qty kirim (maksimal sisa yang belum disuratjalankan)"]
+        K5["Simpan dan cetak surat jalan"]
+        K6["Perbarui status: dikirim, diterima, sebagian pulang, pulang semua"]
+    end
+    subgraph SYS["Sistem"]
+        S1{"Nota selesai dan qty kirim tidak melebihi sisa baris nota?"}
+        S2["Tolak, tampilkan sisa"]
+        S3["Simpan delivery_notes + delivery_note_items, tanpa mengubah stok"]
+        S4{"Ada qty pulang?"}
+        S5["Status partially_delivered atau returned, tawarkan Buat Retur untuk item itu"]
+        S6(["Status delivered, selesai"])
+    end
+    K4 --&gt; S1
+    S1 --&gt;|"Tidak"| S2
+    S1 --&gt;|"Ya"| S3 --&gt; K5 --&gt; K6 --&gt; S4
+    S4 --&gt;|"Ya"| S5
+    S4 --&gt;|"Tidak"| S6</pre></section>
+<section id="d16"><h2>5.17 BPMN-16 — Pengeluaran</h2><pre class="mermaid">flowchart TD
+    subgraph U["Kasir / Admin"]
+        U1(["Ada pengeluaran operasional"]) --&gt; U2["Isi kategori, keterangan, nominal, penerima"]
+        U2 --&gt; U3{"Dibayar dari laci kasir?"}
+    end
+    subgraph SYS["Sistem"]
+        S1{"Ada shift terbuka?"}
+        S2["Tolak: buka shift dulu atau pilih sumber lain"]
+        S3["Simpan expenses source drawer, kaitkan cash_shift_id"]
+        S4["Kurangi tunai seharusnya shift"]
+        S5["Simpan expenses source other, tanpa pengaruh kas shift"]
+        S6(["Masuk laporan Z dan tutup hari"])
+    end
+    U3 --&gt;|"Ya"| S1
+    U3 --&gt;|"Tidak"| S5
+    S1 --&gt;|"Tidak"| S2
+    S1 --&gt;|"Ya"| S3 --&gt; S4 --&gt; S6
+    S5 --&gt; S6</pre></section>
+<section id="d17"><h2>5.18 BPMN-17 — Tutup Hari</h2><pre class="mermaid">flowchart TD
+    subgraph ADM["Admin Toko"]
+        A1(["Akhir hari: buka Tutup Hari"]) --&gt; A2["Pilih tanggal bisnis"]
+        A5["Putuskan selisih kas: setujui atau tolak"]
+        A7["Tulis catatan lalu klik Tutup Hari"]
+    end
+    subgraph SYS["Sistem"]
+        S1{"Semua shift tanggal itu sudah ditutup?"}
+        S2["Tolak, tampilkan shift yang masih terbuka"]
+        S3{"Ada selisih kas belum diputuskan atau retur pending?"}
+        S4["Tampilkan ringkasan: penjualan per metode, retur, pengeluaran, tunai seharusnya, dihitung, selisih, setoran"]
+        S6["Simpan daily_closings (snapshot angka) dan kunci transaksi tanggal itu"]
+        S8(["Laporan harian siap cetak"])
+    end
+    A2 --&gt; S1
+    S1 --&gt;|"Tidak"| S2
+    S1 --&gt;|"Ya"| S3
+    S3 --&gt;|"Ya"| A5 --&gt; S4
+    S3 --&gt;|"Tidak"| S4
+    S4 --&gt; A7 --&gt; S6 --&gt; S8</pre></section>
+<section id="d18"><h2>6.1 DB Pusat (1 database)</h2><pre class="mermaid">erDiagram
+    users ||--o{ store_users : "assigned to"
+    stores ||--o{ store_users : "has members"
+    stores ||--o{ store_provisioning_logs : "setup history"
+
+    users {
+        bigint id PK
+        string name
+        string email UK
+        string password
+        boolean is_super_admin
+        boolean is_active
+    }
+    stores {
+        bigint id PK
+        string code UK "snake_case of store name, used in URL and database name store_code"
+        string receipt_prefix "short prefix for document numbers, e.g. MU"
+        string name
+        string address
+        string phone
+        string db_name UK
+        string db_host "null = default server"
+        enum status "provisioning, active, inactive, failed"
+        string schema_version
+    }
+    store_users {
+        bigint store_id PK, FK
+        bigint user_id PK, FK
+        enum role "admin, warehouse, cashier"
+    }
+    store_provisioning_logs {
+        bigint id PK
+        bigint store_id FK
+        string step
+        string result
+        text message
+        datetime created_at
+    }</pre></section>
+<section id="d19"><h2>6.2 DB Toko — a. Master barang &amp; harga (milik toko)</h2><pre class="mermaid">erDiagram
+    categories ||--o{ products : "groups"
+    brands ||--o{ products : "brands"
+    units ||--o{ products : "base unit"
+    products ||--|{ product_units : "sold in"
+    units ||--o{ product_units : "unit type"
+    products ||--o{ price_histories : "price changes"
+    product_units ||--o{ price_histories : "selling price of"
+
+    products {
+        bigint id PK
+        string sku UK
+        string name
+        bigint category_id FK
+        bigint brand_id FK "nullable"
+        bigint base_unit_id FK
+        decimal cost_price "last purchase price per base unit; basis for margin pricing and COGS estimate"
+        decimal min_stock "base unit"
+        boolean is_active
+        string legacy_sku "old system id"
+        datetime deleted_at
+    }
+    product_units {
+        bigint id PK
+        bigint product_id FK
+        bigint unit_id FK
+        decimal conversion_factor "base units per 1 of this unit, 3 decimals"
+        boolean is_base
+        string barcode "unique, identifies this unit when scanned"
+        smallint sort_order "display order of unit chips"
+        boolean is_purchasable "may appear in goods receipts"
+        boolean is_sellable "may appear in POS"
+        enum price_mode "nominal, margin"
+        decimal margin_percent "of selling price, below 100"
+        decimal selling_price "exact, 2 decimals, no rounding"
+        boolean is_default_sale "exactly one per product"
+    }
+    price_histories {
+        bigint id PK
+        bigint product_id FK
+        bigint product_unit_id FK "null for purchase price"
+        enum type "purchase, selling"
+        decimal old_value
+        decimal new_value
+        enum new_mode "nominal, margin"
+        decimal new_margin_percent
+        enum source "manual, opname, goods_receipt, recalculation, import, migration"
+        string reference_type
+        bigint reference_id
+        bigint user_id "no FK, other database"
+        string user_name
+        string note
+        datetime created_at
+    }
+    categories {
+        bigint id PK
+        string name UK
+        bigint parent_id FK "nullable, empty in phase 1"
+    }
+    brands {
+        bigint id PK
+        string name UK
+    }
+    units {
+        bigint id PK
+        string name UK
+        boolean allows_decimal
+    }</pre></section>
+<section id="d20"><h2>6.3 DB Toko — b. Gudang, stok &amp; transfer</h2><pre class="mermaid">erDiagram
+    warehouses ||--o{ stocks : "holds"
+    products ||--o{ stocks : "stocked as"
+    warehouses ||--o{ stock_movements : "moves in"
+    products ||--o{ stock_movements : "ledger"
+    warehouses ||--o{ stock_transfers : "source"
+    warehouses ||--o{ stock_transfers : "destination"
+    stock_transfers ||--|{ stock_transfer_items : "contains"
+    products ||--o{ stock_transfer_items : ""
+
+    warehouses {
+        bigint id PK
+        string code UK
+        string name
+        enum type "sellable, dead_stock"
+        boolean is_default
+        boolean is_active
+    }
+    stocks {
+        bigint product_id PK, FK
+        bigint warehouse_id PK, FK
+        decimal quantity "base unit, cache of ledger"
+        datetime updated_at
+    }
+    stock_movements {
+        bigint id PK
+        bigint product_id FK
+        bigint warehouse_id FK
+        datetime moved_at
+        enum type "opening_balance, goods_receipt, goods_receipt_cancel, sale, sale_void, sale_return, opname_adjustment, transfer_out, transfer_in"
+        decimal quantity "signed base unit"
+        decimal balance_after
+        string reference_type
+        bigint reference_id
+        bigint user_id
+        string note
+    }
+    stock_transfers {
+        bigint id PK
+        string number UK
+        bigint source_warehouse_id FK
+        bigint destination_warehouse_id FK
+        enum status "draft, posted, cancelled"
+        datetime transferred_at
+        bigint created_by
+        text notes
+    }
+    stock_transfer_items {
+        bigint id PK
+        bigint stock_transfer_id FK
+        bigint product_id FK
+        bigint product_unit_id FK
+        decimal quantity
+        decimal conversion_snapshot
+        decimal base_quantity
+    }</pre></section>
+<section id="d21"><h2>6.3b DB Toko — b2. Layer modal FIFO</h2><pre class="mermaid">erDiagram
+    warehouses ||--o{ stock_layers : "holds"
+    products ||--o{ stock_layers : "costed in"
+    stock_layers ||--o{ stock_layer_allocations : "consumed or restored by"
+
+    stock_layers {
+        bigint id PK
+        bigint product_id FK
+        bigint warehouse_id FK
+        enum source "goods_receipt, opening_balance, transfer_in, sale_return, opname_gain, deficit"
+        string reference_type
+        bigint reference_id
+        datetime entered_at "FIFO order key, preserved when moved between warehouses"
+        decimal original_quantity "base unit"
+        decimal remaining_quantity "base unit, negative only for deficit layer"
+        decimal unit_cost "per base unit"
+        boolean is_cost_estimated
+        datetime created_at
+    }
+    stock_layer_allocations {
+        bigint id PK
+        bigint stock_layer_id FK
+        enum direction "consume, restore"
+        string reference_type "sale_item, sale_return_item, transfer_item, opname_item"
+        bigint reference_id
+        decimal base_quantity
+        decimal unit_cost
+        datetime created_at
+    }</pre></section>
+<section id="d22"><h2>6.4 DB Toko — c. Pembelian, penerimaan kontainer &amp; opname</h2><pre class="mermaid">erDiagram
+    suppliers ||--o{ purchases : "supplies"
+    purchases ||--|{ purchase_items : "lines"
+    products ||--o{ purchase_items : ""
+    product_units ||--o{ purchase_items : "purchase unit"
+    purchase_items ||--o{ goods_receipt_items : "received by"
+    warehouses ||--o{ goods_receipts : "destination"
+    goods_receipts ||--|{ goods_receipt_suppliers : "supplier sections"
+    suppliers ||--o{ goods_receipt_suppliers : "ships"
+    goods_receipt_suppliers ||--|{ goods_receipt_items : "items"
+    products ||--o{ goods_receipt_items : ""
+    product_units ||--o{ goods_receipt_items : "input unit"
+    goods_receipts ||--o{ goods_receipt_costs : "container costs"
+    warehouses ||--o{ stock_opnames : "counted in"
+    stock_opnames ||--|{ stock_opname_items : "contains"
+    products ||--o{ stock_opname_items : ""
+
+    suppliers {
+        bigint id PK
+        string name
+        string phone
+        boolean is_active
+    }
+    purchases {
+        bigint id PK
+        string number UK "PB/MU/2610/0001"
+        bigint supplier_id FK
+        string supplier_document_number "invoice or order number from supplier"
+        date purchase_date
+        date expected_date "ETA"
+        bigint warehouse_id FK "default destination"
+        enum status "draft, ordered, partially_received, received, closed, cancelled"
+        decimal total_amount
+        text notes
+        bigint created_by
+        bigint confirmed_by
+        datetime confirmed_at
+        string cancel_reason
+    }
+    purchase_items {
+        bigint id PK
+        bigint purchase_id FK
+        bigint product_id FK
+        bigint product_unit_id FK "must be purchasable"
+        decimal quantity "ordered, in purchase unit"
+        decimal conversion_snapshot
+        decimal base_quantity
+        decimal unit_cost
+        decimal base_unit_cost
+        decimal subtotal
+        decimal received_base_quantity "cache, from posted receipts"
+        string notes
+    }
+    goods_receipts {
+        bigint id PK
+        string number UK
+        string container_number
+        date shipped_date
+        date arrival_date
+        datetime unloading_started_at
+        datetime unloading_finished_at
+        bigint warehouse_id FK
+        enum status "draft, unloading, submitted, received, cancelled"
+        text notes
+        bigint created_by
+        bigint approved_by
+        datetime posted_at
+        string cancel_reason
+    }
+    goods_receipt_suppliers {
+        bigint id PK
+        bigint goods_receipt_id FK
+        bigint supplier_id FK
+        string document_number "invoice or packing list"
+        date document_date
+        text notes
+    }
+    goods_receipt_items {
+        bigint id PK
+        bigint goods_receipt_supplier_id FK
+        bigint purchase_item_id FK "optional: receipt against a purchase line, full or partial"
+        bigint product_id FK
+        bigint product_unit_id FK
+        decimal document_quantity
+        decimal received_quantity "good condition"
+        decimal damaged_quantity "info only, not stocked"
+        decimal conversion_snapshot
+        decimal base_quantity
+        decimal unit_cost "copied from purchase item when linked, manual otherwise"
+        decimal base_unit_cost
+        decimal subtotal
+    }
+    goods_receipt_costs {
+        bigint id PK
+        bigint goods_receipt_id FK
+        enum cost_type "freight, customs, handling, other"
+        string description
+        string vendor_name
+        decimal amount
+        date paid_date
+        boolean is_allocated "reserved, false until landed cost is built"
+    }
+    stock_opnames {
+        bigint id PK
+        string number UK
+        bigint warehouse_id FK
+        date opname_date
+        enum scope "all, category, selected"
+        bigint category_id FK
+        enum status "draft, counting, review, posted, cancelled"
+        datetime snapshot_at
+        string reason_code "e.g. inter_store_transfer, opening_balance"
+        bigint created_by
+        bigint approved_by
+        datetime posted_at
+    }
+    stock_opname_items {
+        bigint id PK
+        bigint stock_opname_id FK
+        bigint product_id FK
+        decimal snapshot_quantity
+        decimal counted_quantity
+        decimal system_quantity_at_posting
+        decimal variance
+        decimal unit_cost "optional new purchase price, updates products.cost_price"
+        string reason
+    }</pre></section>
+<section id="d23"><h2>6.5 DB Toko — d. Penjualan, pembatalan &amp; retur</h2><pre class="mermaid">erDiagram
+    registers ||--o{ sales : "rings up"
+    cash_shifts ||--o{ sales : "contains"
+    warehouses ||--o{ registers : "sells from"
+    sales ||--|{ sale_items : "lines"
+    sales ||--|{ sale_payments : "paid by"
+    products ||--o{ sale_items : ""
+    product_units ||--o{ sale_items : ""
+    cash_shifts ||--o{ sale_cancellations : "logged in"
+    sales ||--o{ sale_returns : "returned via"
+    sale_returns ||--|{ sale_return_items : "lines"
+    sale_items ||--o{ sale_return_items : "returns"
+    warehouses ||--o{ sale_return_items : "restocked to"
+    sales ||--o| sale_returns : "exchange sale"
+
+    sales {
+        bigint id PK
+        uuid client_uuid UK "idempotency key"
+        string number UK "INV/PREFIX/REGISTER/YYMM/0001"
+        bigint register_id FK
+        bigint cash_shift_id FK
+        bigint warehouse_id FK
+        datetime sold_at "client time"
+        date business_date "operational date, from the shift"
+        bigint cashier_id
+        string cashier_name
+        string customer_name "optional free text, e.g. buyer name on receipt"
+        decimal subtotal
+        decimal discount_total "reserved, 0 in phase 1"
+        decimal total
+        decimal paid_total
+        decimal change_amount
+        enum status "completed, voided"
+        enum return_status "none, partial, full"
+        string void_reason
+        bigint voided_by
+        datetime voided_at
+        int print_count
+        boolean is_offline
+        datetime synced_at
+        string legacy_number "old system id"
+        decimal legacy_unpaid_amount "info only: old credit balance, no receivable module in phase 1"
+        boolean is_price_estimated "migrated rows"
+    }
+    sale_items {
+        bigint id PK
+        bigint sale_id FK
+        bigint product_id FK
+        bigint product_unit_id FK
+        string product_name "snapshot"
+        string unit_name "snapshot"
+        decimal quantity
+        decimal conversion_snapshot
+        decimal base_quantity
+        decimal unit_price "price at sale time"
+        decimal cost_total "FIFO cost of consumed layers, set on posting"
+        boolean is_cost_estimated "migrated rows or deficit layer"
+        boolean is_manual_price
+        decimal subtotal
+    }
+    sale_payments {
+        bigint id PK
+        bigint sale_id FK
+        enum method "cash, transfer, qris, edc, return_credit"
+        decimal amount
+        string reference
+    }
+    sale_cancellations {
+        bigint id PK
+        uuid client_uuid UK
+        bigint register_id FK
+        bigint cash_shift_id FK
+        bigint cashier_id
+        string cashier_name
+        datetime cancelled_at
+        int item_count
+        decimal total
+        string reason
+        json items_snapshot
+    }
+    sale_returns {
+        bigint id PK
+        string number UK
+        bigint sale_id FK
+        bigint register_id FK
+        bigint cash_shift_id FK
+        datetime returned_at
+        enum resolution "refund, exchange"
+        enum refund_method "cash, transfer, qris, edc"
+        decimal credit_amount "value of returned items"
+        decimal refund_amount "paid back to customer"
+        bigint exchange_sale_id FK
+        enum status "pending, completed, rejected"
+        string reason
+        bigint requested_by
+        bigint approved_by
+    }
+    sale_return_items {
+        bigint id PK
+        bigint sale_return_id FK
+        bigint sale_item_id FK
+        bigint product_id FK
+        bigint product_unit_id FK
+        decimal quantity
+        decimal base_quantity
+        decimal unit_price "from original sale"
+        decimal cost_total "cost of restored layers"
+        decimal refund_subtotal
+        enum disposition "resellable, dead_stock"
+        bigint destination_warehouse_id FK
+        string condition_note
+    }</pre></section>
+<section id="d24"><h2>6.5b DB Toko — d2. Surat jalan</h2><pre class="mermaid">erDiagram
+    sales ||--o{ delivery_notes : "delivered via"
+    delivery_notes ||--|{ delivery_note_items : "lines"
+    sale_items ||--o{ delivery_note_items : "delivered as"
+
+    delivery_notes {
+        bigint id PK
+        string number UK "SJ/MU/2610/0001"
+        bigint sale_id FK
+        date business_date
+        enum status "draft, shipped, delivered, partially_delivered, returned, cancelled"
+        string recipient_name
+        string recipient_phone
+        text recipient_address
+        string driver_name
+        string vehicle_number
+        datetime shipped_at
+        datetime completed_at
+        text notes
+        int print_count
+        bigint created_by
+        string created_by_name
+    }
+    delivery_note_items {
+        bigint id PK
+        bigint delivery_note_id FK
+        bigint sale_item_id FK
+        bigint product_id FK
+        bigint product_unit_id FK
+        string product_name "snapshot"
+        string unit_name "snapshot"
+        decimal quantity "to deliver, sale unit"
+        decimal quantity_delivered
+        decimal quantity_returned "info only, stock restored via sale return"
+    }</pre></section>
+<section id="d25"><h2>6.6 DB Toko — e. Shift, pengeluaran &amp; tutup hari</h2><pre class="mermaid">erDiagram
+    registers ||--o{ cash_shifts : "opens"
+    cash_shifts ||--o{ expenses : "drawer expenses"
+    expense_categories ||--o{ expenses : "classifies"
+
+    registers {
+        bigint id PK
+        string code UK "used in receipt number"
+        string name
+        bigint warehouse_id FK
+        decimal fixed_opening_cash "modal kas tetap"
+        int last_sale_sequence "server mirror"
+        datetime last_synced_at "heartbeat, data freshness for stock lookup"
+        boolean is_active
+    }
+    cash_shifts {
+        bigint id PK
+        uuid client_uuid UK
+        bigint register_id FK
+        date business_date "date the shift was opened"
+        bigint cashier_id "no FK, other database"
+        string cashier_name
+        datetime opened_at
+        decimal opening_cash "= fixed_opening_cash"
+        datetime closed_at
+        decimal expected_cash "opening + cash sales - cash refunds - drawer expenses"
+        decimal counted_cash
+        decimal cash_difference
+        decimal deposit_amount "counted cash above fixed float"
+        enum status "open, closed"
+        enum difference_status "none, pending_approval, approved, rejected"
+        bigint difference_approved_by
+        datetime difference_approved_at
+        text closing_note
+        text approval_note
+    }
+    expense_categories {
+        bigint id PK
+        string name UK
+        boolean is_active
+    }
+    expenses {
+        bigint id PK
+        uuid client_uuid UK
+        string number UK "PGL/MU/2610/0001"
+        date business_date
+        bigint cash_shift_id FK "required when source is drawer"
+        bigint expense_category_id FK
+        enum source "drawer, other"
+        string description
+        string paid_to
+        decimal amount
+        enum status "recorded, voided"
+        string void_reason
+        bigint created_by
+        string created_by_name
+        datetime created_at
+    }
+    daily_closings {
+        bigint id PK
+        date business_date UK
+        enum status "closed, reopened"
+        int shifts_count
+        int sales_count
+        decimal total_sales
+        decimal sales_cash
+        decimal sales_transfer
+        decimal sales_qris
+        decimal sales_edc
+        decimal total_returns
+        decimal refunds_cash
+        decimal expenses_drawer
+        decimal expenses_other
+        decimal total_expected_cash
+        decimal total_counted_cash
+        decimal total_cash_difference
+        decimal total_deposit
+        text notes
+        bigint closed_by
+        datetime closed_at
+        bigint reopened_by
+        datetime reopened_at
+        string reopen_reason
+    }</pre></section>
+<section id="d26"><h2>6.7 DB Toko — f. Pendukung</h2><pre class="mermaid">erDiagram
+    sales ||--o{ sync_issues : "may raise"
+    products ||--o{ sync_issues : "about"
+
+    settings {
+        string key PK "allow_negative_stock, receipt_header, receipt_footer, paper_size, lock_sales_during_opname, receiving_requires_approval, receiving_requires_purchase, large_variance_threshold"
+        text value
+    }
+    document_sequences {
+        string type PK "sale, purchase, goods_receipt, opname, transfer, return"
+        bigint register_id PK "0 if not per register"
+        string period PK "YYMM"
+        int last_number
+    }
+    sync_issues {
+        bigint id PK
+        enum type "negative_stock, inactive_product, price_changed, rejected_record"
+        bigint sale_id FK
+        bigint product_id FK
+        json details
+        enum status "open, resolved"
+        bigint resolved_by
+        datetime resolved_at
+    }</pre></section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+mermaid.initialize({startOnLoad:true, theme: dark ? 'dark' : 'default', securityLevel:'strict', flowchart:{htmlLabels:true, curve:'basis'}, er:{useMaxWidth:true}});
+</script>
+</body></html>
