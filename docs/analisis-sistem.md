@@ -1,13 +1,15 @@
-# Analisis Sistem — POS Multi-Toko (Laravel + Vue/Quasar)
+# Analisis Sistem — POS Multi-Toko (Laravel + Inertia + Vue/Quasar)
 
-> Status: **Draft v0.7 (R1 Inti = operasional harian toko: barang, opname, kasir, kas, retur, surat jalan, pengeluaran, tutup hari; tanpa penerimaan)** · Bahasa dokumen: Indonesia · **Nama tabel & kolom DB: Inggris, snake_case, jamak** · Wireframe: [`wireframe.html`](wireframe.html) · Diagram: [`diagram.html`](diagram.html) · Biaya: [`estimasi-biaya.md`](estimasi-biaya.md)
+> **PEMBARUAN v0.9 (26 Okt 2026, D34): sistem ONLINE ONLY, 1 hosting.** Arsitektur sekarang **Laravel + Inertia (Vue) + Quasar sebagai pustaka UI dalam satu aplikasi** (aplikasi Laravel di root proyek, tanpa folder `backend/`/`frontend/`; tanpa SPA/API terpisah). Offline/PWA/sinkron/backup lokal/R3 **dibatalkan**. Semua uraian offline di dokumen ini (0, 4.1, 4.2, 4.4, BPMN-8, 7.x, 9, 10) adalah **riwayat dan dianggap tidak berlaku**; pembersihan menyeluruh dijadwalkan bersama revisi mockup.
+>
+> Status: **Draft v0.9 (online only; R1 Inti = operasional harian toko; tanpa penerimaan, tanpa Form Harga & histori harga)** · Bahasa dokumen: Indonesia · **Nama tabel & kolom DB: Inggris, snake_case, jamak** · Wireframe: [`wireframe.html`](wireframe.html) · Diagram: [`diagram.html`](diagram.html) · Biaya: [`estimasi-biaya.md`](estimasi-biaya.md)
 > DB `mitra_utama_existing` hanya referensi kebutuhan & pelajaran, **bukan** dasar desain.
 
 ---
 
 ## 0. Ringkasan Eksekutif
 
-**Sistem:** POS multi-toko, **1 database per toko**, ditambah aplikasi pusat (login, master toko, **master toko**, user & hak akses; **master barang ada di tiap toko**). Kasir **harus bisa berjualan seharian tanpa internet**, tetapi karena itu modul terbesar, **offline dikerjakan sesudah go-live online (Fase 1b)**; sejak awal API dirancang offline-ready dan frontend memakai **Quasar (PWA)**, dengan **backup lokal ke file** sebagai pengaman saat offline dibangun.
+**Sistem:** POS multi-toko, **1 database per toko**, ditambah aplikasi pusat (login, master toko, **master toko**, user & hak akses; **master barang ada di tiap toko**). Sistem **online saja** (D34): kasir butuh internet; bila internet mati, cadangannya adalah catat manual lalu input nota susulan / tethering ponsel. ~~Offline PWA + backup lokal~~ dibatalkan demi deployment sederhana di 1 hosting.
 
 ### 0.1 Perubahan di v0.3 (dari jawaban pertanyaan 10.2)
 
@@ -21,7 +23,7 @@
 | 6 | Shift: 2 per hari (pagi–siang, siang–sore), modal kas **tetap**, selisih butuh approval | `registers.fixed_opening_cash`, setoran per shift, `difference_status` + approval Admin |
 | 7 | Offline: 1 kasir per toko, PC, bisa seharian; worst case butuh backup lokal | Backup file lokal otomatis (4.4); server localhost **tidak** dipilih (alasan di 4.4) |
 | 8 | ~~Buat tabel `customers` + hutang~~ → **kredit & hutang dihapus dulu** (revisi 3); **merek** tetap ada | Pelanggan & piutang **ditunda ke Fase 2**; `brands` dipertahankan |
-| 9 | Hostinger Cloud, plan disesuaikan nanti | Risiko `CREATE DATABASE` tetap dicatat (A3) |
+| 9 | Hostinger Cloud, plan disesuaikan nanti → **dipastikan Hostinger hPanel, bukan VPS** | DB toko dibuat manual di hPanel; kredensial per toko di `stores` (A3, D13) |
 | 10 | **Tanpa pembulatan harga** | Pengaturan pembulatan dihapus; harga persen disimpan apa adanya (2 desimal) |
 | 11 | Void: sebelum dibayar langsung (dicatat); setelah dibayar tetap approval | Dua jalur: `sale_cancellations` (log) dan void-dengan-approval |
 | 12 | Role Accounting nanti | Tetap Fase 2 |
@@ -36,6 +38,8 @@
 | 21 | **Harga beli fluktuatif → costing FIFO** (dikonfirmasi: tertua keluar dulu; lihat 4.9) | Layer persediaan (`stock_layers`) per produk × gudang; HPP penjualan, laba, nilai persediaan dari layer. "Harga beli terakhir" tetap dipakai sebagai basis harga jual persen |
 | 22 | **Master barang cukup per toko** (tanpa katalog pusat/publish) dan **stok opname masuk R1** (untuk pengaturan stok) | Katalog pusat, `product_store_units`, `product_store_assignments`, replikasi, `uuid` katalog **dihapus**; barang dicocokkan lintas toko lewat `sku`; opname pindah dari R2 ke R1 (D27, D28) |
 | 23 | **R1 diubah lagi (peta menu baru):** penerimaan barang **keluar** dari R1 (stok murni dari opname); **masuk R1:** buka/tutup kas, retur, **surat jalan**, **tutup hari**, **pengeluaran**, tambah toko (Master) | Peta menu R1 di 0.3; modul baru 7.7b–7.7d; ERD 6.5b/6.6; penerimaan & pembelian = R2 (D29–D32) |
+| 24 | **Form Harga dan histori perubahan harga jual/modal → R2** | R1 memakai form barang sederhana (harga beli + harga jual nominal per satuan); mode margin, pratinjau, untung %, `price_histories` dan tab histori menyusul di R2 (D33) |
+| 25 | **Online only, 1 hosting; Laravel + Inertia (Vue) + Quasar dalam satu aplikasi** (menggantikan keputusan offline/PWA & SPA terpisah) | **D34.** R3 (offline) dihapus; folder `frontend/` dibuang; auth pakai sesi; rute tenant dari `/api/t/{kode}` menjadi `/t/{kode}` (web). Biaya offline ±35–48 hari kerja hilang dari estimasi |
 
 Revisi v0.2 (multi-supplier + biaya kontainer, retur, audit, multi-gudang, shift, migrasi, nama tabel Inggris jamak) tetap berlaku (kecuali katalog pusat yang **dihapus di v0.6**, D27).
 
@@ -78,22 +82,23 @@ Toko
 | Area | **R1 Inti** (dikerjakan dulu) | R2 (menyusul) | R3 |
 |---|---|---|---|
 | Master | **Tambah toko** (provisioning DB otomatis + progres), user & akses minimal, Dashboard Pusat | Cek stok lintas toko, layar Audit Trail, laporan overall (Fase 2) | — |
-| Barang | Barang **per toko**: daftar, multi-satuan + **konversi**, **harga per satuan** (nominal/margin), harga beli terakhir, histori harga, kategori/merek/satuan, satuan boleh dibeli/dijual, import Excel (barang + stok awal) | Daftar layer FIFO, salin barang dari toko lain (Excel) | — |
-| Stok | **Stok opname** (stok awal, penambahan barang datang, koreksi; hitung fisik, selisih, alasan, posting Admin), kartu stok, 2 gudang tetap (*Main Warehouse*, *Dead Stock*) | **Pembelian** + **penerimaan kontainer** (multi-supplier, biaya kontainer), transfer antar-gudang, **FIFO** | — |
-| Penjualan | **Kasir** online, **pembayaran** campur (tunai/transfer/QRIS/EDC), **nota** cetak, riwayat nota, batal sebelum bayar, void oleh Admin (sederhana), **buka/tutup kas** (modal tetap, setoran, selisih + approval Admin), **retur** (refund/tukar, dead stock, approval Admin), **surat jalan**, **pengeluaran**, **tutup hari** | — | **Offline PWA** + sinkron + backup lokal |
+| Barang | **Daftar barang per toko** dan **form barang sederhana**: sku, nama, kategori, merek, satuan dasar + satuan lain + **konversi**, **harga beli (modal)** per satuan dasar, **harga jual nominal per satuan**, satuan boleh dijual + default, barcode satuan, stok minimum, import Excel (barang + stok awal) | **Form Harga** (mode margin, pratinjau, persen untung, boleh dibeli), **histori perubahan harga jual/modal**, daftar layer FIFO, salin barang antar toko | — |
+| Stok | **Stok opname** (stok awal, penambahan dan koreksi stok; hitung fisik, selisih, alasan, posting Admin), kartu stok, 2 gudang tetap (*Main Warehouse*, *Dead Stock*) | **Pembelian** + **penerimaan kontainer** (multi-supplier, biaya kontainer), transfer antar-gudang, **FIFO** | — |
+| Penjualan | **Kasir** online, **pembayaran** campur (tunai/transfer/QRIS/EDC), **nota** cetak, riwayat nota, batal sebelum bayar, void oleh Admin (sederhana), **buka/tutup kas** (modal tetap, setoran, selisih + approval Admin), **retur** (refund/tukar, dead stock, approval Admin), **surat jalan**, **pengeluaran**, **tutup hari** | — | ~~Offline PWA + sinkron + backup lokal~~ **dibatalkan (D34)** |
 | Costing | Modal = **harga beli terakhir** (diisi manual di Form Harga atau opsional saat opname); HPP nota = qty × harga beli terakhir (estimasi) | FIFO per layer | — |
 | Laporan | Stok, kartu stok, selisih opname, penjualan harian/periode, retur, pengeluaran per kategori, **laporan harian (tutup hari)**, rekap shift, laba sederhana | Laporan lengkap, nilai persediaan FIFO, pembelian per supplier | — |
 | Data lama | **Barang + stok awal** (Excel / opname) | Transaksi lama | — |
 
 **Akibat teknis untuk R1**
-1. **Tabel R1** — pusat: `users`, `stores`, `store_users`, `store_provisioning_logs`. Toko: `categories`, `brands`, `units`, `products`, `product_units`, `price_histories`, `warehouses` (2 baris), `stocks`, `stock_movements`, `stock_opnames`, `stock_opname_items`, `registers`, `cash_shifts`, `sales`, `sale_items`, `sale_payments`, `sale_cancellations`, `sale_returns`, `sale_return_items`, `delivery_notes`, `delivery_note_items`, `expense_categories`, `expenses`, `daily_closings`, `document_sequences`, `settings`, `audits`.
-2. **Belum ada di R1:** `suppliers` (dipakai pembelian/penerimaan), `purchases`/`purchase_items`, `goods_receipts` (+suppliers, items, costs), `stock_transfers`, `stock_layers`/`stock_layer_allocations`, `sync_issues`. Ditambahkan lewat migrasi baru tanpa mengubah tabel R1.
-3. **Stok bertambah** hanya lewat **opname** (positif), **retur**, **void**, dan import saldo awal; **berkurang** lewat penjualan dan opname (negatif). Barang yang datang dicatat dengan **opname parsial** (cakupan *barang terpilih*, kode alasan `incoming_goods`). Kolom opsional *harga beli baru* pada baris opname memperbarui `cost_price` dan menulis `price_histories` (sumber `opname`).
+1. **Tabel R1** — pusat: `users`, `stores`, `store_users`, `store_provisioning_logs`. Toko: `categories`, `brands`, `units`, `products`, `product_units` (R1: `selling_price` nominal, `is_sellable`, `is_default_sale`), `warehouses` (2 baris), `stocks`, `stock_movements`, `stock_opnames`, `stock_opname_items`, `registers`, `cash_shifts`, `sales`, `sale_items`, `sale_payments`, `sale_cancellations`, `sale_returns`, `sale_return_items`, `delivery_notes`, `delivery_note_items`, `expense_categories`, `expenses`, `daily_closings`, `document_sequences`, `settings`, `audits`.
+2. **Belum ada di R1:** `price_histories` (dan kolom `product_units.price_mode`, `margin_percent`, `is_purchasable`), `suppliers`, `purchases`/`purchase_items`, `goods_receipts` (+suppliers, items, costs), `stock_transfers`, `stock_layers`/`stock_layer_allocations`, `sync_issues`. Ditambahkan lewat migrasi baru tanpa mengubah tabel R1.
+3. **Stok bertambah** hanya lewat **opname** (selisih positif), **retur**, **void**, dan import saldo awal; **berkurang** lewat penjualan dan opname (selisih negatif). **R1 tidak punya dokumen penerimaan/pembelian**: barang yang datang cukup dihitung lewat opname (parsial atau penuh). Harga beli diisi manual di Form Harga (histori sumber `manual`).
 4. **Costing sementara:** `sale_items.cost_total = base_quantity × products.cost_price`, `is_cost_estimated = true`; FIFO di R2 membuat layer awal dari nilai persediaan saat itu.
 5. **Dead stock** di R1: retur bisa memilih gudang *Dead Stock*; memindahkannya kembali dilakukan lewat opname (tanpa transfer antar-gudang).
 6. **Surat jalan tidak mengubah stok** (7.7b); **pengeluaran** dari laci mengurangi tunai seharusnya shift (7.7c); **tutup hari** mengunci transaksi tanggal bisnis itu (7.7d). Konsep `cash_movements` digantikan `expenses`.
 7. **Void** hanya oleh Admin (sederhana, tercatat); batal sebelum bayar langsung oleh kasir.
 8. Prinsip offline-ready tetap dipasang sejak R1 (`client_uuid`, nomor nota per register, snapshot harga).
+9. **Harga di R1:** perubahan harga beli/jual menimpa nilai lama (nota lama aman karena menyimpan snapshot harga). Perubahannya tetap tercatat teknis di `audits` (user, waktu, nilai lama → baru); saat R2 membuat `price_histories`, tabel itu diisi dari `audits` sehingga riwayat R1 tidak hilang.
 
 ---
 
@@ -126,7 +131,7 @@ Toko
 | D10 | Toko | Hanya Super Admin membuat toko; hanya dinonaktifkan; tooling migrasi skema ke semua DB | ✔ |
 | D11 | Cetak nota | Browser print dulu | ✔ |
 | D12 | Laporan overall | Fase 2 | ✔ |
-| D13 | Hosting | Hostinger Cloud (plan menyusul). **Go-live awal 1 toko (Mitra Utama)**; arsitektur tetap multi-toko | ✔ |
+| D13 | Hosting | **Hostinger hPanel (Cloud/Business), bukan VPS** (keputusan 26 Okt 2026). **Go-live awal 1 toko (Mitra Utama)**; arsitektur tetap multi-toko. Konsekuensi: DB toko dibuat **manual lewat hPanel**; kredensial per toko disimpan di `stores`; antrean via cron; satu aplikasi Laravel + Inertia (Quasar dibundel Vite) di satu domain (4.2, D34) | ✔ Anda |
 | D14 | Audit | `owen-it/laravel-auditing` di semua DB | ✔ |
 | D15 | Penamaan DB | Inggris, snake_case, jamak | ✔ |
 | D23 | Nama DB toko | `store_{nama_toko}` dalam snake_case, mis. `store_mitra_utama`. Prefiks nomor nota terpisah (`receipt_prefix`, mis. `MU`) | ✔ Anda; prefiks = usul |
@@ -135,14 +140,16 @@ Toko
 | D18 | Retur | Tanpa batas hari; approval Admin wajib; selisih boleh dikembalikan tunai; stok kembali ke gudang jual atau Dead Stock | ✔ Anda |
 | D19 | Pelanggan, kredit & hutang | **Dihapus dari Fase 1** (wireframe 16 & 23): tidak ada `customers`, penjualan hutang, pembayaran hutang. Tukar barang pada retur tetap ada (nilai retur dipotong otomatis di layar Retur, bukan metode bayar yang dipilih kasir) | ✔ Anda |
 | D24 | Pembelian dari supplier | **Modul terpisah** dari penerimaan kontainer: `purchases` + `purchase_items`; penerimaan dapat merujuk pembelian **full atau partial**; harga/modal FIFO diambil dari pembelian | ✔ Anda |
-| D25 | Offline | Tetap wajib tetapi **dikerjakan sesudah go-live online (Fase 1b)**; sejak awal API dirancang offline-ready (4.4) | ✔ Anda (usul diterima) |
-| D26 | Prioritas rilis | **R1 Inti = operasional harian toko** (peta menu 0.3): tambah toko, barang & harga, stok opname, kasir, buka/tutup kas, pembayaran, nota, retur, surat jalan, tutup hari, pengeluaran. **R2:** pembelian, penerimaan kontainer, FIFO, transfer/multi-gudang, cek stok lintas toko, salin barang, migrasi transaksi, layar audit. **R3:** offline | ✔ Anda |
+| D25 | ~~Offline~~ | ~~Tetap wajib, dikerjakan di Fase 1b~~ — **digantikan D34** | ✔ Anda |
+| D34 | **Online only, 1 hosting** | Offline/PWA/sinkron/backup lokal dibatalkan (R3 dihapus). Arsitektur: **Laravel + Inertia (Vue) + Quasar** dalam satu aplikasi, satu domain, auth sesi. Alasan: deployment mudah, 1 hosting. Risiko diterima: internet mati = kasir berhenti (cadangan: catat manual + nota susulan, atau tethering) | ✔ Anda (26 Okt 2026) |
+| D26 | Prioritas rilis | **R1 Inti = operasional harian toko** (peta menu 0.3): tambah toko, barang & harga, stok opname, kasir, buka/tutup kas, pembayaran, nota, retur, surat jalan, tutup hari, pengeluaran. **R2:** pembelian, penerimaan kontainer, FIFO, transfer/multi-gudang, cek stok lintas toko, salin barang, migrasi transaksi, layar audit. ~~**R3:** offline~~ **dibatalkan (D34)** | ✔ Anda |
 | D27 | Master barang per toko | Input barang **cukup per toko**; katalog pusat, publish, dan replikasi **dihapus** (bukan ditunda). Lintas toko (cek stok Master, transfer antar-toko kelak) dicocokkan lewat `sku` / barcode satuan | ✔ Anda |
 | D28 | Stok opname di R1 | Opname **masuk R1** sebagai alat pengaturan stok (hitung fisik, selisih, alasan, posting Admin); di R1 nilai selisih memakai harga beli terakhir (estimasi) | ✔ Anda |
-| D29 | Penerimaan di R1 | **Tidak ada.** Stok bertambah murni lewat **stok opname** (opname parsial berkode `incoming_goods`, kolom opsional harga beli baru), plus retur/void. Penerimaan kontainer dan pembelian = R2 | ✔ Anda |
+| D29 | Penerimaan di R1 | **Tidak ada** (dipindah ke R2 bersama pembelian). Stok bertambah murni lewat **stok opname**, plus retur/void/import saldo awal. Harga beli diisi manual di Form Harga | ✔ Anda |
 | D30 | Surat jalan | Dokumen pengantaran yang merujuk **nota** (penerima, alamat, sopir/kendaraan, item & qty kirim, status). **Tidak mengubah stok** (stok sudah berkurang saat nota); barang pulang diselesaikan lewat Retur | ✔ Anda; mekanisme = usul |
 | D31 | Tutup hari | Penutupan akhir hari oleh Admin: semua shift tutup + selisih diputuskan → snapshot laporan harian dan **penguncian** transaksi tanggal itu; buka kembali hanya Super Admin | ✔ Anda; mekanisme = usul |
 | D32 | Pengeluaran | Catatan pengeluaran operasional per kategori; bersumber **laci kasir** (mengurangi tunai seharusnya, butuh shift terbuka) atau **lainnya** (tidak memengaruhi kas shift). Menggantikan konsep "kas masuk/keluar" | ✔ Anda; mekanisme = usul |
+| D33 | Form Harga & histori harga | **R2.** R1: harga diisi di **form barang sederhana** (harga beli per satuan dasar + harga jual **nominal** per satuan, boleh dijual, default). Tanpa mode margin, pratinjau, persen untung, dan `price_histories`; perubahan harga tetap tercatat teknis oleh `laravel-auditing` (`audits`) dan menjadi sumber isi awal histori di R2 | ✔ Anda; mekanisme = usul |
 | D20 | Merek / Owner | `brands` tetap. **Owner = nama toko**: tidak ada tabel/atribut owner; migrasi memisahkan data per toko | ✔ Anda |
 | D21 | Cek stok lintas toko | Master (Super Admin) bisa mencari barang dan melihat stok **per toko × gudang**. Fase 1 memakai query langsung ke DB tiap toko (online); snapshot ke pusat menyusul bila toko banyak/laporan overall | ✔ Anda; mekanisme = usul |
 | D22 | Costing | **FIFO per layer pembelian**, per produk × gudang: barang masuk lebih dulu keluar lebih dulu, HPP memakai modal layer tertua yang masih tersisa. Berlaku untuk penjualan, void/retur, transfer, opname. LIFO tidak dipakai (tidak diizinkan PSAK 14 / aturan pajak, setahu saya — konfirmasi akuntan) | ✔ **FIFO dikonfirmasi Anda**; basis harga jual persen = harga beli terakhir (dikonfirmasi) |
@@ -152,7 +159,7 @@ Toko
 |----|--------|-------------------|
 | A1 | Fase 1: **1 register & 1 kasir aktif per toko** (tabel `registers` sudah mendukung banyak) | Banyak register di satu gudang = risiko stok lokal berbeda saat offline |
 | A2 | Void sesudah bayar hanya di shift berjalan; sesudahnya Retur | Kebijakan lain = aturan berubah |
-| A3 | Plan Hostinger Cloud mengizinkan `CREATE DATABASE`, cron, queue worker; bila tidak → VPS atau provisioning semi-manual (+2–3 hari) | Biaya & kemudahan provisioning |
+| A3 | **Hostinger hPanel**: DB tidak bisa dibuat dari kode → dibuat manual di hPanel (1 user per DB, nama berprefiks akun); cron tersedia (unlimited di Premium ke atas), worker antrean berjalan lewat cron `queue:work --stop-when-empty`. **Perlu dites sebelum produksi:** Composer/SSH di plan yang dibeli, jumlah DB plan (Premium 10, Business 150, Cloud 300), interval cron minimum | Bila ternyata `CREATE DATABASE` boleh, provisioning bisa otomatis penuh; bila Composer tidak ada, deploy memakai `vendor/` hasil build lokal |
 | A4 | Retur selalu merujuk nota asli | Retur tanpa nota = alur tambahan |
 | A5 | Kasir memakai PC dengan Chrome/Edge modern | Browser lain = uji tambahan; fitur backup file butuh Chrome/Edge |
 | A6 | Retur dan void-sesudah-bayar menunggu online (offline tidak tersedia) | Perlu antrean permintaan offline (+4–6 hari) |
@@ -194,15 +201,13 @@ Toko
 ### 4.1 Gambaran umum
 
 ```
-┌──────────────── PC kasir (Quasar PWA) ─────────────────────┐   ┌─ Browser admin (Quasar SPA) ─┐
-│ Fase 1a: online. Fase 1b (nanti): Service Worker + IndexedDB│   │ Online saja                  │
-│ (katalog, harga, stok, shift, outbox) + backup file lokal   │   └──────────────┬───────────────┘
-│ ── 1b: bisa jalan seharian tanpa internet ──                │                  │
-└──────────────────────────────┬──────────────────────────────┘                  │
-                               │ HTTPS · Sanctum · /api/t/{store_code}/...         │
-┌──────────────────────────────▼───────────────────────────────────────────────────▼───────┐
-│ Laravel 12 API   Middleware InitializeTenant (cek akses → set koneksi DB toko)            │
-│ Services: Catalog · Price · Purchase · Stock · Costing · Sale · Return · Shift · Sync(1b) │
+┌──────── Browser (PC kasir & admin) ─────────┐
+│ Halaman Vue + Quasar, dirender lewat Inertia │   online saja (D34)
+└──────────────────────┬──────────────────────┘
+                       │ HTTPS · sesi login · /t/{store_code}/...
+┌──────────────────────▼───────────────────────────────────────────────────────────────────┐
+│ Laravel 13 + Inertia   Middleware InitializeTenant (cek akses → set koneksi DB toko)      │
+│ Services: Catalog · Price · Purchase · Stock · Costing · Sale · Return · Shift            │
 │ Laravel Auditing (Auditable pada model penting)  ·  Queue (provisioning) │
 └──────────┬──────────────────────────────────────────┬────────────────────────────────────┘
    koneksi 'central'                            koneksi 'tenant' (dinamis)
@@ -217,9 +222,9 @@ Toko
 
 | Topik | Rekomendasi | Catatan |
 |---|---|---|
-| Multi-DB | `stancl/tenancy` (multi-database) | Provisioning DB, `tenants:migrate`, queue-aware |
-| Frontend | **Vue 3 + Quasar (mode PWA)** + Pinia + Workbox + Dexie (IndexedDB) | Offline wajib; Quasar membawa PWA + opsi Electron/Capacitor kelak |
-| API | API + SPA terpisah; endpoint data kasir idempoten | Untuk sinkronisasi offline |
+| Multi-DB | `stancl/tenancy` (multi-database) | `tenants:migrate`, queue-aware. **Di Hostinger hPanel:** pembuatan DB otomatis dimatikan (DB dibuat manual), kredensial per toko dipakai (`tenancy_db_username/password`) |
+| Frontend | **Inertia (Vue 3) + Quasar sebagai pustaka UI**, dibundel Vite di dalam aplikasi Laravel | D34: online only, 1 hosting, 1 deployment. Tanpa PWA/Workbox/Dexie |
+| API | Tanpa API/SPA terpisah; rute web + Inertia, sesi login (bukan token). Endpoint kasir tetap idempoten (`client_uuid`) | Mencegah nota ganda saat submit ulang |
 | Identitas | Dokumen kasir punya `client_uuid`; barang dicocokkan lintas toko lewat `sku` / barcode satuan | Offline + lintas toko |
 | Audit | `owen-it/laravel-auditing`, tabel `audits` di pusat & tiap toko | 4.7 |
 | Stok | Ledger `stock_movements` + cache `stocks` (produk × gudang), diubah **hanya** via `StockService` dalam transaksi DB + row lock | Satu jalur |
@@ -227,7 +232,7 @@ Toko
 | Nomor dokumen | `document_sequences` per jenis/register/periode; nomor nota memuat kode register | Unik tanpa server saat offline |
 | Uang / kuantitas | `decimal(15,2)` / `decimal(15,3)`; **tanpa pembulatan harga** | Tanpa float |
 | User lintas DB | `*_user_id` di DB toko **tanpa FK** + snapshot `*_user_name` | Kendala multi-DB |
-| Hosting | Hostinger Cloud (1 server; awal 1 toko, siap bertambah) | Verifikasi `CREATE DATABASE`, cron, queue worker |
+| Hosting | **Hostinger hPanel** (Cloud/Business; awal 1 toko) | **Satu aplikasi, satu domain** (D34): aset Vite dibuild lokal/CI (`npm run build`) lalu `public/build` diunggah bersama kode Laravel (folder `public` sebagai root); antrean & scheduler lewat **cron**; DB toko dibuat manual di hPanel dengan kredensial per toko; PHP 8.2+ |
 | Backup server | Harian per DB + pusat, uji restore | Keunggulan 1 DB/toko |
 
 ### 4.3 Master barang per toko (tanpa katalog pusat)
@@ -243,7 +248,9 @@ Akibat dan aturan:
 6. Master pendukung (kategori, merek, satuan, supplier) juga per toko; duplikasi nama antar toko diterima. Pembelian (`purchases`) memakai supplier toko itu.
 7. Keuntungan: tiap DB toko mandiri (backup/restore, kasir offline, laporan lokal) tanpa job replikasi; biaya R2 turun ±12–16 hari kerja. Kekurangan: tidak ada satu tempat untuk menyeragamkan nama/satuan antar-toko, dan perubahan massal harus diulang per toko.
 
-### 4.4 Desain offline (kasir 1 PC per toko, bisa seharian) — **dikerjakan di Fase 1b**
+### 4.4 Desain offline — **DIBATALKAN (D34, 26 Okt 2026); bagian ini hanya riwayat**
+
+> Sistem diputuskan **online only** (1 hosting, deployment sederhana). Seluruh uraian di bawah (PWA, IndexedDB, sinkron, backup file, `sync_issues`, `registers.last_synced_at`, `is_offline`) **tidak akan dibangun**. Yang tetap dipakai: `client_uuid` untuk idempotensi submit dan nomor nota per register.
 
 **Keputusan (D25):** offline tetap wajib, tetapi **dikerjakan sesudah go-live online**. Offline adalah modul terbesar (±35–48 hari kerja ≈ 15 % total) dan paling berisiko; mengunci dulu fondasi, katalog, stok, pembelian, kasir online, dan retur membuat toko bisa dipakai lebih cepat, dan prototipe offline nanti diuji di toko yang sudah berjalan.
 
@@ -403,12 +410,13 @@ flowchart LR
 flowchart TD
     subgraph SA["Super Admin"]
         A1(["Mulai"]) --> A2["Isi form toko: kode, nama, alamat, telepon"]
-        A2 --> A3["Tentukan admin toko + register kasir + modal kas tetap"]
+        A2 --> A2b["Buat database kosong + user di hPanel Hostinger, catat nama, user, password"]
+        A2b --> A3["Isi nama DB, user, password di form; tentukan admin toko + register kasir + modal kas tetap"]
         A9(["Toko aktif, tombolnya tampil di Dashboard Pusat"])
     end
     subgraph SYS["Sistem"]
         S1{"Kode toko unik?"}
-        S2["Buat database store_kode (kode = snake_case dari nama toko)"]
+        S2["Simpan kredensial DB terenkripsi, uji koneksi ke database toko"]
         S3["Migrasi skema + tabel audits + seeder"]
         S3b["Buat gudang default: Main Warehouse dan Dead Stock, register, pengaturan"]
         S4{"Berhasil?"}
@@ -419,7 +427,7 @@ flowchart TD
     A3 --> S1
     S1 -->|"Tidak"| A2
     S1 -->|"Ya"| S2 --> S3 --> S3b --> S4
-    S4 -->|"Gagal"| S5 --> A2
+    S4 -->|"Gagal"| S5 --> A2b
     S4 -->|"Ya"| S6 --> S7 --> A9
 ```
 
@@ -456,7 +464,32 @@ flowchart TD
     S8 -->|"admin / warehouse"| S10 --> U9
 ```
 
-### 5.4 BPMN-3 — Input / Ubah Barang & Harga (per toko)
+### 5.4 BPMN-3 — Input / Ubah Barang (R1, sederhana)
+
+```mermaid
+flowchart TD
+    subgraph ADM["Admin Toko"]
+        A1(["Tambah / ubah barang"]) --> A2["Isi info: sku, nama, kategori, merek, stok minimum"]
+        A2 --> A3["Pilih satuan dasar, tambah satuan lain + konversi + barcode satuan"]
+        A3 --> A4["Isi harga beli per satuan dasar dan harga jual nominal per satuan"]
+        A4 --> A5["Tandai satuan boleh dijual dan satuan default"]
+        A5 --> A6["Simpan"]
+        A12(["Selesai: barang tampil di daftar dan kasir"])
+    end
+    subgraph SYS["Sistem"]
+        S1{"Validasi: sku/barcode unik, 1 satuan dasar, konversi lebih dari 0 maks 3 desimal, harga tidak negatif, default jual boleh dijual"}
+        S2{"Harga jual di bawah modal satuan?"}
+        S3["Peringatan, butuh konfirmasi"]
+        S4["Simpan barang + satuan, audit mencatat perubahan harga"]
+    end
+    A6 --> S1
+    S1 -->|"Tidak lolos"| A2
+    S1 -->|"Lolos"| S2
+    S2 -->|"Ya"| S3 --> A4
+    S2 -->|"Tidak"| S4 --> A12
+```
+
+### 5.4b BPMN-3b — Form Harga: Margin & Histori Harga (R2)
 
 ```mermaid
 flowchart TD
@@ -927,7 +960,9 @@ erDiagram
         string name
         string address
         string phone
-        string db_name UK
+        string db_name UK "full name incl. Hostinger prefix, e.g. u123456789_store_mitra_utama"
+        string db_username "Hostinger: one user per database"
+        text db_password "encrypted (Laravel Crypt)"
         string db_host "null = default server"
         enum status "provisioning, active, inactive, failed"
         string schema_version
@@ -998,7 +1033,7 @@ erDiagram
         decimal new_value
         enum new_mode "nominal, margin"
         decimal new_margin_percent
-        enum source "manual, opname, goods_receipt, recalculation, import, migration"
+        enum source "manual, goods_receipt, recalculation, import, migration"
         string reference_type
         bigint reference_id
         bigint user_id "no FK, other database"
@@ -1032,7 +1067,7 @@ erDiagram
 | `units` | `name`, `allows_decimal` | `name` unik |
 | `products` | `sku`, `name`, `category_id` (wajib), `brand_id` (boleh kosong), `base_unit_id`, `cost_price` (harga beli terakhir per satuan dasar), `min_stock`, `is_active`, `legacy_sku` | `sku` unik per toko |
 | `product_units` | `unit_id`, `conversion_factor`, `is_base`, `barcode`, `sort_order`, `is_purchasable`, `is_sellable`, `price_mode`, `margin_percent`, `selling_price`, `is_default_sale` | satu baris per barang × satuan |
-| `price_histories` | harga lama → baru, mode, sumber, user | append-only |
+| `price_histories` **(R2)** | harga lama → baru, mode, sumber, user | append-only |
 
 **Kendala integritas**
 1. Tepat **satu satuan dasar** per barang, `conversion_factor = 1`; `unique(product_id, unit_id)`; satuan dasar sama dengan `products.base_unit_id`.
@@ -1278,7 +1313,6 @@ erDiagram
         decimal counted_quantity
         decimal system_quantity_at_posting
         decimal variance
-        decimal unit_cost "optional new purchase price, updates products.cost_price"
         string reason
     }
 ```
@@ -1594,7 +1628,7 @@ erDiagram
 **Aturan**
 1. Hanya Super Admin yang membuat/menonaktifkan toko, user, dan akses. Toko **tidak dapat dihapus** dari aplikasi.
 2. Kebijakan MVP: user non-super-admin ditugaskan ke **tepat satu toko** (pivot `store_users` dipertahankan untuk kelak). Bila kelak >1 toko → pemilih toko.
-3. **Penamaan toko:** `stores.code` = **snake_case dari nama toko** (huruf kecil, angka, underscore; 3–40 karakter; unik; tidak bisa diubah). Nama DB = `store_{code}`, URL = `/t/{code}/`. Contoh: "Mitra Utama" → `mitra_utama` → DB `store_mitra_utama`. Sistem mengusulkan kode dari nama (spasi → `_`, tanpa tanda baca) dan Super Admin boleh mengedit sebelum disimpan. Karena kode panjang, **nomor dokumen** memakai `stores.receipt_prefix` (singkat, mis. `MU`, bisa diubah) agar nota thermal tetap ringkas.
+3. **Penamaan toko:** `stores.code` = **snake_case dari nama toko** (huruf kecil, angka, underscore; 3–40 karakter; unik; tidak bisa diubah). Nama DB = `store_{code}` (di Hostinger otomatis diberi **prefiks akun**, mis. `u123456789_store_mitra_utama`, dan disimpan penuh di `stores.db_name`), URL = `/t/{code}/`. Contoh: "Mitra Utama" → `mitra_utama` → DB `store_mitra_utama`. Sistem mengusulkan kode dari nama (spasi → `_`, tanpa tanda baca) dan Super Admin boleh mengedit sebelum disimpan. Karena kode panjang, **nomor dokumen** memakai `stores.receipt_prefix` (singkat, mis. `MU`, bisa diubah) agar nota thermal tetap ringkas.
 4. Perubahan skema lewat `tenants:migrate` dengan laporan per toko; `stores.schema_version` terlihat di Master Toko.
 5. Otorisasi di **backend** (policy per role); uji otomatis isolasi toko A vs B.
 6. Pengaturan toko: nama/alamat/footer nota, ukuran kertas, izinkan stok minus, wajib approval penerimaan, ambang selisih besar opname, kunci penjualan saat opname. (Tidak ada pengaturan pembulatan harga dan batas hari retur.)
@@ -1605,6 +1639,16 @@ erDiagram
 ---
 
 ### 7.1 F1 — Barang & Harga (per toko)
+
+**Pembagian rilis (v0.8, D33)**
+| Bagian | R1 (form barang sederhana) | R2 |
+|---|---|---|
+| Info barang | sku, nama, kategori, merek, stok minimum, aktif | — |
+| Satuan | satuan dasar + satuan lain, **konversi**, barcode satuan, boleh dijual, satuan default | boleh dibeli (terkait penerimaan) |
+| Harga | **harga beli (modal) per satuan dasar** dan **harga jual nominal per satuan**; peringatan bila harga jual < modal | **Form Harga**: mode margin, pratinjau perubahan, persen untung (margin) per satuan |
+| Histori | tidak ada layar; perubahan tercatat teknis di `audits` | **Histori perubahan harga jual/modal** (`price_histories`, tab Histori Harga, laporan), diisi awal dari `audits` |
+| Detail barang | Ringkasan + Kartu Stok | tab Histori Harga, daftar layer FIFO |
+Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mulai R2**; aturan lain berlaku sejak R1.
 
 **Layar:** Daftar Barang · Form Barang (tab *Info*, *Satuan & Harga*) · Detail Barang (*Ringkasan*, *Histori Harga*, *Kartu Stok*) · Master Kategori / Merek / Satuan / Supplier (semua milik toko) · Import Excel (barang + stok awal).
 
@@ -1693,9 +1737,9 @@ erDiagram
 4. Satu barang-gudang tidak boleh ada di dua opname aktif.
 5. **Saldo awal migrasi:** opname berkode `opening_balance` yang menulis `opening_balance` (7.11).
 6. Opname parsial `inter_store_transfer` dipakai sebagai jembatan transfer antar-toko dan diberi penanda di laporan selisih.
-7. **R1 tanpa Penerimaan:** barang yang datang dicatat dengan opname parsial (cakupan *barang terpilih*, kode alasan `incoming_goods`): hitung fisik barang tersebut sesudah dibongkar; selisih positif menambah stok.
-8. Kolom opsional **harga beli baru** per baris: bila diisi, memperbarui `products.cost_price` dan menulis `price_histories` (sumber `opname`) — modal terbaru tanpa modul pembelian.
-9. Kode alasan baku: `opening_balance`, `incoming_goods`, `damaged`, `lost`, `inter_store_transfer`, `correction`. **Import Excel hasil hitung** didukung (kolom sku, satuan, qty).
+7. **R1 hanya opname:** tidak ada dokumen penerimaan/pembelian; barang yang datang dihitung lewat opname (cakupan *semua*, *kategori*, atau *barang terpilih*) dan selisih positif menambah stok.
+8. Harga beli **tidak** diubah dari opname; diisi manual di Form Harga (histori harga mencatatnya). Penerimaan yang menjadi sumber otomatis harga beli datang di R2.
+9. Kode alasan baku: `opening_balance`, `stock_increase` (penambahan/barang datang), `damaged`, `lost`, `inter_store_transfer`, `correction`. **Import Excel hasil hitung** didukung (kolom sku, satuan, qty).
 
 ---
 
@@ -1935,6 +1979,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 | Stok opname | **Masuk R1** untuk pengaturan stok |
 | Penerimaan di R1 | **Tidak ada**; stok murni dari stok opname (penerimaan & pembelian = R2) |
 | Modul tambahan R1 | **Buka/tutup kas, retur, surat jalan, tutup hari, pengeluaran** masuk R1; tambah toko di Master |
+| Form Harga & histori harga | **Ditunda ke R2**; R1 memakai form barang sederhana (harga beli + harga jual nominal) |
 | Transfer antar-toko | Fase 2; opname parsial dulu |
 | Stok awal | Opname fisik OK selama bisa dimigrasi |
 | Konversi 137 barang | Lewat Claude + impor Excel |
@@ -1951,7 +1996,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 | Kebijakan satuan boleh dibeli/dijual | Pusat mengisi nilai awal; **Admin Toko juga bisa mengubah** di daftar barang tokonya |
 | Approval selisih kas bila Admin tidak hadir | Disetujui kemudian oleh Admin/Super Admin; tidak memblokir shift berikutnya |
 | Persen untung | **Margin saja** (tanpa markup) |
-| Hostinger | Cloud, plan menyusul |
+| Hostinger | **hPanel (Cloud/Business), bukan VPS**; DB toko dibuat manual, antrean via cron |
 | Pembulatan | Tidak ada |
 | Void | Sebelum bayar langsung (dicatat); sesudah bayar approval |
 | Role Accounting | Setuju, nanti (Fase 2) |
@@ -1970,6 +2015,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 9. **Pengeluaran** punya dua sumber (laci kasir / lainnya) dan menggantikan "kas masuk/keluar" — sesuai?
 10. **User & akses minimal** dianggap bagian dari Master (tanpa itu tidak ada yang bisa login) — setuju?
 11. **Void sederhana oleh Admin** tetap ada di R1 sebagai katup pengaman (tidak disebut di daftar Anda) — setuju?
+12. **Persen untung (margin) tidak ditampilkan di R1** (ikut Form Harga di R2); R1 hanya menampilkan harga jual dan modal nominal. Sesuai, atau persen untung read-only tetap diinginkan di R1 (±1 hari kerja)?
 
 ---
 

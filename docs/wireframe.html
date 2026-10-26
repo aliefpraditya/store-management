@@ -141,8 +141,9 @@
   <button data-s="audit">6. Audit Trail <span class="new">baru</span> <span class="rel r2">R2</span></button>
   <div class="grp">F1 · Barang & Harga</div>
   <button data-s="blist">7. Daftar Barang <span class="new">ubah</span> <span class="rel r1">R1</span></button>
-  <button data-s="bform">8. Form Harga per Satuan <span class="new">ubah</span> <span class="rel r1">R1</span></button>
-  <button data-s="bhist">9. Detail — Histori Harga <span class="rel r1">R1</span></button>
+  <button data-s="barangform">8a. Form Barang (sederhana) <span class="new">baru</span> <span class="rel r1">R1</span></button>
+  <button data-s="bform">8. Form Harga per Satuan <span class="new">ubah</span> <span class="rel r2">R2</span></button>
+  <button data-s="bhist">9. Detail — Histori Harga <span class="rel r2">R2</span></button>
   <div class="grp">F2 · Stok</div>
   <button data-s="pembelian">10a. Pembelian dari Supplier <span class="new">baru</span> <span class="rel r2">R2</span></button>
   <button data-s="mlist">10. Daftar Penerimaan <span class="new">ubah</span> <span class="rel r2">R2</span></button>
@@ -239,14 +240,14 @@
     <div class="grid2 mt">
       <div class="card"><h4>Tambah Toko <span class="tag">1</span></h4>
         <div class="row"><div class="fld"><label>Nama toko</label><span class="inp">Cabang Barat</span></div><div class="fld"><label>Kode = snake_case nama (tidak bisa diubah)</label><span class="inp">cabang_barat</span></div></div>
-        <div class="row"><div class="fld"><label>Database (otomatis)</label><span class="inp" style="background:var(--soft)">store_cabang_barat</span></div><div class="fld"><label>Prefiks nomor nota</label><span class="inp">CBB</span></div></div>
+        <div class="row"><div class="fld"><label>Nama database (dari hPanel) <span class="tag">4</span></label><span class="inp">u123456789_store_cabang_barat</span></div><div class="fld"><label>User database</label><span class="inp">u123456789_cabang_barat</span></div><div class="fld"><label>Password database</label><span class="inp">••••••••••</span></div><div class="fld"><label>Prefiks nomor nota</label><span class="inp">CBB</span></div></div>
         <div class="fld"><label>Alamat</label><span class="inp">…</span></div>
         <div class="row"><div class="fld"><label>Admin awal</label><span class="inp sel">Pilih user</span></div><div class="fld"><label>Register kasir pertama</label><span class="inp">K1 · Kasir 1</span></div><div class="fld"><label>Modal kas tetap</label><span class="inp">Rp 500.000</span></div></div>
         <div class="fld"><label>Barang awal</label><span class="inp sel">Kosong (impor Excel kemudian)</span></div>
         <span class="btn pri">Buat Toko & Siapkan Database</span>
       </div>
       <div class="card"><h4>Progres Provisioning <span class="tag">2</span></h4>
-        <div class="mt">✅ Validasi kode unik</div><div>✅ Buat database <code>store_cabang_barat</code></div><div>✅ Migrasi skema + tabel <code>audits</code></div><div>⏳ Seeder: Main Warehouse, Dead Stock, pengaturan</div><div class="mute">○ Impor barang awal dari Excel (opsional)</div><div class="mute">○ Beri akses admin awal</div>
+        <div class="mt">✅ Validasi kode unik</div><div>✅ Uji koneksi ke database <code>u123456789_store_cabang_barat</code></div><div>✅ Migrasi skema + tabel <code>audits</code></div><div>⏳ Seeder: Main Warehouse, Dead Stock, pengaturan</div><div class="mute">○ Impor barang awal dari Excel (opsional)</div><div class="mute">○ Beri akses admin awal</div>
         <div class="bar2 mt"><i style="width:55%"></i></div>
       </div>
     </div>
@@ -254,7 +255,8 @@
   <div class="notes"><h4>Catatan</h4><ol>
     <li><span class="tag">1</span>Kode = snake_case dari nama toko (diusulkan otomatis, boleh diedit sebelum disimpan); jadi nama DB <code>store_{kode}</code> dan URL <code>/t/{kode}/</code> → divalidasi (huruf kecil/angka/underscore, 3–40 karakter) dan dikunci.</li>
     <li><span class="tag">3</span>Prefiks nota singkat (mis. <code>MU</code>) dipakai di nomor dokumen <code>INV/MU/K1/2610/0125</code> agar struk tetap ringkas; boleh diubah, kode toko tidak.</li>
-    <li><span class="tag">2</span>Gagal di langkah mana pun → rollback, status <i>Gagal</i>, "Coba lagi" idempoten. Pastikan akun DB Hostinger boleh <code>CREATE DATABASE</code>.</li>
+    <li><span class="tag">2</span>Gagal di langkah mana pun → rollback, status <i>Gagal</i>, "Coba lagi" idempoten. Di Hostinger hPanel database <b>tidak dibuat otomatis</b>: Super Admin membuat database kosong + user di hPanel lebih dulu.</li>
+    <li><span class="tag">4</span>Nama, user, dan password database dari hPanel disimpan <b>terenkripsi</b> di DB pusat; aplikasi menguji koneksi lalu menjalankan migrasi dan seeder. Hostinger memberi prefiks akun pada nama DB dan satu user per DB.</li>
     <li>Kolom <i>Versi Skema</i> menandai toko yang tertinggal dari migrasi terbaru (<code>tenants:migrate</code>).</li>
     <li>Tidak ada tombol Hapus; hapus DB dilakukan manual oleh DBA.</li>
   </ol></div>
@@ -322,10 +324,10 @@
         <span class="btn auto">⬆ Import Excel</span><span class="btn pri auto">+ Tambah Barang <span class="tag">1</span></span>
       </div>
       <table>
-        <tr><th>SKU</th><th>Nama</th><th>Kategori</th><th class="r">Stok jual</th><th class="r">Dead stock <span class="tag">2</span></th><th class="r">Modal (dasar)</th><th>Harga jual default</th><th class="r">Untung</th><th>Status</th><th class="c">Aksi</th></tr>
-        <tr><td>MU0001</td><td>Cat Tembok Putih 5kg</td><td>Cat</td><td class="r">7 DUS + 2 PAIL</td><td class="r"><span class="chip warn">1 PAIL</span></td><td class="r">72.875</td><td>PAIL · 116.600</td><td class="r">37,5%</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Detail</span> <span class="btn sm">Harga</span></td></tr>
-        <tr><td>MU0002</td><td>Paku 5cm</td><td>Bangunan</td><td class="r">120,5 KG</td><td class="r">—</td><td class="r">18.000</td><td>KG · 24.000</td><td class="r">25,0%</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Detail</span> <span class="btn sm">Harga</span></td></tr>
-        <tr><td>MU0003</td><td>Lampu LED 9W</td><td>Listrik</td><td class="r"><span class="chip bad">3 PCS</span> <small class="mute">min 12</small></td><td class="r"><span class="chip warn">1 PCS</span></td><td class="r">9.500</td><td>PCS · 15.000</td><td class="r">36,7%</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Detail</span> <span class="btn sm">Harga</span></td></tr>
+        <tr><th>SKU</th><th>Nama</th><th>Kategori</th><th class="r">Stok jual</th><th class="r">Dead stock <span class="tag">2</span></th><th class="r">Modal (dasar)</th><th>Harga jual default</th><th>Status</th><th class="c">Aksi</th></tr>
+        <tr><td>MU0001</td><td>Cat Tembok Putih 5kg</td><td>Cat</td><td class="r">7 DUS + 2 PAIL</td><td class="r"><span class="chip warn">1 PAIL</span></td><td class="r">72.875</td><td>PAIL · 116.600</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Detail</span> <span class="btn sm">Edit</span></td></tr>
+        <tr><td>MU0002</td><td>Paku 5cm</td><td>Bangunan</td><td class="r">120,5 KG</td><td class="r">—</td><td class="r">18.000</td><td>KG · 24.000</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Detail</span> <span class="btn sm">Edit</span></td></tr>
+        <tr><td>MU0003</td><td>Lampu LED 9W</td><td>Listrik</td><td class="r"><span class="chip bad">3 PCS</span> <small class="mute">min 12</small></td><td class="r"><span class="chip warn">1 PCS</span></td><td class="r">9.500</td><td>PCS · 15.000</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Detail</span> <span class="btn sm">Edit</span></td></tr>
       </table>
     </div>
   </div></div></div>
@@ -333,13 +335,48 @@
     <li><span class="tag">1</span>Barang dibuat <b>langsung di toko</b> (form atau import Excel); tidak ada katalog pusat.</li>
     <li><span class="tag">2</span>Stok di gudang bertipe <i>dead_stock</i> tidak muncul di kasir tapi tetap dilaporkan.</li>
     <li>Nama, kategori, satuan, konversi, harga, dan stok minimum seluruhnya diatur Admin Toko.</li>
-    <li>Untung = <b>margin</b> (dari harga jual) satuan default.</li>
+    <li>R1 menampilkan harga jual dan modal nominal; kolom persen untung (margin) ikut Form Harga di <b>R2</b>.</li>
+  </ol></div>
+</section>
+
+<!-- 8a FORM BARANG R1 -->
+<section class="screen" id="barangform">
+  <div class="head"><h2>8a. Form Barang — sederhana <span class="tagrel r1">R1 Inti</span></h2><p>Satu form untuk info barang, satuan + konversi, harga beli, dan harga jual nominal per satuan. Form Harga lengkap (margin, pratinjau) dan histori harga = R2.</p></div>
+  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/products/MU0001/edit</span></div>
+  <div class="body pad">
+    <div class="row" style="align-items:center;margin-bottom:8px"><b style="font-size:16px;flex:1">Edit Barang · Cat Tembok Putih 5kg</b><span class="btn auto">Batal</span><span class="btn pri auto">Simpan</span></div>
+    <div class="row">
+      <div class="fld"><label>SKU</label><span class="inp">MU0001</span></div>
+      <div class="fld"><label>Nama</label><span class="inp">Cat Tembok Putih 5kg</span></div>
+      <div class="fld"><label>Kategori</label><span class="inp sel">Cat</span></div>
+      <div class="fld"><label>Merek</label><span class="inp sel">Dulux</span></div>
+    </div>
+    <div class="row">
+      <div class="fld"><label>Satuan dasar</label><span class="inp sel">PAIL</span></div>
+      <div class="fld"><label>Harga beli per satuan dasar (modal) <span class="tag">1</span></label><span class="inp">Rp 72.875</span></div>
+      <div class="fld"><label>Stok minimum (dasar)</label><span class="inp">8</span></div>
+      <div class="fld"><label>Status</label><span class="inp">☑ Aktif</span></div>
+    </div>
+    <table class="mt">
+      <tr><th>Satuan</th><th class="r">Konversi <span class="tag">2</span></th><th>Barcode satuan <span class="tag">3</span></th><th class="r">Modal otomatis</th><th class="r">Harga jual (nominal)</th><th class="c">Boleh dijual</th><th class="c">Default</th><th></th></tr>
+      <tr><td>PAIL <span class="chip pri">dasar</span></td><td class="r">1</td><td>8991234567890</td><td class="r">72.875</td><td class="r"><span class="inp mini">116.600</span></td><td class="c">☑</td><td class="c">◉</td><td></td></tr>
+      <tr><td><span class="inp sel mini">DUS</span></td><td class="r"><span class="inp mini">4</span></td><td>18991234567897</td><td class="r">291.500</td><td class="r"><span class="inp mini">437.250</span></td><td class="c">☑</td><td class="c">○</td><td><span class="btn sm bad">✕</span></td></tr>
+    </table>
+    <div class="mt"><span class="btn">+ Tambah Satuan</span></div>
+    <div class="box mt">⚠️ Harga jual DUS lebih rendah dari 4 × harga jual PAIL (437.250 &lt; 466.400) — diperbolehkan. Harga jual di bawah <b>modal</b> satuan akan meminta konfirmasi. <span class="tag">4</span></div>
+  </div></div>
+  <div class="notes"><h4>Catatan</h4><ol>
+    <li><span class="tag">1</span>Harga beli diisi manual per satuan dasar; modal tiap satuan = harga beli × konversi. Dipakai sebagai HPP estimasi di nota (FIFO di R2).</li>
+    <li><span class="tag">2</span>Tepat satu satuan dasar (konversi 1); konversi maks 3 desimal; terkunci setelah ada stok/transaksi.</li>
+    <li><span class="tag">3</span>Barcode hanya di satuan: scan menentukan barang dan satuannya.</li>
+    <li><span class="tag">4</span>Harga jual nominal per satuan, bebas per satuan. <b>Tidak ada</b> mode margin, pratinjau perubahan, persen untung, maupun tab histori di R1 (R2). Perubahan harga menimpa nilai lama dan tercatat teknis di audit; nota lama aman karena menyimpan snapshot harga.</li>
+    <li>Satuan yang tidak dicentang "boleh dijual" tidak muncul di kasir.</li>
   </ol></div>
 </section>
 
 <!-- 8 BARANG FORM -->
 <section class="screen" id="bform">
-  <div class="head"><h2>8. Form Harga per Satuan (Toko) <span class="tagrel r1">R1 Inti</span></h2><p>Multi-satuan, konversi (dari pusat), harga nominal atau persen margin, persen untung (margin) langsung terlihat.</p></div>
+  <div class="head"><h2>8. Form Harga per Satuan (Toko) <span class="tagrel r2">R2</span></h2><p><b>R2 — tidak ada di R1</b> (di R1 harga diisi di Form Barang, layar 8a). Multi-satuan, konversi (dari pusat), harga nominal atau persen margin, persen untung (margin) langsung terlihat.</p></div>
   <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/products/MU0001/pricing</span></div>
   <div class="body pad">
     <div class="row" style="align-items:center;margin-bottom:6px"><b style="font-size:16px;flex:1">Harga · Cat Tembok Putih 5kg</b><span class="btn auto">Batal</span><span class="btn pri auto">Simpan</span></div>
@@ -368,7 +405,7 @@
 
 <!-- 9 HISTORI -->
 <section class="screen" id="bhist">
-  <div class="head"><h2>9. Detail Barang — Histori Harga & Persen Untung <span class="tagrel r1">R1 Inti</span></h2><p>Riwayat harga beli dan jual di detail barang.</p></div>
+  <div class="head"><h2>9. Detail Barang — Histori Harga & Persen Untung <span class="tagrel r2">R2</span></h2><p><b>R2 — tidak ada di R1</b> (di R1 harga diisi di Form Barang, layar 8a). Riwayat harga beli dan jual di detail barang.</p></div>
   <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/products/MU0001</span></div>
   <div class="body pad">
     <div class="row" style="align-items:center;margin-bottom:6px"><b style="font-size:16px;flex:1">Cat Tembok Putih 5kg <span class="chip">MU0001</span> <span class="chip">Cat</span></b><span class="btn auto">Ubah harga</span></div>
@@ -530,8 +567,8 @@
     <div class="row" style="margin-bottom:8px">
       <div class="fld"><label>Gudang</label><span class="inp sel">Main Warehouse</span></div>
       <div class="fld"><label>Cakupan <span class="tag">4</span></label><span class="inp sel">Barang terpilih</span></div>
-      <div class="fld"><label>Kode alasan</label><span class="inp sel">incoming_goods · Barang datang</span></div>
-      <div class="fld"><label>Catatan</label><span class="inp">Bongkar kontainer TGHU 765432-1</span></div>
+      <div class="fld"><label>Kode alasan</label><span class="inp sel">stock_increase · Penambahan stok</span></div>
+      <div class="fld"><label>Catatan</label><span class="inp">Penambahan stok setelah bongkar</span></div>
     </div>
     <div class="row" style="margin-bottom:8px"><span class="inp" style="flex:2">🔍 Cari / scan barang</span><span class="mute auto">Snapshot: 25 Okt 2026 08:00 · 2 / 3 barang dihitung</span></div>
     <table>
@@ -547,7 +584,7 @@
     <li><span class="tag">2</span>Input boleh campur satuan → dikonversi ke dasar. Kosong ≠ 0.</li>
     <li><span class="tag">3</span>Posting hanya Admin; menulis <code>opname_adjustment</code> untuk baris selisih.</li>
     <li><span class="tag">4</span>Cakupan: semua / kategori / barang terpilih. Jembatan sementara transfer antar-toko = opname parsial dengan kode alasan; di laporan selisih ditandai khusus. Transfer antar-toko sungguhan di Fase 2.</li>
-    <li><b>Barang datang (R1 tanpa Penerimaan):</b> buat opname parsial (cakupan barang terpilih, alasan <code>incoming_goods</code>), hitung fisik; selisih positif menambah stok. Kolom opsional <i>harga beli baru</i> memperbarui harga beli terakhir (histori sumber <code>opname</code>).</li>
+    <li><b>R1 hanya opname:</b> tidak ada penerimaan/pembelian; barang yang datang dihitung lewat opname (parsial atau penuh), selisih positif menambah stok. Harga beli diisi manual di Form Harga.</li>
     <li>Saldo awal: opname berkode <code>opening_balance</code> (atau import Excel).</li>
     <li><b>R1:</b> nilai selisih = selisih × harga beli terakhir (estimasi). Setelah FIFO (R2), selisih kurang mengonsumsi layer tertua dan selisih lebih membuat layer baru.</li>
     
