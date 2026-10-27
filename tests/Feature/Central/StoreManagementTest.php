@@ -3,10 +3,12 @@
 namespace Tests\Feature\Central;
 
 use App\Enums\StoreStatus;
+use App\Enums\WarehouseType;
 use App\Exceptions\StoreProvisioningException;
 use App\Models\Store;
 use App\Models\StoreProvisioningLog;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\StoreProvisioner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -132,13 +134,40 @@ class StoreManagementTest extends TestCase
         $this->assertSame('CBB', $store->receipt_prefix);
         $this->assertNotNull($store->schema_version);
         $this->assertSame(
-            ['connection' => 'ok', 'migration' => 'ok'],
+            ['connection' => 'ok', 'migration' => 'ok', 'seed' => 'ok'],
             $store->provisioningLogs()->orderBy('id')->pluck('result', 'step')->all(),
         );
-        $this->assertTrue(
-            DB::connection('mysql')->table('information_schema.tables')
-                ->where('table_schema', self::READY_DATABASE)->where('table_name', 'audits')->exists(),
-        );
+    }
+
+    public function test_provisioning_creates_the_r1_tables_and_the_two_default_warehouses_once(): void
+    {
+        $this->actingAs($this->superAdmin())->post(route('central.stores.store'), $this->payload());
+
+        $store = Store::query()->where('code', 'cabang_barat')->firstOrFail();
+
+        $tables = DB::connection('mysql')->table('information_schema.tables')
+            ->where('table_schema', self::READY_DATABASE)
+            ->select('table_name as name')
+            ->pluck('name')
+            ->map(fn (string $name): string => strtolower($name))
+            ->all();
+
+        $this->assertEqualsCanonicalizing([], array_diff([
+            'audits', 'units', 'categories', 'brands', 'products', 'product_units',
+            'warehouses', 'stocks', 'stock_movements', 'stock_opnames', 'stock_opname_items',
+            'registers', 'cash_shifts', 'sales', 'sale_items', 'sale_payments', 'sale_cancellations',
+            'sale_returns', 'sale_return_items', 'delivery_notes', 'delivery_note_items',
+            'expense_categories', 'expenses', 'daily_closings', 'settings', 'document_sequences',
+        ], $tables));
+
+        app(StoreProvisioner::class)->provision($store);
+
+        $warehouses = $store->run(fn () => Warehouse::query()->orderBy('code')->get(['code', 'type', 'is_default']));
+
+        $this->assertSame(['DEAD', 'MAIN'], $warehouses->pluck('code')->all());
+        $this->assertSame(WarehouseType::DeadStock, $warehouses[0]->type);
+        $this->assertSame(WarehouseType::Sellable, $warehouses[1]->type);
+        $this->assertTrue($warehouses[1]->is_default);
     }
 
     public function test_code_and_prefix_are_normalized(): void

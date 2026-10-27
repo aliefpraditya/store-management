@@ -7,6 +7,7 @@ use App\Exceptions\StoreProvisioningException;
 use App\Models\Store;
 use App\Models\StoreProvisioningLog;
 use Closure;
+use Database\Seeders\StoreDatabaseSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -24,6 +25,7 @@ class StoreProvisioner
     private const STEP_LABELS = [
         'connection' => 'Uji koneksi database',
         'migration' => 'Migrasi tabel',
+        'seed' => 'Gudang awal',
     ];
 
     /**
@@ -35,6 +37,7 @@ class StoreProvisioner
 
         $this->runStep($store, 'connection', fn () => $this->assertCanConnect($store));
         $this->runStep($store, 'migration', fn () => $this->migrate($store));
+        $this->runStep($store, 'seed', fn () => $this->seed($store));
 
         $store->forceFill([
             'status' => StoreStatus::Active,
@@ -96,6 +99,19 @@ class StoreProvisioner
     private function migrate(Store $store): void
     {
         $exitCode = Artisan::call('tenants:migrate', ['--tenants' => [$store->getTenantKey()]]);
+
+        if ($exitCode !== 0) {
+            throw new RuntimeException(trim(Artisan::output()));
+        }
+    }
+
+    private function seed(Store $store): void
+    {
+        $exitCode = Artisan::call('tenants:seed', [
+            '--tenants' => [$store->getTenantKey()],
+            '--class' => StoreDatabaseSeeder::class,
+            '--force' => true,
+        ]);
 
         if ($exitCode !== 0) {
             throw new RuntimeException(trim(Artisan::output()));

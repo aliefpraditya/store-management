@@ -61,6 +61,20 @@ class User extends Authenticatable implements AuditableContract
     }
 
     /**
+     * The role this user has inside one store (a super admin is a super admin everywhere).
+     */
+    public function roleIn(Store $store): ?UserRole
+    {
+        if ($this->is_super_admin) {
+            return UserRole::SuperAdmin;
+        }
+
+        $storeRole = $this->stores()->whereKey($store->getKey())->first()?->pivot->role;
+
+        return $storeRole === null ? null : UserRole::from($storeRole);
+    }
+
+    /**
      * Null only for a non-super-admin who has no store yet.
      *
      * @return Attribute<UserRole|null, never>
