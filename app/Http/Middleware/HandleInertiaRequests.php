@@ -42,10 +42,12 @@ class HandleInertiaRequests extends Middleware
             ],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
             ],
             'urls' => [
                 'home' => route('home'),
                 'central_dashboard' => route('central.dashboard'),
+                'central_stores' => route('central.stores.index'),
                 'central_users' => route('central.users.index'),
                 'login' => route('login'),
                 'logout' => route('logout'),

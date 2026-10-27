@@ -2,6 +2,9 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Central\DashboardController;
+use App\Http\Controllers\Central\StoreController;
+use App\Http\Controllers\Central\StoreProvisionController;
+use App\Http\Controllers\Central\StoreStatusController;
 use App\Http\Controllers\Central\UserController;
 use App\Http\Controllers\Central\UserStatusController;
 use App\Http\Controllers\HomeController;
@@ -21,6 +24,10 @@ Route::prefix('pusat')
     ->middleware(['auth', 'super.admin'])
     ->group(function () {
         Route::get('/', DashboardController::class)->name('dashboard');
+
+        Route::resource('stores', StoreController::class)->except(['show', 'destroy']);
+        Route::patch('stores/{store}/status', StoreStatusController::class)->name('stores.status');
+        Route::post('stores/{store}/provision', StoreProvisionController::class)->name('stores.provision');
 
         Route::resource('users', UserController::class)->except(['show', 'destroy']);
         Route::patch('users/{user}/status', UserStatusController::class)->name('users.status');

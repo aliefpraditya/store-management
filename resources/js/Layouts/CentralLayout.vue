@@ -25,7 +25,7 @@ const menuGroups = computed(() => [
         label: null,
         items: [
             { label: 'Dashboard', icon: 'space_dashboard', href: page.props.urls.central_dashboard, isExact: true },
-            { label: 'Master Toko', icon: 'storefront' },
+            { label: 'Master Toko', icon: 'storefront', href: page.props.urls.central_stores },
             { label: 'User & Akses', icon: 'group', href: page.props.urls.central_users },
         ],
     },
@@ -44,6 +44,21 @@ const isActive = (item) => {
 watch(
     () => page.props.flash.success,
     (message) => message && $q.notify({ type: 'positive', message, position: 'top' }),
+    { immediate: true },
+);
+
+watch(
+    () => page.props.flash.error,
+    (message) =>
+        message &&
+        $q.notify({
+            type: 'negative',
+            message,
+            position: 'top',
+            multiLine: true,
+            timeout: 10000,
+            actions: [{ icon: 'close', color: 'white', round: true, dense: true }],
+        }),
     { immediate: true },
 );
 

@@ -14,6 +14,7 @@ class DashboardController extends Controller
     {
         return Inertia::render('Central/Dashboard', [
             'stores' => StoreCardResource::collection(Store::query()->orderBy('name')->get())->resolve(),
+            'create_store_url' => route('central.stores.create'),
         ]);
     }
 }

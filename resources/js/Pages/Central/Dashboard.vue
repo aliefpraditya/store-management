@@ -4,15 +4,14 @@ import CentralLayout from '../../Layouts/CentralLayout.vue';
 
 defineProps({
     stores: { type: Array, required: true },
+    create_store_url: { type: String, required: true },
 });
 </script>
 
 <template>
     <CentralLayout title="Dashboard">
         <template #actions>
-            <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Toko" disable>
-                <q-tooltip>Segera hadir</q-tooltip>
-            </q-btn>
+            <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Toko" @click="router.visit(create_store_url)" />
         </template>
 
         <div class="stores">
@@ -40,10 +39,9 @@ defineProps({
                 />
             </article>
 
-            <article class="store store--new">
+            <article class="store store--new" role="button" tabindex="0" @click="router.visit(create_store_url)" @keyup.enter="router.visit(create_store_url)">
                 <q-icon name="add" size="26px" />
                 <span>Toko baru</span>
-                <small>Segera hadir</small>
             </article>
         </div>
     </CentralLayout>
@@ -136,6 +134,7 @@ defineProps({
 }
 
 .store--new {
+    cursor: pointer;
     align-items: center;
     justify-content: center;
     gap: 4px;
