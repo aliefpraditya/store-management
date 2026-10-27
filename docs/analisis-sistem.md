@@ -923,7 +923,7 @@ erDiagram
         bigint id PK
         string name
         string username UK "used to sign in"
-        string email UK
+        string email UK "optional, not used to sign in"
         string password
         boolean is_super_admin
         boolean is_active
@@ -945,7 +945,7 @@ erDiagram
     store_users {
         bigint store_id PK, FK
         bigint user_id PK, FK
-        enum role "admin, warehouse, cashier"
+        enum role "admin, cashier (super admin = users.is_super_admin)"
     }
     store_provisioning_logs {
         bigint id PK
@@ -1603,7 +1603,7 @@ erDiagram
 |---|---|---|
 | Super Admin (`users.is_super_admin`) | Semua toko + pusat | **Dashboard Pusat**: tombol toko, Master Toko, **Cek Stok Barang**, User & Akses |
 | Admin Toko (`admin`) | 1 toko | Langsung ke **Dashboard Toko** (semua menu toko) |
-| Warehouse (`warehouse`) | 1 toko | Dashboard Toko: Barang (baca), Opname (R1); Pembelian, Penerimaan, Gudang & Transfer (R2) |
+| ~~Warehouse (`warehouse`)~~ | — | **Ditunda**: untuk saat ini hanya 3 peran (Super Admin, Admin Toko, Kasir). Peran gudang ditambahkan lagi bila R2 membutuhkannya |
 | Cashier (`cashier`) | 1 toko | **Layar Kasir saja**, tanpa sidebar. Riwayat shift ini, cetak ulang, ajukan void/retur, buka/tutup shift ada **di dalam** layar kasir |
 
 **Matriks persetujuan**

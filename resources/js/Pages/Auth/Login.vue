@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { Head, useForm, usePage } from '@inertiajs/vue3';
 import logo from '../../../images/logo-mitra-utama.jpg';
+import AppFooter from '../../Components/AppFooter.vue';
 
 const page = usePage();
 
@@ -28,10 +29,11 @@ function submit() {
             <q-page class="login">
                 <section class="login__art">
                     <h1>Mitra Manager</h1>
-                    <p>Kasir, stok, dan kas dalam satu tempat.</p>
+                    <p>All-In-One POS, Stock, And Accounting System for Retail</p>
                 </section>
 
                 <section class="login__form">
+                    <div class="login__center">
                     <q-form class="login__box" @submit.prevent="submit">
                         <img :src="logo" alt="TB. Mitra Utama" class="login__logo" />
                         <h2>Masuk</h2>
@@ -78,6 +80,8 @@ function submit() {
                             :loading="form.processing"
                         />
                     </q-form>
+                    </div>
+                    <AppFooter />
                 </section>
             </q-page>
         </q-page-container>
@@ -116,10 +120,16 @@ function submit() {
 }
 
 .login__form {
-    display: grid;
-    place-items: center;
-    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    padding: 32px 24px 16px;
     background: var(--app-surface);
+}
+
+.login__center {
+    display: grid;
+    flex: 1;
+    place-items: center;
 }
 
 .login__box {

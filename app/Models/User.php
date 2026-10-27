@@ -3,9 +3,11 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -48,5 +50,31 @@ class User extends Authenticatable implements AuditableContract
     public function stores(): BelongsToMany
     {
         return $this->belongsToMany(Store::class, 'store_users')->withPivot('role')->withTimestamps();
+    }
+
+    /**
+     * The single store a non-super-admin works in (null for super admins and unassigned users).
+     */
+    public function assignedStore(): ?Store
+    {
+        return $this->stores->first();
+    }
+
+    /**
+     * Null only for a non-super-admin who has no store yet.
+     *
+     * @return Attribute<UserRole|null, never>
+     */
+    protected function role(): Attribute
+    {
+        return Attribute::get(function (): ?UserRole {
+            if ($this->is_super_admin) {
+                return UserRole::SuperAdmin;
+            }
+
+            $storeRole = $this->assignedStore()?->pivot->role;
+
+            return $storeRole === null ? null : UserRole::from($storeRole);
+        });
     }
 }

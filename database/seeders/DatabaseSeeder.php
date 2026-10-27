@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Enums\StoreStatus;
+use App\Enums\UserRole;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -37,6 +38,13 @@ class DatabaseSeeder extends Seeder
             'username' => 'admin.mu',
             'email' => 'admin.mu@example.test',
         ]);
-        $store->users()->attach($storeAdmin->id, ['role' => 'admin']);
+        $store->users()->attach($storeAdmin->id, ['role' => UserRole::StoreAdmin->value]);
+
+        $cashier = User::factory()->create([
+            'name' => 'Kasir Mitra Utama',
+            'username' => 'kasir.mu',
+            'email' => 'kasir.mu@example.test',
+        ]);
+        $store->users()->attach($cashier->id, ['role' => UserRole::Cashier->value]);
     }
 }

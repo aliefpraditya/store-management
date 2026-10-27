@@ -1,6 +1,6 @@
 import { createApp, h } from 'vue';
 import { createInertiaApp } from '@inertiajs/vue3';
-import { Quasar } from 'quasar';
+import { Notify, Quasar } from 'quasar';
 import '@quasar/extras/material-icons/material-icons.css';
 import 'quasar/src/css/index.sass';
 import '../css/app.css';
@@ -16,7 +16,7 @@ createInertiaApp({
         createApp({ render: () => h(App, props) })
             .use(plugin)
             .use(Quasar, {
-                plugins: {},
+                plugins: { Notify },
                 config: {
                     brand: {
                         primary: '#e02a2a',

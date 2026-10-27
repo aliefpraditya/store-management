@@ -40,9 +40,13 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user()?->only(['name', 'email', 'is_super_admin']),
             ],
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+            ],
             'urls' => [
                 'home' => route('home'),
                 'central_dashboard' => route('central.dashboard'),
+                'central_users' => route('central.users.index'),
                 'login' => route('login'),
                 'logout' => route('logout'),
             ],

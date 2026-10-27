@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Central\DashboardController;
+use App\Http\Controllers\Central\UserController;
+use App\Http\Controllers\Central\UserStatusController;
 use App\Http\Controllers\HomeController;
 use Illuminate\Support\Facades\Route;
 
@@ -19,4 +21,7 @@ Route::prefix('pusat')
     ->middleware(['auth', 'super.admin'])
     ->group(function () {
         Route::get('/', DashboardController::class)->name('dashboard');
+
+        Route::resource('users', UserController::class)->except(['show', 'destroy']);
+        Route::patch('users/{user}/status', UserStatusController::class)->name('users.status');
     });

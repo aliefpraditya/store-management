@@ -1,12 +1,15 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
+import { useQuasar } from 'quasar';
+import AppFooter from '../Components/AppFooter.vue';
 
 defineProps({
     title: { type: String, required: true },
 });
 
 const page = usePage();
+const $q = useQuasar();
 
 const user = computed(() => page.props.auth.user);
 const userInitial = computed(() => user.value.name.charAt(0).toUpperCase());
@@ -15,27 +18,34 @@ const isDrawerOpen = ref(false);
 
 /**
  * Sidebar of the central (Super Admin) area. An item without `href` is planned but not built yet.
- * @type {{label: string, items: {label: string, icon: string, href?: string}[]}[]}
+ * @type {{label: string, items: {label: string, icon: string, href?: string, isExact?: boolean}[]}[]}
  */
 const menuGroups = computed(() => [
     {
         label: null,
         items: [
-            { label: 'Dashboard', icon: 'space_dashboard', href: page.props.urls.central_dashboard },
+            { label: 'Dashboard', icon: 'space_dashboard', href: page.props.urls.central_dashboard, isExact: true },
             { label: 'Master Toko', icon: 'storefront' },
-            { label: 'User & Akses', icon: 'group' },
-        ],
-    },
-    {
-        label: 'Menyusul',
-        items: [
-            { label: 'Cek Stok Lintas Toko', icon: 'manage_search' },
-            { label: 'Audit Trail', icon: 'policy' },
+            { label: 'User & Akses', icon: 'group', href: page.props.urls.central_users },
         ],
     },
 ]);
 
-const isActive = (item) => item.href === page.url || (item.href && page.url.startsWith(new URL(item.href).pathname));
+const isActive = (item) => {
+    if (!item.href) {
+        return false;
+    }
+
+    const path = new URL(item.href).pathname;
+
+    return item.isExact ? page.url === path : page.url.startsWith(path);
+};
+
+watch(
+    () => page.props.flash.success,
+    (message) => message && $q.notify({ type: 'positive', message, position: 'top' }),
+    { immediate: true },
+);
 
 function signOut() {
     router.post(page.props.urls.logout);
@@ -102,7 +112,10 @@ function signOut() {
 
         <q-page-container>
             <q-page class="central__page">
-                <slot />
+                <div class="central__content">
+                    <slot />
+                </div>
+                <AppFooter />
             </q-page>
         </q-page-container>
     </q-layout>
@@ -251,6 +264,12 @@ function signOut() {
 }
 
 .central__page {
+    display: flex;
+    flex-direction: column;
     padding: 22px;
+}
+
+.central__content {
+    flex: 1;
 }
 </style>

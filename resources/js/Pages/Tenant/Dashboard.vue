@@ -1,6 +1,7 @@
 <script setup>
 import { Head, router, usePage } from '@inertiajs/vue3';
 import logo from '../../../images/logo-mitra-utama.jpg';
+import AppFooter from '../../Components/AppFooter.vue';
 
 defineProps({
     store: { type: Object, required: true },
@@ -25,6 +26,8 @@ const isSuperAdmin = page.props.auth.user.is_super_admin;
                     <q-btn v-if="isSuperAdmin" flat no-caps icon="arrow_back" label="Kembali ke Pusat" @click="router.visit(page.props.urls.central_dashboard)" />
                     <q-btn flat no-caps icon="logout" label="Keluar" @click="router.post(page.props.urls.logout)" />
                 </div>
+
+                <AppFooter class="placeholder__footer" />
             </q-page>
         </q-page-container>
     </q-layout>
@@ -32,6 +35,7 @@ const isSuperAdmin = page.props.auth.user.is_super_admin;
 
 <style scoped>
 .placeholder {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -57,6 +61,11 @@ const isSuperAdmin = page.props.auth.user.is_super_admin;
 .placeholder p {
     margin: 0 0 12px;
     color: var(--app-ink-soft);
+}
+
+.placeholder__footer {
+    position: absolute;
+    bottom: 12px;
 }
 
 .placeholder__actions {
