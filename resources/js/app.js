@@ -14,7 +14,21 @@ createInertiaApp({
     setup({ el, App, props, plugin }) {
         createApp({ render: () => h(App, props) })
             .use(plugin)
-            .use(Quasar, { plugins: {} })
+            .use(Quasar, {
+                plugins: {},
+                config: {
+                    brand: {
+                        primary: '#e02a2a',
+                        secondary: '#2a2d35',
+                        accent: '#111318',
+                        dark: '#15171c',
+                        positive: '#059669',
+                        negative: '#be123c',
+                        info: '#2563eb',
+                        warning: '#c2710c',
+                    },
+                },
+            })
             .mount(el);
     },
 });

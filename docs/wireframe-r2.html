@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wireframe POS Toko — R2</title>
+<link rel="stylesheet" href="assets/wireframe.css">
+</head>
+<body>
+<div class="doc">
+<nav class="idx" id="idx">
+  <h1>POS Toko · R2</h1>
+  <p class="sub">Wireframe R2 · menyusul setelah R1 dipakai</p>
+  <div class="lg"><span class="rel r2">R2 menyusul</span></div>
+</nav>
+<main id="main">
+
+<!-- R2 FORM HARGA -->
+<section class="scr" id="harga" data-group="Menyusul · R2" data-nav="Form Harga & Histori" data-title="Form Harga &amp; Histori" data-sub="Mode margin, pratinjau, dan riwayat perubahan harga." data-rel="r2" data-url="pos.contoh.id/t/mitra_utama/products/MU0001/prices">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Cat Tembok Putih 5kg</h3><span class="b p">Simpan</span></div>
+  <div class="pg"><div class="tabs"><span class="on">Harga</span><span>Histori</span></div>
+    <div class="tbl"><table class="t"><tr><th>Satuan</th><th class="r">Modal</th><th>Mode</th><th class="r">Margin</th><th class="r">Harga jual</th><th class="r">Pratinjau</th></tr>
+      <tr><td><b>PAIL</b></td><td class="r">72.875</td><td><div class="seg"><span>Nominal</span><span class="on">Margin</span></div></td><td class="r"><span class="in mini">37,5%</span></td><td class="r"><b>116.600</b></td><td class="r"><span class="c ok">+2.100</span></td></tr>
+      <tr><td><b>DUS</b></td><td class="r">291.500</td><td><div class="seg"><span class="on">Nominal</span><span>Margin</span></div></td><td class="r">33,3%</td><td class="r"><span class="in mini">437.250</span></td><td class="r mute">—</td></tr></table></div>
+    <div class="tbl mt"><table class="t"><tr><th>Waktu</th><th>Oleh</th><th>Satuan</th><th class="r">Lama</th><th class="r">Baru</th></tr>
+      <tr><td>25 Okt 10:12</td><td>Andi</td><td>DUS · jual</td><td class="r">450.000</td><td class="r"><b>437.250</b></td></tr>
+      <tr><td>20 Okt 08:40</td><td>Andi</td><td>PAIL · modal</td><td class="r">70.000</td><td class="r"><b>72.875</b></td></tr></table></div>
+  </div></div>
+</div>
+</section>
+
+<!-- R2 PENERIMAAN KONTAINER -->
+<section class="scr" id="terima" data-group="Menyusul · R2" data-nav="Penerimaan Kontainer" data-title="Penerimaan Kontainer" data-sub="Banyak supplier dalam satu kontainer, plus biaya." data-rel="r2" data-url="pos.contoh.id/t/mitra_utama/goods-receipts/8">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Penerimaan Kontainer" data-who="Dedi|Gudang"></aside>
+  <div class="mn"><div class="tb"><h3>GRN/MU/2610/0008</h3><span class="b">Simpan</span><span class="b ok">Posting</span></div>
+  <div class="pg">
+    <div class="g4"><div class="f"><span>No. kontainer</span><div class="in">TGHU 765432-1</div></div><div class="f"><span>Tgl kirim</span><div class="in">12 Okt</div></div><div class="f"><span>Tgl sampai</span><div class="in">24 Okt</div></div><div class="f"><span>Gudang</span><div class="in sel">Main Warehouse</div></div></div>
+    <div class="tbl"><table class="t"><tr><th>Supplier</th><th>Barang</th><th class="r">Pesan</th><th class="r">Diterima</th><th class="r">Harga beli</th></tr>
+      <tr><td><b>PT Cat Jaya</b><small>PO-0021</small></td><td>Cat Tembok Putih 5kg</td><td class="r">40 DUS</td><td class="r"><span class="in mini">40</span></td><td class="r">291.500</td></tr>
+      <tr><td><b>PT Alat Prima</b><small>PO-0022</small></td><td>Kuas 3"</td><td class="r">20 LUSIN</td><td class="r"><span class="in mini">18</span></td><td class="r">72.000</td></tr></table></div>
+    <div class="row mt"><span class="c">Biaya kontainer</span><span class="c">Bongkar 1.200.000</span><span class="c">Trucking 850.000</span><span class="c pri">+ Biaya</span></div>
+  </div></div>
+</div>
+</section>
+
+<!-- R2 CEK STOK -->
+<section class="scr" id="cekstok" data-group="Menyusul · R2" data-nav="Cek Stok Lintas Toko" data-title="Cek Stok Lintas Toko" data-sub="Super Admin mencari satu barang di semua toko." data-rel="r2" data-url="pos.contoh.id/pusat/stock-lookup">
+<div class="bd shell">
+  <aside class="sb" data-side="pusat" data-on="Cek Stok Lintas Toko" data-who="Budi|Super Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Cek Stok</h3></div>
+  <div class="pg">
+    <div class="in" style="margin-bottom:14px;font-size:15px"><svg class="ic s"><use href="#i-search"/></svg>MU0001 · Cat Tembok Putih 5kg</div>
+    <div class="tbl"><table class="t"><tr><th>Toko</th><th>Gudang</th><th class="r">Stok</th></tr>
+      <tr><td><b>Mitra Utama</b></td><td>Main Warehouse</td><td class="r">7 DUS + 2 PAIL</td></tr>
+      <tr><td><b>Mitra Utama</b></td><td>Dead Stock</td><td class="r"><span class="c warn">1 PAIL</span></td></tr>
+      <tr><td><b>Cabang Pasar Baru</b></td><td>Main Warehouse</td><td class="r">3 DUS</td></tr></table></div>
+  </div></div>
+</div>
+</section>
+
+<!-- R2 AUDIT -->
+<section class="scr" id="audit" data-group="Menyusul · R2" data-nav="Audit Trail" data-title="Audit Trail" data-sub="Siapa mengubah apa, nilai lama ke baru." data-rel="r2" data-url="pos.contoh.id/t/mitra_utama/audits">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Audit Trail" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Audit Trail</h3></div>
+  <div class="pg">
+    <div class="row" style="margin-bottom:14px"><div class="in sel grow">Semua model</div><div class="in sel grow">Semua user</div><div class="in grow">7 hari terakhir</div></div>
+    <div class="tbl"><table class="t"><tr><th>Waktu</th><th>User</th><th>Model</th><th>Perubahan</th></tr>
+      <tr><td>25 Okt 10:12</td><td>Andi</td><td>Satuan DUS</td><td>Harga jual <s class="mute">450.000</s> → <b>437.250</b></td></tr>
+      <tr><td>25 Okt 09:41</td><td>Sari</td><td>Nota …/0120</td><td>Status selesai → <b>void</b></td></tr>
+      <tr><td>24 Okt 14:20</td><td>Budi</td><td>Pengaturan</td><td>Modal kas <s class="mute">400.000</s> → <b>500.000</b></td></tr></table></div>
+  </div></div>
+</div>
+</section>
+
+</main>
+</div>
+<script>window.WF={mode:'r2',other:["wireframe.html","← Wireframe R1"]};</script>
+<script src="assets/wireframe.js"></script>
+</body>
+</html>
