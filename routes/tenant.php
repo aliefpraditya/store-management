@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Tenant\DashboardController as TenantDashboardController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\InitializeTenancyByPath;
@@ -21,6 +22,8 @@ use Stancl\Tenancy\Middleware\InitializeTenancyByPath;
 Route::prefix('t/{tenant}')
     ->middleware(['web', InitializeTenancyByPath::class, 'auth', 'store.access'])
     ->group(function () {
+        Route::get('/', TenantDashboardController::class)->name('tenant.dashboard');
+
         Route::get('ping', function () {
             return response()->json([
                 'store' => tenant('code'),

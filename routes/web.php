@@ -1,6 +1,22 @@
 <?php
 
+use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Central\DashboardController;
+use App\Http\Controllers\HomeController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
-Route::get('/', fn () => Inertia::render('Home'))->name('home');
+Route::get('/', HomeController::class)->name('home');
+
+Route::middleware('guest')->group(function () {
+    Route::get('login', [AuthenticatedSessionController::class, 'create'])->name('login');
+    Route::post('login', [AuthenticatedSessionController::class, 'store']);
+});
+
+Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->middleware('auth')->name('logout');
+
+Route::prefix('pusat')
+    ->name('central.')
+    ->middleware(['auth', 'super.admin'])
+    ->group(function () {
+        Route::get('/', DashboardController::class)->name('dashboard');
+    });

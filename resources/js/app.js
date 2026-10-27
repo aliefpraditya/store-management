@@ -3,6 +3,7 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { Quasar } from 'quasar';
 import '@quasar/extras/material-icons/material-icons.css';
 import 'quasar/src/css/index.sass';
+import '../css/app.css';
 
 createInertiaApp({
     title: (title) => (title ? `${title} - POS Toko` : 'POS Toko'),

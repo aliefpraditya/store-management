@@ -1,0 +1,20 @@
+:root {
+    --app-bg: #f6f6f7;
+    --app-surface: #ffffff;
+    --app-line: #e8e9ed;
+    --app-ink: #111318;
+    --app-ink-soft: #4b5160;
+    --app-mute: #9aa0ab;
+    --app-brand: #e02a2a;
+    --app-brand-soft: #fdecec;
+    --app-dark: #15171c;
+    --app-dark-line: #2a2d35;
+    --app-radius: 14px;
+}
+
+body {
+    background: var(--app-bg);
+    color: var(--app-ink);
+    font-family: Inter, 'Segoe UI', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}

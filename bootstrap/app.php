@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureUserCanAccessStore;
+use App\Http\Middleware\EnsureUserIsSuperAdmin;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,7 +22,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'store.access' => EnsureUserCanAccessStore::class,
+            'super.admin' => EnsureUserIsSuperAdmin::class,
         ]);
+
+        $middleware->redirectUsersTo(fn () => route('home'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

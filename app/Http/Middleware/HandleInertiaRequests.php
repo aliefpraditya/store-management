@@ -37,7 +37,15 @@ class HandleInertiaRequests extends Middleware
     {
         return [
             ...parent::share($request),
-            //
+            'auth' => [
+                'user' => $request->user()?->only(['name', 'email', 'is_super_admin']),
+            ],
+            'urls' => [
+                'home' => route('home'),
+                'central_dashboard' => route('central.dashboard'),
+                'login' => route('login'),
+                'logout' => route('logout'),
+            ],
         ];
     }
 }

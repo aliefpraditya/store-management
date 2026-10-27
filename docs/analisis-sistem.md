@@ -922,6 +922,7 @@ erDiagram
     users {
         bigint id PK
         string name
+        string username UK "used to sign in"
         string email UK
         string password
         boolean is_super_admin

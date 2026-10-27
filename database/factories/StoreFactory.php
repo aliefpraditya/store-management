@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\StoreStatus;
 use App\Models\Store;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
@@ -31,12 +32,12 @@ class StoreFactory extends Factory
             'db_username' => null,
             'db_password' => null,
             'db_host' => null,
-            'status' => 'active',
+            'status' => StoreStatus::Active,
         ];
     }
 
     public function provisioning(): static
     {
-        return $this->state(fn (): array => ['status' => 'provisioning']);
+        return $this->state(fn (): array => ['status' => StoreStatus::Provisioning]);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\StoreStatus;
 use App\Models\Store;
 use App\Models\User;
 use Closure;
@@ -22,7 +23,7 @@ class EnsureUserCanAccessStore
         /** @var Store|null $store */
         $store = tenant();
 
-        abort_unless($user !== null && $store !== null && $user->is_active && $store->status === 'active', 403);
+        abort_unless($user !== null && $store !== null && $user->is_active && $store->status === StoreStatus::Active, 403);
 
         abort_unless(
             $user->is_super_admin || $user->stores()->whereKey($store->getKey())->exists(),
