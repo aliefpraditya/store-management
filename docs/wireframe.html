@@ -3,1027 +3,508 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wireframe POS Multi-Toko</title>
-<style>
-  :root{
-    --bg:#eef0f3; --panel:#fff; --ink:#1f2933; --mute:#6b7785; --line:#c9d0d8; --soft:#f4f6f8;
-    --accent:#2f6fed; --accent-soft:#e3ecff; --warn:#b45309; --warn-soft:#fff3d6; --ok:#157347; --ok-soft:#dff3e8; --bad:#b42318; --bad-soft:#fde4e1;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;font:14px/1.45 system-ui,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
-  .app{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
-  nav.index{background:#1f2933;color:#cbd5e1;padding:16px 0;position:sticky;top:0;height:100vh;overflow:auto}
-  nav.index h1{font-size:15px;margin:0 16px 4px;color:#fff}
-  nav.index p{margin:0 16px 12px;font-size:12px;color:#94a3b8}
-  nav.index .grp{font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin:14px 16px 4px;color:#7b8794}
-  nav.index button{display:block;width:100%;text-align:left;background:none;border:0;color:inherit;padding:7px 16px;font:inherit;cursor:pointer;border-left:3px solid transparent}
-  nav.index button:hover{background:#2b3642}
-  nav.index button.on{background:#2b3642;color:#fff;border-left-color:#6ea0ff}
-  nav.index .new{font-size:10px;background:#e11d48;color:#fff;border-radius:8px;padding:0 6px;margin-left:4px}
-  .rel{display:inline-block;font-size:10px;font-weight:700;border-radius:8px;padding:0 6px;margin-left:4px;color:#fff}
-  .rel.r1{background:#157347}.rel.r2{background:#6b7785}.rel.r3{background:#8a5a00}
-  .tagrel{display:inline-block;font-size:11px;font-weight:700;border-radius:10px;padding:1px 10px;margin-left:6px;color:#fff;vertical-align:middle}
-  .tagrel.r1{background:#157347}.tagrel.r2{background:#6b7785}.tagrel.r3{background:#8a5a00}
-  main{padding:20px 24px 60px;min-width:0}
-  .head h2{margin:0 0 2px;font-size:18px}
-  .head p{margin:0 0 14px;color:var(--mute)}
-  .screen{display:none}
-  .screen.on{display:block}
-  .frame{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.06)}
-  .bar{display:flex;align-items:center;gap:6px;padding:8px 12px;background:#e6e9ee;border-bottom:1px solid var(--line);font-size:12px;color:var(--mute)}
-  .bar i{width:10px;height:10px;border-radius:50%;background:#c3c9d1;display:inline-block}
-  .bar .url{margin-left:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:2px 12px;flex:1;max-width:480px}
-  .body{padding:0}
-  .pad{padding:18px}
-  .topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--soft);gap:10px;flex-wrap:wrap}
-  .topbar b{font-size:15px}
-  .layout{display:grid;grid-template-columns:190px 1fr;min-height:430px}
-  .side{border-right:1px solid var(--line);background:var(--soft);padding:10px 0}
-  .side div{padding:8px 16px;color:var(--mute)}
-  .side div.on{background:var(--accent-soft);color:var(--accent);font-weight:600;border-left:3px solid var(--accent)}
-  .side .sep{padding:6px 16px 2px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#9aa5b1}
-  .content{padding:16px;min-width:0}
-  .btn{display:inline-block;padding:6px 14px;border:1px solid var(--line);border-radius:6px;background:#fff;font-size:13px;cursor:default}
-  .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}
-  .btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}
-  .btn.bad{background:#fff;border-color:var(--bad);color:var(--bad)}
-  .btn.lg{padding:12px 22px;font-size:16px;font-weight:600}
-  .btn.sm{padding:3px 9px;font-size:12px}
-  .btn.off{opacity:.5}
-  .inp{display:block;border:1px solid var(--line);border-radius:6px;padding:7px 10px;background:#fff;color:var(--mute);min-height:34px}
-  .inp.sel::after{content:"▾";float:right;color:var(--mute)}
-  .inp.mini{padding:3px 8px;min-height:0}
-  .fld{margin-bottom:10px}
-  .fld label{display:block;font-size:12px;color:var(--mute);margin-bottom:3px}
-  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
-  .row>*{flex:1;min-width:130px}
-  .row>.auto{flex:0 0 auto;min-width:0}
-  .tabs{display:flex;border-bottom:1px solid var(--line);margin:0 0 12px;flex-wrap:wrap}
-  .tabs span{padding:8px 16px;color:var(--mute);border-bottom:2px solid transparent;margin-bottom:-1px}
-  .tabs span.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th{background:var(--soft);text-align:left;font-weight:600;color:var(--mute);font-size:12px}
-  th,td{border:1px solid var(--line);padding:7px 9px;vertical-align:middle}
-  td.r,th.r{text-align:right}
-  td.c,th.c{text-align:center}
-  .chip{display:inline-block;padding:1px 9px;border-radius:10px;font-size:11.5px;background:var(--soft);border:1px solid var(--line);color:var(--mute);white-space:nowrap}
-  .chip.ok{background:var(--ok-soft);color:var(--ok);border-color:#b9e2cb}
-  .chip.warn{background:var(--warn-soft);color:var(--warn);border-color:#f2d489}
-  .chip.bad{background:var(--bad-soft);color:var(--bad);border-color:#f3b8b1}
-  .chip.pri{background:var(--accent-soft);color:var(--accent);border-color:#bcd0fb}
-  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
-  .card{border:1px solid var(--line);border-radius:10px;padding:14px;background:#fff}
-  .card h4{margin:0 0 2px;font-size:15px}
-  .card small{color:var(--mute)}
-  .card.dis{opacity:.55;background:var(--soft);border-style:dashed}
-  .kpi{font-size:22px;font-weight:700}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  .mt{margin-top:12px}
-  .mute{color:var(--mute)}
-  .stepper{display:flex;margin:4px 0 14px}
-  .stepper span{flex:1;text-align:center;padding:6px;border:1px solid var(--line);background:var(--soft);font-size:12px;color:var(--mute)}
-  .stepper span.done{background:var(--ok-soft);color:var(--ok)}
-  .stepper span.cur{background:var(--accent-soft);color:var(--accent);font-weight:700}
-  .box{border:1px dashed var(--line);border-radius:8px;padding:10px;background:var(--soft)}
-  .center{display:flex;justify-content:center}
-  .pos{display:grid;grid-template-columns:1.25fr 1fr;min-height:480px}
-  .pos .l{padding:14px;border-right:1px solid var(--line)}
-  .pos .rr{padding:14px;background:var(--soft);display:flex;flex-direction:column}
-  .prod{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
-  .prod .p{border:1px solid var(--line);border-radius:8px;padding:9px;background:#fff}
-  .prod .p b{display:block;font-size:13px}
-  .prod .p .u{margin-top:6px;display:flex;gap:4px;flex-wrap:wrap}
-  .total{font-size:30px;font-weight:800;text-align:right;margin:8px 0}
-  .scrim{background:rgba(31,41,51,.45);padding:26px;display:flex;justify-content:center}
-  .modal{background:#fff;border-radius:10px;width:100%;max-width:540px;padding:18px;box-shadow:0 8px 24px rgba(0,0,0,.2)}
-  .receipt{width:300px;background:#fff;border:1px solid var(--line);padding:14px 16px;font:12px/1.4 "Courier New",monospace;color:#111;margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,.1)}
-  .receipt .c{text-align:center}
-  .receipt hr{border:0;border-top:1px dashed #555;margin:6px 0}
-  .receipt .l2{display:flex;justify-content:space-between}
-  .notes{margin-top:14px;background:#fffdf3;border:1px solid #efe2a8;border-radius:8px;padding:12px 16px}
-  .notes h4{margin:0 0 6px;font-size:13px}
-  .notes ol{margin:0;padding-left:20px}
-  .notes li{margin:3px 0}
-  .tag{display:inline-block;width:18px;height:18px;border-radius:50%;background:#e11d48;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:18px;margin-right:4px;vertical-align:middle}
-  .hist-up{color:var(--bad)} .hist-dn{color:var(--ok)}
-  .bar2{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
-  .bar2>i{display:block;height:100%;background:var(--accent)}
-  .net{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600}
-  .net.on{background:var(--ok-soft);color:var(--ok)}
-  .net.off{background:var(--bad-soft);color:var(--bad)}
-  .sect{border:1px solid var(--line);border-radius:8px;margin-top:12px;overflow:hidden}
-  .sect>.sh{background:var(--soft);padding:8px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-  .sect>.sb{padding:10px 12px}
-  .radio{display:inline-block;width:12px;height:12px;border:2px solid var(--accent);border-radius:50%;vertical-align:middle;margin-right:4px}
-  .radio.on{background:var(--accent)}
-  @media (max-width:900px){
-    .app{grid-template-columns:1fr}
-    nav.index{position:static;height:auto;display:flex;flex-wrap:wrap}
-    nav.index h1,nav.index p,nav.index .grp{width:100%}
-    nav.index button{width:auto}
-    .layout,.pos,.grid2,.grid3{grid-template-columns:1fr}
-    .side{display:none}
-  }
-</style>
+<title>Wireframe POS Toko — R1</title>
+<link rel="stylesheet" href="assets/wireframe.css">
 </head>
 <body>
-<div class="app">
-<nav class="index" id="idx">
-  <h1>Wireframe · POS Multi-Toko <span style="font-weight:400;color:#94a3b8">v0.3 · Fase 1</span></h1>
-  <p>Data contoh: <b>Mitra Utama (mu)</b> = toko pertama; toko lain (PSB, TMR) hanya ilustrasi fitur multi-toko. Low-fidelity untuk review alur & isi layar. <span class="new">baru/ubah</span> = perubahan terbaru.</p>
-  <div style="margin:0 16px 10px;font-size:12px;color:#cbd5e1;line-height:1.5"><b style="color:#fff">Urutan rilis</b><br><span class="rel r1" style="margin:0">R1</span> Inti: operasional harian (barang, opname, kasir, kas, retur, surat jalan, pengeluaran, tutup hari)<br><span class="rel r2" style="margin:0">R2</span> menyusul (layar 4 katalog pusat dihapus; penerimaan/pembelian/gudang = R2)<br><span class="rel r3" style="margin:0">R3</span> offline</div>
-  <div class="grp">F0 · Akses & Pusat</div>
-  <button data-s="login">1. Login & Routing Role <span class="new">ubah</span> <span class="rel r1">R1</span></button>
-  <button data-s="pusat">2. Dashboard Pusat (Super Admin) <span class="new">ubah</span> <span class="rel r1">R1</span></button>
-  <button data-s="master">3. Master Toko <span class="rel r1">R1</span></button>
-  <button data-s="dash">5. Dashboard Toko (Admin) <span class="new">ubah</span> <span class="rel r1">R1</span></button>
-  <button data-s="audit">6. Audit Trail <span class="new">baru</span> <span class="rel r2">R2</span></button>
-  <div class="grp">F1 · Barang & Harga</div>
-  <button data-s="blist">7. Daftar Barang <span class="new">ubah</span> <span class="rel r1">R1</span></button>
-  <button data-s="bform">8. Form Harga per Satuan <span class="new">ubah</span> <span class="rel r1">R1</span></button>
-  <button data-s="bhist">9. Detail — Histori Harga <span class="rel r1">R1</span></button>
-  <div class="grp">F2 · Stok</div>
-  <button data-s="pembelian">10a. Pembelian dari Supplier <span class="new">baru</span> <span class="rel r2">R2</span></button>
-  <button data-s="mlist">10. Daftar Penerimaan <span class="new">ubah</span> <span class="rel r2">R2</span></button>
-  <button data-s="mform">11. Form Penerimaan Kontainer <span class="new">ubah</span> <span class="rel r2">R2</span></button>
-  <button data-s="opname">12. Stok Opname <span class="new">ubah</span> <span class="rel r1">R1</span></button>
-  <button data-s="gudang">13. Gudang & Transfer <span class="new">baru</span> <span class="rel r2">R2</span></button>
-  <div class="grp">F3 · Penjualan</div>
-  <button data-s="kasir">14. Kasir (POS; offline = Fase 1b) <span class="new">ubah</span> <span class="rel r1">R1</span></button>
-  <button data-s="shiftbuka">15. Buka Shift <span class="new">baru</span> <span class="rel r1">R1</span></button>
-  <button data-s="bayar">16. Pembayaran <span class="rel r1">R1</span></button>
-  <button data-s="nota">17. Pratinjau Nota <span class="rel r1">R1</span></button>
-  <button data-s="shifttutup">18. Tutup Shift & Laporan Z <span class="new">baru</span> <span class="rel r1">R1</span></button>
-  <button data-s="riwayat">19. Riwayat Shift & Void <span class="new">ubah</span> <span class="rel r1">R1</span></button>
-  <button data-s="retur">20. Retur <span class="new">baru</span> <span class="rel r1">R1</span></button>
-  <button data-s="suratjalan">20a. Surat Jalan <span class="new">baru</span> <span class="rel r1">R1</span></button>
-  <button data-s="pengeluaran">20b. Pengeluaran <span class="new">baru</span> <span class="rel r1">R1</span></button>
-  <button data-s="tutuphari">20c. Tutup Hari <span class="new">baru</span> <span class="rel r1">R1</span></button>
-  <button data-s="sync">21. Sinkronisasi & Backup <span class="new" style="background:#6b7785">Fase 1b</span> <span class="rel r3">R3</span></button>
-  <button data-s="rekap">22. Rekap Shift & Approval Selisih <span class="new">baru</span> <span class="rel r1">R1</span></button>
-  <button data-s="cekstok">23. Cek Stok Barang (Pusat) <span class="new">baru</span> <span class="rel r2">R2</span></button>
+<div class="doc">
+<nav class="idx" id="idx">
+  <h1>POS Toko</h1>
+  <p class="sub">Wireframe R1 · online · data contoh Mitra Utama</p>
+  <div class="lg"><span class="rel">R1 dibangun dulu</span></div>
 </nav>
+<main id="main">
 
-<main>
-
-<!-- 1 LOGIN -->
-<section class="screen" id="login">
-  <div class="head"><h2>1. Login & Routing Role <span class="tagrel r1">R1 Inti</span></h2><p>Satu login; tujuan setelah login ditentukan oleh role.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/login</span></div>
-  <div class="body pad" style="background:var(--soft)">
-    <div class="grid2">
-      <div class="center"><div class="card" style="width:340px;margin:10px 0">
-        <h3 style="margin:0 0 12px">POS Multi-Toko</h3>
-        <div class="fld"><label>Email</label><span class="inp">nama@perusahaan.com</span></div>
-        <div class="fld"><label>Password</label><span class="inp">••••••••</span></div>
-        <span class="btn pri" style="display:block;text-align:center">Masuk</span>
-      </div></div>
-      <div class="card"><h4>Tujuan setelah login <span class="tag">1</span></h4>
-        <table class="mt">
-          <tr><th>Role</th><th>Langsung ke</th></tr>
-          <tr><td>Super Admin</td><td>Dashboard Pusat (layar 2)</td></tr>
-          <tr><td>Admin Toko</td><td>Dashboard Toko (layar 5)</td></tr>
-          <tr><td>Gudang</td><td>Dashboard Toko, menu terbatas</td></tr>
-          <tr><td>Kasir</td><td><b>Layar Kasir saja</b> (layar 14), tanpa menu samping</td></tr>
-          <tr><td class="mute">Akuntansi (Fase 2)</td><td class="mute">Laporan Overall</td></tr>
-        </table>
-        <div class="mt mute">Jika user (kelak) punya &gt; 1 toko → muncul pemilih toko.</div>
-      </div>
-    </div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol><li><span class="tag">1</span>Non-super-admin <b>tidak pernah melihat</b> halaman Pilih Toko pada kebijakan MVP (1 user = 1 toko).</li><li>Throttle login; pesan error generik.</li><li>Kasir offline: login ulang memakai sesi yang tersimpan di perangkat register terdaftar.</li></ol></div>
+<!-- 0 PETA MENU -->
+<section class="scr" id="peta" data-group="Ringkasan" data-nav="Peta Menu" data-title="Peta Menu" data-sub="Yang dikerjakan pertama (R1) dan yang menyusul (R2). Semua online." data-rel="r1" data-url="pos.contoh.id">
+<div class="bd pg">
+  <div class="g3">
+    <div class="card"><h4><span class="av"><svg class="ic s"><use href="#i-store"/></svg></span>Master</h4><div class="list">
+      <div><span class="t">Tambah Toko</span></div><div><span class="t">User &amp; Akses</span></div></div></div>
+    <div class="card"><h4><span class="av"><svg class="ic s"><use href="#i-box"/></svg></span>Barang &amp; Stok</h4><div class="list">
+      <div><span class="t">Daftar &amp; Form Barang</span></div><div><span class="t">Import Excel</span></div><div><span class="t">Stok Opname</span></div><div><span class="t">Kartu Stok</span></div></div></div>
+    <div class="card"><h4><span class="av"><svg class="ic s"><use href="#i-cart"/></svg></span>Penjualan</h4><div class="list">
+      <div><span class="t">Kasir &amp; Pembayaran</span></div><div><span class="t">Nota &amp; Riwayat</span></div><div><span class="t">Retur</span></div><div><span class="t">Surat Jalan</span></div></div></div>
+  </div>
+  <div class="g2 mt">
+    <div class="card"><h4><span class="av"><svg class="ic s"><use href="#i-wallet"/></svg></span>Kas &amp; Harian</h4><div class="list">
+      <div><span class="t">Buka / Tutup Shift</span></div><div><span class="t">Rekap Shift &amp; Approval</span></div><div><span class="t">Pengeluaran</span></div><div><span class="t">Tutup Hari</span></div><div><span class="t">Laporan dasar</span></div></div></div>
+    <div class="card flat"><h4><span class="rel r2">R2</span>Menyusul</h4>
+      <div class="row" style="gap:6px"><span class="c">Form Harga &amp; histori</span><span class="c">Pembelian</span><span class="c">Penerimaan kontainer</span><span class="c">FIFO</span><span class="c">Transfer gudang</span><span class="c">Cek stok lintas toko</span><span class="c">Salin barang</span><span class="c">Migrasi transaksi lama</span><span class="c">Audit Trail</span><span class="c">Laporan lengkap</span></div>
+      <div class="tip mt"><svg class="ic s"><use href="#i-info"/></svg><span>Offline dibatalkan: sistem <b>online saja</b>.</span></div></div>
+  </div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Stok R1 hanya berubah lewat <b>opname</b>, penjualan, retur, dan void.</li><li>Kasir hanya melihat layar Kasir.</li></ul></details>
 </section>
 
-<!-- 2 PUSAT -->
-<section class="screen" id="pusat">
-  <div class="head"><h2>2. Dashboard Pusat (Super Admin) <span class="tagrel r1">R1 Inti</span></h2><p>Bukan sekadar pilih toko: ada menu master dan (kelak) laporan overall untuk akuntansi.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/pusat</span></div>
-  <div class="body">
-    <div class="topbar"><b>Dashboard Pusat</b><span class="mute">Budi · Super Admin &nbsp; <span class="btn sm">Keluar</span></span></div>
-    <div class="layout">
-      <div class="side"><div class="on">Dashboard</div><div class="sep">Master</div><div>Master Toko</div><div>User & Akses</div><div class="sep">Stok</div><div>Cek Stok Barang <span class="tag">4</span></div><div class="sep">Laporan</div><div style="opacity:.5">Penjualan Overall <span class="chip">segera</span></div><div class="sep">Sistem</div><div>Audit Trail Pusat</div></div>
-      <div class="content">
-        <b>Masuk ke toko <span class="tag">1</span></b>
-        <div class="cards mt">
-          <div class="card"><h4>Mitra Utama</h4><small>MU · 1 register</small><div class="mt"><span class="chip ok">Aktif</span> <span class="chip warn">2 isu sinkron</span></div><div class="mt"><span class="btn pri" style="display:block;text-align:center">Masuk ▸</span></div></div>
-          <div class="card"><h4>Cabang Pasar Baru</h4><small>PSB · 1 register</small><div class="mt"><span class="chip ok">Aktif</span></div><div class="mt"><span class="btn pri" style="display:block;text-align:center">Masuk ▸</span></div></div>
-          <div class="card dis"><h4>+ Toko Baru</h4><small>lewat Master Toko</small><div class="mt"><span class="btn" style="display:block;text-align:center">Master Toko</span></div></div>
-        </div>
-        <div class="grid2 mt">
-          <div class="card dis"><h4>Laporan Penjualan Overall <span class="tag">2</span></h4><small>Rekap semua toko untuk akuntansi — dikerjakan di Fase 2.</small><div class="mt"><span class="chip">Segera hadir</span></div></div>
-          <div class="card dis"><h4>Cek stok barang di semua toko <span class="chip">R2</span> <span class="tag">4</span></h4><span class="inp mt">🔍 Cari sku / barcode / nama barang…</span><div class="mt mute">Hasil: stok per toko dan gudang, termasuk dead stock.</div></div>
-        </div>
-      </div>
+<!-- 1 LOGIN -->
+<section class="scr" id="login" data-group="Pusat" data-nav="Login" data-title="Login" data-sub="Satu pintu masuk. Tujuan ditentukan oleh peran." data-rel="r1" data-url="pos.contoh.id/login">
+<div class="bd login">
+  <div class="art"><h2>POS Toko</h2><p>Kasir, stok, dan kas dalam satu tempat.</p></div>
+  <div class="fm"><div>
+    <img src="assets/logo-mitra-utama.jpg" alt="TB. Mitra Utama" style="width:120px;height:120px;object-fit:contain;display:block;margin:-10px 0 4px -14px">
+    <h3 style="margin:0 0 4px;font-size:22px;letter-spacing:-.02em">Masuk</h3><p class="ink2" style="margin:0 0 20px">Gunakan akun Anda.</p>
+    <div class="f"><span>Email</span><div class="in ph">nama@perusahaan.com</div></div>
+    <div class="f"><span>Password</span><div class="in">••••••••</div></div>
+    <div class="b p w l" style="margin-top:6px">Masuk</div>
+  </div></div>
+</div>
+<div class="row mt" style="gap:8px"><span class="ink2">Setelah login:</span><span class="c pri">Super Admin → Pusat</span><span class="c">Admin / Gudang → Dashboard Toko</span><span class="c">Kasir → Layar Kasir</span></div>
+</section>
+
+<!-- 2 DASHBOARD PUSAT -->
+<section class="scr" id="pusat" data-group="Pusat" data-nav="Dashboard Pusat" data-title="Dashboard Pusat" data-sub="Super Admin memilih toko atau menambah toko baru." data-rel="r1" data-url="pos.contoh.id/pusat">
+<div class="bd shell">
+  <aside class="sb" data-side="pusat" data-on="Dashboard" data-who="Budi|Super Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Dashboard</h3><span class="b"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Toko</span></div>
+  <div class="pg">
+    <div class="g3">
+      <div class="card"><div class="row"><div class="av"><svg class="ic s"><use href="#i-store"/></svg></div><div><b>Mitra Utama</b><div class="mute" style="font-size:12px">MU · 1 register</div></div><span class="c ok" style="margin-left:auto"><i class="dot"></i>Aktif</span></div>
+        <div class="mt kpi"><small>Penjualan hari ini</small><b>Rp 4.850.000</b><em>37 nota · 1 shift berjalan</em></div>
+        <div class="b p w mt">Masuk ke toko <svg class="ic s"><use href="#i-arrow"/></svg></div></div>
+      <div class="card"><div class="row"><div class="av"><svg class="ic s"><use href="#i-store"/></svg></div><div><b>Cabang Pasar Baru</b><div class="mute" style="font-size:12px">PSB · 1 register</div></div><span class="c ok" style="margin-left:auto"><i class="dot"></i>Aktif</span></div>
+        <div class="mt kpi"><small>Penjualan hari ini</small><b>Rp 2.130.000</b><em>18 nota · belum ada shift</em></div>
+        <div class="b p w mt">Masuk ke toko <svg class="ic s"><use href="#i-arrow"/></svg></div></div>
+      <div class="card dash"><div><svg class="ic" style="width:26px;height:26px"><use href="#i-plus"/></svg><div class="mt2">Toko baru</div></div></div>
     </div>
   </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Klik toko → <code>/t/mitra_utama/dashboard</code>; sistem mengganti koneksi ke DB toko.</li>
-    <li><span class="tag">2</span>Laporan overall sengaja ditampilkan abu-abu sebagai penanda backlog (Fase 2); untuk 2 toko cukup agregasi query per DB, kelak ringkasan harian ke DB pusat.</li>
-    <li><span class="tag">4</span>Master bisa mengecek suatu barang ada di toko/gudang mana saja (layar 23).</li>
-  </ol></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Hanya Mitra Utama yang aktif di awal; toko lain hanya contoh.</li><li>Laporan overall ditunda ke Fase 2.</li></ul></details>
 </section>
 
 <!-- 3 MASTER TOKO -->
-<section class="screen" id="master">
-  <div class="head"><h2>3. Master Toko <span class="tagrel r1">R1 Inti</span></h2><p>Setup toko baru + provisioning database otomatis. Hanya Super Admin; toko tidak bisa dihapus, hanya dinonaktifkan.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/pusat/stores</span></div>
-  <div class="body pad">
-    <div class="row" style="margin-bottom:12px;align-items:center"><b style="flex:1;font-size:16px">Master Toko</b><span class="btn pri auto">+ Tambah Toko</span></div>
-    <table>
-      <tr><th>Kode (snake_case)</th><th>Nama</th><th>Database</th><th>Prefiks nota <span class="tag">3</span></th><th>Versi Skema</th><th>Register</th><th>Status</th><th class="c">Aksi</th></tr>
-      <tr><td>mitra_utama</td><td>Mitra Utama</td><td>store_mitra_utama</td><td>MU</td><td>2026_10_20 <span class="chip ok">terbaru</span></td><td>1</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Edit</span> <span class="btn sm">User & Akses</span> <span class="btn sm">Nonaktifkan</span></td></tr>
-      <tr><td>pasar_baru</td><td>Cabang Pasar Baru</td><td>store_pasar_baru</td><td>PSB</td><td>2026_10_01 <span class="chip warn">tertinggal</span></td><td>1</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Edit</span> <span class="btn sm">User & Akses</span> <span class="btn sm">Migrasi</span></td></tr>
-      <tr><td>cabang_timur</td><td>Cabang Timur</td><td>store_cabang_timur</td><td>TMR</td><td>—</td><td>—</td><td><span class="chip bad">Gagal</span></td><td class="c"><span class="btn sm">Coba lagi</span> <span class="btn sm">Log</span></td></tr>
-    </table>
-    <div class="grid2 mt">
-      <div class="card"><h4>Tambah Toko <span class="tag">1</span></h4>
-        <div class="row"><div class="fld"><label>Nama toko</label><span class="inp">Cabang Barat</span></div><div class="fld"><label>Kode = snake_case nama (tidak bisa diubah)</label><span class="inp">cabang_barat</span></div></div>
-        <div class="row"><div class="fld"><label>Database (otomatis)</label><span class="inp" style="background:var(--soft)">store_cabang_barat</span></div><div class="fld"><label>Prefiks nomor nota</label><span class="inp">CBB</span></div></div>
-        <div class="fld"><label>Alamat</label><span class="inp">…</span></div>
-        <div class="row"><div class="fld"><label>Admin awal</label><span class="inp sel">Pilih user</span></div><div class="fld"><label>Register kasir pertama</label><span class="inp">K1 · Kasir 1</span></div><div class="fld"><label>Modal kas tetap</label><span class="inp">Rp 500.000</span></div></div>
-        <div class="fld"><label>Barang awal</label><span class="inp sel">Kosong (impor Excel kemudian)</span></div>
-        <span class="btn pri">Buat Toko & Siapkan Database</span>
-      </div>
-      <div class="card"><h4>Progres Provisioning <span class="tag">2</span></h4>
-        <div class="mt">✅ Validasi kode unik</div><div>✅ Buat database <code>store_cabang_barat</code></div><div>✅ Migrasi skema + tabel <code>audits</code></div><div>⏳ Seeder: Main Warehouse, Dead Stock, pengaturan</div><div class="mute">○ Impor barang awal dari Excel (opsional)</div><div class="mute">○ Beri akses admin awal</div>
-        <div class="bar2 mt"><i style="width:55%"></i></div>
-      </div>
+<section class="scr" id="master" data-group="Pusat" data-nav="Tambah Toko" data-title="Master Toko" data-sub="Tambah toko baru dan siapkan databasenya." data-rel="r1" data-url="pos.contoh.id/pusat/stores">
+<div class="bd shell">
+  <aside class="sb" data-side="pusat" data-on="Master Toko" data-who="Budi|Super Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Master Toko</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Toko</span></div>
+  <div class="pg"><div class="cols">
+    <div class="tbl"><table class="t"><tr><th>Toko</th><th>Database</th><th>Nota</th><th>Status</th><th></th></tr>
+      <tr><td><b>Mitra Utama</b><small>mitra_utama</small></td><td>store_mitra_utama</td><td>MU</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Cabang Pasar Baru</b><small>pasar_baru</small></td><td>store_pasar_baru</td><td>PSB</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Cabang Timur</b><small>cabang_timur</small></td><td>—</td><td>TMR</td><td><span class="c bad">Gagal</span></td><td class="r"><span class="b s">Coba lagi</span></td></tr></table></div>
+    <div>
+      <div class="card"><h4>Toko baru</h4>
+        <div class="g2"><div class="f"><span>Nama toko</span><div class="in">Cabang Barat</div></div><div class="f"><span>Kode</span><div class="in dis">cabang_barat</div></div></div>
+        <div class="g2"><div class="f"><span>Nama database</span><div class="in">u123_store_cabang_barat</div></div><div class="f"><span>Prefiks nota</span><div class="in">CBB</div></div></div>
+        <div class="g2"><div class="f"><span>User database</span><div class="in">u123_cabang_barat</div></div><div class="f"><span>Password database</span><div class="in">••••••••••</div></div></div>
+        <div class="g2"><div class="f"><span>Admin awal</span><div class="in sel">Pilih user</div></div><div class="f"><span>Modal kas tetap</span><div class="in">Rp 500.000</div></div></div>
+        <div class="b p w">Buat &amp; siapkan database</div></div>
+      <div class="card mt"><h4>Menyiapkan…</h4>
+        <div class="chk"><span class="ico ok"><svg class="ic"><use href="#i-check"/></svg></span><span class="t">Uji koneksi database</span></div>
+        <div class="chk"><span class="ico ok"><svg class="ic"><use href="#i-check"/></svg></span><span class="t">Migrasi tabel</span></div>
+        <div class="chk"><span class="ico warn"><svg class="ic"><use href="#i-clock"/></svg></span><span class="t">Gudang &amp; pengaturan awal</span></div>
+        <div class="bar mt2"><i style="width:60%"></i></div></div>
     </div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Kode = snake_case dari nama toko (diusulkan otomatis, boleh diedit sebelum disimpan); jadi nama DB <code>store_{kode}</code> dan URL <code>/t/{kode}/</code> → divalidasi (huruf kecil/angka/underscore, 3–40 karakter) dan dikunci.</li>
-    <li><span class="tag">3</span>Prefiks nota singkat (mis. <code>MU</code>) dipakai di nomor dokumen <code>INV/MU/K1/2610/0125</code> agar struk tetap ringkas; boleh diubah, kode toko tidak.</li>
-    <li><span class="tag">2</span>Gagal di langkah mana pun → rollback, status <i>Gagal</i>, "Coba lagi" idempoten. Pastikan akun DB Hostinger boleh <code>CREATE DATABASE</code>.</li>
-    <li>Kolom <i>Versi Skema</i> menandai toko yang tertinggal dari migrasi terbaru (<code>tenants:migrate</code>).</li>
-    <li>Tidak ada tombol Hapus; hapus DB dilakukan manual oleh DBA.</li>
-  </ol></div>
+  </div></div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Database dibuat dulu di hPanel; aplikasi hanya menguji, migrasi, dan seed.</li><li>Kode toko tidak bisa diubah. Toko tidak dihapus, hanya dinonaktifkan.</li></ul></details>
+</section>
+
+<!-- 4 USER & AKSES -->
+<section class="scr" id="users" data-group="Pusat" data-nav="User & Akses" data-title="User &amp; Akses" data-sub="Siapa boleh masuk ke toko mana, dengan peran apa." data-rel="r1" data-url="pos.contoh.id/pusat/users">
+<div class="bd shell">
+  <aside class="sb" data-side="pusat" data-on="User & Akses" data-who="Budi|Super Admin"></aside>
+  <div class="mn"><div class="tb"><h3>User &amp; Akses</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah User</span></div>
+  <div class="pg"><div class="cols">
+    <div class="tbl"><table class="t"><tr><th>Nama</th><th>Peran</th><th>Toko</th><th>Aktif</th></tr>
+      <tr><td><b>Budi</b><small>admin@example.test</small></td><td><span class="c pri">Super Admin</span></td><td>Semua</td><td><span class="sw on"></span></td></tr>
+      <tr><td><b>Andi</b><small>admin.mu@example.test</small></td><td><span class="c">Admin</span></td><td>Mitra Utama</td><td><span class="sw on"></span></td></tr>
+      <tr><td><b>Sari</b><small>sari@example.test</small></td><td><span class="c">Kasir</span></td><td>Mitra Utama</td><td><span class="sw on"></span></td></tr>
+      <tr><td><b>Dedi</b><small>dedi@example.test</small></td><td><span class="c">Gudang</span></td><td>Mitra Utama</td><td><span class="sw"></span></td></tr></table></div>
+    <div class="card"><h4>User baru</h4>
+      <div class="f"><span>Nama</span><div class="in">Joko</div></div>
+      <div class="f"><span>Email</span><div class="in">joko@example.test</div></div>
+      <div class="f"><span>Peran</span><div class="seg"><span>Admin</span><span>Gudang</span><span class="on">Kasir</span></div></div>
+      <div class="f"><span>Toko</span><div class="in sel">Mitra Utama</div></div>
+      <div class="b p w">Simpan</div></div>
+  </div></div></div>
+</div>
 </section>
 
 <!-- 5 DASHBOARD TOKO -->
-<section class="screen" id="dash">
-  <div class="head"><h2>5. Dashboard Toko (Admin) <span class="tagrel r1">R1 Inti</span></h2><p>Admin Toko mendarat di sini setelah login. Menu mengikuti role.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/dashboard</span></div>
-  <div class="body">
-    <div class="topbar"><b>Mitra Utama <span class="chip">MU</span></b><span><span class="mute">Andi · Admin</span> &nbsp; <span class="btn sm">Keluar</span></span></div>
-    <div class="layout">
-      <div class="side"><div class="on">Dashboard</div><div class="sep">Barang</div><div>Daftar Barang</div><div class="sep">Stok</div><div>Stok Opname</div><div>Kartu Stok</div><div class="sep">Penjualan</div><div>Kasir</div><div>Riwayat & Void</div><div>Retur</div><div>Surat Jalan</div><div>Buka/Tutup Kas (Rekap Shift)</div><div>Pengeluaran</div><div>Tutup Hari</div><div class="sep">Lainnya</div><div>Laporan</div><div>Pengaturan</div><div class="sep">R2 / R3</div><div style="opacity:.5">Pembelian</div><div style="opacity:.5">Penerimaan</div><div style="opacity:.5">Gudang & Transfer</div><div style="opacity:.5">Audit Trail</div></div>
-      <div class="content">
-        <div class="grid3">
-          <div class="card"><small>Penjualan bersih hari ini</small><div class="kpi">Rp 4.400.000</div><small>Rp 4.850.000 − retur Rp 450.000</small></div>
-          <div class="card"><small>Stok di bawah minimum</small><div class="kpi">12 barang</div><small>lihat daftar ▸</small></div>
-          <div class="card"><small>Perlu tindakan</small><div class="kpi">5</div><small>1 retur · 1 selisih kas · 1 void · 2 surat jalan belum selesai</small></div>
-        </div>
-        <div class="grid2 mt">
-          <div class="card"><h4>Menunggu persetujuan</h4><table><tr><th>Dokumen</th><th>Jenis</th><th>Oleh</th></tr><tr><td>RET/MU/2610/0003</td><td><span class="chip warn">Retur</span></td><td>Sari</td></tr><tr><td>SJ/MU/2610/0005</td><td><span class="chip pri">Surat jalan</span></td><td>Sari</td></tr><tr><td>Shift #0424 (selisih −10.000)</td><td><span class="chip bad">Selisih kas</span></td><td>Joko</td></tr><tr><td>INV/MU/K1/2610/0124</td><td><span class="chip warn">Void</span></td><td>Sari</td></tr></table></div>
-          <div class="card"><h4>Shift berjalan</h4><table><tr><th>Register</th><th>Kasir</th><th>Sejak</th><th>Koneksi</th></tr><tr><td>K1</td><td>Sari</td><td>08:00 (shift pagi)</td><td><span class="net on">● online</span></td></tr></table></div>
-        </div>
-      </div>
+<section class="scr" id="dash" data-group="Toko" data-nav="Dashboard Toko" data-title="Dashboard Toko" data-sub="Ringkasan hari ini dan hal yang perlu ditindak." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Dashboard" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Selamat siang, Andi</h3><span class="b"><svg class="ic s"><use href="#i-plus"/></svg>Opname baru</span><span class="b p"><svg class="ic s"><use href="#i-cart"/></svg>Buka Kasir</span></div>
+  <div class="pg">
+    <div class="g3">
+      <div class="card kpi"><small>Penjualan bersih hari ini</small><b>Rp 4.400.000</b><em>Rp 4.850.000 − retur Rp 450.000</em></div>
+      <div class="card kpi"><small>Stok di bawah minimum</small><b>12 barang</b><em>Lihat daftar →</em></div>
+      <div class="card kpi"><small>Perlu tindakan</small><b>4</b><em>1 retur · 1 selisih kas · 2 surat jalan</em></div>
+    </div>
+    <div class="g2 mt">
+      <div class="card"><h4>Menunggu persetujuan</h4><div class="list">
+        <div><span class="t">Retur · RET/MU/2610/0003<small>diajukan Sari</small></span><span class="c warn">Retur</span><span class="b s">Tinjau</span></div>
+        <div><span class="t">Shift #0424<small>selisih −Rp 10.000</small></span><span class="c bad">Selisih kas</span><span class="b s">Tinjau</span></div></div></div>
+      <div class="card"><h4>Shift berjalan</h4><div class="list">
+        <div><div class="av">S</div><span class="t">Sari · Kasir 1<small>sejak 08:00 · shift pagi</small></span><span class="c ok"><i class="dot"></i>Buka</span></div></div></div>
     </div>
   </div></div>
-  <div class="notes"><h4>Catatan — menu per role</h4><ol>
-    <li><b>Admin</b>: semua menu di atas. <b>Gudang</b>: Barang (baca), Penerimaan, Opname, Gudang & Transfer. <b>Kasir</b>: tidak melihat dashboard ini — langsung layar Kasir (layar 14).</li>
-    <li>Tiap toko otomatis punya gudang <i>Main Warehouse</i> (jual) dan <i>Dead Stock</i>.</li>
-    <li>Super Admin yang masuk ke toko dari Pusat melihat tampilan Admin dengan tombol "← Pusat".</li>
-  </ol></div>
+</div>
 </section>
 
-<!-- 6 AUDIT -->
-<section class="screen" id="audit">
-  <div class="head"><h2>6. Audit Trail (Laravel Auditing) <span class="tagrel r2">R2</span></h2><p>Tersedia di pusat dan di setiap toko. Mencatat siapa mengubah apa (nilai lama → baru).</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/audits</span></div>
-  <div class="body pad">
-    <div class="row" style="margin-bottom:10px;align-items:center"><span class="inp sel">Semua model</span><span class="inp sel">Semua event</span><span class="inp sel">Semua user</span><span class="inp">📅 7 hari terakhir</span></div>
-    <table>
-      <tr><th>Waktu</th><th>User</th><th>Event</th><th>Model</th><th>Perubahan <span class="tag">1</span></th><th>IP</th></tr>
-      <tr><td>25 Okt 10:12</td><td>Andi</td><td><span class="chip pri">updated</span></td><td>ProductUnit #18 (DUS)</td><td>selling_price: <s>450.000</s> → <b>437.250</b></td><td>10.0.0.12</td></tr>
-      <tr><td>25 Okt 10:05</td><td>Andi</td><td><span class="chip pri">updated</span></td><td>ProductUnit #18 (DUS)</td><td>is_purchasable: true → <b>false</b> (kebijakan satuan toko)</td><td>10.0.0.12</td></tr>
-      <tr><td>25 Okt 09:41</td><td>Sari</td><td><span class="chip warn">updated</span></td><td>Sale INV/MU/K1/2610/0120</td><td>status: completed → <b>voided</b> · void_reason: "salah satuan"</td><td>10.0.0.21</td></tr>
-      <tr><td>24 Okt 16:05</td><td>Dedi</td><td><span class="chip ok">created</span></td><td>GoodsReceipt GRN/MU/2610/0008</td><td>container_number: TGHU 765432-1 · status: draft</td><td>10.0.0.30</td></tr>
-      <tr><td>24 Okt 14:20</td><td>Budi</td><td><span class="chip pri">updated</span></td><td>Setting return_window_days</td><td>7 → <b>14</b></td><td>10.0.0.2</td></tr>
-    </table>
+<!-- 6 DAFTAR BARANG -->
+<section class="scr" id="blist" data-group="Barang & Stok" data-nav="Daftar Barang" data-title="Daftar Barang" data-sub="Barang milik toko ini. Stok jual dan dead stock dipisah." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Daftar Barang</h3><span class="b"><svg class="ic s"><use href="#i-upload"/></svg>Import Excel</span><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Barang</span></div>
+  <div class="pg">
+    <div class="row" style="margin-bottom:14px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cari nama, SKU, atau barcode</div><div class="in sel grow">Semua kategori</div><div class="in sel grow">Semua status</div></div>
+    <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Stok jual</th><th class="r">Dead stock</th><th class="r">Modal</th><th class="r">Harga jual</th><th>Status</th><th></th></tr>
+      <tr><td><b>Cat Tembok Putih 5kg</b><small>MU0001 · Cat · Dulux</small></td><td class="r">7 DUS + 2 PAIL</td><td class="r"><span class="c warn">1 PAIL</span></td><td class="r">72.875</td><td class="r">PAIL 116.600</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Paku 5cm</b><small>MU0002 · Bangunan</small></td><td class="r">120,5 KG</td><td class="r mute">—</td><td class="r">18.000</td><td class="r">KG 24.000</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Lampu LED 9W</b><small>MU0003 · Listrik</small></td><td class="r"><span class="c bad">3 PCS</span><small>min 12</small></td><td class="r"><span class="c warn">1 PCS</span></td><td class="r">9.500</td><td class="r">PCS 15.000</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Kuas 3"</b><small>MU0004 · Cat</small></td><td class="r">38 PCS</td><td class="r mute">—</td><td class="r">6.000</td><td class="r">PCS 9.000</td><td><span class="c">Nonaktif</span></td><td class="r"><span class="b s">Edit</span></td></tr></table></div>
+    <div class="row mt2 mute" style="justify-content:space-between"><span>1–4 dari 1.759 barang</span><span>‹ 1 2 3 … ›</span></div>
   </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Dari tabel <code>audits</code> paket Laravel Auditing (<code>old_values</code>/<code>new_values</code>). Perubahan harga juga masuk <code>price_histories</code> (data bisnis); audit = jejak teknis.</li>
-    <li>Tidak diaudit: <code>stock_movements</code>, <code>price_histories</code>, <code>stocks</code>, <code>audits</code> (sudah append-only/turunan).</li>
-    <li>Perubahan lewat query builder massal tidak tercatat → aturan: lewat Eloquent.</li>
-  </ol></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Barang dibuat langsung di toko; tidak ada katalog pusat.</li><li>Dead stock tidak muncul di kasir.</li></ul></details>
 </section>
 
-<!-- 7 BARANG LIST -->
-<section class="screen" id="blist">
-  <div class="head"><h2>7. Daftar Barang (Toko) <span class="tagrel r1">R1 Inti</span></h2><p>Stok per gudang; dead stock dipisah dari stok jual.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/products</span></div>
-  <div class="body"><div class="layout">
-    <div class="side"><div>Dashboard</div><div class="sep">Barang</div><div class="on">Daftar Barang</div><div class="sep">Stok</div><div>Stok Opname</div><div class="sep">Penjualan</div><div>Kasir</div></div>
-    <div class="content">
-      <div class="row" style="margin-bottom:10px;align-items:center">
-        <span class="inp" style="flex:2">🔍 Cari nama / sku / barcode</span><span class="inp sel">Semua kategori</span><span class="inp sel">Semua gudang</span>
-        <span class="btn auto">⬆ Import Excel</span><span class="btn pri auto">+ Tambah Barang <span class="tag">1</span></span>
+<!-- 7 FORM BARANG -->
+<section class="scr" id="bform" data-group="Barang & Stok" data-nav="Form Barang" data-title="Form Barang" data-sub="Info, satuan, konversi, dan harga dalam satu form." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products/MU0001/edit">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Cat Tembok Putih 5kg</h3><span class="b">Batal</span><span class="b p">Simpan</span></div>
+  <div class="pg">
+    <div class="card"><h4>Info barang</h4>
+      <div class="g4"><div class="f"><span>SKU</span><div class="in">MU0001</div></div><div class="f" style="grid-column:span 3"><span>Nama</span><div class="in">Cat Tembok Putih 5kg</div></div></div>
+      <div class="g4"><div class="f"><span>Kategori</span><div class="in sel">Cat</div></div><div class="f"><span>Merek</span><div class="in sel">Dulux</div></div><div class="f"><span>Stok minimum</span><div class="in">8 PAIL</div></div><div class="f"><span>Aktif</span><div style="padding-top:6px"><span class="sw on"></span></div></div></div></div>
+    <div class="card mt"><h4>Satuan &amp; harga</h4>
+      <div class="g4"><div class="f"><span>Satuan dasar</span><div class="in sel">PAIL</div></div><div class="f"><span>Harga beli (per satuan dasar)</span><div class="in">Rp 72.875</div></div></div>
+      <table class="t"><tr><th>Satuan</th><th>Konversi</th><th>Barcode</th><th class="r">Modal</th><th class="r">Harga jual</th><th class="ct">Dijual</th><th class="ct">Default</th><th></th></tr>
+        <tr><td><b>PAIL</b> <span class="c pri">dasar</span></td><td>1</td><td class="mute">8991234567890</td><td class="r">72.875</td><td class="r"><span class="in mini">116.600</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd on"></span></td><td></td></tr>
+        <tr><td><span class="in mini sel">DUS</span></td><td><span class="in mini">4</span></td><td class="mute">18991234567897</td><td class="r">291.500</td><td class="r"><span class="in mini">437.250</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd"></span></td><td class="r"><span class="b s bad">Hapus</span></td></tr></table>
+      <div class="row mt2"><span class="b s"><svg class="ic s"><use href="#i-plus"/></svg>Tambah satuan</span><span class="sp"></span><span class="tip warn" style="padding:6px 12px"><svg class="ic s"><use href="#i-alert"/></svg>Harga di bawah modal meminta konfirmasi</span></div></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Modal tiap satuan = harga beli × konversi.</li><li>Konversi terkunci setelah ada stok atau transaksi.</li><li>Mode margin dan histori harga ada di R2.</li></ul></details>
+</section>
+
+<!-- 8 IMPORT -->
+<section class="scr" id="import" data-group="Barang & Stok" data-nav="Import Excel" data-title="Import Excel" data-sub="Masukkan barang dan stok awal sekaligus." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products/import">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Import Excel</h3><span class="b"><svg class="ic s"><use href="#i-down"/></svg>Unduh template</span></div>
+  <div class="pg">
+    <div class="steps"><span class="done"><svg class="ic s"><use href="#i-check"/></svg>Unggah</span><span class="cur">Periksa</span><span>Simpan</span></div>
+    <div class="g3"><div class="card kpi"><small>Baris dibaca</small><b>1.759</b></div><div class="card kpi"><small>Siap disimpan</small><b style="color:var(--ok)">1.742</b></div><div class="card kpi"><small>Perlu diperbaiki</small><b style="color:var(--bad)">17</b></div></div>
+    <div class="tbl mt"><table class="t"><tr><th>Baris</th><th>SKU</th><th>Nama</th><th>Satuan</th><th class="r">Stok awal</th><th>Hasil</th></tr>
+      <tr><td>2</td><td>MU0001</td><td>Cat Tembok Putih 5kg</td><td>PAIL</td><td class="r">30</td><td><span class="c ok">OK</span></td></tr>
+      <tr><td>3</td><td>MU0002</td><td>Paku 5cm</td><td>KG</td><td class="r">120,5</td><td><span class="c ok">OK</span></td></tr>
+      <tr><td>118</td><td>MU0117</td><td>Pipa PVC 3"</td><td>BTG</td><td class="r">40</td><td><span class="c bad">Konversi kosong</span></td></tr>
+      <tr><td>240</td><td>MU0239</td><td>Selang 1/2"</td><td>—</td><td class="r">12</td><td><span class="c bad">Satuan wajib</span></td></tr></table></div>
+    <div class="row mt"><span class="b"><svg class="ic s"><use href="#i-down"/></svg>Unduh daftar error</span><span class="sp"></span><span class="b">Unggah ulang</span><span class="b p">Simpan 1.742 baris</span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Kolom stok awal dicatat sebagai opname <i>opening_balance</i>.</li><li>Baris error tidak ikut tersimpan.</li></ul></details>
+</section>
+
+<!-- 9 OPNAME -->
+<section class="scr" id="opname" data-group="Barang & Stok" data-nav="Stok Opname" data-title="Stok Opname" data-sub="Satu-satunya cara menambah atau mengoreksi stok di R1." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/stock-opnames/2">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Stok Opname" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>OPN/MU/2610/0002</h3><span class="b">Simpan</span><span class="b">Selesai hitung</span><span class="b ok">Posting</span></div>
+  <div class="pg">
+    <div class="steps"><span class="done"><svg class="ic s"><use href="#i-check"/></svg>Draft</span><span class="cur">Menghitung</span><span>Review</span><span>Diposting</span></div>
+    <div class="g3"><div class="f"><span>Gudang</span><div class="in sel">Main Warehouse</div></div><div class="f"><span>Cakupan</span><div class="in sel">Barang terpilih</div></div><div class="f"><span>Alasan</span><div class="in sel">Penambahan stok</div></div></div>
+    <div class="in ph" style="margin-bottom:14px"><svg class="ic s"><use href="#i-search"/></svg>Cari atau scan barang<span class="sp"></span><span class="mute">2 dari 3 dihitung</span></div>
+    <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Stok sistem</th><th>Hitung fisik</th><th class="r">Selisih</th><th>Alasan</th></tr>
+      <tr><td><b>Cat Tembok Putih 5kg</b></td><td class="r">24 PAIL</td><td><span class="in mini">5 DUS + 3 PAIL</span></td><td class="r"><span class="c bad">−1 PAIL</span></td><td><span class="in mini">tumpah</span></td></tr>
+      <tr><td><b>Kuas 3"</b></td><td class="r">38 PCS</td><td><span class="in mini">38 PCS</span></td><td class="r"><span class="c ok">0</span></td><td></td></tr>
+      <tr><td><b>Thinner 1L</b></td><td class="r">12 KALENG</td><td><span class="in mini ph">isi hitungan…</span></td><td class="r mute">—</td><td></td></tr></table></div>
+    <div class="row mt"><span class="c warn">1 belum dihitung</span><span class="ink2">Nilai selisih <b style="color:var(--bad)">−Rp 72.875</b></span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Penjualan tetap jalan saat menghitung; selisih dihitung dari snapshot + mutasi.</li><li>Hanya Admin yang bisa posting. Hitungan boleh campur satuan.</li><li>Stok awal dan barang datang dimasukkan lewat sini.</li></ul></details>
+</section>
+
+<!-- 10 KARTU STOK -->
+<section class="scr" id="kartu" data-group="Barang & Stok" data-nav="Kartu Stok" data-title="Kartu Stok" data-sub="Semua pergerakan stok satu barang." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/stock-card/MU0001">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Kartu Stok" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Kartu Stok</h3><span class="b"><svg class="ic s"><use href="#i-down"/></svg>Excel</span></div>
+  <div class="pg">
+    <div class="row" style="margin-bottom:14px"><div class="in grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cat Tembok Putih 5kg · MU0001</div><div class="in sel grow">Main Warehouse</div><div class="in grow">1–25 Okt 2026</div></div>
+    <div class="tbl"><table class="t"><tr><th>Waktu</th><th>Dokumen</th><th>Jenis</th><th class="r">Masuk</th><th class="r">Keluar</th><th class="r">Saldo</th></tr>
+      <tr><td>25 Okt 10:44</td><td>INV/MU/K1/2610/0125</td><td><span class="c">Penjualan</span></td><td class="r"></td><td class="r">8</td><td class="r"><b>24</b></td></tr>
+      <tr><td>25 Okt 09:30</td><td>RET/MU/2610/0002</td><td><span class="c pri">Retur</span></td><td class="r">4</td><td class="r"></td><td class="r"><b>32</b></td></tr>
+      <tr><td>24 Okt 16:05</td><td>OPN/MU/2610/0001</td><td><span class="c warn">Opname</span></td><td class="r">20</td><td class="r"></td><td class="r"><b>28</b></td></tr>
+      <tr><td>24 Okt 11:12</td><td>INV/MU/K1/2610/0101</td><td><span class="c">Penjualan</span></td><td class="r"></td><td class="r">4</td><td class="r"><b>8</b></td></tr></table></div>
+    <div class="mute mt2">Satuan dasar: PAIL</div>
+  </div></div>
+</div>
+</section>
+
+<!-- 11 BUKA SHIFT -->
+<section class="scr" id="shiftbuka" data-group="Penjualan" data-nav="Buka Shift" data-title="Buka Shift" data-sub="Wajib sebelum berjualan. Modal kas tetap." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/pos">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal">
+    <h3>Buka Shift</h3><p class="ink2" style="margin:0 0 18px">Kasir 1 · Sari</p>
+    <div class="f"><span>Modal kas awal</span><div class="in big dis"><svg class="ic"><use href="#i-lock"/></svg>Rp 500.000</div></div>
+    <div class="row" style="margin:14px 0"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span><span>Laci sudah berisi modal di atas</span></div>
+    <div class="tip warn" style="margin-bottom:16px"><svg class="ic s"><use href="#i-alert"/></svg><span>Shift sebelumnya: selisih −Rp 10.000 menunggu approval.</span></div>
+    <div class="b p w l">Buka Shift &amp; Mulai</div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Modal tetap hanya diubah Admin.</li><li>Tanpa shift terbuka, kasir tidak bisa menjual.</li></ul></details>
+</section>
+
+<!-- 12 KASIR -->
+<section class="scr" id="kasir" data-group="Penjualan" data-nav="Kasir" data-title="Kasir" data-sub="Satu layar penuh, tanpa menu samping." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/pos">
+<div class="bd">
+  <div class="tb" style="background:#fff"><div class="av">S</div><div><b>Sari</b><div class="mute" style="font-size:12px">Mitra Utama · Kasir 1 · Shift #0425</div></div><span class="sp"></span>
+    <span class="b s g"><svg class="ic s"><use href="#i-receipt"/></svg>Riwayat</span><span class="b s g"><svg class="ic s"><use href="#i-undo"/></svg>Retur</span><span class="b s g"><svg class="ic s"><use href="#i-truck"/></svg>Surat Jalan</span><span class="b s g"><svg class="ic s"><use href="#i-minus"/></svg>Pengeluaran</span><span class="b s bad">Tutup Shift</span></div>
+  <div class="pos">
+    <div class="pl">
+      <div class="search"><svg class="ic"><use href="#i-search"/></svg>Scan barcode atau ketik nama / SKU<kbd>F2</kbd></div>
+      <div class="pgrid">
+        <div class="pcard"><b>Cat Tembok Putih 5kg</b><small>Stok 7 DUS + 2 PAIL</small><div class="u"><span class="c pri">PAIL 116.600</span><span class="c">DUS 437.250</span></div></div>
+        <div class="pcard"><b>Paku 5cm</b><small>Stok 120,5 KG</small><div class="u"><span class="c pri">KG 24.000</span><span class="c">DUS 560.000</span></div></div>
+        <div class="pcard"><b>Lampu LED 9W</b><small style="color:var(--bad)">Stok 3 PCS</small><div class="u"><span class="c pri">PCS 15.000</span><span class="c">DUS 330.000</span></div></div>
+        <div class="pcard"><b>Kuas 3"</b><small>Stok 38 PCS</small><div class="u"><span class="c pri">PCS 9.000</span><span class="c">LUSIN 100.000</span></div></div>
       </div>
-      <table>
-        <tr><th>SKU</th><th>Nama</th><th>Kategori</th><th class="r">Stok jual</th><th class="r">Dead stock <span class="tag">2</span></th><th class="r">Modal (dasar)</th><th>Harga jual default</th><th class="r">Untung</th><th>Status</th><th class="c">Aksi</th></tr>
-        <tr><td>MU0001</td><td>Cat Tembok Putih 5kg</td><td>Cat</td><td class="r">7 DUS + 2 PAIL</td><td class="r"><span class="chip warn">1 PAIL</span></td><td class="r">72.875</td><td>PAIL · 116.600</td><td class="r">37,5%</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Detail</span> <span class="btn sm">Harga</span></td></tr>
-        <tr><td>MU0002</td><td>Paku 5cm</td><td>Bangunan</td><td class="r">120,5 KG</td><td class="r">—</td><td class="r">18.000</td><td>KG · 24.000</td><td class="r">25,0%</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Detail</span> <span class="btn sm">Harga</span></td></tr>
-        <tr><td>MU0003</td><td>Lampu LED 9W</td><td>Listrik</td><td class="r"><span class="chip bad">3 PCS</span> <small class="mute">min 12</small></td><td class="r"><span class="chip warn">1 PCS</span></td><td class="r">9.500</td><td>PCS · 15.000</td><td class="r">36,7%</td><td><span class="chip ok">Aktif</span></td><td class="c"><span class="btn sm">Detail</span> <span class="btn sm">Harga</span></td></tr>
-      </table>
+    </div>
+    <div class="pr">
+      <div class="row"><b style="font-size:16px">Keranjang</b><span class="c">3 item</span><span class="sp"></span><span class="mute" style="font-size:12px">INV/MU/K1/2610/0125</span></div>
+      <div class="cart mt2">
+        <div class="li"><div class="t"><b>Cat Tembok Putih 5kg</b><small>437.250 / DUS</small></div><span class="in mini sel">DUS</span><span class="qty"><span>−</span><b>2</b><span>+</span></span><b style="width:84px;text-align:right">874.500</b></div>
+        <div class="li"><div class="t"><b>Kuas 3"</b><small>9.000 / PCS</small></div><span class="in mini sel">PCS</span><span class="qty"><span>−</span><b>3</b><span>+</span></span><b style="width:84px;text-align:right">27.000</b></div>
+        <div class="li"><div class="t"><b>Paku 5cm</b><small>24.000 / KG</small></div><span class="in mini sel">KG</span><span class="qty"><span>−</span><b>1,5</b><span>+</span></span><b style="width:84px;text-align:right">36.000</b></div>
+      </div>
+      <div class="sp"></div>
+      <div class="in ph mt2" style="min-height:34px">Nama pelanggan (opsional)</div>
+      <div class="row mt2" style="justify-content:space-between;align-items:flex-end"><span class="ink2">Total</span><span class="total">Rp 937.500</span></div>
+      <div class="row mt2"><span class="b bad">Batal</span><span class="b">Tahan</span><span class="b ok l" style="flex:1">Bayar <small style="opacity:.8;font-weight:500">F9</small></span></div>
+    </div>
+  </div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Enter pada barcode memasukkan satuan default; barcode satuan langsung memilih satuannya.</li><li>Stok kurang → diblokir. Hanya satuan "dijual" yang tampil.</li><li>Batal sebelum bayar langsung, dicatat. Tanpa kredit atau hutang.</li></ul></details>
+</section>
+
+<!-- 13 PEMBAYARAN -->
+<section class="scr" id="bayar" data-group="Penjualan" data-nav="Pembayaran" data-title="Pembayaran" data-sub="Bisa campur tunai, transfer, QRIS, dan EDC." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/pos">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal" style="max-width:520px">
+    <div class="row"><h3 style="flex:1">Pembayaran</h3><span class="mute">INV/MU/K1/2610/0125</span></div>
+    <div class="total" style="margin:6px 0 16px">Rp 937.500</div>
+    <div class="seg" style="margin-bottom:14px"><span class="on">Tunai</span><span>Transfer</span><span>QRIS</span><span>EDC</span></div>
+    <div class="f"><span>Diterima</span><div class="in big">Rp 500.000</div></div>
+    <div class="row" style="gap:6px;margin-bottom:14px"><span class="b s">Uang pas</span><span class="b s">50.000</span><span class="b s">100.000</span><span class="b s">500.000</span></div>
+    <div class="card flat sum" style="padding:12px 16px"><div><span>Tunai</span><b>500.000</b></div><div><span>QRIS</span><b>437.500</b></div><div class="t"><span>Sisa</span><span style="color:var(--ok)">Lunas</span></div></div>
+    <div class="row mt"><span class="ck"></span><span>Buat surat jalan (barang diantar)</span></div>
+    <div class="b ok w l mt"><svg class="ic"><use href="#i-printer"/></svg>Selesai &amp; Cetak Nota</div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Satu transaksi atomik: nota, item, pembayaran, dan stok.</li><li>Hanya tunai yang masuk hitungan kas shift.</li></ul></details>
+</section>
+
+<!-- 14 NOTA -->
+<section class="scr" id="nota" data-group="Penjualan" data-nav="Nota" data-title="Nota" data-sub="Cetak lewat browser. Layout final menyusul." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/pos/receipt">
+<div class="bd pg" style="background:var(--bg);padding:28px">
+  <div class="row" style="justify-content:center;margin-bottom:16px"><div class="seg"><span>58 mm</span><span class="on">80 mm</span></div><span class="b p"><svg class="ic s"><use href="#i-printer"/></svg>Cetak</span><span class="b"><svg class="ic s"><use href="#i-truck"/></svg>Surat Jalan</span></div>
+  <div class="receipt">
+    <div class="ctr"><b>MITRA UTAMA</b><br>Jl. Merdeka 12, Kota<br>Telp 021-555-0123</div><hr>
+    <div class="l"><span>No</span><span>INV/MU/K1/2610/0125</span></div>
+    <div class="l"><span>Tgl</span><span>25-10-2026 10:44</span></div>
+    <div class="l"><span>Kasir</span><span>Sari (K1)</span></div><hr>
+    Cat Tembok Putih 5kg<div class="l"><span>&nbsp;2 DUS x 437.250</span><span>874.500</span></div>
+    Kuas 3"<div class="l"><span>&nbsp;3 PCS x 9.000</span><span>27.000</span></div>
+    Paku 5cm<div class="l"><span>&nbsp;1,5 KG x 24.000</span><span>36.000</span></div><hr>
+    <div class="l"><b>TOTAL</b><b>937.500</b></div>
+    <div class="l"><span>Tunai</span><span>500.000</span></div>
+    <div class="l"><span>QRIS</span><span>437.500</span></div><hr>
+    <div class="ctr">Terima kasih</div>
+  </div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Cetak ulang bertanda SALINAN; nota void bertanda VOID.</li><li>Header, footer, dan kertas diatur di Pengaturan.</li></ul></details>
+</section>
+
+<!-- 15 RIWAYAT -->
+<section class="scr" id="riwayat" data-group="Penjualan" data-nav="Riwayat Nota & Void" data-title="Riwayat Nota" data-sub="Cari nota, cetak ulang, retur, atau void (Admin)." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/sales">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Riwayat Nota" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Riwayat Nota</h3></div>
+  <div class="pg"><div class="cols">
+    <div>
+      <div class="row" style="margin-bottom:14px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Nomor nota</div><div class="in sel grow">Hari ini</div><div class="in sel grow">Semua status</div></div>
+      <div class="tbl"><table class="t"><tr><th>Nota</th><th>Metode</th><th class="r">Total</th><th>Status</th><th></th></tr>
+        <tr class="hl"><td><b>…/0125</b><small>10:44 · Sari</small></td><td>Tunai + QRIS</td><td class="r">937.500</td><td><span class="c ok">Selesai</span></td><td class="r"><span class="b s bad">Void</span></td></tr>
+        <tr><td><b>…/0123</b><small>10:31 · Sari</small></td><td>QRIS</td><td class="r">54.000</td><td><span class="c ok">Selesai</span> <span class="c warn">retur sebagian</span></td><td class="r"><span class="b s">Retur</span></td></tr>
+        <tr><td><b>…/0122</b><small>10:12 · Joko</small></td><td>Transfer</td><td class="r">2.150.000</td><td><span class="c bad">VOID</span></td><td></td></tr></table></div>
+    </div>
+    <div>
+      <div class="card"><h4>Void nota …/0125</h4><div class="f"><span>Alasan</span><div class="in">Salah input satuan</div></div>
+        <div class="tip warn"><svg class="ic s"><use href="#i-info"/></svg><span>Stok kembali 2 DUS Cat, 3 PCS Kuas, 1,5 KG Paku.</span></div>
+        <div class="b bad w mt2">Void nota</div></div>
+      <div class="card mt"><h4>Batal sebelum bayar</h4><div class="list"><div><span class="t">3 item · Rp 180.000<small>10:02 · Pelanggan batal</small></span></div><div><span class="t">1 item · Rp 45.000<small>09:15 · Salah scan</small></span></div></div></div>
     </div>
   </div></div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Barang dibuat <b>langsung di toko</b> (form atau import Excel); tidak ada katalog pusat.</li>
-    <li><span class="tag">2</span>Stok di gudang bertipe <i>dead_stock</i> tidak muncul di kasir tapi tetap dilaporkan.</li>
-    <li>Nama, kategori, satuan, konversi, harga, dan stok minimum seluruhnya diatur Admin Toko.</li>
-    <li>Untung = <b>margin</b> (dari harga jual) satuan default.</li>
-  </ol></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Void hanya oleh Admin dan tercatat; nota tidak dihapus.</li><li>Nota hari yang sudah ditutup memakai Retur.</li></ul></details>
 </section>
 
-<!-- 8 BARANG FORM -->
-<section class="screen" id="bform">
-  <div class="head"><h2>8. Form Harga per Satuan (Toko) <span class="tagrel r1">R1 Inti</span></h2><p>Multi-satuan, konversi (dari pusat), harga nominal atau persen margin, persen untung (margin) langsung terlihat.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/products/MU0001/pricing</span></div>
-  <div class="body pad">
-    <div class="row" style="align-items:center;margin-bottom:6px"><b style="font-size:16px;flex:1">Harga · Cat Tembok Putih 5kg</b><span class="btn auto">Batal</span><span class="btn pri auto">Simpan</span></div>
-    <div class="tabs"><span>Info</span><span class="on">Satuan & Harga</span><span>Histori</span></div>
-    <div class="row" style="margin-bottom:10px">
-      <div class="fld"><label>Satuan dasar</label><span class="inp sel">PAIL</span></div>
-      <div class="fld"><label>Harga beli per satuan dasar <span class="tag">1</span></label><span class="inp">Rp 72.875</span></div>
-      <div class="fld"><label>Stok minimum (dasar)</label><span class="inp">8</span></div>
-      <div class="fld"><label>Pembulatan harga</label><span class="inp" style="background:var(--soft)">Tidak ada (harga apa adanya)</span></div>
+<!-- 16 RETUR -->
+<section class="scr" id="retur" data-group="Penjualan" data-nav="Retur" data-title="Retur" data-sub="Refund atau tukar barang, stok kembali." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/returns/new">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Retur" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Retur nota …/0118</h3><span class="mute">24 Okt 2026</span></div>
+  <div class="pg"><div class="cols">
+    <div>
+      <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Terjual</th><th>Retur</th><th>Kondisi</th><th class="r">Nilai</th></tr>
+        <tr><td><b>Cat Tembok Putih 5kg</b><small>DUS · 437.250</small></td><td class="r">2</td><td><span class="qty"><span>−</span><b>1</b><span>+</span></span></td><td><span class="c ok">Tetap dijual</span></td><td class="r">437.250</td></tr>
+        <tr><td><b>Lampu LED 9W</b><small>PCS · 15.000</small></td><td class="r">3</td><td><span class="qty"><span>−</span><b>1</b><span>+</span></span></td><td><span class="c warn">Dead stock</span></td><td class="r">15.000</td></tr>
+        <tr><td><b>Paku 5cm</b><small>KG · 24.000</small></td><td class="r">2</td><td><span class="qty"><span>−</span><b>0</b><span>+</span></span></td><td class="mute">—</td><td class="r mute">0</td></tr></table></div>
+      <div class="f mt"><span>Alasan</span><div class="in">Salah warna; lampu pecah</div></div>
     </div>
-    <table>
-      <tr><th>Satuan</th><th class="r">Konversi <span class="tag">2</span></th><th class="r">Modal otomatis</th><th>Mode harga</th><th class="r">Nilai</th><th class="r">Harga jual <span class="tag">3</span></th><th class="r">Untung (Rp)</th><th class="r">Margin</th><th class="c">Default</th><th class="c">Boleh dibeli <span class="tag">5</span></th><th class="c">Boleh dijual <span class="tag">5</span></th></tr>
-      <tr><td>PAIL <span class="chip pri">dasar</span></td><td class="r" style="background:var(--soft)">1</td><td class="r">72.875</td><td><span class="inp sel mini">Margin %</span></td><td class="r">37,5 %</td><td class="r"><b>116.600</b></td><td class="r">43.725</td><td class="r">37,5%</td><td class="c">◉</td><td class="c">☑</td><td class="c">☑</td></tr>
-      <tr><td>DUS</td><td class="r">4</td><td class="r">291.500</td><td><span class="inp sel mini">Nominal</span></td><td class="r">Rp 437.250</td><td class="r"><b>437.250</b></td><td class="r">145.750</td><td class="r">33,3%</td><td class="c">○</td><td class="c">☐</td><td class="c">☑</td></tr>
-    </table>
-    <div class="box mt"><b>Pratinjau perubahan harga <span class="tag">4</span></b><br>Harga jual DUS: 450.000 → <b>437.250</b> (−2,8 %, mode Nominal; margin 33,3 %) &nbsp;·&nbsp; masuk histori sumber <i>manual</i> dan <i>audits</i>.</div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Harga beli di sini = <b>harga beli terakhir</b> per satuan dasar (dari penerimaan terbaru), basis harga jual persen; modal satuan = harga beli × konversi. <b>HPP penjualan memakai layer FIFO</b>, bukan angka ini (lihat Detail Barang → Layer Modal).</li>
-    <li><span class="tag">2</span>Konversi diisi Admin Toko; maks 3 desimal; terkunci setelah ada stok/transaksi.</li>
-    <li><span class="tag">3</span>Mode <b>Margin %</b> → harga = modal ÷ (1 − margin%) <b>apa adanya, tanpa pembulatan</b> (disimpan 2 desimal; contoh 72.875 ÷ (1 − 0,375) = 116.600); Nominal → input langsung. Kolom untung (Rp dan margin) berubah live; tidak ada markup.</li>
-    <li><span class="tag">5</span>Kolom "Boleh dibeli/dijual": diatur <b>Admin Toko di sini</b> (diaudit). Batasan: minimal 1 satuan jual & 1 satuan beli; satuan default harus boleh dijual.</li>
-    <li><span class="tag">4</span>Ringkasan perubahan sebelum simpan; harga jual &lt; modal → peringatan + konfirmasi.</li>
-  </ol></div>
+    <div>
+      <div class="card"><div class="seg" style="margin-bottom:14px"><span class="on">Refund</span><span>Tukar barang</span></div>
+        <div class="sum"><div><span>Nilai retur</span><span>452.250</span></div><div><span>Metode</span><span>Tunai</span></div><div class="t"><span>Refund</span><span>Rp 452.250</span></div></div>
+        <div class="b p w mt">Ajukan Retur</div></div>
+      <div class="tip warn mt"><svg class="ic s"><use href="#i-clock"/></svg><span>Menunggu persetujuan Admin. Stok &amp; kas berubah setelah disetujui.</span></div>
+    </div>
+  </div></div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Tukar barang: nilai retur otomatis memotong penjualan baru di kasir.</li><li>Tanpa batas hari. Refund memakai harga di nota asli.</li></ul></details>
 </section>
 
-<!-- 9 HISTORI -->
-<section class="screen" id="bhist">
-  <div class="head"><h2>9. Detail Barang — Histori Harga & Persen Untung <span class="tagrel r1">R1 Inti</span></h2><p>Riwayat harga beli dan jual di detail barang.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/products/MU0001</span></div>
-  <div class="body pad">
-    <div class="row" style="align-items:center;margin-bottom:6px"><b style="font-size:16px;flex:1">Cat Tembok Putih 5kg <span class="chip">MU0001</span> <span class="chip">Cat</span></b><span class="btn auto">Ubah harga</span></div>
-    <div class="tabs"><span>Ringkasan</span><span class="on">Histori Harga</span><span>Layer Modal (FIFO)</span><span>Kartu Stok</span></div>
-    <div class="grid3" style="margin-bottom:12px">
-      <div class="card"><small>Harga beli terakhir (per PAIL)</small><div class="kpi">Rp 72.875</div><small>sejak 22 Jul 2026 · penerimaan</small></div>
-      <div class="card"><small>Harga jual PAIL</small><div class="kpi">Rp 116.600</div><small>Margin <b>37,5 %</b> · untung Rp 43.725</small></div>
-      <div class="card"><small>Harga jual DUS (4)</small><div class="kpi">Rp 437.250</div><small>Margin <b>33,3 %</b> · untung Rp 145.750</small></div>
-    </div>
-    <div class="row" style="margin-bottom:8px"><span class="btn pri auto">Harga Beli</span><span class="btn auto">Harga Jual</span><span class="inp sel auto" style="min-width:140px">Semua satuan</span><span class="inp auto" style="min-width:200px">📅 Periode…</span></div>
-    <table>
-      <tr><th>Tanggal</th><th>Jenis</th><th>Satuan</th><th class="r">Lama</th><th class="r">Baru</th><th class="r">Δ</th><th>Mode</th><th>Sumber</th><th>Oleh</th><th>Catatan</th></tr>
-      <tr><td>22 Jul 2026 08:30</td><td><span class="chip">Beli</span></td><td>PAIL</td><td class="r">100.000</td><td class="r">72.875</td><td class="r hist-dn">−27,1 %</td><td>—</td><td><span class="chip pri">goods_receipt</span> GRN/MU/2607/0003</td><td>Andi</td><td></td></tr>
-      <tr><td>22 Jul 2026 08:30</td><td><span class="chip ok">Jual</span></td><td>PAIL</td><td class="r">100.000</td><td class="r">116.600</td><td class="r hist-up">+16,6 %</td><td>Margin 37,5 %</td><td><span class="chip warn">recalculation</span></td><td>sistem</td><td>modal berubah</td></tr>
-      <tr><td>25 Okt 2026 10:12</td><td><span class="chip ok">Jual</span></td><td>DUS</td><td class="r">450.000</td><td class="r">437.250</td><td class="r hist-dn">−2,8 %</td><td>Nominal</td><td>manual</td><td>Andi</td><td>turun harga</td></tr>
-      <tr><td>16 Agu 2021</td><td><span class="chip ok">Jual</span></td><td>PAIL</td><td class="r">—</td><td class="r">100.000</td><td class="r">—</td><td>Nominal</td><td><span class="chip">migration</span></td><td>—</td><td>dari DB lama</td></tr>
-    </table>
-    <div class="row mt" style="align-items:center"><b style="flex:1;font-size:15px">Layer persediaan FIFO · Main Warehouse <span class="tag">1</span></b><span class="mute auto">klik tab "Layer Modal (FIFO)"</span></div>
-    <div class="grid3 mt" style="margin-bottom:10px">
-      <div class="card"><small>Harga beli terakhir (basis harga jual)</small><div class="kpi">Rp 72.875</div><small>per PAIL · dari penerimaan 22 Jul</small></div>
-      <div class="card"><small>Modal FIFO saat ini (layer tertua)</small><div class="kpi">Rp 100.000</div><small>per PAIL · layer 10 Mei</small></div>
-      <div class="card"><small>Nilai persediaan (FIFO)</small><div class="kpi">Rp 2.403.250</div><small>30 PAIL · 2 layer</small></div>
-    </div>
-    <table>
-      <tr><th>Layer</th><th>Sumber</th><th>Tanggal masuk</th><th class="r">Qty awal</th><th class="r">Sisa</th><th class="r">Modal / PAIL</th><th class="r">Nilai sisa</th><th>Urutan keluar</th></tr>
-      <tr><td>#1</td><td>GRN/MU/2605/0002 <span class="chip pri">goods_receipt</span></td><td>10 Mei 2026</td><td class="r">40</td><td class="r">8</td><td class="r">100.000</td><td class="r">800.000</td><td><span class="chip warn">1 · keluar dulu</span></td></tr>
-      <tr><td>#2</td><td>GRN/MU/2607/0003 <span class="chip pri">goods_receipt</span></td><td>22 Jul 2026</td><td class="r">60</td><td class="r">22</td><td class="r">72.875</td><td class="r">1.603.250</td><td><span class="chip">2</span></td></tr>
-      <tr><th colspan="4" class="r">Total</th><th class="r">30</th><th></th><th class="r">2.403.250</th><th></th></tr>
-    </table>
-    <div class="box mt"><b>Contoh <span class="tag">2</span></b> Jual 10 PAIL @ 116.600 = 1.166.000 · HPP FIFO = 8 × 100.000 + 2 × 72.875 = <b>945.750</b> · laba <b>220.250</b> &nbsp; <span class="mute">(bila memakai harga beli terakhir saja: laba terlihat 437.250)</span></div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li>Persen untung per satuan = <b>margin</b> (dari harga jual), dihitung terhadap <b>harga beli terakhir</b> (basis harga jual).</li>
-    <li><span class="tag">1</span><b>Layer FIFO</b>: tiap penerimaan membuat satu layer per barang per gudang. Penjualan mengonsumsi layer tertua lebih dulu; sisa dan modal tiap layer terlihat di sini. Ini juga sumber nilai persediaan.</li>
-    <li><span class="tag">2</span>HPP dihitung <b>server</b> saat nota diposting/disinkronkan (kasir tidak perlu tahu modal). Retur/void mengisi kembali layer yang dipakai nota asli.</li>
-    <li>Histori <b>append-only</b>; kolom <i>Sumber</i>: manual / goods_receipt / recalculation / import / migration, dengan tautan dokumen asal.</li>
-    <li>Histori hasil migrasi diturunkan dari baris harga lama yang di-soft-delete.</li>
-  </ol></div>
+<!-- 17 SURAT JALAN -->
+<section class="scr" id="sj" data-group="Penjualan" data-nav="Surat Jalan" data-title="Surat Jalan" data-sub="Dokumen antar barang. Tidak mengubah stok." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/delivery-notes">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Surat Jalan" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Surat Jalan</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Baru dari nota</span></div>
+  <div class="pg"><div class="cols">
+    <div class="tbl"><table class="t"><tr><th>Surat jalan</th><th>Penerima</th><th>Status</th><th></th></tr>
+      <tr class="hl"><td><b>SJ/MU/2610/0007</b><small>Nota …/0125</small></td><td>CV Maju</td><td><span class="c">Draft</span></td><td class="r"><span class="b s">Buka</span></td></tr>
+      <tr><td><b>SJ/MU/2610/0006</b><small>Nota …/0118</small></td><td>Pak Haji Rahmat</td><td><span class="c pri">Dikirim</span></td><td class="r"><span class="b s">Update</span></td></tr>
+      <tr><td><b>SJ/MU/2610/0005</b><small>Nota …/0110</small></td><td>Proyek Villa Asri</td><td><span class="c warn">Sebagian</span></td><td class="r"><span class="b s">Retur</span></td></tr>
+      <tr><td><b>SJ/MU/2610/0004</b><small>Nota …/0099</small></td><td>CV Maju</td><td><span class="c ok">Diterima</span></td><td class="r"><span class="b s">Cetak</span></td></tr></table></div>
+    <div class="card"><h4>SJ/MU/2610/0007</h4>
+      <div class="f"><span>Penerima</span><div class="in">Pak Wahyu (CV Maju)</div></div>
+      <div class="f"><span>Alamat</span><div class="in">Jl. Raya Industri 21</div></div>
+      <div class="g2"><div class="f"><span>Sopir</span><div class="in">Dedi</div></div><div class="f"><span>Kendaraan</span><div class="in">B 9123 XY</div></div></div>
+      <div class="list" style="margin-bottom:10px"><div><span class="t">Cat Tembok Putih 5kg<small>nota 2 DUS</small></span><span class="in mini">2</span></div><div><span class="t">Kuas 3"<small>nota 3 PCS</small></span><span class="in mini">3</span></div><div><span class="t">Paku 5cm<small>dibawa pembeli</small></span><span class="in mini">0</span></div></div>
+      <div class="row"><span class="b grow">Simpan draft</span><span class="b p grow"><svg class="ic s"><use href="#i-printer"/></svg>Cetak</span></div></div>
+  </div></div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Dibuat dari nota; satu nota boleh beberapa surat jalan.</li><li>Cetak tanpa harga, dengan kolom tanda tangan.</li><li>Barang pulang hanya penanda; stok kembali lewat Retur.</li></ul></details>
 </section>
 
-<!-- 10a PEMBELIAN -->
-<section class="screen" id="pembelian">
-  <div class="head"><h2>10a. Pembelian dari Supplier <span class="tagrel r2">R2</span></h2><p><b>R2 — tidak ada di R1 (stok murni lewat opname).</b> Mencatat <b>apa yang dibeli</b> dari supplier. Terpisah dari kedatangan fisik: penerimaan kontainer merujuk pembelian ini, penuh atau sebagian.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/purchases</span></div>
-  <div class="body pad">
-    <div class="row" style="margin-bottom:10px;align-items:center"><span class="inp" style="flex:2">🔍 No. pembelian / no. nota supplier / supplier</span><span class="inp sel">Semua status</span><span class="inp sel">Semua supplier</span><span class="btn pri auto">+ Pembelian Baru</span></div>
-    <table>
-      <tr><th>Nomor</th><th>Supplier</th><th>No. nota supplier</th><th>Tgl beli</th><th>ETA</th><th class="r">Total</th><th>Diterima <span class="tag">1</span></th><th>Status</th></tr>
-      <tr><td>PB/MU/2610/0005</td><td>CV Mitra Bahan</td><td>SJ-5530</td><td>24 Okt</td><td>05 Nov</td><td class="r">2.100.000</td><td class="mute">—</td><td><span class="chip">draft</span></td></tr>
-      <tr><td>PB/MU/2610/0004</td><td>CV Mitra Bahan</td><td>SJ-5521</td><td>12 Okt</td><td>20 Okt</td><td class="r">9.000.000</td><td>200 / 500 KG <span class="chip warn">40 %</span></td><td><span class="chip warn">partially_received</span></td></tr>
-      <tr><td>PB/MU/2610/0003</td><td>PT Sinar Jaya</td><td>INV-88213</td><td>08 Okt</td><td>22 Okt</td><td class="r">40.550.000</td><td>0 <small class="mute">(GRN/MU/2610/0008 menunggu posting)</small></td><td><span class="chip pri">ordered</span></td></tr>
-      <tr><td>PB/MU/2609/0007</td><td>PT Sinar Jaya</td><td>INV-87710</td><td>20 Sep</td><td>10 Okt</td><td class="r">28.700.000</td><td>100 %</td><td><span class="chip ok">received</span></td></tr>
-      <tr><td>PB/MU/2609/0006</td><td>CV Mitra Bahan</td><td>SJ-5470</td><td>12 Sep</td><td>25 Sep</td><td class="r">4.250.000</td><td>95 % <small class="mute">sisa 5 ditutup</small></td><td><span class="chip">closed</span></td></tr>
-    </table>
-    <div class="card mt"><h4>PB/MU/2610/0003 · PT Sinar Jaya <span class="chip pri">ordered</span> <span class="tag">2</span></h4>
-      <div class="row mt"><div class="fld"><label>Supplier</label><span class="inp sel">PT Sinar Jaya</span></div><div class="fld"><label>No. nota/invoice supplier</label><span class="inp">INV-88213</span></div><div class="fld"><label>Tanggal pembelian</label><span class="inp">08 Okt 2026</span></div><div class="fld"><label>Perkiraan tiba</label><span class="inp">22 Okt 2026</span></div><div class="fld"><label>Gudang tujuan</label><span class="inp sel">Main Warehouse</span></div></div>
-      <table>
-        <tr><th>Barang</th><th>Satuan <span class="tag">3</span></th><th class="r">Qty pesan</th><th class="r">Harga / satuan</th><th class="r">Subtotal</th><th class="r">Diterima</th><th class="r">Sisa</th></tr>
-        <tr><td>Cat Tembok Putih 5kg</td><td><span class="inp sel mini">DUS</span></td><td class="r">100</td><td class="r">291.500</td><td class="r">29.150.000</td><td class="r">0</td><td class="r">100</td></tr>
-        <tr><td>Lampu LED 9W</td><td><span class="inp sel mini">DUS (24)</span></td><td class="r">50</td><td class="r">228.000</td><td class="r">11.400.000</td><td class="r">0</td><td class="r">50</td></tr>
-        <tr><th colspan="4" class="r">Total pembelian</th><th class="r">40.550.000</th><th colspan="2"></th></tr>
-      </table>
-      <div class="mt"><span class="btn">Simpan perubahan</span> <span class="btn bad">Tutup sisa <span class="tag">4</span></span> <span class="btn off">Batalkan pembelian <span class="tag">5</span></span></div>
-      <div class="mt mute">Riwayat penerimaan yang merujuk: GRN/MU/2610/0008 (97 DUS Cat + 50 DUS Lampu, <span class="chip pri">diajukan</span>, belum diposting)</div>
+<!-- 18 PENGELUARAN -->
+<section class="scr" id="pengeluaran" data-group="Kas & Harian" data-nav="Pengeluaran" data-title="Pengeluaran" data-sub="Uang keluar dari laci kasir atau sumber lain." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/expenses">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Pengeluaran" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Pengeluaran</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Pengeluaran</span></div>
+  <div class="pg">
+    <div class="g3"><div class="card kpi"><small>Dari laci</small><b>120.000</b></div><div class="card kpi"><small>Sumber lain</small><b>1.250.000</b></div><div class="card kpi"><small>Total 24 Okt</small><b>1.370.000</b></div></div>
+    <div class="cols mt">
+      <div class="tbl"><table class="t"><tr><th>Keterangan</th><th>Kategori</th><th>Sumber</th><th class="r">Nominal</th></tr>
+        <tr><td><b>Beli galon</b><small>25 Okt · Toko Air</small></td><td>Operasional</td><td><span class="c ok">Laci</span></td><td class="r">50.000</td></tr>
+        <tr><td><b>Upah bongkar</b><small>24 Okt · Pak Eko</small></td><td>Upah</td><td><span class="c ok">Laci</span></td><td class="r">70.000</td></tr>
+        <tr><td><b>Listrik Oktober</b><small>24 Okt · PLN</small></td><td>Listrik/Air</td><td><span class="c">Lainnya</span></td><td class="r">1.250.000</td></tr></table></div>
+      <div class="card"><h4>Pengeluaran baru</h4>
+        <div class="g2"><div class="f"><span>Kategori</span><div class="in sel">Operasional</div></div><div class="f"><span>Nominal</span><div class="in">Rp 50.000</div></div></div>
+        <div class="f"><span>Keterangan</span><div class="in">Beli galon air minum</div></div>
+        <div class="f"><span>Sumber</span><div class="seg"><span class="on">Laci kasir</span><span>Lainnya</span></div></div>
+        <div class="b p w">Simpan</div></div>
     </div>
   </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Jumlah diterima dihitung dari penerimaan yang <b>sudah diposting</b>. Status otomatis: ordered → partially_received → received. Pembelian <b>tidak mengubah stok, harga beli terakhir, atau layer FIFO</b>; itu terjadi saat penerimaan diposting.</li>
-    <li><span class="tag">2</span>Draft bebas diubah; setelah <i>ordered</i> dan ada penerimaan, harga dan satuan terkunci (qty tidak boleh kurang dari yang sudah diterima).</li>
-    <li><span class="tag">3</span>Hanya satuan yang <b>boleh dibeli</b> untuk toko ini yang muncul.</li>
-    <li><span class="tag">4</span><b>Tutup sisa</b> (short close): Admin menutup sisa yang tidak akan datang, alasan wajib; status closed.</li>
-    <li><span class="tag">5</span>Batal hanya bila belum ada penerimaan; yang sudah ada penerimaan → Tutup sisa.</li>
-    <li>Pembayaran ke supplier (utang usaha) tidak termasuk Fase 1. Admin membuat/konfirmasi; Gudang hanya membaca dan menerima barang.</li>
-  </ol></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Sumber laci mengurangi tunai seharusnya shift yang berjalan.</li><li>Hari yang sudah ditutup terkunci.</li></ul></details>
 </section>
 
-<!-- 10 PENERIMAAN LIST -->
-<section class="screen" id="mlist">
-  <div class="head"><h2>10. Daftar Penerimaan Barang <span class="tagrel r2">R2</span></h2><p><b>R2 — tidak ada di R1 (stok murni lewat opname).</b> Satu baris = satu kontainer (bisa berisi banyak supplier).</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/goods-receipts</span></div>
-  <div class="body pad">
-    <div class="row" style="margin-bottom:10px;align-items:center"><span class="inp" style="flex:2">🔍 No. dokumen / kontainer / supplier</span><span class="inp sel">Semua status</span><span class="inp sel">Semua gudang</span><span class="btn pri auto">+ Penerimaan Baru</span></div>
-    <table>
-      <tr><th>Nomor</th><th>No. Kontainer</th><th>Supplier</th><th>Ref. pembelian <span class="tag">1</span></th><th>Tgl Kirim</th><th>Tgl Sampai</th><th>Bongkar</th><th class="r">Nilai barang</th><th class="r">Biaya kontainer</th><th>Status</th></tr>
-      <tr><td>GRN/MU/2610/0008</td><td>TGHU 765432-1</td><td>PT Sinar Jaya, CV Mitra Bahan <span class="chip">2</span></td><td>PB/MU/2610/0003 <span class="chip pri">partial</span>, PB/MU/2610/0004 <span class="chip ok">full</span></td><td>10 Okt</td><td>22 Okt</td><td>23 Okt 08:00–15:30</td><td class="r">47.955.500</td><td class="r">20.800.000</td><td><span class="chip pri">Diajukan</span></td></tr>
-      <tr><td>GRN/MU/2610/0007</td><td>MSKU 123456-7</td><td>PT Sinar Jaya <span class="chip">1</span></td><td>PB/MU/2609/0007 <span class="chip ok">full</span></td><td>05 Okt</td><td>20 Okt</td><td>21 Okt 09:00 – …</td><td class="r">41.900.000</td><td class="r">18.300.000</td><td><span class="chip warn">Dibongkar</span></td></tr>
-      <tr><td>GRN/MU/2610/0006</td><td>—</td><td>CV Mitra Bahan <span class="chip">1</span></td><td><span class="mute">tanpa pembelian</span></td><td>—</td><td>15 Okt</td><td>15 Okt 13:00–14:10</td><td class="r">6.120.000</td><td class="r">0</td><td><span class="chip ok">Diterima</span></td></tr>
-      <tr><td>GRN/MU/2610/0005</td><td>CAIU 998877-0</td><td><span class="mute">—</span></td><td><span class="mute">—</span></td><td>01 Okt</td><td>08 Okt</td><td>—</td><td class="r">0</td><td class="r">0</td><td><span class="chip">Draft</span></td></tr>
-    </table>
+<!-- 19 TUTUP SHIFT -->
+<section class="scr" id="shifttutup" data-group="Kas & Harian" data-nav="Tutup Shift" data-title="Tutup Shift" data-sub="Hitung uang di laci, lihat selisih, cetak Laporan Z." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/pos">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal" style="max-width:520px">
+    <h3>Tutup Shift #0425</h3><p class="ink2" style="margin:0 0 14px">Kasir 1 · Sari</p>
+    <div class="sum"><div><span>Penjualan tunai</span><span>3.250.000</span></div><div><span>Transfer · QRIS · EDC</span><span>1.600.000</span></div><div><span>Refund tunai</span><span>−150.000</span></div><div><span>Pengeluaran laci</span><span>−50.000</span></div><div><span>Modal awal</span><span>500.000</span></div><div class="t"><span>Tunai seharusnya</span><span>3.550.000</span></div></div>
+    <div class="g2 mt"><div class="f"><span>Tunai hasil hitung</span><div class="in big">3.540.000</div></div><div class="f"><span>Selisih</span><div class="in big" style="color:var(--bad)">−10.000</div></div></div>
+    <div class="f"><span>Catatan selisih</span><div class="in">Kembalian kurang Rp 10.000</div></div>
+    <div class="tip"><svg class="ic s"><use href="#i-wallet"/></svg><span>Modal 500.000 tinggal di laci · <b>setoran Rp 3.040.000</b></span></div>
+    <div class="b bad w l mt">Tutup Shift &amp; Cetak Laporan Z</div>
   </div></div>
-  <div class="notes"><h4>Catatan</h4><ol><li><span class="tag">1</span>Kolom ref. pembelian menunjukkan penerimaan merujuk pembelian <b>full</b> (semua sisa) atau <b>partial</b> (sebagian); penerimaan tanpa pembelian tetap boleh.</li><li>Nilai barang dan biaya kontainer dipisah; biaya hanya dicatat (belum masuk modal).</li><li>Filter cepat: "Draft &gt; 7 hari", "Menunggu persetujuan".</li><li>Diterima/Batal hanya bisa dilihat.</li></ol></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Selisih ≠ 0 wajib catatan dan menunggu approval Admin; tidak memblokir shift berikutnya.</li></ul></details>
 </section>
 
-<!-- 11 PENERIMAAN FORM -->
-<section class="screen" id="mform">
-  <div class="head"><h2>11. Form Penerimaan Kontainer (Multi-Supplier, merujuk Pembelian, + Biaya) <span class="tagrel r2">R2</span></h2><p><b>R2 — tidak ada di R1 (stok murni lewat opname).</b> Satu kontainer menampung barang dari beberapa PT; ada tanggal kirim, tanggal sampai, pembongkaran, dan biaya kontainer.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/goods-receipts/GRN-MU-2610-0008</span></div>
-  <div class="body pad">
-    <div class="row" style="align-items:center"><b style="font-size:16px;flex:1">Penerimaan GRN/MU/2610/0008</b><span class="btn auto">Tolak / Kembalikan</span><span class="btn ok auto">Setujui & Posting <span class="tag">4</span></span></div>
-    <div class="stepper mt"><span class="done">① Draft</span><span class="done">② Dibongkar</span><span class="cur">③ Diajukan</span><span>④ Diterima</span></div>
-    <div class="grid2">
-      <div class="card"><h4>Kontainer & Pengiriman <span class="tag">1</span></h4>
-        <div class="row"><div class="fld"><label>No. kontainer</label><span class="inp">TGHU 765432-1</span></div><div class="fld"><label>Gudang tujuan</label><span class="inp sel">Main Warehouse</span></div></div>
-        <div class="row"><div class="fld"><label>Tanggal kirim</label><span class="inp">10 Okt 2026</span></div><div class="fld"><label>Tanggal sampai</label><span class="inp">22 Okt 2026</span></div></div>
-      </div>
-      <div class="card"><h4>Pembongkaran <span class="tag">2</span></h4>
-        <div class="row"><div class="fld"><label>Mulai bongkar</label><span class="inp">23 Okt 2026 08:00</span></div><div class="fld"><label>Selesai bongkar</label><span class="inp">23 Okt 2026 15:30</span></div></div>
-        <div class="fld"><label>Catatan</label><span class="inp">2 dus basah di sudut kontainer</span></div>
-      </div>
+<!-- 20 REKAP SHIFT -->
+<section class="scr" id="rekap" data-group="Kas & Harian" data-nav="Rekap Shift" data-title="Rekap Shift" data-sub="Admin meninjau tiap shift dan menyetujui selisih kas." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/shifts">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Rekap Shift" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Rekap Shift</h3><div class="in mini">22–25 Okt 2026</div></div>
+  <div class="pg"><div class="cols">
+    <div class="tbl"><table class="t"><tr><th>Shift</th><th>Kasir</th><th class="r">Setoran</th><th class="r">Selisih</th><th>Status</th></tr>
+      <tr><td><b>#0425</b><small>25 Okt · berjalan</small></td><td>Sari</td><td class="r mute">—</td><td class="r mute">—</td><td><span class="c ok">Buka</span></td></tr>
+      <tr class="hl"><td><b>#0424</b><small>24 Okt · siang</small></td><td>Joko</td><td class="r">2.270.000</td><td class="r"><span class="c bad">−10.000</span></td><td><span class="c warn">Menunggu</span></td></tr>
+      <tr><td><b>#0423</b><small>24 Okt · pagi</small></td><td>Sari</td><td class="r">1.650.000</td><td class="r"><span class="c ok">0</span></td><td><span class="c">Selesai</span></td></tr>
+      <tr><td><b>#0422</b><small>23 Okt · siang</small></td><td>Joko</td><td class="r">2.495.000</td><td class="r"><span class="c warn">+15.000</span></td><td><span class="c ok">Disetujui</span></td></tr></table></div>
+    <div class="card"><h4>Tinjau shift #0424</h4>
+      <div class="sum"><div><span>Tunai seharusnya</span><span>2.780.000</span></div><div><span>Dihitung</span><span>2.770.000</span></div><div class="t"><span>Selisih</span><span style="color:var(--bad)">−10.000</span></div></div>
+      <div class="mute mt2" style="font-size:12.5px">Catatan kasir: kembalian kurang Rp 10.000</div>
+      <div class="f mt"><span>Catatan approval</span><div class="in">Dicatat sebagai selisih kembalian</div></div>
+      <div class="row"><span class="b bad grow">Tolak</span><span class="b ok grow">Setujui</span></div></div>
+  </div></div></div>
+</div>
+</section>
+
+<!-- 21 TUTUP HARI -->
+<section class="scr" id="tutuphari" data-group="Kas & Harian" data-nav="Tutup Hari" data-title="Tutup Hari" data-sub="Rekonsiliasi akhir hari, lalu kunci transaksi tanggal itu." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/daily-closings/2026-10-24">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Tutup Hari" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Sabtu, 24 Okt 2026</h3><div class="in mini">Ganti tanggal</div></div>
+  <div class="pg"><div class="cols">
+    <div>
+      <div class="card"><h4>Sebelum menutup</h4>
+        <div class="chk"><span class="ico ok"><svg class="ic"><use href="#i-check"/></svg></span><span class="t">Semua shift sudah ditutup<small class="mute" style="display:block">#0423 · #0424</small></span></div>
+        <div class="chk"><span class="ico warn"><svg class="ic"><use href="#i-alert"/></svg></span><span class="t">Selisih kas belum diputuskan<small class="mute" style="display:block">#0424 · −10.000</small></span><span class="b s">Tinjau</span></div>
+        <div class="chk"><span class="ico ok"><svg class="ic"><use href="#i-check"/></svg></span><span class="t">Tidak ada retur menunggu</span></div>
+        <div class="chk"><span class="ico info"><svg class="ic"><use href="#i-info"/></svg></span><span class="t">2 surat jalan belum selesai<small class="mute" style="display:block">hanya peringatan</small></span></div></div>
+      <div class="f mt"><span>Catatan penutupan</span><div class="in">Selisih −10.000 disetujui</div></div>
+      <div class="b bad w l"><svg class="ic"><use href="#i-lock"/></svg>Tutup Hari &amp; Kunci Transaksi</div>
     </div>
-
-    <div class="row mt" style="align-items:center"><b style="flex:1">Barang per supplier <span class="tag">3</span></b><span class="btn auto">+ Tambah supplier</span></div>
-    <div class="sect"><div class="sh"><span><b>PT Sinar Jaya</b> · Dokumen <b>INV-88213</b> · 08 Okt 2026</span><span><span class="btn sm pri">⤓ Ambil dari pembelian <span class="tag">6</span></span> <span class="btn sm">+ Barang tanpa pembelian</span> <span class="btn sm bad">Hapus blok</span></span></div>
-      <div class="sb"><table>
-        <tr><th>Barang</th><th>Satuan</th><th>Ref. pembelian</th><th class="r">Dipesan</th><th class="r">Sudah diterima</th><th class="r">Qty dokumen</th><th class="r">Diterima kini</th><th class="r">Rusak</th><th class="r">Selisih</th><th class="r">Sisa pembelian</th><th class="r">Harga / satuan</th><th class="r">Subtotal</th><th>Dampak harga</th></tr>
-        <tr><td>Cat Tembok Putih 5kg</td><td>DUS</td><td>PB/MU/2610/0003</td><td class="r">100</td><td class="r">0</td><td class="r">100</td><td class="r">97</td><td class="r">2</td><td class="r"><span class="chip bad">−1</span></td><td class="r"><span class="chip warn">3 <small>(partial)</small></span></td><td class="r">291.500 🔒</td><td class="r">28.275.500</td><td><span class="chip">tetap</span></td></tr>
-        <tr><td>Lampu LED 9W</td><td>DUS (24)</td><td>PB/MU/2610/0003</td><td class="r">50</td><td class="r">0</td><td class="r">50</td><td class="r">50</td><td class="r">0</td><td class="r"><span class="chip ok">0</span></td><td class="r"><span class="chip ok">0 <small>(full)</small></span></td><td class="r">228.000 🔒</td><td class="r">11.400.000</td><td><span class="chip warn">modal 9.200 → 9.500</span></td></tr>
-        <tr><th colspan="11" class="r">Subtotal PT Sinar Jaya</th><th class="r">39.675.500</th><th></th></tr>
-      </table></div></div>
-    <div class="sect"><div class="sh"><span><b>CV Mitra Bahan</b> · Dokumen <b>SJ-5521</b> · 12 Okt 2026</span><span><span class="btn sm pri">⤓ Ambil dari pembelian</span> <span class="btn sm">+ Barang tanpa pembelian</span> <span class="btn sm bad">Hapus blok</span></span></div>
-      <div class="sb"><table>
-        <tr><th>Barang</th><th>Satuan</th><th>Ref. pembelian</th><th class="r">Dipesan</th><th class="r">Sudah diterima</th><th class="r">Qty dokumen</th><th class="r">Diterima kini</th><th class="r">Rusak</th><th class="r">Selisih</th><th class="r">Sisa pembelian</th><th class="r">Harga / satuan</th><th class="r">Subtotal</th><th>Dampak harga</th></tr>
-        <tr><td>Paku 5cm</td><td>KG</td><td>PB/MU/2610/0004</td><td class="r">500</td><td class="r">200</td><td class="r">300</td><td class="r">300</td><td class="r">0</td><td class="r"><span class="chip ok">0</span></td><td class="r"><span class="chip ok">0 <small>(full)</small></span></td><td class="r">18.000 🔒</td><td class="r">5.400.000</td><td><span class="chip">tetap</span></td></tr>
-        <tr><td>Kuas 3"</td><td>LUSIN (12)</td><td><span class="chip">tanpa pembelian</span></td><td class="r mute">—</td><td class="r mute">—</td><td class="r">40</td><td class="r">40</td><td class="r">0</td><td class="r"><span class="chip ok">0</span></td><td class="r mute">—</td><td class="r">72.000 <small class="mute">(manual)</small></td><td class="r">2.880.000</td><td><span class="chip">tetap</span></td></tr>
-        <tr><th colspan="11" class="r">Subtotal CV Mitra Bahan</th><th class="r">8.280.000</th><th></th></tr>
-      </table></div></div>
-    <div class="box mt"><b>Status pembelian setelah posting <span class="tag">7</span></b> &nbsp; PB/MU/2610/0003: <span class="chip warn">ordered → partially_received</span> (sisa 3 DUS Cat) &nbsp;·&nbsp; PB/MU/2610/0004: <span class="chip warn">partially_received → received</span></div>
-
-    <div class="sect"><div class="sh"><b>Biaya kontainer <span class="tag">5</span></b><span><span class="chip">hanya dicatat, belum masuk modal barang</span> <span class="btn sm">+ Biaya</span></span></div>
-      <div class="sb"><table>
-        <tr><th>Jenis</th><th>Keterangan</th><th>Vendor</th><th>Tgl bayar</th><th class="r">Nominal</th></tr>
-        <tr><td>Freight</td><td>Ocean freight Shanghai–Jakarta</td><td>PT Samudra Logistik</td><td>12 Okt</td><td class="r">12.500.000</td></tr>
-        <tr><td>Customs</td><td>Bea masuk & PPh impor</td><td>PPJK Mandiri</td><td>21 Okt</td><td class="r">6.800.000</td></tr>
-        <tr><td>Handling</td><td>Ongkos bongkar & trucking</td><td>CV Bongkar Jaya</td><td>23 Okt</td><td class="r">1.500.000</td></tr>
-        <tr><th colspan="4" class="r">Total biaya</th><th class="r">20.800.000</th></tr>
-      </table></div></div>
-    <div class="box mt">Total nilai barang <b>47.955.500</b> &nbsp;·&nbsp; Total biaya kontainer <b>20.800.000</b> &nbsp;·&nbsp; <span class="mute">Total kontainer (informasi) 68.755.500</span></div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Header kontainer: no. kontainer, <b>tanggal kirim</b>, <b>tanggal sampai</b>, gudang tujuan.</li>
-    <li><span class="tag">2</span>Tanggal & jam pembongkaran. Validasi urutan: kirim ≤ sampai ≤ mulai bongkar ≤ selesai bongkar.</li>
-    <li><span class="tag">6</span>Tombol <b>Ambil dari pembelian</b> memuat baris pembelian supplier itu yang masih punya sisa. <b>Dari pembelian:</b> barang, satuan, dan harga mengikuti pembelian (🔒 tidak bisa diubah di sini), qty diterima ≤ sisa; menerima sebagian = <i>partial</i>, menerima semua sisa = <i>full</i>. <b>Tanpa pembelian:</b> pilih barang sendiri dan isi harga manual (kecuali pengaturan "wajib merujuk pembelian" aktif).</li>
-    <li><span class="tag">7</span>Saat posting, <code>received_base_quantity</code> dan status pembelian terkait diperbarui otomatis; batal penerimaan mengembalikan sisanya.</li>
-    <li><span class="tag">3</span>Satu kontainer = banyak blok supplier, tiap blok punya no. dokumen sendiri. Barang yang sama dari dua supplier digabung per barang saat posting.</li>
-    <li><span class="tag">4</span>Posting: stok bertambah di gudang tujuan sebesar <i>Diterima × konversi</i> (rusak tidak masuk); harga beli barang diperbarui + histori; ringkasan perubahan harga tampil dulu. Setelah Diterima dokumen terkunci; koreksi = Batal (mutasi balik).</li>
-    <li><span class="tag">5</span>Biaya kontainer disimpan (<code>goods_receipt_costs</code>) tetapi <b>belum</b> dialokasikan ke modal; kolom <code>is_allocated</code> disiapkan untuk landed cost kelak.</li>
-    <li>Selisih = Diterima + Rusak − Dokumen (merah bila ≠ 0).</li>
-    <li>Posting membuat <b>satu layer FIFO per barang</b> di gudang tujuan (modal = harga beli dasar). Batal penerimaan <b>ditolak</b> bila layernya sudah terpakai (barang sudah terjual/dipindah).</li>
-  </ol></div>
-</section>
-
-<!-- 12 OPNAME -->
-<section class="screen" id="opname">
-  <div class="head"><h2>12. Stok Opname (per Gudang) <span class="tagrel r1">R1 Inti</span></h2><p>Hitung fisik → review selisih → posting. <b>Alat pengaturan stok</b>; dipakai juga untuk saldo awal dan (sementara) transfer antar-toko.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/stock-opnames/OPN-MU-2610-0002</span></div>
-  <div class="body pad">
-    <div class="row" style="align-items:center"><b style="font-size:16px;flex:1">Opname OPN/MU/2610/0002</b><span class="btn auto">Simpan</span><span class="btn pri auto">Selesai Hitung</span><span class="btn ok auto">Posting <span class="tag">3</span></span></div>
-    <div class="stepper mt"><span class="done">① Draft</span><span class="cur">② Menghitung</span><span>③ Review</span><span>④ Diposting</span></div>
-    <div class="row" style="margin-bottom:8px">
-      <div class="fld"><label>Gudang</label><span class="inp sel">Main Warehouse</span></div>
-      <div class="fld"><label>Cakupan <span class="tag">4</span></label><span class="inp sel">Barang terpilih</span></div>
-      <div class="fld"><label>Kode alasan</label><span class="inp sel">incoming_goods · Barang datang</span></div>
-      <div class="fld"><label>Catatan</label><span class="inp">Bongkar kontainer TGHU 765432-1</span></div>
+    <div>
+      <div class="card"><h4>Ringkasan</h4><div class="sum"><div><span>Nota</span><span>61</span></div><div><span>Tunai</span><span>4.300.000</span></div><div><span>Transfer</span><span>1.650.000</span></div><div><span>QRIS</span><span>720.000</span></div><div><span>Retur &amp; refund</span><span>−250.000</span></div><div><span>Pengeluaran laci</span><span>−120.000</span></div><div class="t"><span>Total penjualan</span><span>6.670.000</span></div></div></div>
+      <div class="card flat mt"><div class="mute" style="font-size:12.5px;margin-bottom:6px">Riwayat</div><div class="row" style="gap:6px"><span class="c ok">23 Okt ✓</span><span class="c ok">22 Okt ✓</span><span class="c warn">21 Okt dibuka ulang</span></div></div>
     </div>
-    <div class="row" style="margin-bottom:8px"><span class="inp" style="flex:2">🔍 Cari / scan barang</span><span class="mute auto">Snapshot: 25 Okt 2026 08:00 · 2 / 3 barang dihitung</span></div>
-    <table>
-      <tr><th>Barang</th><th class="r">Snapshot</th><th class="r">Mutasi sejak snapshot <span class="tag">1</span></th><th class="r">Stok sistem</th><th>Input fisik <span class="tag">2</span></th><th class="r">Fisik (dasar)</th><th class="r">Selisih</th><th class="r">Nilai</th><th>Alasan</th></tr>
-      <tr><td>Cat Tembok Putih 5kg</td><td class="r">30 PAIL</td><td class="r">−6</td><td class="r">24 PAIL</td><td><span class="inp mini">5 DUS + 3 PAIL</span></td><td class="r">23</td><td class="r"><span class="chip bad">−1</span></td><td class="r">−72.875</td><td><span class="inp mini">tumpah</span></td></tr>
-      <tr><td>Kuas 3"</td><td class="r">40 PCS</td><td class="r">−2</td><td class="r">38 PCS</td><td><span class="inp mini">38 PCS</span></td><td class="r">38</td><td class="r"><span class="chip ok">0</span></td><td class="r">0</td><td></td></tr>
-      <tr><td>Thinner 1L</td><td class="r">12 KALENG</td><td class="r">0</td><td class="r">12 KALENG</td><td><span class="inp mini">…</span></td><td class="r mute">—</td><td class="r mute">—</td><td class="r mute">—</td><td></td></tr>
-    </table>
-    <div class="box mt">Ringkasan: 1 barang selisih · total nilai <b>−Rp 72.875</b> · <span class="chip warn">1 belum dihitung</span> · <span class="btn sm">Tandai belum dihitung = 0</span></div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Penjualan tetap berjalan; stok sistem saat posting = snapshot + mutasi sejak snapshot.</li>
-    <li><span class="tag">2</span>Input boleh campur satuan → dikonversi ke dasar. Kosong ≠ 0.</li>
-    <li><span class="tag">3</span>Posting hanya Admin; menulis <code>opname_adjustment</code> untuk baris selisih.</li>
-    <li><span class="tag">4</span>Cakupan: semua / kategori / barang terpilih. Jembatan sementara transfer antar-toko = opname parsial dengan kode alasan; di laporan selisih ditandai khusus. Transfer antar-toko sungguhan di Fase 2.</li>
-    <li><b>Barang datang (R1 tanpa Penerimaan):</b> buat opname parsial (cakupan barang terpilih, alasan <code>incoming_goods</code>), hitung fisik; selisih positif menambah stok. Kolom opsional <i>harga beli baru</i> memperbarui harga beli terakhir (histori sumber <code>opname</code>).</li>
-    <li>Saldo awal: opname berkode <code>opening_balance</code> (atau import Excel).</li>
-    <li><b>R1:</b> nilai selisih = selisih × harga beli terakhir (estimasi). Setelah FIFO (R2), selisih kurang mengonsumsi layer tertua dan selisih lebih membuat layer baru.</li>
-    
-  </ol></div>
+  </div></div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Angka disimpan sebagai snapshot laporan harian.</li><li>Terkunci: nota, retur, pengeluaran, dan shift tanggal itu. Opname tidak terkunci.</li><li>Buka ulang hanya Super Admin dengan alasan.</li></ul></details>
 </section>
 
-<!-- 13 GUDANG & TRANSFER -->
-<section class="screen" id="gudang">
-  <div class="head"><h2>13. Gudang & Transfer Antar-Gudang <span class="tagrel r2">R2</span></h2><p><b>R2 — tidak ada di R1 (stok murni lewat opname).</b> Multi-gudang dalam satu toko; transfer sederhana dalam satu DB.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/warehouses</span></div>
-  <div class="body pad">
-    <div class="tabs"><span class="on">Gudang</span><span>Transfer</span></div>
-    <div class="row" style="margin-bottom:10px;align-items:center"><b style="flex:1">Daftar gudang</b><span class="btn pri auto">+ Gudang</span></div>
-    <table>
-      <tr><th>Kode</th><th>Nama</th><th>Tipe <span class="tag">1</span></th><th>Default</th><th class="r">Jumlah SKU</th><th class="r">Nilai persediaan</th><th>Status</th></tr>
-      <tr><td>MAIN</td><td>Main Warehouse</td><td><span class="chip ok">sellable</span></td><td>◉</td><td class="r">3.412</td><td class="r">1.284.500.000</td><td><span class="chip ok">Aktif</span></td></tr>
-      <tr><td>BACK</td><td>Gudang Belakang</td><td><span class="chip ok">sellable</span></td><td>○</td><td class="r">640</td><td class="r">212.300.000</td><td><span class="chip ok">Aktif</span></td></tr>
-      <tr><td>DEAD</td><td>Dead Stock</td><td><span class="chip warn">dead_stock</span></td><td>—</td><td class="r">18</td><td class="r">6.450.000</td><td><span class="chip ok">Aktif</span></td></tr>
-    </table>
-    <div class="grid2 mt">
-      <div class="card"><h4>Transfer baru <span class="tag">2</span></h4>
-        <div class="row"><div class="fld"><label>Dari gudang</label><span class="inp sel">Gudang Belakang</span></div><div class="fld"><label>Ke gudang</label><span class="inp sel">Main Warehouse</span></div></div>
-        <table><tr><th>Barang</th><th>Satuan</th><th class="r">Qty</th><th class="r">Stok asal</th></tr>
-        <tr><td>Paku 5cm</td><td>KG</td><td class="r">50</td><td class="r">120,5</td></tr>
-        <tr><td>Lampu LED 9W</td><td>PCS</td><td class="r">1</td><td class="r">1 <span class="chip warn">dead stock</span></td></tr></table>
-        <div class="mt"><span class="btn">+ Barang</span> <span class="btn ok">Posting Transfer</span></div>
-      </div>
-      <div class="card"><h4>Transfer antar-toko <span class="tag">3</span></h4><small>Fase 2 — dokumen di DB pusat, status Dikirim → Diterima, tiap toko menulis kartu stok sendiri. Sementara: opname parsial dengan kode alasan (layar 12).</small><div class="mt"><span class="chip">Fase 2</span></div></div>
+<!-- 22 LAPORAN -->
+<section class="scr" id="laporan" data-group="Kas & Harian" data-nav="Laporan" data-title="Laporan" data-sub="Penjualan, stok, selisih opname, retur, dan pengeluaran." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/reports">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Laporan" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Laporan</h3><span class="b"><svg class="ic s"><use href="#i-down"/></svg>Excel</span></div>
+  <div class="pg">
+    <div class="tabs"><span class="on">Penjualan</span><span>Stok</span><span>Selisih opname</span><span>Retur</span><span>Pengeluaran</span></div>
+    <div class="g3"><div class="card kpi"><small>Penjualan 19–25 Okt</small><b>Rp 31.250.000</b></div><div class="card kpi"><small>Nota</small><b>402</b></div><div class="card kpi"><small>Laba kotor (estimasi)</small><b>Rp 6.480.000</b></div></div>
+    <div class="card mt"><h4>Penjualan harian</h4><div class="bars">
+      <div><i style="height:55%"></i>19</div><div><i style="height:62%"></i>20</div><div><i style="height:48%"></i>21</div><div><i style="height:70%"></i>22</div><div><i style="height:66%"></i>23</div><div><i style="height:92%"></i>24</div><div class="on"><i style="height:74%"></i>25</div></div></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Laba memakai modal = harga beli terakhir (estimasi) di R1.</li></ul></details>
+</section>
+
+<!-- 23 PENGATURAN -->
+<section class="scr" id="setelan" data-group="Kas & Harian" data-nav="Pengaturan" data-title="Pengaturan Toko" data-sub="Nota, register, dan kategori pengeluaran." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/settings">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Pengaturan" data-who="Andi|Admin"></aside>
+  <div class="mn"><div class="tb"><h3>Pengaturan</h3><span class="b p">Simpan</span></div>
+  <div class="pg"><div class="g2">
+    <div class="card"><h4>Nota</h4><div class="f"><span>Nama di nota</span><div class="in">MITRA UTAMA</div></div><div class="f"><span>Alamat</span><div class="in">Jl. Merdeka 12, Kota</div></div><div class="g2"><div class="f"><span>Telepon</span><div class="in">021-555-0123</div></div><div class="f"><span>Kertas</span><div class="seg"><span>58</span><span class="on">80 mm</span></div></div></div><div class="f"><span>Footer</span><div class="in">Terima kasih</div></div></div>
+    <div>
+      <div class="card"><h4>Register</h4><div class="list"><div><span class="t">Kasir 1 · K1<small>modal kas tetap</small></span><span class="in mini">500.000</span></div></div></div>
+      <div class="card mt"><h4>Kategori pengeluaran</h4><div class="row" style="gap:6px"><span class="c">Operasional</span><span class="c">Listrik/Air</span><span class="c">Transport</span><span class="c">Upah</span><span class="c">ATK</span><span class="c pri">+ Tambah</span></div></div>
     </div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Tipe gudang: <i>sellable</i> (muncul di kasir) atau <i>dead_stock</i> (tidak). Tiap toko otomatis punya Main Warehouse dan Dead Stock.</li>
-    <li><span class="tag">2</span>Posting = satu transaksi DB menulis <code>transfer_out</code> + <code>transfer_in</code>. Dipakai juga memindah dead stock → dijual lagi.</li>
-    <li>Kolom <i>Nilai persediaan</i> dihitung dari layer FIFO (Σ sisa × modal layer); transfer antar-gudang memindahkan layer dengan modal dan tanggal masuk yang sama.</li>
-    <li><span class="tag">3</span>Mengambil stok dari toko lain butuh dokumen lintas-DB; tidak dikerjakan dengan "opname" permanen karena merusak laporan selisih dan tidak memindahkan nilai modal.</li>
-  </ol></div>
-</section>
-
-<!-- 14 KASIR -->
-<section class="screen" id="kasir">
-  <div class="head"><h2>14. Kasir (POS) — online di Fase 1a, offline di Fase 1b <span class="tagrel r1">R1 Inti</span></h2><p>Layar kasir tanpa menu samping. Role kasir hanya melihat ini. Status koneksi dan antrean selalu terlihat.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/pos &nbsp;·&nbsp; PWA terpasang</span></div>
-  <div class="body">
-    <div class="topbar"><span><b>Kasir · Mitra Utama</b> &nbsp; <span class="chip pri">K1</span> <span class="chip">Main Warehouse</span> <span class="chip ok">Shift #0425 · sejak 08:00</span></span>
-      <span><span class="net off">● Offline 5 jam <span class="tag">1</span></span> <span class="chip pri">Fase 1b</span> &nbsp; <span class="chip warn">14 nota belum tersinkron</span> <span class="chip ok">Backup lokal ✓ 10:44</span> &nbsp; <span class="mute">Sari</span> &nbsp; <span class="btn sm">Riwayat Shift</span> <span class="btn sm off">Retur</span> <span class="btn sm">Surat Jalan</span> <span class="btn sm">Pengeluaran</span> <span class="btn sm bad">Tutup Shift</span></span></div>
-    <div class="pos">
-      <div class="l">
-        <span class="inp" style="font-size:16px;padding:10px">🔍 Scan barcode / ketik nama atau sku (F2) <span class="tag">2</span></span>
-        <div class="prod">
-          <div class="p"><b>Cat Tembok Putih 5kg</b><small class="mute">Stok 7 DUS + 2 PAIL</small><div class="u"><span class="chip pri">PAIL 116.600</span><span class="chip">DUS 437.250</span></div></div>
-          <div class="p"><b>Paku 5cm</b><small class="mute">Stok 120,5 KG</small><div class="u"><span class="chip pri">KG 24.000</span><span class="chip">DUS 560.000</span></div></div>
-          <div class="p"><b>Lampu LED 9W</b><small class="mute">Stok <span style="color:var(--bad)">3 PCS</span></small><div class="u"><span class="chip pri">PCS 15.000</span><span class="chip">DUS 330.000</span></div></div>
-          <div class="p"><b>Kuas 3"</b><small class="mute">Stok 38 PCS</small><div class="u"><span class="chip pri">PCS 9.000</span><span class="chip">LUSIN 100.000</span></div></div>
-        </div>
-      </div>
-      <div class="rr">
-        <b>Keranjang</b>
-        <table class="mt" style="background:#fff">
-          <tr><th>Barang</th><th>Satuan</th><th class="r">Qty</th><th class="r">Harga</th><th class="r">Subtotal</th><th></th></tr>
-          <tr><td>Cat Tembok Putih 5kg</td><td><span class="inp sel mini">DUS</span></td><td class="r">2</td><td class="r">437.250</td><td class="r">874.500</td><td><span class="btn sm bad">✕</span></td></tr>
-          <tr><td>Kuas 3"</td><td><span class="inp sel mini">PCS</span></td><td class="r">3</td><td class="r">9.000</td><td class="r">27.000</td><td><span class="btn sm bad">✕</span></td></tr>
-          <tr><td>Paku 5cm</td><td><span class="inp sel mini">KG</span></td><td class="r">1,5</td><td class="r">24.000</td><td class="r">36.000</td><td><span class="btn sm bad">✕</span></td></tr>
-        </table>
-        <div style="flex:1"></div>
-        <div class="row" style="justify-content:space-between;margin-top:10px"><span class="mute">Nama pelanggan (opsional): <span class="inp mini" style="display:inline-block;min-width:170px">—</span> <span class="tag">4</span></span><span class="mute">Nota berikut: <b>INV/MU/K1/2610/0125</b> <span class="tag">3</span></span></div>
-        <div class="total">Rp 937.500</div>
-        <div class="row"><span class="btn bad">Batal (F8) <span class="tag">5</span></span><span class="btn">Tahan (F4)</span><span class="btn ok lg" style="flex:2;text-align:center">Bayar (F9)</span></div>
-      </div>
-    </div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span><b>Fase 1b</b> — offline: katalog, harga, stok register dibaca dari cache lokal (IndexedDB); nota masuk antrean dan disinkronkan otomatis saat online. Penghitung "belum tersinkron" selalu tampil.</li>
-    <li><span class="tag">2</span>Enter pada barcode memasukkan barang dengan satuan default (barcode satuan langsung memilih satuannya). Klik chip satuan = tambah dengan satuan itu.</li>
-    <li><span class="tag">3</span>Nomor nota memuat kode register → unik tanpa server saat offline.</li>
-    <li>Kasir <b>tidak punya menu samping</b>; Riwayat Shift, Retur, Kas ±, Tutup Shift ada di bar atas. Retur & void butuh online.</li>
-    <li>Stok kurang → <b>online: blokir</b>; <b>offline: hanya peringatan</b> (stok lokal bisa tertinggal), lalu ditandai saat sinkron (isu stok minus). Chip satuan hanya menampilkan satuan "boleh dijual" untuk toko ini.</li>
-    <li><span class="tag">4</span>Nama pelanggan hanya teks opsional untuk struk. <b>Tidak ada kredit/hutang</b> di Fase 1.</li>
-    <li><span class="tag">5</span><b>Batal sebelum bayar:</b> langsung oleh kasir, pilih alasan, dicatat (item, total, user) — tanpa persetujuan. Void sesudah bayar & Retur: online + approval Admin (tombol Retur nonaktif saat offline).</li>
-    <li><b>Surat Jalan</b> dan <b>Pengeluaran</b> dibuka dari bar atas: surat jalan dibuat dari nota; pengeluaran sumber laci mengurangi tunai seharusnya shift.</li>
-    <li>Kasir tidak melihat/menghitung modal: HPP FIFO dihitung server saat nota diposting atau disinkronkan.</li>
-    <li>"Offline 5 jam" + "Backup lokal ✓": 1 kasir/PC per toko bisa berjualan seharian; tiap nota juga ditulis ke file backup di folder lokal.</li>
-  </ol></div>
-</section>
-
-<!-- 15 BUKA SHIFT -->
-<section class="screen" id="shiftbuka">
-  <div class="head"><h2>15. Buka Shift <span class="tagrel r1">R1 Inti</span></h2><p>Wajib sebelum berjualan. Bisa dilakukan offline.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/pos</span></div>
-  <div class="body"><div class="scrim"><div class="modal">
-    <b style="font-size:16px">Buka Shift</b>
-    <div class="row mt"><div class="fld"><label>Register</label><span class="inp" style="background:var(--soft)">K1 · Kasir 1</span></div><div class="fld"><label>Kasir</label><span class="inp" style="background:var(--soft)">Sari</span></div></div>
-    <div class="fld"><label>Modal kas awal (tetap) <span class="tag">1</span></label><span class="inp" style="font-size:18px;background:var(--soft)">Rp 500.000 🔒</span></div>
-    <div class="mt">☑ Saya sudah memastikan laci berisi modal kas tetap di atas</div>
-    <div class="mute mt">Shift sebelumnya: siang kemarin (#0424) ditutup 17:02 · setoran Rp 2.270.000 · selisih −Rp 10.000 <span class="chip warn">menunggu approval</span></div>
-    <div class="row mt"><span class="btn">Batal</span><span class="btn pri lg" style="flex:2;text-align:center">Buka Shift & Mulai Jualan</span></div>
-  </div></div></div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Modal kas awal <b>tetap</b> per register (diubah hanya oleh Admin); kasir hanya mengonfirmasi. Lazimnya 2 shift/hari (pagi–siang, siang–sore); shift berikutnya mulai lagi dari modal tetap, kelebihan tunai disetor.</li>
-    <li>Kasir tidak bisa menjual tanpa shift terbuka.</li>
-    <li>Dibuat offline → dikirim saat sinkron (<code>client_uuid</code>).</li>
-  </ol></div>
-</section>
-
-<!-- 16 BAYAR -->
-<section class="screen" id="bayar">
-  <div class="head"><h2>16. Pembayaran <span class="tagrel r1">R1 Inti</span></h2><p>Mendukung pembayaran campur (tunai / transfer / QRIS / EDC).</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/pos</span></div>
-  <div class="body"><div class="scrim"><div class="modal">
-    <div class="row" style="align-items:center"><b style="font-size:16px;flex:1">Pembayaran</b><span class="mute auto">INV/MU/K1/2610/0125</span></div>
-    <div class="total" style="font-size:34px">Rp 937.500</div>
-    <div class="tabs"><span class="on">Tunai</span><span>Transfer</span><span>QRIS</span><span>EDC</span></div>
-    <div class="fld"><label>Nominal diterima</label><span class="inp" style="font-size:18px">Rp 1.000.000</span></div>
-    <div class="row" style="gap:8px;margin-bottom:10px"><span class="btn">Uang pas</span><span class="btn">50.000</span><span class="btn">100.000</span><span class="btn">500.000</span><span class="btn">1.000.000</span></div>
-    <table><tr><td>Total</td><td class="r">937.500</td></tr><tr><td>Dibayar</td><td class="r">1.000.000</td></tr><tr><td><b>Kembalian</b></td><td class="r"><b>62.500</b></td></tr></table>
-    <div class="row mt"><span class="btn">+ Tambah metode lain</span></div>
-    <div class="mt">☐ Buat surat jalan (pengantaran) setelah nota selesai <span class="tag">3</span></div>
-    <div class="row mt"><span class="btn">Batal</span><span class="btn ok lg" style="flex:2;text-align:center">Selesai & Cetak Nota</span></div>
-  </div></div></div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li>Simpan = satu transaksi atomik (nota + item + pembayaran + stok). Gagal → batal semua, keranjang tetap.</li>
-    <li><span class="tag">3</span>Centang <i>Buat surat jalan</i> bila barang diantar: layar surat jalan terbuka dengan item nota terisi (stok tidak berubah).</li>
-    <li>Tunai masuk perhitungan kas shift; non-tunai hanya direkap. <b>Kredit/hutang dihapus dulu (Fase 2)</b>; potongan nilai retur pada tukar barang diterapkan otomatis dari layar Retur, bukan dipilih di sini.</li>
-    <li>Offline: disimpan ke antrean lokal dengan <code>client_uuid</code> sebagai kunci idempotensi.</li>
-  </ol></div>
-</section>
-
-<!-- 17 NOTA -->
-<section class="screen" id="nota">
-  <div class="head"><h2>17. Pratinjau Nota <span class="tagrel r1">R1 Inti</span></h2><p>Contoh isi saja. <b>Layout final menyusul</b>; cetak lewat browser print (ESC/POS langsung ditunda). Berfungsi offline.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/pos/receipt</span></div>
-  <div class="body pad" style="background:var(--soft)">
-    <div class="row" style="margin-bottom:12px;justify-content:center"><span class="inp sel auto" style="min-width:150px">Kertas: 80 mm</span><span class="btn pri auto">🖨 Cetak</span></div>
-    <div class="receipt">
-      <div class="c"><b>TOKO UTAMA</b><br>Jl. Merdeka 12, Kota<br>Telp 021-555-0123</div>
-      <hr>
-      <div class="l2"><span>No</span><span>INV/MU/K1/2610/0125</span></div>
-      <div class="l2"><span>Tgl</span><span>25-10-2026 10:44</span></div>
-      <div class="l2"><span>Kasir</span><span>Sari (K1)</span></div>
-      <hr>
-      Cat Tembok Putih 5kg<br><div class="l2"><span>&nbsp;2 DUS x 437.250</span><span>874.500</span></div>
-      Kuas 3"<br><div class="l2"><span>&nbsp;3 PCS x 9.000</span><span>27.000</span></div>
-      Paku 5cm<br><div class="l2"><span>&nbsp;1,5 KG x 24.000</span><span>36.000</span></div>
-      <hr>
-      <div class="l2"><b>TOTAL</b><b>937.500</b></div>
-      <div class="l2"><span>Tunai</span><span>1.000.000</span></div>
-      <div class="l2"><span>Kembali</span><span>62.500</span></div>
-      <hr>
-      <div class="c">Terima kasih<br>Barang yang sudah dibeli<br>tidak dapat ditukar</div>
-    </div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li>Header, footer, logo, ukuran kertas dikonfigurasi di Pengaturan toko.</li>
-    <li>Cetak ulang bertanda <b>SALINAN</b>; nota void bertanda <b>VOID</b>; bukti retur memakai template terpisah.</li>
-  </ol></div>
-</section>
-
-<!-- 18 TUTUP SHIFT -->
-<section class="screen" id="shifttutup">
-  <div class="head"><h2>18. Tutup Shift & Laporan Z <span class="tagrel r1">R1 Inti</span></h2><p>Buka/tutup kas di akhir hari: hitung uang, lihat selisih.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/pos</span></div>
-  <div class="body"><div class="scrim"><div class="modal" style="max-width:600px">
-    <div class="row" style="align-items:center"><b style="font-size:16px;flex:1">Tutup Shift #0425 · K1 · Sari</b><span class="net on auto">● online · 0 belum sinkron <span class="tag">1</span></span></div>
-    <table class="mt">
-      <tr><th>Ringkasan</th><th class="r">Nominal</th></tr>
-      <tr><td>Penjualan tunai</td><td class="r">3.250.000</td></tr>
-      <tr><td>Transfer</td><td class="r">1.120.000</td></tr>
-      <tr><td>QRIS</td><td class="r">480.000</td></tr>
-      <tr><td>EDC</td><td class="r">0</td></tr>
-      <tr><td>Total penjualan (37 nota, 0 void)</td><td class="r"><b>4.850.000</b></td></tr>
-      <tr><td>Refund tunai (retur)</td><td class="r">−150.000</td></tr>
-      <tr><td>Pengeluaran laci (beli galon)</td><td class="r">−50.000</td></tr>
-      <tr><td>Modal kas awal</td><td class="r">500.000</td></tr>
-      <tr><th>Tunai seharusnya <span class="tag">2</span></th><th class="r">3.550.000</th></tr>
-    </table>
-    <div class="row mt"><div class="fld"><label>Tunai hasil hitung</label><span class="inp" style="font-size:18px">Rp 3.540.000</span></div><div class="fld"><label>Selisih</label><span class="inp" style="font-size:18px;color:var(--bad)">− Rp 10.000</span></div></div>
-    <div class="fld"><label>Catatan selisih (wajib bila ≠ 0)</label><span class="inp">Kembalian kurang Rp 10.000</span></div>
-    <div class="box mt">Modal tetap yang tinggal di laci: <b>500.000</b> · <b>Setoran ke Admin: Rp 3.040.000</b> (3.540.000 − 500.000) <span class="tag">3</span><br>Status selisih: <span class="chip warn">menunggu approval Admin</span> <span class="mute">(tidak memblokir shift berikutnya)</span></div>
-    <div class="row mt"><span class="btn">Batal</span><span class="btn bad lg" style="flex:2;text-align:center">Tutup Shift & Cetak Laporan Z</span></div>
-  </div></div></div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Jika masih ada nota belum tersinkron dan perangkat online → diminta sinkron dulu. Jika benar-benar offline → boleh tutup lokal berstatus <i>pending sync</i>; server menghitung ulang tunai seharusnya saat sinkron.</li>
-    <li><span class="tag">2</span>Tunai seharusnya = modal awal + penjualan tunai − refund tunai − pengeluaran laci.</li>
-    <li><span class="tag">3</span>Setoran = tunai hasil hitung − modal tetap. Selisih ≠ 0 wajib catatan dan masuk antrean approval di Rekap Shift Admin (layar 22).</li>
-  </ol></div>
-</section>
-
-<!-- 19 RIWAYAT -->
-<section class="screen" id="riwayat">
-  <div class="head"><h2>19. Riwayat Shift & Void <span class="tagrel r1">R1 Inti</span></h2><p>Kasir melihat nota shift sendiri; Admin melihat seluruh toko. Void hanya di shift yang masih terbuka — sesudahnya pakai Retur.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/pos/history</span></div>
-  <div class="body pad">
-    <div class="row" style="margin-bottom:10px;align-items:center"><span class="inp" style="flex:2">🔍 No. nota</span><span class="inp sel">Shift #0425 (berjalan)</span><span class="inp sel">Semua status</span></div>
-    <table>
-      <tr><th>No. Nota</th><th>Waktu</th><th>Pelanggan</th><th>Metode</th><th class="r">Total</th><th>Status</th><th class="c">Aksi</th></tr>
-      <tr><td>INV/MU/K1/2610/0124</td><td>10:44</td><td>UMUM</td><td>Tunai</td><td class="r">937.500</td><td><span class="chip ok">Selesai</span></td><td class="c"><span class="btn sm">Cetak ulang</span> <span class="btn sm">Surat jalan</span> <span class="btn sm bad">Void <span class="tag">1</span></span> <span class="btn sm">Retur</span></td></tr>
-      <tr><td>INV/MU/K1/2610/0123</td><td>10:31</td><td>UMUM</td><td>QRIS</td><td class="r">54.000</td><td><span class="chip ok">Selesai</span> <span class="chip warn">retur sebagian</span></td><td class="c"><span class="btn sm">Cetak ulang</span> <span class="btn sm bad">Void</span> <span class="btn sm">Retur</span></td></tr>
-      <tr><td>INV/MU/K1/2610/0122</td><td>10:12</td><td>CV Maju</td><td>Transfer</td><td class="r">2.150.000</td><td><span class="chip bad">VOID</span></td><td class="c"><span class="btn sm">Detail</span></td></tr>
-      <tr><td>INV/MU/K1/2610/0121 <span class="chip pri">offline</span></td><td>09:58</td><td>UMUM</td><td>Tunai</td><td class="r">310.000</td><td><span class="chip ok">Selesai</span></td><td class="c"><span class="btn sm">Cetak ulang</span> <span class="btn sm off">Void <span class="tag">2</span></span></td></tr>
-    </table>
-    <div class="grid2 mt">
-      <div class="card"><h4>Ajukan Void (sudah dibayar) <span class="tag">3</span></h4><div class="fld"><label>Nota</label><span class="inp">INV/MU/K1/2610/0124 · Rp 937.500</span></div><div class="fld"><label>Alasan (wajib)</label><span class="inp">Salah input satuan</span></div><span class="btn bad">Kirim Pengajuan</span></div>
-      <div class="card"><h4>Log batal sebelum bayar <span class="tag">4</span></h4><table class="mt"><tr><th>Waktu</th><th class="r">Item</th><th class="r">Total</th><th>Alasan</th></tr><tr><td>10:02</td><td class="r">3</td><td class="r">180.000</td><td>Pelanggan batal</td></tr><tr><td>09:15</td><td class="r">1</td><td class="r">45.000</td><td>Salah scan</td></tr></table></div>
-      <div class="card"><h4>Persetujuan Admin</h4><small>Void INV/…/0124 diajukan Sari: "Salah input satuan"</small><div class="mt">Dampak: stok kembali 2 DUS Cat, 3 PCS Kuas, 1,5 KG Paku ke Main Warehouse</div><div class="row mt"><span class="btn">Tolak</span><span class="btn bad">Setujui Void</span></div></div>
-    </div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Void <b>sesudah bayar</b> hanya untuk nota di shift terbuka dan butuh approval Admin; nota tidak dihapus, status VOID, stok kembali lewat kartu stok, kas dibalik.</li>
-    <li><span class="tag">3</span>Pengajuan dari kasir (online). Hasil persetujuan tampil di kartu "Persetujuan Admin".</li>
-    <li><span class="tag">4</span><b>Batal sebelum bayar</b> (tombol Batal di layar kasir) langsung tanpa persetujuan, tetapi dicatat di sini sebagai log (item, total, alasan, user).</li>
-    <li><span class="tag">2</span>Nota offline yang belum tersinkron belum bisa di-void/retur (online saja) — tombol nonaktif sampai tersinkron.</li>
-    <li>Nota dari shift lama → tombol Void hilang, gunakan Retur.</li>
-  </ol></div>
-</section>
-
-<!-- 20 RETUR -->
-<section class="screen" id="retur">
-  <div class="head"><h2>20. Retur (Refund / Tukar Barang) <span class="tagrel r1">R1 Inti</span></h2><p>Stok kembali; tiap barang dipilih <b>tetap dijual</b> atau <b>dead stock</b>. Transaksi asli dikoreksi lewat retur.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/returns/new?sale=INV-MU-K1-2610-0118</span></div>
-  <div class="body pad">
-    <div class="row" style="align-items:center"><b style="font-size:16px;flex:1">Retur untuk nota INV/MU/K1/2610/0118</b><span class="mute auto">24 Okt 2026 · tanpa batas hari · butuh approval Admin</span></div>
-    <table class="mt">
-      <tr><th>Barang</th><th>Satuan</th><th class="r">Terjual</th><th class="r">Sudah diretur</th><th class="r">Qty retur</th><th class="r">Harga nota</th><th class="r">Nilai</th><th>Disposisi <span class="tag">1</span></th><th>Gudang tujuan</th></tr>
-      <tr><td>Cat Tembok Putih 5kg</td><td>DUS</td><td class="r">2</td><td class="r">0</td><td class="r"><b>1</b></td><td class="r">437.250</td><td class="r">437.250</td><td><span class="inp sel mini"><span class="chip ok">Tetap dijual</span></span></td><td>Main Warehouse</td></tr>
-      <tr><td>Lampu LED 9W</td><td>PCS</td><td class="r">3</td><td class="r">0</td><td class="r"><b>1</b></td><td class="r">15.000</td><td class="r">15.000</td><td><span class="inp sel mini"><span class="chip warn">Dead stock</span></span></td><td>Dead Stock</td></tr>
-      <tr><td>Paku 5cm</td><td>KG</td><td class="r">2</td><td class="r">0</td><td class="r">0</td><td class="r">24.000</td><td class="r">0</td><td class="mute">—</td><td></td></tr>
-      <tr><th colspan="6" class="r">Nilai barang diretur</th><th class="r">452.250</th><th colspan="2"></th></tr>
-    </table>
-    <div class="fld mt"><label>Alasan retur (wajib)</label><span class="inp">Cat salah warna; lampu pecah saat diterima pelanggan</span></div>
-
-    <div class="grid2 mt">
-      <div class="card"><h4><span class="radio on"></span> Refund <span class="tag">2</span></h4>
-        <div class="fld mt"><label>Metode pengembalian</label><span class="inp sel">Tunai</span></div>
-        <table><tr><td>Refund</td><td class="r"><b>452.250</b></td></tr></table>
-        <div class="mt mute">Tunai → tercatat sebagai kas keluar di shift berjalan (memengaruhi tunai seharusnya).</div>
-      </div>
-      <div class="card"><h4><span class="radio"></span> Tukar barang <span class="tag">3</span></h4>
-        <table class="mt"><tr><td>Nilai retur (dipotong otomatis)</td><td class="r">452.250</td></tr><tr><td>Pengganti: Cat Tembok Merah 5kg · 1 DUS</td><td class="r">480.000</td></tr><tr><td><b>Pelanggan bayar selisih</b></td><td class="r"><b>27.750</b></td></tr></table>
-        <div class="mt"><span class="btn sm">Pilih barang pengganti di Kasir ▸</span></div>
-      </div>
-    </div>
-    <div class="row mt"><span class="btn">Batal</span><span class="btn pri lg auto">Ajukan Retur</span></div>
-    <div class="box mt"><b>Persetujuan <span class="tag">4</span></b> &nbsp; Status: <span class="chip warn">pending</span> → Admin: <span class="btn sm">Tolak</span> <span class="btn sm ok">Setujui & Proses</span> &nbsp; <span class="mute">Stok & kas baru berubah setelah disetujui</span></div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Disposisi per item: <i>Tetap dijual</i> → stok kembali ke gudang jual; <i>Dead stock</i> → gudang bertipe dead_stock (tidak muncul di kasir). Kartu stok: <code>sale_return</code>.</li>
-    <li><span class="tag">2</span>Refund dihitung dari harga di nota asli (bukan harga sekarang); laba dibalik memakai modal snapshot nota asli.</li>
-    <li><span class="tag">3</span>Tukar barang: dibuat penjualan baru yang terhubung (<code>exchange_sale_id</code>) dengan potongan nilai retur otomatis (internal); selisih ditagih atau dikembalikan tunai.</li>
-    <li><span class="tag">4</span>Kasir mengajukan, <b>Admin wajib menyetujui</b> (Admin boleh langsung). Qty ≤ terjual − sudah diretur; <b>tanpa batas hari</b>. Retur online saja.</li>
-    <li>Tukar barang: bila pengganti lebih murah, <b>selisih boleh dikembalikan tunai</b>.</li>
-    <li>Dead stock dapat dijual lagi lewat Transfer Gudang atau dimusnahkan lewat opname/penyesuaian dengan alasan.</li>
-    <li>Costing: <i>Tetap dijual</i> mengisi kembali layer FIFO yang dipakai nota asli; <i>Dead stock</i> membuat layer baru di gudang Dead Stock dengan modal asal. Laba dibalik sebesar modal layer yang dipulihkan.</li>
-  </ol></div>
-</section>
-
-<!-- 20a SURAT JALAN -->
-<section class="screen" id="suratjalan">
-  <div class="head"><h2>20a. Surat Jalan <span class="tagrel r1">R1 Inti</span></h2><p>Dokumen pengantaran untuk nota yang barangnya diantar. <b>Tidak mengubah stok</b> (stok sudah berkurang saat nota).</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/delivery-notes</span></div>
-  <div class="body pad">
-    <div class="row" style="margin-bottom:10px;align-items:center"><span class="inp" style="flex:2">🔍 No. surat jalan / nota / penerima</span><span class="inp sel">Semua status</span><span class="inp">📅 Periode</span></div>
-    <table>
-      <tr><th>No. surat jalan</th><th>Nota</th><th>Penerima</th><th>Tgl</th><th>Sopir · Kendaraan</th><th>Status</th><th class="c">Aksi</th></tr>
-      <tr><td>SJ/MU/2610/0007</td><td>INV/MU/K1/2610/0125</td><td>CV Maju</td><td>25 Okt</td><td>Dedi · B 9123 XY</td><td><span class="chip">draft</span></td><td class="c"><span class="btn sm">Buka</span></td></tr>
-      <tr><td>SJ/MU/2610/0006</td><td>INV/MU/K1/2610/0118</td><td>Pak Haji Rahmat</td><td>24 Okt</td><td>Joko · B 4410 KL</td><td><span class="chip pri">shipped</span></td><td class="c"><span class="btn sm">Update status</span></td></tr>
-      <tr><td>SJ/MU/2610/0005</td><td>INV/MU/K1/2610/0110</td><td>Proyek Villa Asri</td><td>23 Okt</td><td>Dedi · B 9123 XY</td><td><span class="chip warn">partially_delivered</span> <small class="mute">1 DUS pulang</small></td><td class="c"><span class="btn sm bad">Buat Retur <span class="tag">2</span></span></td></tr>
-      <tr><td>SJ/MU/2610/0004</td><td>INV/MU/K1/2610/0099</td><td>CV Maju</td><td>22 Okt</td><td>Joko · B 4410 KL</td><td><span class="chip ok">delivered</span></td><td class="c"><span class="btn sm">Cetak ulang</span></td></tr>
-    </table>
-    <div class="grid2 mt">
-      <div class="card"><h4>Surat jalan baru dari nota INV/MU/K1/2610/0125 <span class="tag">1</span></h4>
-        <div class="row"><div class="fld"><label>Nama penerima</label><span class="inp">Pak Wahyu (CV Maju)</span></div><div class="fld"><label>Telepon</label><span class="inp">0812-5550-0123</span></div></div>
-        <div class="fld"><label>Alamat pengantaran</label><span class="inp">Jl. Raya Industri No. 21, Kota</span></div>
-        <div class="row"><div class="fld"><label>Sopir</label><span class="inp">Dedi</span></div><div class="fld"><label>No. kendaraan</label><span class="inp">B 9123 XY</span></div></div>
-        <table class="mt"><tr><th>Barang</th><th>Satuan</th><th class="r">Qty nota</th><th class="r">Sudah disuratjalankan</th><th class="r">Kirim ini</th></tr>
-          <tr><td>Cat Tembok Putih 5kg</td><td>DUS</td><td class="r">2</td><td class="r">0</td><td class="r"><span class="inp mini">2</span></td></tr>
-          <tr><td>Kuas 3"</td><td>PCS</td><td class="r">3</td><td class="r">0</td><td class="r"><span class="inp mini">3</span></td></tr>
-          <tr><td>Paku 5cm</td><td>KG</td><td class="r">1,5</td><td class="r">0</td><td class="r"><span class="inp mini">0</span> <small class="mute">(dibawa pembeli)</small></td></tr></table>
-        <div class="mt"><span class="btn pri">Simpan & Cetak</span> <span class="btn">Simpan draft</span></div>
-      </div>
-      <div class="card"><h4>Pratinjau cetak (tanpa harga) <span class="tag">3</span></h4>
-        <div class="receipt" style="width:100%;max-width:300px">
-          <div class="c"><b>MITRA UTAMA</b><br>SURAT JALAN</div><hr>
-          <div class="l2"><span>No</span><span>SJ/MU/2610/0007</span></div>
-          <div class="l2"><span>Nota</span><span>INV/MU/K1/2610/0125</span></div>
-          <div class="l2"><span>Penerima</span><span>Pak Wahyu</span></div>
-          <div>Jl. Raya Industri 21</div><div class="l2"><span>Sopir</span><span>Dedi · B 9123 XY</span></div><hr>
-          Cat Tembok Putih 5kg<br><div class="l2"><span>&nbsp;</span><span>2 DUS</span></div>
-          Kuas 3"<br><div class="l2"><span>&nbsp;</span><span>3 PCS</span></div><hr>
-          <div class="l2"><span>Pengirim</span><span>Penerima</span></div><br><br>
-          <div class="l2"><span>(........)</span><span>(........)</span></div>
-        </div>
-      </div>
-    </div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Dibuat dari nota (layar bayar atau Riwayat Nota). Qty kirim ≤ sisa baris nota yang belum disuratjalankan; satu nota boleh punya beberapa surat jalan (kirim bertahap).</li>
-    <li><span class="tag">2</span>Barang pulang hanya <b>penanda</b>; stok kembali lewat <b>Retur</b> nota (tombol Buat Retur), sehingga tidak ada penghitungan ganda.</li>
-    <li><span class="tag">3</span>Cetak tanpa harga (bisa dinyalakan di pengaturan), dengan kolom tanda tangan; cetak ulang bertanda SALINAN. Void nota yang punya surat jalan aktif ditolak.</li>
-    <li>Status: draft → shipped → delivered / partially_delivered / returned; cancelled.</li>
-  </ol></div>
-</section>
-
-<!-- 20b PENGELUARAN -->
-<section class="screen" id="pengeluaran">
-  <div class="head"><h2>20b. Pengeluaran <span class="tagrel r1">R1 Inti</span></h2><p>Catatan uang keluar operasional. Sumber <b>laci kasir</b> mengurangi tunai seharusnya shift; sumber <b>lainnya</b> tidak.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/expenses</span></div>
-  <div class="body pad">
-    <div class="row" style="margin-bottom:10px;align-items:center"><span class="inp">📅 24–25 Okt 2026</span><span class="inp sel">Semua kategori</span><span class="inp sel">Semua sumber</span><span class="btn pri auto">+ Pengeluaran</span></div>
-    <table>
-      <tr><th>No.</th><th>Tanggal</th><th>Kategori</th><th>Keterangan</th><th>Penerima</th><th>Sumber <span class="tag">1</span></th><th>Shift</th><th class="r">Nominal</th><th>Status</th></tr>
-      <tr><td>PGL/MU/2610/0004</td><td>25 Okt 09:10</td><td>Operasional</td><td>Beli galon</td><td>Toko Air</td><td><span class="chip ok">laci</span></td><td>#0425</td><td class="r">50.000</td><td><span class="chip ok">recorded</span></td></tr>
-      <tr><td>PGL/MU/2610/0003</td><td>24 Okt 15:20</td><td>Upah/Gaji</td><td>Upah harian bongkar</td><td>Pak Eko</td><td><span class="chip ok">laci</span></td><td>#0424</td><td class="r">70.000</td><td><span class="chip ok">recorded</span></td></tr>
-      <tr><td>PGL/MU/2610/0002</td><td>24 Okt 11:05</td><td>Transport/Bensin</td><td>Bensin pickup antar barang</td><td>SPBU</td><td><span class="chip ok">laci</span></td><td>#0423</td><td class="r">50.000</td><td><span class="chip ok">recorded</span></td></tr>
-      <tr><td>PGL/MU/2610/0001</td><td>24 Okt 09:00</td><td>Listrik/Air</td><td>Tagihan listrik Oktober</td><td>PLN</td><td><span class="chip">lainnya</span></td><td class="mute">—</td><td class="r">1.250.000</td><td><span class="chip ok">recorded</span></td></tr>
-    </table>
-    <div class="grid2 mt">
-      <div class="card"><h4>Pengeluaran baru <span class="tag">2</span></h4>
-        <div class="row"><div class="fld"><label>Kategori</label><span class="inp sel">Operasional</span></div><div class="fld"><label>Nominal</label><span class="inp">Rp 50.000</span></div></div>
-        <div class="fld"><label>Keterangan</label><span class="inp">Beli galon air minum</span></div>
-        <div class="row"><div class="fld"><label>Penerima / vendor</label><span class="inp">Toko Air</span></div><div class="fld"><label>Sumber</label><span class="inp"><span class="radio on"></span> Laci kasir &nbsp; <span class="radio"></span> Lainnya</span></div></div>
-        <div class="mute mt">Terkait shift berjalan <b>#0425</b> · tunai seharusnya berkurang Rp 50.000</div>
-        <div class="mt"><span class="btn pri">Simpan</span></div>
-      </div>
-      <div class="card"><h4>Ringkasan 24 Okt</h4><table class="mt"><tr><td>Dari laci kasir</td><td class="r">120.000</td></tr><tr><td>Dari sumber lain</td><td class="r">1.250.000</td></tr><tr><td><b>Total</b></td><td class="r"><b>1.370.000</b></td></tr></table><div class="mt mute">Per kategori: Listrik/Air 1.250.000 · Upah/Gaji 70.000 · Transport/Bensin 50.000</div></div>
-    </div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Sumber <b>laci</b> wajib ada shift terbuka dan mengurangi tunai seharusnya; sumber <b>lainnya</b> tidak memengaruhi kas shift. Menggantikan konsep "kas masuk/keluar".</li>
-    <li><span class="tag">2</span>Kasir mencatat sumber laci dari layar kasir (shift sendiri); Admin dapat mencatat keduanya. Koreksi = void oleh Admin dengan alasan; hari yang sudah ditutup terkunci.</li>
-    <li>Kategori dikelola Admin (bawaan: Operasional, Listrik/Air, Transport/Bensin, Upah/Gaji, ATK/Perlengkapan, Lain-lain).</li>
-  </ol></div>
-</section>
-
-<!-- 20c TUTUP HARI -->
-<section class="screen" id="tutuphari">
-  <div class="head"><h2>20c. Tutup Hari <span class="tagrel r1">R1 Inti</span></h2><p>Penutupan akhir hari oleh Admin: rekonsiliasi semua shift, snapshot laporan harian, dan penguncian transaksi tanggal itu.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/daily-closings/2026-10-24</span></div>
-  <div class="body pad">
-    <div class="row" style="align-items:center"><b style="font-size:16px;flex:1">Tutup Hari · Sabtu, 24 Okt 2026</b><span class="inp auto" style="min-width:150px">📅 24 Okt 2026</span></div>
-    <div class="grid2 mt">
-      <div class="card"><h4>Prasyarat <span class="tag">1</span></h4>
-        <table class="mt">
-          <tr><td>✅ Semua shift sudah ditutup</td><td class="r">2 shift (#0423, #0424)</td></tr>
-          <tr><td>⚠️ Selisih kas belum diputuskan</td><td class="r"><span class="chip warn">1 · #0424 (−10.000)</span> <span class="btn sm ok">Tinjau</span></td></tr>
-          <tr><td>✅ Tidak ada retur pending</td><td class="r">0</td></tr>
-          <tr><td>ℹ️ Surat jalan belum selesai <small class="mute">(peringatan)</small></td><td class="r">2</td></tr>
-        </table>
-      </div>
-      <div class="card"><h4>Ringkasan hari ini <span class="tag">2</span></h4>
-        <table class="mt">
-          <tr><td>Jumlah nota</td><td class="r">61</td></tr>
-          <tr><td>Penjualan tunai</td><td class="r">4.300.000</td></tr>
-          <tr><td>Penjualan transfer</td><td class="r">1.650.000</td></tr>
-          <tr><td>Penjualan QRIS</td><td class="r">720.000</td></tr>
-          <tr><td><b>Total penjualan</b></td><td class="r"><b>6.670.000</b></td></tr>
-          <tr><td>Retur / refund tunai</td><td class="r">−250.000</td></tr>
-          <tr><td>Pengeluaran dari laci</td><td class="r">−120.000</td></tr>
-          <tr><td>Pengeluaran sumber lain (info)</td><td class="r">1.250.000</td></tr>
-          <tr><td>Tunai seharusnya (2 shift, termasuk modal 2 × 500.000)</td><td class="r">4.930.000</td></tr>
-          <tr><td>Tunai dihitung</td><td class="r">4.920.000</td></tr>
-          <tr><td>Selisih total</td><td class="r"><span class="chip bad">−10.000</span></td></tr>
-          <tr><th>Setoran total ke Admin</th><th class="r">3.920.000</th></tr>
-        </table>
-      </div>
-    </div>
-    <div class="fld mt"><label>Catatan penutupan</label><span class="inp">Selisih −10.000 shift siang disetujui (kembalian kurang).</span></div>
-    <div class="row mt"><span class="btn">Batal</span><span class="btn bad lg" style="flex:2;text-align:center">Tutup Hari & Kunci Transaksi <span class="tag">3</span></span></div>
-    <div class="box mt"><b>Riwayat tutup hari</b> &nbsp; 23 Okt <span class="chip ok">closed</span> Andi · 22 Okt <span class="chip ok">closed</span> Andi · 21 Okt <span class="chip warn">reopened → closed</span> Budi (alasan: koreksi retur) <span class="tag">4</span></div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Tombol Tutup Hari aktif bila semua shift tertutup, semua selisih kas sudah diputuskan (setujui/tolak di Rekap Shift), dan tidak ada retur pending. Surat jalan belum selesai hanya peringatan.</li>
-    <li><span class="tag">2</span>Angka disimpan sebagai <b>snapshot</b> di <code>daily_closings</code>; laporan harian mencetak snapshot itu. Tanggal bisnis = tanggal buka shift.</li>
-    <li><span class="tag">3</span><b>Penguncian:</b> nota, retur, pengeluaran, dan shift tanggal itu tidak dapat diubah atau di-void. Retur atas nota hari tertutup tetap boleh dan dicatat pada tanggal berjalan. Opname tidak terkunci.</li>
-    <li><span class="tag">4</span>Buka kembali hanya oleh Super Admin dengan alasan (diaudit), lalu harus ditutup ulang.</li>
-  </ol></div>
-</section>
-
-<!-- 21 SYNC -->
-<section class="screen" id="sync">
-  <div class="head"><h2>21. Sinkronisasi, Backup Lokal & Antrean Masalah <span class="chip pri">Fase 1b</span> <span class="tagrel r3">R3</span></h2><p><b>Dikerjakan sesudah go-live online.</b> Dipakai Admin untuk memantau register (1 PC kasir per toko), backup lokal, dan menyelesaikan isu hasil sinkronisasi.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/sync</span></div>
-  <div class="body pad">
-    <div class="tabs"><span class="on">Perangkat & Backup</span><span>Antrean Masalah <span class="chip bad">2</span></span></div>
-    <table>
-      <tr><th>Register</th><th>Gudang</th><th>Kasir / Shift</th><th>Koneksi</th><th>Terakhir sinkron</th><th class="r">Belum tersinkron</th><th>Backup lokal <span class="tag">2</span></th><th>Aksi</th></tr>
-      <tr><td>K1</td><td>Main Warehouse</td><td>Sari · #0425</td><td><span class="net off">● offline 5 jam</span></td><td>05:41</td><td class="r"><span class="chip warn">14 nota · Rp 5.730.000</span></td><td><span class="chip ok">file terakhir 10:44 ✓</span></td><td><span class="btn sm">Cabut sesi</span> <span class="btn sm">Impor file backup</span></td></tr>
-    </table>
-    <div class="box mt"><b>Bila data browser kasir hilang <span class="tag">2</span></b> — Admin mengimpor file backup (<code>pos-backup-MU-K1-2026-10-25.jsonl</code>). Server memakai <code>client_uuid</code> sehingga nota yang sudah tersinkron tidak ganda.</div>
-    <div class="row mt" style="align-items:center"><b style="flex:1">Antrean masalah <span class="tag">1</span></b><span class="mute auto">2 terbuka</span></div>
-    <table>
-      <tr><th>Jenis</th><th>Nota</th><th>Barang</th><th>Detail</th><th>Status</th><th>Aksi</th></tr>
-      <tr><td><span class="chip bad">negative_stock</span></td><td>INV/MU/K1/2610/0121</td><td>Cat Tembok Putih 5kg</td><td>Stok jadi −2 PAIL setelah sinkron (dijual offline)</td><td><span class="chip warn">open</span></td><td><span class="btn sm">Opname</span> <span class="btn sm">Tandai selesai</span></td></tr>
-      <tr><td><span class="chip warn">price_changed</span></td><td>INV/MU/K1/2610/0119</td><td>Paku 5cm</td><td>Harga lokal 24.000 vs server 25.000 (nota memakai 24.000)</td><td><span class="chip warn">open</span></td><td><span class="btn sm">Tandai selesai</span></td></tr>
-    </table>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Penjualan offline selalu diterima (barang sudah keluar), walau membuat stok minus; Admin merekonsiliasi lewat penerimaan/opname lalu menutup isu.</li>
-    <li><span class="tag">2</span>Backup lokal: tiap kejadian kasir ditulis juga ke file di folder yang dipilih kasir (Chrome/Edge). Pengaman bila cache browser terhapus; bukan pengganti server.</li>
-    <li>Cabut sesi: PC hilang/dicuri tidak bisa sinkron lagi dan harus login ulang.</li>
-    <li>Rekaman yang ditolak server (register nonaktif, shift tidak dikenal) masuk antrean sebagai <code>rejected_record</code>.</li>
-  </ol></div>
-</section>
-
-<!-- 22 REKAP SHIFT -->
-<section class="screen" id="rekap">
-  <div class="head"><h2>22. Rekap Shift & Approval Selisih Kas (Admin) <span class="tagrel r1">R1 Inti</span></h2><p>Admin meninjau tiap shift (pagi–siang, siang–sore) dan menyetujui selisih kas.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/t/mitra_utama/shifts</span></div>
-  <div class="body pad">
-    <div class="row" style="margin-bottom:10px;align-items:center"><span class="inp">📅 22–25 Okt 2026</span><span class="inp sel">Semua status selisih</span><span class="inp sel">Semua kasir</span></div>
-    <table>
-      <tr><th>Shift</th><th>Tanggal · Jam</th><th>Kasir</th><th class="r">Tunai seharusnya</th><th class="r">Dihitung</th><th class="r">Selisih</th><th class="r">Setoran <span class="tag">1</span></th><th>Status selisih</th><th class="c">Aksi</th></tr>
-      <tr><td>#0425 · K1</td><td>25 Okt · 08:00 – berjalan</td><td>Sari</td><td class="r mute" colspan="4">shift masih berjalan</td><td><span class="chip ok">open</span></td><td class="c"><span class="btn sm">Lihat</span></td></tr>
-      <tr><td>#0424 · K1 (siang)</td><td>24 Okt · 12:00 – 17:02</td><td>Joko</td><td class="r">2.780.000</td><td class="r">2.770.000</td><td class="r"><span class="chip bad">−10.000</span></td><td class="r">2.270.000</td><td><span class="chip warn">pending_approval</span></td><td class="c"><span class="btn sm">Laporan Z</span> <span class="btn sm ok">Tinjau</span></td></tr>
-      <tr><td>#0423 · K1 (pagi)</td><td>24 Okt · 08:00 – 12:01</td><td>Sari</td><td class="r">2.150.000</td><td class="r">2.150.000</td><td class="r"><span class="chip ok">0</span></td><td class="r">1.650.000</td><td><span class="chip">none</span></td><td class="c"><span class="btn sm">Laporan Z</span></td></tr>
-      <tr><td>#0422 · K1 (siang)</td><td>23 Okt · 12:00 – 17:05</td><td>Joko</td><td class="r">2.980.000</td><td class="r">2.995.000</td><td class="r"><span class="chip warn">+15.000</span></td><td class="r">2.495.000</td><td><span class="chip ok">approved</span> <small class="mute">Andi</small></td><td class="c"><span class="btn sm">Laporan Z</span></td></tr>
-    </table>
-    <div class="grid2 mt">
-      <div class="card"><h4>Tinjau shift #0424 <span class="tag">2</span></h4>
-        <table class="mt"><tr><td>Tunai seharusnya</td><td class="r">2.780.000</td></tr><tr><td>Tunai dihitung</td><td class="r">2.770.000</td></tr><tr><td><b>Selisih</b></td><td class="r"><b style="color:var(--bad)">−10.000</b></td></tr><tr><td>Catatan kasir</td><td class="r">Kembalian kurang Rp 10.000</td></tr></table>
-        <div class="fld mt"><label>Catatan approval</label><span class="inp">Disetujui, dicatat sebagai selisih kembalian</span></div>
-        <div class="row"><span class="btn bad">Tolak / tindak lanjut</span><span class="btn ok">Setujui Selisih</span></div>
-      </div>
-      <div class="card"><h4>Ringkasan 24 Okt</h4><table class="mt"><tr><td>Total setoran diterima</td><td class="r">3.920.000</td></tr><tr><td>Selisih belum disetujui</td><td class="r">−10.000 (1 shift)</td></tr><tr><td>Modal tetap per shift</td><td class="r">500.000</td></tr></table></div>
-    </div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Setoran = tunai dihitung − modal kas tetap (500.000 per shift).</li>
-    <li><span class="tag">2</span>Selisih ≠ 0 wajib disetujui Admin/Super Admin. Tidak memblokir shift berikutnya; selisih yang belum disetujui tampil di dashboard Admin.</li>
-    <li>Persetujuan tercatat di audit (user, waktu, catatan).</li>
-  </ol></div>
-</section>
-
-<!-- 24 CEK STOK -->
-<section class="screen" id="cekstok">
-  <div class="head"><h2>23. Cek Stok Barang di Semua Toko (Master/Pusat) <span class="tagrel r2">R2</span></h2><p>Cari satu barang, lihat stoknya ada di toko dan gudang mana saja.</p></div>
-  <div class="frame"><div class="bar"><i></i><i></i><i></i><span class="url">pos.contoh.id/pusat/stock-lookup?q=MU0001</span></div>
-  <div class="body">
-    <div class="topbar"><b>Dashboard Pusat › Cek Stok Barang</b><span class="mute">Budi · Super Admin</span></div>
-    <div class="pad">
-      <div class="row" style="margin-bottom:12px;align-items:center"><span class="inp" style="flex:3;font-size:15px;padding:9px">🔍 MU0001 · Cat Tembok Putih 5kg</span><span class="inp sel">Semua jenis gudang</span><span class="btn auto">⬇ Excel</span></div>
-      <div class="card" style="margin-bottom:12px"><b>Cat Tembok Putih 5kg</b> <span class="chip">MU0001</span> <span class="chip">Cat</span> <span class="chip">Dulux</span> &nbsp; <span class="mute">Satuan: PAIL (dasar) · DUS = 4 PAIL</span></div>
-      <div class="grid3" style="margin-bottom:12px">
-        <div class="card"><small>Total stok jual (semua toko)</small><div class="kpi">48 PAIL</div><small>= 12 DUS · 2 toko</small></div>
-        <div class="card"><small>Total dead stock</small><div class="kpi">1 PAIL</div><small>1 gudang</small></div>
-        <div class="card"><small>Di bawah minimum</small><div class="kpi">0 toko</div><small>min 8 PAIL per toko</small></div>
-      </div>
-      <table>
-        <tr><th>Toko</th><th>Gudang</th><th>Tipe</th><th class="r">Stok (dasar)</th><th>Tampilan satuan <span class="tag">1</span></th><th class="r">Min</th><th>Status</th><th class="r">Harga jual default</th><th>Kesegaran data <span class="tag">2</span></th><th class="c">Aksi</th></tr>
-        <tr><td rowspan="2"><b>Mitra Utama</b> <span class="chip">MU</span></td><td>Main Warehouse</td><td><span class="chip ok">sellable</span></td><td class="r">30 PAIL</td><td>7 DUS + 2 PAIL</td><td class="r">8</td><td><span class="chip ok">OK</span></td><td class="r" rowspan="2">PAIL · 116.600</td><td rowspan="2"><span class="chip warn">K1 offline · terakhir sinkron 05:41</span><br><small class="mute">stok sebenarnya bisa lebih rendah</small></td><td class="c" rowspan="2"><span class="btn sm">Masuk toko ▸</span></td></tr>
-        <tr><td>Dead Stock</td><td><span class="chip warn">dead_stock</span></td><td class="r">1 PAIL</td><td>1 PAIL</td><td class="r">—</td><td><span class="chip">tidak dijual</span></td></tr>
-        <tr><td><b>Cabang Pasar Baru</b> <span class="chip">PSB</span></td><td>Main Warehouse</td><td><span class="chip ok">sellable</span></td><td class="r">18 PAIL</td><td>4 DUS + 2 PAIL</td><td class="r">8</td><td><span class="chip ok">OK</span></td><td class="r">PAIL · 113.867,19</td><td><span class="chip ok">K1 online · 10:41</span></td><td class="c"><span class="btn sm">Masuk toko ▸</span></td></tr>
-        <tr><td><b>Cabang Timur</b> <span class="chip">TMR</span></td><td colspan="8" class="mute">Tidak dapat dihubungi / belum aktif (provisioning gagal) — hasil toko lain tetap ditampilkan</td><td class="c"><span class="btn sm">Detail</span></td></tr>
-      </table>
-    </div>
-  </div></div>
-  <div class="notes"><h4>Catatan</h4><ol>
-    <li><span class="tag">1</span>Stok disimpan dalam satuan dasar; ditampilkan dipecah ke satuan besar yang <i>boleh dijual</i> di toko itu (kebijakan satuan per toko).</li>
-    <li><span class="tag">2</span>Data dibaca langsung dari DB tiap toko saat dicari (Fase 1). Stok server belum memuat nota offline yang belum tersinkron, jadi register offline/lama tidak sinkron diberi peringatan.</li>
-    <li>Toko yang gagal dihubungi atau belum menerima barang tidak menggagalkan hasil: baris diberi keterangan. Hanya-baca, online, tanpa reservasi stok.</li>
-    <li>Barang dicocokkan lintas toko lewat <b>sku</b> (dan barcode satuan); toko yang memakai sku berbeda untuk barang yang sama tidak akan ketemu — konvensi sku seragam.</li>
-    <li>Dead stock ditampilkan terpisah dari stok jual. Akses: <b>hanya Super Admin</b>; Admin Toko hanya melihat stok tokonya sendiri.</li>
-    <li>Bila toko banyak: snapshot stok didorong ke pusat (opsi B, 4.8) — layar ini tidak berubah.</li>
-  </ol></div>
+  </div></div></div>
+</div>
 </section>
 
 </main>
 </div>
-<script>
-  var btns=document.querySelectorAll('#idx button'), screens=document.querySelectorAll('.screen');
-  function show(id){
-    screens.forEach(function(s){s.classList.toggle('on',s.id===id)});
-    btns.forEach(function(b){b.classList.toggle('on',b.dataset.s===id)});
-    try{history.replaceState(null,'','#'+id)}catch(e){}
-    window.scrollTo(0,0);
-  }
-  btns.forEach(function(b){b.addEventListener('click',function(){show(b.dataset.s)})});
-  show((location.hash||'#login').slice(1)||'login');
-</script>
+<script>window.WF={mode:'r1',other:["wireframe-r2.html","Wireframe R2 (menyusul) →"]};</script>
+<script src="assets/wireframe.js"></script>
 </body>
 </html>

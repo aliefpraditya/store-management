@@ -2,7 +2,9 @@
 
 > Perkiraan dari sudut pandang programmer/software house di Indonesia (harga pasar 2026). **Bukan penawaran.** Tarif per hari adalah asumsi saya dari kisaran pasar umum, belum diverifikasi ke sumber tertentu. Rujukan scope: [`analisis-sistem.md`](analisis-sistem.md) v0.4. **Hanya Fase 1** (Fase 2 tidak dihitung).
 
-> **Prioritas terbaru (v0.7): R1 Inti = operasional harian toko** (tambah toko, barang & harga, stok opname, kasir, buka/tutup kas, pembayaran, nota, retur, surat jalan, tutup hari, pengeluaran; **tanpa penerimaan**). Estimasinya ada di **bagian 7**: ±128–174 hari kerja, titik tengah ±151 (≈ Rp 60–90 juta pada tarif Rp 400–600 rb/hari). Bagian 1–2 sudah memuat modul baru v0.7 sebagai bagian Fase 1a; bagian 6 adalah catatan historis "R1 Hemat".
+> **Prioritas terbaru (v0.8): R1 Inti = operasional harian toko** (tambah toko, barang [form sederhana], stok opname, kasir, buka/tutup kas, pembayaran, nota, retur, surat jalan, tutup hari, pengeluaran; **tanpa penerimaan, tanpa Form Harga & histori harga**). Estimasinya ada di **bagian 7**: ±124–169 hari kerja, titik tengah ±146 (≈ Rp 58–88 juta pada tarif Rp 400–600 rb/hari). Bagian 1–2 memuat modul sebagai bagian Fase 1a; bagian 6 adalah catatan historis "R1 Hemat".
+
+> **Pembaruan (26 Okt 2026, D34): online only, 1 hosting, Laravel + Inertia + Quasar dalam satu aplikasi.** R3/Fase 1b (offline PWA, sinkron, backup lokal, ±35–55 MD) **dibatalkan**; baris "persiapan offline-ready" (±2–5 MD) kini hanya idempotensi `client_uuid` (kecil). Total R1 praktis turun sedikit karena tanpa lapisan API/SPA terpisah (tidak ada CORS/token, halaman langsung dari controller). Angka di bagian lain belum dihitung ulang.
 
 ## 0. Ringkasan perubahan v0.4
 
@@ -17,7 +19,7 @@ Fase 1 dipecah dua: **1a = go-live online** dan **1b = offline** (dikerjakan ses
 
 ## 1. Estimasi Effort (hari kerja / *man-day*, MD)
 
-Asumsi: Laravel 12 API + Vue 3/**Quasar** (PWA-ready); go-live awal 1 toko (Mitra Utama), arsitektur multi-toko; Hostinger Cloud; nota via browser print.
+Asumsi: Laravel 13 API + Vue 3/**Quasar** (PWA-ready); go-live awal 1 toko (Mitra Utama), arsitektur multi-toko; Hostinger Cloud; nota via browser print.
 
 ### Fase 1a — Go-live online
 
@@ -120,7 +122,7 @@ Tarif acuan (asumsi): **freelancer menengah ±Rp 600–800 rb/MD**, **freelancer
 
 | Komponen | Perkiraan |
 |---|---|
-| Hosting Hostinger Cloud (awal 1 toko, 1 server) | Menyesuaikan plan; **perlu dipastikan boleh `CREATE DATABASE`, cron, dan queue worker** — jika tidak, VPS atau provisioning semi-manual lewat hPanel/API (+2–3 hari) |
+| Hosting **Hostinger hPanel** (Cloud/Business; keputusan 26 Okt 2026, bukan VPS) | Menyesuaikan plan. DB toko dibuat **manual di hPanel** (kredensial per toko), antrean lewat cron; sudah diperhitungkan di modul tenancy (tidak ada biaya tambahan berarti, ±1 hari untuk alur kredensial per toko) |
 | Domain + SSL (PWA wajib HTTPS) | Rp 150–300 rb/tahun |
 | Backup server (eksternal/object storage) | Rp 50–200 rb/bulan |
 | Pemeliharaan & dukungan | **10–20 % nilai proyek per tahun** |
@@ -194,10 +196,10 @@ Cakupan rinci: [`analisis-sistem.md`](analisis-sistem.md) bagian 0.3. Peta menu 
 |---|-------|---------|---------------|
 | 1 | Fondasi | Laravel + Quasar scaffold, auth, role (admin/gudang/kasir), layout | 6–8 |
 | 2 | Tenancy + Master Toko | Pusat (users, stores), **tambah toko** (provisioning DB otomatis + progres), user & akses minimal, routing login per role | 8–11 |
-| 3 | Barang & harga | Kategori, merek, satuan, barang per toko, multi-satuan + **konversi**, **harga per satuan** (nominal/margin), histori harga, satuan boleh dibeli/dijual | 12–16 |
+| 3 | Barang (form sederhana) | Kategori, merek, satuan, barang per toko, multi-satuan + **konversi**, harga beli + **harga jual nominal per satuan**, boleh dijual/default, peringatan harga < modal (tanpa mode margin, pratinjau, histori) | 9–12 |
 | 4 | Import Excel | Barang + stok awal (template, validasi, pratinjau) | 4–5 |
 | 5 | Stok | `stock_movements` + `stocks` (2 gudang), StockService, kartu stok | 5–6 |
-| 6 | **Stok opname** | Cakupan semua/kategori/barang terpilih, snapshot, hitung multi-satuan, import hasil hitung, harga beli opsional, review selisih + alasan, posting Admin | 7–9 |
+| 6 | **Stok opname** | Cakupan semua/kategori/barang terpilih, snapshot, hitung multi-satuan, import hasil hitung, review selisih + alasan, posting Admin | 7–9 |
 | 7 | Kasir online + pembayaran | Cari/scan, barang + satuan, keranjang, bayar campuran, simpan atomik, nomor per register, riwayat nota, batal sebelum bayar | 12–16 |
 | 8 | Nota | Template + pratinjau + cetak browser (58/80 mm/A4) | 3–4 |
 | 9 | **Buka/tutup kas (shift)** | Modal tetap, setoran, selisih + approval Admin, laporan Z, rekap shift | 7–10 |
@@ -212,36 +214,79 @@ Cakupan rinci: [`analisis-sistem.md`](analisis-sistem.md) bagian 0.3. Peta menu 
 | 18 | UI/UX | Penyempurnaan dari wireframe | 4–5 |
 | 19 | QA & UAT | Konkurensi stok, shift/kas/tutup hari, retur, surat jalan, import | 9–13 |
 | 20 | Deploy | Hostinger, backup, dokumentasi singkat | 3–4 |
-| | **Subtotal R1** | | **111–151** |
-| | Cadangan risiko (±15 %) | | 17–23 |
-| | **Total R1 Inti** | | **≈ 128–174 MD** (titik tengah **±151 MD**) |
+| | **Subtotal R1** | | **108–147** |
+| | Cadangan risiko (±15 %) | | 16–22 |
+| | **Total R1 Inti** | | **≈ 124–169 MD** (titik tengah **±146 MD**) |
 
-**Dibanding v0.6 (±110 MD):** naik ±41 MD karena menu baru (buka/tutup kas, retur, surat jalan, pengeluaran, tutup hari, tambah toko) dan turun ±10–13 MD karena **penerimaan keluar dari R1**.
+**v0.8:** Form Harga (mode margin, pratinjau, persen untung) dan histori harga dipindah ke R2 (−3–4 MD di R1; +5–7 MD di R2). **Dibanding v0.6 (±110 MD):** naik ±41 MD karena menu baru (buka/tutup kas, retur, surat jalan, pengeluaran, tutup hari, tambah toko) dan turun ±10–13 MD karena **penerimaan keluar dari R1**.
 
 ### Biaya R1 Inti menurut tarif (asumsi, bukan penawaran)
-| Tarif / MD | Rentang 128–174 MD | Titik tengah (±151 MD) |
+| Tarif / MD | Rentang 124–169 MD | Titik tengah (±146 MD) |
 |---|---|---|
-| Rp 400 rb | Rp 51–70 juta | ±Rp 60 juta |
-| Rp 500 rb | Rp 64–87 juta | ±Rp 76 juta |
-| Rp 600 rb | Rp 77–104 juta | ±Rp 91 juta |
-| Rp 800 rb | Rp 102–139 juta | ±Rp 121 juta |
+| Rp 400 rb | Rp 50–68 juta | ±Rp 58 juta |
+| Rp 500 rb | Rp 62–85 juta | ±Rp 73 juta |
+| Rp 600 rb | Rp 74–101 juta | ±Rp 88 juta |
+| Rp 800 rb | Rp 99–135 juta | ±Rp 117 juta |
 
-**Durasi:** satu developer ±7–9 bulan; dua developer (BE + FE) ±4,5–5 bulan.
+**Durasi:** satu developer ±7–8,5 bulan; dua developer (BE + FE) ±4,5 bulan.
 
 ### Jika ingin menekan di bawah ±Rp 100 juta
 R1 bisa dipecah lagi tanpa merusak desain (semua modul berdiri sendiri):
 | Opsi | Dikeluarkan dari R1 | Penghematan | R1 jadi |
 |---|---|---|---|
-| **R1a** | Retur (8–11) + surat jalan (7–9) ke R1b | ±15–20 MD (sebelum cadangan) | ±105–156 MD dengan cadangan (titik tengah ±130 MD) ≈ **Rp 52–78 juta** pada tarif Rp 400–600 rb |
-| R1a + tanpa tutup hari | + tutup hari (4–6) memakai laporan Z per shift | ±4–6 MD tambahan | ±98–152 MD dengan cadangan (titik tengah ±125 MD) ≈ Rp 50–75 juta |
+| **R1a** | Retur (8–11) + surat jalan (7–9) ke R1b | ±15–20 MD (sebelum cadangan) | ±101–152 MD dengan cadangan (titik tengah ±126 MD) ≈ **Rp 50–76 juta** pada tarif Rp 400–600 rb |
+| R1a + tanpa tutup hari | + tutup hari (4–6) memakai laporan Z per shift | ±4–6 MD tambahan | ±97–147 MD dengan cadangan (titik tengah ±122 MD) ≈ Rp 49–73 juta |
 Risiko: tanpa retur, pengembalian barang hanya lewat opname/void; tanpa surat jalan, pengantaran dicatat manual.
 
 ### Sesudah R1
 | Rilis | Isi | MD kasar |
 |---|---|---|
-| **R2** | Pembelian + penerimaan kontainer (multi-supplier, biaya kontainer), FIFO, transfer antar-gudang, cek stok lintas toko, salin barang antar toko (Excel), supplier, migrasi transaksi lama, layar Audit Trail, laporan lengkap | ±70–95 (dengan cadangan) |
+| **R2** | **Form Harga + histori harga**, pembelian + penerimaan kontainer (multi-supplier, biaya kontainer), FIFO, transfer antar-gudang, cek stok lintas toko, salin barang antar toko (Excel), supplier, migrasi transaksi lama, layar Audit Trail, laporan lengkap | ±75–100 (dengan cadangan) |
 | **R3** | Offline PWA + sinkronisasi + backup lokal | ±40–55 |
 
 R1 + R2 ≈ Fase 1a penuh (bagian 1: 197–267 MD).
 
 **Risiko menunda:** tanpa penerimaan, barang masuk dicatat lewat opname parsial (lebih manual, tanpa dokumen supplier/kontainer); tanpa FIFO, laba memakai harga beli terakhir (cenderung tinggi saat harga beli naik); tanpa pembelian, pesanan supplier belum tercatat. Semuanya ditandai estimasi di data dan tidak menghalangi R2 menyusul.
+
+---
+
+## 8. Skenario gaji setara UMR dan MD ÷ 2 (permintaan 26 Okt 2026)
+
+Cakupan: **menu yang Anda sebutkan untuk R1** (bagian 7). Dua asumsi baru: (1) developer digaji setara **UMR/UMK**, (2) jumlah hari kerja (MD) **dibagi 2**. Semua angka adalah perkiraan saya, bukan penawaran.
+
+### 8.1 Cara hitung
+- **Gaji → biaya per hari kerja efektif:** gaji bulanan × **1,22** (beban perusahaan: BPJS ±10–12 % + THR ±8 %) ÷ **19 hari efektif/bulan** (rapat, revisi, menunggu masukan).
+- **UMR** hanya patokan kasar, **verifikasi ke SK UMP/UMK tahun berjalan**: ±Rp 3,0 jt (kota menengah), ±Rp 4,5 jt (mis. Bandung/Surabaya), ±Rp 5,7 jt (Jakarta/Bekasi; acuan UMP DKI 2025 Rp 5.396.761).
+- Biaya per hari efektif: **A** ±Rp 193 rb · **B** ±Rp 289 rb · **C** ±Rp 366 rb.
+
+### 8.2 Rincian per fitur (MD ÷ 2, titik tengah)
+| Fitur | MD asli | MD ÷ 2 | Biaya A (UMR 3,0 jt) | B (4,5 jt) | C (5,7 jt) |
+|---|---|---|---|---|---|
+| Fondasi & penunjang (auth, layout, audit, UI/UX, QA, deploy) | 25–35 | 12,5–17,5 | ±Rp 2,9 jt | ±4,3 jt | ±5,5 jt |
+| Master: tambah toko + user/akses | 8–11 | 4–5,5 | ±0,9 jt | ±1,4 jt | ±1,7 jt |
+| Barang (daftar, harga per satuan, konversi) + import Excel | 13–17 | 6,5–8,5 | ±1,4 jt | ±2,2 jt | ±2,7 jt |
+| Stok: kartu stok + **stok opname** | 12–15 | 6–7,5 | ±1,3 jt | ±2,0 jt | ±2,5 jt |
+| Kasir + pembayaran + nota + void Admin | 17–23 | 8,5–11,5 | ±1,9 jt | ±2,9 jt | ±3,7 jt |
+| Buka/tutup kas | 7–10 | 3,5–5 | ±0,8 jt | ±1,2 jt | ±1,6 jt |
+| Retur | 8–11 | 4–5,5 | ±0,9 jt | ±1,4 jt | ±1,7 jt |
+| Surat jalan | 7–9 | 3,5–4,5 | ±0,8 jt | ±1,2 jt | ±1,5 jt |
+| Pengeluaran | 3–4 | 1,5–2 | ±0,3 jt | ±0,5 jt | ±0,6 jt |
+| Tutup hari | 4–6 | 2–3 | ±0,5 jt | ±0,7 jt | ±0,9 jt |
+| Laporan minimal | 4–6 | 2–3 | ±0,5 jt | ±0,7 jt | ±0,9 jt |
+| **Subtotal** | **108–147** | **54–73,5** (tengah 64) | **±12,2 jt** | **±18,5 jt** | **±23,3 jt** |
+| Cadangan risiko 15 % | | | ±1,8 jt | ±2,8 jt | ±3,5 jt |
+| **Total R1** | **124–169** | **62–85** (tengah ±73) | **±Rp 14 jt** | **±Rp 21 jt** | **±Rp 27 jt** |
+
+### 8.3 Tiga skenario jumlah hari kerja
+| Skenario MD | A (UMR 3,0 jt) | B (UMR 4,5 jt) | C (UMR 5,7 jt) | Durasi 1 orang |
+|---|---|---|---|---|
+| **Asli** ±146 MD (124–169) | ±Rp 28 jt (24–33) | ±Rp 42 jt (36–49) | ±Rp 53 jt (45–62) | ±7,7 bulan |
+| **Moderat** ÷ 1,4 ≈ 104 MD | ±Rp 20 jt (17–23) | ±Rp 30 jt (26–35) | ±Rp 38 jt (33–44) | ±5,5 bulan |
+| **Agresif** ÷ 2 ≈ 73 MD (62–85) | ±Rp 14 jt (12–16) | ±Rp 21 jt (18–25) | ±Rp 27 jt (23–31) | ±3,8 bulan |
+
+### 8.4 Catatan jujur
+1. **Kenapa MD terlihat banyak:** 11 menu fitur + 1 blok penunjang (±24 % dari total adalah fondasi, QA, UI, deploy, bukan fitur). Cadangan risiko 15 % di atasnya.
+2. **MD ÷ 2 adalah skenario agresif.** Angka asli saya mengandaikan satu developer berpengalaman bekerja sendiri sampai QA selesai. Setengahnya hanya realistis bila: pengembangan dibantu AI untuk CRUD/form/migrasi/test, spesifikasi sudah matang (dokumen ini), dan Anda menerima pengujian + polesan UI lebih tipis. Logika inti (stok, retur, kas, tutup hari) tetap perlu uji manual.
+3. **Gaji setara UMR** realistis untuk **karyawan internal/junior-menengah**. Freelancer atau developer berpengalaman jarang menerima tarif setara UMR (pasarnya ±1,5–3× UMR); untuk pembanding, ganda-kan kolom A–C untuk gaji 2× UMR.
+4. **Hybrid yang saya sarankan** bila memakai developer bertarif UMR: tambahkan **review senior 5–8 hari kerja** (±Rp 5–8 jt pada tarif senior Rp 0,9–1,2 jt/hari) khusus untuk desain stok/kas/tutup hari dan uji akhir. Itu menutup risiko terbesar dengan biaya kecil.
+5. Biaya di atas **tidak** termasuk hosting, domain, dan perangkat kasir (bagian 3).

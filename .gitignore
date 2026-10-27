@@ -1,26 +1,31 @@
-### Windows
-# Windows thumbnail cache files
-Thumbs.db
+/vendor/
+node_modules/
+npm-debug.log
+yarn-error.log
 
-# Folder config file
-[Dd]esktop.ini
+# Laravel 4 specific
+bootstrap/compiled.php
+app/storage/
 
-# Recycle Bin used on file shares
-$RECYCLE.BIN/
+# Laravel 5 & Lumen specific
+public/storage
+public/hot
 
-# Windows shortcuts
-*.lnk
+# Laravel 5 & Lumen specific with changed public path
+public_html/storage
+public_html/hot
 
-### VS Code
-# VSCode settings (keep shared configuration)
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+storage/*.key
+.env
+Homestead.yaml
+Homestead.json
+/.vagrant
+.phpunit.result.cache
+/.phpunit.cache
 
-# Local History for Visual Studio Code
-.history/
-
-# Built Visual Studio Code Extensions
-*.vsix
+/public/build
+/storage/pail
+.env.backup
+.env.production
+.phpactor.json
+auth.json
