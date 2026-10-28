@@ -1,12 +1,12 @@
 import { createApp, h } from 'vue';
 import { createInertiaApp } from '@inertiajs/vue3';
-import { Notify, Quasar } from 'quasar';
+import { Dialog, Notify, Quasar } from 'quasar';
 import '@quasar/extras/material-icons/material-icons.css';
 import 'quasar/src/css/index.sass';
 import '../css/app.css';
 
 createInertiaApp({
-    title: (title) => (title ? `${title} - POS Toko` : 'POS Toko'),
+    title: (title) => (title ? `${title} - Mitra Manager` : 'Mitra Manager'),
     resolve: (name) => {
         const pages = import.meta.glob('./Pages/**/*.vue', { eager: true });
 
@@ -16,7 +16,7 @@ createInertiaApp({
         createApp({ render: () => h(App, props) })
             .use(plugin)
             .use(Quasar, {
-                plugins: { Notify },
+                plugins: { Notify, Dialog },
                 config: {
                     brand: {
                         primary: '#e02a2a',

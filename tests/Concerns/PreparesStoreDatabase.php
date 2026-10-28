@@ -4,17 +4,21 @@ namespace Tests\Concerns;
 
 use App\Models\Store;
 use App\Services\StoreProvisioner;
+use Database\Seeders\StoreDatabaseSeeder;
 use Illuminate\Support\Facades\DB;
 use PDO;
 
 /**
  * Gives a test class a real, fully migrated store database. The class defines `STORE_DATABASE`.
  *
- * The database is created and migrated once per class and emptied before every test, because
- * migrating about thirty tables for each test would make the suite slow.
+ * The database is created and provisioned once per class and emptied (then re-seeded) before every
+ * test, because migrating about thirty tables for each test would make the suite slow.
  */
 trait PreparesStoreDatabase
 {
+    /** @var array<string, true> store databases already provisioned in this run */
+    private static array $provisionedDatabases = [];
+
     public static function tearDownAfterClass(): void
     {
         $pdo = new PDO(
@@ -23,6 +27,8 @@ trait PreparesStoreDatabase
             getenv('DB_PASSWORD') ?: '',
         );
         $pdo->exec('DROP DATABASE IF EXISTS `'.static::STORE_DATABASE.'`');
+
+        unset(self::$provisionedDatabases[static::STORE_DATABASE]);
 
         parent::tearDownAfterClass();
     }
@@ -40,14 +46,20 @@ trait PreparesStoreDatabase
     protected function prepareStoreDatabase(array $attributes = []): Store
     {
         $database = static::STORE_DATABASE;
-        $central = DB::connection('mysql');
 
-        $central->statement("CREATE DATABASE IF NOT EXISTS `{$database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        DB::connection('mysql')->statement("CREATE DATABASE IF NOT EXISTS `{$database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         $this->emptyStoreTables($database);
 
         $store = Store::factory()->create(['db_name' => $database, ...$attributes]);
 
+        if (isset(self::$provisionedDatabases[$database])) {
+            $store->run(fn () => (new StoreDatabaseSeeder)->run());
+
+            return $store;
+        }
+
         app(StoreProvisioner::class)->provision($store);
+        self::$provisionedDatabases[$database] = true;
 
         return $store->refresh();
     }

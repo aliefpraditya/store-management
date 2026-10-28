@@ -401,8 +401,8 @@ section:last-of-type{break-after:auto}
         string name
         bigint category_id FK
         bigint brand_id FK "nullable"
-        bigint base_unit_id FK
-        decimal cost_price "last purchase price per base unit; basis for margin pricing and COGS estimate"
+        string base_unit_code FK "units.code of the base unit"
+        decimal cost_price "copy of the base unit cost_price: last purchase price per base unit"
         decimal min_stock "base unit"
         boolean is_active
         string legacy_sku "old system id"
@@ -411,12 +411,13 @@ section:last-of-type{break-after:auto}
     product_units {
         bigint id PK
         bigint product_id FK
-        bigint unit_id FK
+        string unit_code FK "units.code, e.g. PCS"
         decimal conversion_factor "base units per 1 of this unit, 3 decimals"
         boolean is_base
         string barcode "unique, identifies this unit when scanned"
         smallint sort_order "display order of unit chips"
         boolean is_sellable "may appear in POS"
+        decimal cost_price "purchase price of this unit, 2 decimals; may differ per unit, defaults to base cost x conversion"
         decimal selling_price "exact, 2 decimals, no rounding"
         boolean is_default_sale "exactly one per product"
     }
@@ -430,9 +431,8 @@ section:last-of-type{break-after:auto}
         string name UK
     }
     units {
-        bigint id PK
-        string name UK
-        boolean allows_decimal
+        string code PK "short label and key, upper case, max 20 chars, e.g. PCS, DUS, KG"
+        string name UK "description, e.g. Pieces"
     }</pre></section>
 <section id="d14"><div class="sh"><h2>6.3 DB Toko — b. Gudang &amp; stok</h2><span class="tag r1">R1</span></div><pre class="mermaid">erDiagram
     warehouses ||--o{ stocks : "holds"

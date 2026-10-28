@@ -22,7 +22,7 @@ class ProductFactory extends Factory
             'name' => fake()->unique()->words(3, true),
             'category_id' => Category::factory(),
             'brand_id' => null,
-            'base_unit_id' => Unit::factory(),
+            'base_unit_code' => Unit::factory(),
             'cost_price' => 1000,
             'min_stock' => 0,
             'is_active' => true,

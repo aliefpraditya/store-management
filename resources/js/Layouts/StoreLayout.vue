@@ -3,27 +3,28 @@ import { computed } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import AppShell from './AppShell.vue';
 
-const props = defineProps({
+defineProps({
     title: { type: String, required: true },
-    store: { type: Object, required: true },
 });
 
 const page = usePage();
 
+const store = computed(() => page.props.store);
+
 const user = computed(() => page.props.auth.user);
 
-const brand = computed(() => ({ initial: props.store.receipt_prefix, name: props.store.name, sub: 'Toko' }));
+const brand = computed(() => ({ initial: store.value.receipt_prefix, name: store.value.name, sub: 'Toko' }));
 
 /**
- * Sidebar of a store. Only the dashboard exists so far; the other entries are the planned R1 screens.
+ * Sidebar of a store. Only the dashboard, the item list and the units exist so far; the other entries are the planned R1 screens.
  */
 const menuGroups = computed(() => {
     const groups = [
         {
             label: null,
-            items: [{ label: 'Dashboard', icon: 'space_dashboard', href: props.store.dashboard_url, isExact: true }],
+            items: [{ label: 'Dashboard', icon: 'space_dashboard', href: store.value.dashboard_url, isExact: true }],
         },
-        { label: 'Barang', items: [{ label: 'Daftar Barang', icon: 'inventory_2' }] },
+        { label: 'Barang', items: [{ label: 'Daftar Barang', icon: 'inventory_2', href: store.value.products_url }] },
         {
             label: 'Stok',
             items: [
@@ -47,7 +48,13 @@ const menuGroups = computed(() => {
                 { label: 'Pengeluaran', icon: 'remove_circle_outline' },
                 { label: 'Tutup Hari', icon: 'lock' },
                 { label: 'Laporan', icon: 'bar_chart' },
-                { label: 'Pengaturan', icon: 'settings' },
+            ],
+        },
+        {
+            label: 'Pengaturan',
+            items: [
+                { label: 'Satuan', icon: 'straighten', href: store.value.units_url },
+                { label: 'Pengaturan Toko', icon: 'settings' },
             ],
         },
     ];

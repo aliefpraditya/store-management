@@ -4,7 +4,6 @@ import { usePage } from '@inertiajs/vue3';
 import StoreLayout from '../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
-    store: { type: Object, required: true },
     summary: { type: Object, required: true },
 });
 
@@ -62,7 +61,7 @@ const formatTime = (isoDate) =>
 </script>
 
 <template>
-    <StoreLayout :title="title" :store="store">
+    <StoreLayout :title="title">
         <div class="kpis">
             <article class="card">
                 <small>Penjualan bersih hari ini</small>

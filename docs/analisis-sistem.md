@@ -95,7 +95,7 @@ Toko
 1. **Tabel R1** — pusat: `users`, `stores`, `store_users`, `store_provisioning_logs`. Toko: `categories`, `brands`, `units`, `products`, `product_units` (R1: `selling_price` nominal, `is_sellable`, `is_default_sale`), `warehouses` (2 baris), `stocks`, `stock_movements`, `stock_opnames`, `stock_opname_items`, `registers`, `cash_shifts`, `sales`, `sale_items`, `sale_payments`, `sale_cancellations`, `sale_returns`, `sale_return_items`, `delivery_notes`, `delivery_note_items`, `expense_categories`, `expenses`, `daily_closings`, `document_sequences`, `settings`, `audits`.
 2. **Belum ada di R1:** `price_histories` (dan kolom `product_units.price_mode`, `margin_percent`, `is_purchasable`), `suppliers`, `purchases`/`purchase_items`, `goods_receipts` (+suppliers, items, costs), `stock_transfers`, `stock_layers`/`stock_layer_allocations`. (`sync_issues` dibatalkan bersama offline, D34.) Ditambahkan lewat migrasi baru tanpa mengubah tabel R1.
 3. **Stok bertambah** hanya lewat **opname** (selisih positif), **retur**, **void**, dan import saldo awal; **berkurang** lewat penjualan dan opname (selisih negatif). **R1 tidak punya dokumen penerimaan/pembelian**: barang yang datang cukup dihitung lewat opname (parsial atau penuh). Harga beli diisi manual di Form Harga (histori sumber `manual`).
-4. **Costing sementara:** `sale_items.cost_total = base_quantity × products.cost_price`, `is_cost_estimated = true`; FIFO di R2 membuat layer awal dari nilai persediaan saat itu.
+4. **Costing sementara:** `sale_items.cost_total = quantity × product_units.cost_price` (modal satuan yang dijual), `is_cost_estimated = true`; FIFO di R2 membuat layer awal dari nilai persediaan saat itu.
 5. **Dead stock** di R1: retur bisa memilih gudang *Dead Stock*; memindahkannya kembali dilakukan lewat opname (tanpa transfer antar-gudang).
 6. **Surat jalan tidak mengubah stok** (7.7b); **pengeluaran** dari laci mengurangi tunai seharusnya shift (7.7c); **tutup hari** mengunci transaksi tanggal bisnis itu (7.7d). Konsep `cash_movements` digantikan `expenses`.
 7. **Void** hanya oleh Admin (sederhana, tercatat); batal sebelum bayar langsung oleh kasir.
@@ -319,7 +319,7 @@ Akibat dan aturan:
 | Hal | Rancangan |
 |---|---|
 | Paket | `owen-it/laravel-auditing`; tabel `audits` di **DB pusat dan setiap DB toko** (masuk set migrasi tenant) |
-| Model `Auditable` | pusat: `stores`, `users`, `store_users`. toko: `categories`, `brands`, `units`, `suppliers`, `products`, `product_units`, `warehouses`, `registers`, `purchases` (+items), `goods_receipts` (+items, costs), `stock_opnames`, `stock_transfers`, `sales` (event `updated`), `sale_cancellations`, `sale_returns`, `cash_shifts` (termasuk approval selisih), `settings` |
+| Model `Auditable` | pusat: `stores`, `users`, `store_users`. toko: `categories`, `brands`, `suppliers`, `products`, `product_units`, `warehouses`, `registers`, `purchases` (+items), `goods_receipts` (+items, costs), `stock_opnames`, `stock_transfers`, `sales` (event `updated`), `sale_cancellations`, `sale_returns`, `cash_shifts` (termasuk approval selisih), `settings` |
 | **Tidak** diaudit | `stock_movements`, `price_histories` (append-only & fungsi bisnis), `stocks` (cache), `audits`, `document_sequences` |
 | User | `user_id` dari sesi (user ada di DB pusat; di toko disimpan sebagai angka). Data hasil sinkronisasi offline: `user_id` kasir dikirim di payload dan di-set eksplisit |
 | Batasan | Update massal (query builder) **tidak** diaudit → perubahan penting wajib lewat Eloquent; ada uji otomatis |
@@ -975,8 +975,8 @@ erDiagram
         string name
         bigint category_id FK
         bigint brand_id FK "nullable"
-        bigint base_unit_id FK
-        decimal cost_price "last purchase price per base unit; basis for margin pricing and COGS estimate"
+        string base_unit_code FK "units.code of the base unit"
+        decimal cost_price "copy of the base unit cost_price: last purchase price per base unit"
         decimal min_stock "base unit"
         boolean is_active
         string legacy_sku "old system id"
@@ -985,12 +985,13 @@ erDiagram
     product_units {
         bigint id PK
         bigint product_id FK
-        bigint unit_id FK
+        string unit_code FK "units.code, e.g. PCS"
         decimal conversion_factor "base units per 1 of this unit, 3 decimals"
         boolean is_base
         string barcode "unique, identifies this unit when scanned"
         smallint sort_order "display order of unit chips"
         boolean is_sellable "may appear in POS"
+        decimal cost_price "purchase price of this unit, 2 decimals; may differ per unit, defaults to base cost x conversion"
         decimal selling_price "exact, 2 decimals, no rounding"
         boolean is_default_sale "exactly one per product"
     }
@@ -1004,9 +1005,8 @@ erDiagram
         string name UK
     }
     units {
-        bigint id PK
-        string name UK
-        boolean allows_decimal
+        string code PK "short label and key, upper case, max 20 chars, e.g. PCS, DUS, KG"
+        string name UK "description, e.g. Pieces"
     }
 ```
 
@@ -1050,14 +1050,14 @@ erDiagram
 |---|---|---|
 | `categories` | `name`, `parent_id` (kosong di Fase 1, kategori datar) | `name` unik |
 | `brands` | `name` | `name` unik |
-| `units` | `name`, `allows_decimal` | `name` unik |
-| `products` | `sku`, `name`, `category_id` (wajib), `brand_id` (boleh kosong), `base_unit_id`, `cost_price` (harga beli terakhir per satuan dasar), `min_stock`, `is_active`, `legacy_sku` | `sku` unik per toko |
-| `product_units` | `unit_id`, `conversion_factor`, `is_base`, `barcode`, `sort_order`, `is_purchasable`, `is_sellable`, `price_mode`, `margin_percent`, `selling_price`, `is_default_sale` | satu baris per barang × satuan |
+| `units` | `code` (**kunci**: label pendek huruf besar, mis. PCS, DUS, KG; tampil di layar dan nota), `name` (keterangan, mis. Pieces) | `code` kunci utama, `name` unik; mengganti `code` merambat ke `products` dan `product_units`; satuan yang sedang dipakai tidak bisa dihapus |
+| `products` | `sku`, `name`, `category_id` (wajib), `brand_id` (boleh kosong), `base_unit_code`, `cost_price` (salinan modal satuan dasar), `min_stock`, `is_active`, `legacy_sku` | `sku` unik per toko |
+| `product_units` | `unit_code`, `conversion_factor`, `is_base`, `barcode`, `sort_order`, `is_purchasable`, `is_sellable`, `cost_price` (modal satuan ini), `price_mode`, `margin_percent`, `selling_price`, `is_default_sale` | satu baris per barang × satuan |
 | `price_histories` **(R2)** | harga lama → baru, mode, sumber, user | append-only |
 
 **Kendala integritas**
-1. Tepat **satu satuan dasar** per barang, `conversion_factor = 1`; `unique(product_id, unit_id)`; satuan dasar sama dengan `products.base_unit_id`.
-2. `conversion_factor` > 0, maks **3 desimal**; kuantitas desimal hanya bila `units.allows_decimal`.
+1. Tepat **satu satuan dasar** per barang, `conversion_factor = 1`; `unique(product_id, unit_code)`; satuan dasar sama dengan `products.base_unit_code`.
+2. `conversion_factor` > 0, maks **3 desimal**; semua satuan boleh berdesimal (kuantitas maks 3 desimal).
 3. **Barcode hanya di satuan** (`product_units.barcode`), unik per DB (boleh kosong). Scan barcode = menentukan barang **dan** satuannya.
 4. Tepat satu `is_default_sale` per barang, dan satuan itu harus `is_sellable`; minimal satu satuan `is_sellable` dan satu `is_purchasable`.
 5. `price_mode = nominal` → `margin_percent` kosong; `price_mode = margin` → 0 ≤ `margin_percent` < 100 dan `selling_price = modal_satuan / (1 − margin%/100)`; `selling_price` ≥ 0, 2 desimal, tanpa pembulatan.
@@ -1636,7 +1636,7 @@ erDiagram
 |---|---|---|
 | Info barang | sku, nama, kategori, merek, stok minimum, aktif | — |
 | Satuan | satuan dasar + satuan lain, **konversi**, barcode satuan, boleh dijual, satuan default | boleh dibeli (terkait penerimaan) |
-| Harga | **harga beli (modal) per satuan dasar** dan **harga jual nominal per satuan**; peringatan bila harga jual < modal | **Form Harga**: mode margin, pratinjau perubahan, persen untung (margin) per satuan |
+| Harga | **harga beli (modal) per satuan** (boleh berbeda tiap satuan; otomatis = modal dasar × konversi sampai diisi sendiri) dan **harga jual nominal per satuan**; peringatan bila harga jual < modal | **Form Harga**: mode margin, pratinjau perubahan, persen untung (margin) per satuan |
 | Histori | tidak ada layar; perubahan tercatat teknis di `audits` | **Histori perubahan harga jual/modal** (`price_histories`, tab Histori Harga, laporan), diisi awal dari `audits` |
 | Detail barang | Ringkasan + Kartu Stok | tab Histori Harga, daftar layer FIFO |
 Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mulai R2**; aturan lain berlaku sejak R1.
@@ -1646,16 +1646,17 @@ Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mula
 **Field barang:** `sku`, nama, kategori, merek (opsional), satuan dasar, stok minimum, aktif; per satuan: konversi, barcode, boleh dibeli, boleh dijual, mode harga (nominal/margin), nilai, harga jual, satuan default jual; harga beli terakhir (per satuan dasar).
 
 **Aturan bisnis**
-1. Tepat **1 satuan dasar** (`conversion_factor = 1`); konversi > 0, **maks 3 desimal**; kuantitas desimal hanya bila satuan `allows_decimal`.
-2. **Mode margin:** `selling_price = modal_satuan / (1 − margin_percent/100)`, `modal_satuan = cost_price × conversion_factor`; `margin_percent` ≥ 0 dan < 100. Contoh: modal 72.875 dan margin 37,5 % → 116.600. **Tanpa pembulatan** (D16), disimpan 2 desimal. Basis = **harga beli terakhir** (`cost_price`).
+1. Tepat **1 satuan dasar** (`conversion_factor = 1`); konversi > 0, **maks 3 desimal**; semua satuan boleh berdesimal (kuantitas maks 3 desimal).
+2. **Mode margin:** `selling_price = modal_satuan / (1 − margin_percent/100)`, `modal_satuan = product_units.cost_price`; `margin_percent` ≥ 0 dan < 100. Contoh: modal 72.875 dan margin 37,5 % → 116.600. **Tanpa pembulatan** (D16), disimpan 2 desimal. Basis = **harga beli terakhir** (`cost_price`).
 3. **Persen untung = margin** (dari harga jual) = `(harga jual − modal) / harga jual`, ditampilkan per satuan bersama nominal untung (A7). Untuk mode nominal, margin dihitung dari harga yang diketik.
 4. Harga jual < modal → peringatan + konfirmasi.
 5. `price_histories` append-only, otomatis tiap perubahan `cost_price`/`selling_price` (sumber: manual, penerimaan, hitung ulang, import); harga beli berubah → harga mode margin dihitung ulang (sumber `recalculation`).
 6. **Satuan boleh dibeli / boleh dijual:** hanya satuan `is_purchasable` muncul di Penerimaan; hanya `is_sellable` di Kasir. Admin Toko mengubahnya di Form Harga (diaudit). Batasan: minimal 1 satuan jual & 1 satuan beli; satuan default jual harus boleh dijual; satuan yang dipakai di dokumen draft tidak boleh dimatikan.
-7. Konversi terkunci setelah ada stok/transaksi; satuan yang pernah dipakai tidak bisa dihapus (hanya dimatikan lewat dua penanda di atas); barang bertransaksi tidak bisa dihapus.
+7. Konversi terkunci setelah ada stok/transaksi; satuan yang pernah dipakai tidak bisa dihapus (hanya dimatikan lewat dua penanda di atas); barang yang punya stok atau pernah bertransaksi (termasuk masuk opname) tidak bisa dihapus, hanya dinonaktifkan. Barang yang belum punya stok maupun transaksi boleh dihapus permanen oleh Admin (SKU dan barcode bisa dipakai lagi; kondisi terakhirnya tetap ada di `audits`).
 8. `sku` unik per toko. **Barcode hanya ada di satuan** (`product_units.barcode`, unik): scan barcode langsung memilih barang **dan** satuannya di kasir.
 9. Import Excel: template, validasi per baris, pratinjau sebelum simpan; histori sumber `import`. Dipakai juga untuk stok awal (`opening_balance`) dan migrasi.
 10. Lintas toko dicocokkan lewat `sku` (4.3); "salin barang dari toko lain" = ekspor/import Excel (R2).
+11. **Satuan** dikelola Admin Toko di **Pengaturan → Satuan** (tambah, ubah nama atau kode, hapus) dan bisa ditambah lewat jendela "Tambah satuan baru" di Form Barang tanpa kehilangan isian form. Satuan di Form Barang hanya bisa dipilih dari yang sudah ada. Mengganti kode merambat ke semua barang; satuan yang dipakai barang tidak bisa dihapus.
 
 **Detail barang — Histori Harga:** tab *Harga Beli* / *Harga Jual*: Tanggal · Lama → Baru · Δ% · Mode · Sumber · Oleh · Catatan (+ tautan dokumen). Ringkasan: harga beli terakhir, harga jual & **untung (margin) per satuan**. Daftar layer FIFO menyusul di R2.
 

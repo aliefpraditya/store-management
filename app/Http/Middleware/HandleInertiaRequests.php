@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Store;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -44,6 +45,7 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
             ],
+            'store' => fn () => $this->currentStore(),
             'urls' => [
                 'home' => route('home'),
                 'central_dashboard' => route('central.dashboard'),
@@ -52,6 +54,30 @@ class HandleInertiaRequests extends Middleware
                 'login' => route('login'),
                 'logout' => route('logout'),
             ],
+        ];
+    }
+
+    /**
+     * The store of the current page, for every page under /t/{code}; null on central pages.
+     *
+     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, units_url: string}|null
+     */
+    private function currentStore(): ?array
+    {
+        if (! tenancy()->initialized) {
+            return null;
+        }
+
+        /** @var Store $store */
+        $store = tenant();
+
+        return [
+            'code' => $store->code,
+            'name' => $store->name,
+            'receipt_prefix' => $store->receipt_prefix,
+            'dashboard_url' => route('tenant.dashboard', ['tenant' => $store->code]),
+            'products_url' => route('tenant.products.index', ['tenant' => $store->code]),
+            'units_url' => route('tenant.units.index', ['tenant' => $store->code]),
         ];
     }
 }

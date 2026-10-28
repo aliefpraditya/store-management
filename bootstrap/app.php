@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureUserCanAccessStore;
+use App\Http\Middleware\EnsureUserIsStoreAdmin;
 use App\Http\Middleware\EnsureUserIsSuperAdmin;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
@@ -23,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'store.access' => EnsureUserCanAccessStore::class,
             'super.admin' => EnsureUserIsSuperAdmin::class,
+            'store.admin' => EnsureUserIsStoreAdmin::class,
         ]);
 
         $middleware->redirectUsersTo(fn () => route('home'));

@@ -15,9 +15,11 @@ class UnitFactory extends Factory
      */
     public function definition(): array
     {
+        $name = fake()->unique()->word();
+
         return [
-            'name' => fake()->unique()->word(),
-            'allows_decimal' => false,
+            'code' => Unit::normalizeCode($name),
+            'name' => ucfirst($name),
         ];
     }
 }

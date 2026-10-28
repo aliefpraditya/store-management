@@ -18,7 +18,6 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->middleware('auth')->name('logout');
-
 Route::prefix('pusat')
     ->name('central.')
     ->middleware(['auth', 'super.admin'])

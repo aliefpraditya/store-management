@@ -3,10 +3,6 @@ import { Head, router, usePage } from '@inertiajs/vue3';
 import logo from '../../../images/logo-mitra-utama.jpg';
 import AppFooter from '../../Components/AppFooter.vue';
 
-defineProps({
-    store: { type: Object, required: true },
-});
-
 const page = usePage();
 </script>
 
@@ -17,7 +13,7 @@ const page = usePage();
         <q-page-container>
             <q-page class="placeholder">
                 <img :src="logo" alt="" class="placeholder__logo" />
-                <h1>{{ store.name }}</h1>
+                <h1>{{ page.props.store.name }}</h1>
                 <p>Layar kasir sedang disiapkan.</p>
 
                 <div class="placeholder__actions">

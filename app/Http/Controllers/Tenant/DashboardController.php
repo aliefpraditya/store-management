@@ -20,20 +20,10 @@ class DashboardController extends Controller
         /** @var Store $store */
         $store = tenant();
 
-        $storeProps = [
-            'code' => $store->code,
-            'name' => $store->name,
-            'receipt_prefix' => $store->receipt_prefix,
-            'dashboard_url' => route('tenant.dashboard', ['tenant' => $store->code]),
-        ];
-
         if ($request->user()->roleIn($store) === UserRole::Cashier) {
-            return Inertia::render('Tenant/Cashier', ['store' => $storeProps]);
+            return Inertia::render('Tenant/Cashier');
         }
 
-        return Inertia::render('Tenant/Dashboard', [
-            'store' => $storeProps,
-            'summary' => $dashboard->summary(today()),
-        ]);
+        return Inertia::render('Tenant/Dashboard', ['summary' => $dashboard->summary(today())]);
     }
 }
