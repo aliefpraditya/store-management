@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
+import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -24,42 +25,7 @@ const statusOptions = [
     { label: 'Nonaktif', value: 'inactive' },
 ];
 
-const numberFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 });
 const priceFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
-
-/**
- * Shows a base-unit quantity in the larger units first, e.g. 30 base units with 1 DUS = 4 become "7 DUS + 2 PAIL".
- * @param {string|number} quantity quantity in the base unit
- * @param {{code: string, conversion_factor: string}[]} units the product's units
- * @param {string} baseUnit code of the base unit
- * @returns {string}
- */
-function formatStock(quantity, units, baseUnit) {
-    let rest = Math.round(Number(quantity) * 1000) / 1000;
-
-    if (rest === 0) {
-        return `0 ${baseUnit}`;
-    }
-
-    const largerUnits = units.filter((unit) => Number(unit.conversion_factor) > 1).sort((a, b) => b.conversion_factor - a.conversion_factor);
-    const parts = [];
-
-    for (const unit of largerUnits) {
-        const factor = Number(unit.conversion_factor);
-        const count = Math.floor(rest / factor + 1e-9);
-
-        if (count > 0) {
-            parts.push(`${count} ${unit.code}`);
-            rest = Math.round((rest - count * factor) * 1000) / 1000;
-        }
-    }
-
-    if (rest > 0 || parts.length === 0) {
-        parts.push(`${numberFormat.format(rest)} ${baseUnit}`);
-    }
-
-    return parts.join(' + ');
-}
 
 function confirmDelete(product) {
     deleteWithConfirmation(product.delete_url, {
@@ -136,7 +102,7 @@ watch([category, status], () => applyFilters());
                             <span :class="{ 'chip chip--bad': product.is_below_minimum }">
                                 {{ formatStock(product.sellable_stock, product.units, product.base_unit) }}
                             </span>
-                            <small v-if="product.is_below_minimum">min {{ numberFormat.format(product.min_stock) }}</small>
+                            <small v-if="product.is_below_minimum">min {{ formatQuantity(product.min_stock) }}</small>
                         </td>
                         <td class="items__right">
                             <span v-if="Number(product.dead_stock) > 0" class="chip chip--warn">
@@ -258,36 +224,6 @@ watch([category, status], () => applyFilters());
     padding: 28px 16px !important;
     color: var(--app-mute);
     text-align: center;
-}
-
-.chip {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 99px;
-    background: #f2f3f5;
-    color: var(--app-ink-soft);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.chip--ok {
-    background: #e7f8f1;
-    color: #059669;
-}
-
-.chip--warn {
-    background: #fdf1e0;
-    color: #c2710c;
-}
-
-.chip--bad {
-    background: #fde8ee;
-    color: #be123c;
-}
-
-.chip--off {
-    background: #f2f3f5;
-    color: var(--app-ink-soft);
 }
 
 .pager {

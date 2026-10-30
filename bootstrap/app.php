@@ -1,9 +1,11 @@
 <?php
 
 use App\Http\Middleware\EnsureUserCanAccessStore;
+use App\Http\Middleware\EnsureUserHasNoOpenShift;
 use App\Http\Middleware\EnsureUserIsStoreAdmin;
 use App\Http\Middleware\EnsureUserIsSuperAdmin;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RememberOpenShift;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -25,6 +27,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'store.access' => EnsureUserCanAccessStore::class,
             'super.admin' => EnsureUserIsSuperAdmin::class,
             'store.admin' => EnsureUserIsStoreAdmin::class,
+            'shift.closed' => EnsureUserHasNoOpenShift::class,
+            'shift.remember' => RememberOpenShift::class,
         ]);
 
         $middleware->redirectUsersTo(fn () => route('home'));

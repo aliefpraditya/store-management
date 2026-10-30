@@ -83,15 +83,10 @@ class StoreDashboardTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->component('Tenant/Dashboard')->has('summary'));
     }
 
-    public function test_cashier_gets_the_cashier_screen_without_dashboard_numbers(): void
+    public function test_cashier_is_sent_to_the_cashier_screen_and_never_sees_dashboard_numbers(): void
     {
         $this->dashboardAs($this->userWithRole(UserRole::Cashier))
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Tenant/Cashier')
-                ->where('store.name', 'Toko Uji')
-                ->missing('summary')
-            );
+            ->assertRedirect(route('tenant.cashier.index', ['tenant' => $this->store->code]));
     }
 
     public function test_net_sales_are_todays_completed_receipts_minus_completed_returns(): void

@@ -22,7 +22,7 @@ class CashShiftFactory extends Factory
             'client_uuid' => fake()->uuid(),
             'register_id' => Register::factory(),
             'business_date' => today(),
-            'cashier_id' => 1,
+            'cashier_id' => 999999,
             'cashier_name' => fake()->firstName(),
             'opened_at' => now(),
             'opening_cash' => 500000,

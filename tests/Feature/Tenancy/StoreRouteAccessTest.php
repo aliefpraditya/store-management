@@ -3,7 +3,9 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Http\Middleware\EnsureUserCanAccessStore;
+use App\Http\Middleware\EnsureUserHasNoOpenShift;
 use App\Http\Middleware\EnsureUserIsStoreAdmin;
+use App\Http\Middleware\RememberOpenShift;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Routing\Route as RoutingRoute;
 use Illuminate\Support\Facades\Route;
@@ -41,20 +43,60 @@ class StoreRouteAccessTest extends TestCase
     }
 
     /**
-     * Only the dashboard (which shows cashiers their own screen) and the ping check are open to cashiers.
+     * Logout and the central pages are closed while a shift is open; store pages stay open but note the open shift.
+     */
+    public function test_logout_and_the_central_pages_are_locked_while_a_shift_is_open(): void
+    {
+        $lockedRoutes = array_filter(
+            Route::getRoutes()->getRoutes(),
+            fn (RoutingRoute $route): bool => str_starts_with((string) $route->getName(), 'central.') || $route->getName() === 'logout',
+        );
+
+        $this->assertNotEmpty($lockedRoutes);
+
+        foreach ($lockedRoutes as $route) {
+            $this->assertContains(EnsureUserHasNoOpenShift::class, app('router')->gatherRouteMiddleware($route), "{$route->getName()} must be closed while a shift is open");
+        }
+
+        foreach ($this->storeRoutes() as $route) {
+            $this->assertNotContains(EnsureUserHasNoOpenShift::class, app('router')->gatherRouteMiddleware($route), "{$route->getName()} stays open during a shift");
+            $this->assertContains(RememberOpenShift::class, app('router')->gatherRouteMiddleware($route), "{$route->getName()} must note an open shift");
+        }
+    }
+
+    public function test_the_cashier_screen_routes_are_open_to_every_user_of_the_store(): void
+    {
+        $cashierRoutes = array_filter($this->storeRoutes(), fn (RoutingRoute $route): bool => str_starts_with((string) $route->getName(), 'tenant.cashier.'));
+
+        $this->assertCount(5, $cashierRoutes);
+
+        foreach ($cashierRoutes as $route) {
+            $middleware = app('router')->gatherRouteMiddleware($route);
+
+            $this->assertContains(EnsureUserCanAccessStore::class, $middleware, "{$route->getName()} must check store access");
+            $this->assertNotContains(EnsureUserIsStoreAdmin::class, $middleware, "{$route->getName()} is for cashiers too");
+        }
+    }
+
+    /**
+     * Only the dashboard (which sends cashiers to their screen), the cashier screen routes and the ping check are
+     * open to cashiers.
      */
     public function test_every_other_store_route_is_for_store_admins_only(): void
     {
         $adminRoutes = array_filter(
             $this->storeRoutes(),
-            fn (RoutingRoute $route): bool => ! in_array($route->getName(), ['tenant.dashboard', 'tenant.ping'], true),
+            fn (RoutingRoute $route): bool => ! in_array($route->getName(), ['tenant.dashboard', 'tenant.ping'], true)
+                && ! str_starts_with((string) $route->getName(), 'tenant.cashier.'),
         );
 
         $names = array_map(fn (RoutingRoute $route): string => (string) $route->getName(), $adminRoutes);
 
-        $this->assertCount(6, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.products.')));
+        $this->assertCount(7, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.products.')));
         $this->assertCount(4, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.units.')));
-        $this->assertCount(10, $adminRoutes);
+        $this->assertCount(13, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-opnames.')));
+        $this->assertCount(1, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-history.')));
+        $this->assertCount(25, $adminRoutes);
 
         foreach ($adminRoutes as $route) {
             $this->assertContains(

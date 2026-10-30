@@ -64,6 +64,22 @@ return [
             ]) : [],
         ],
 
+        /*
+         * The old POS database, read only by the legacy product import (database/seeders/LegacyProductSeeder.php).
+         */
+        'legacy' => [
+            'driver' => 'mysql',
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '3306'),
+            'database' => env('LEGACY_DB_DATABASE', 'mitra_utama_existing'),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+        ],
+
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),

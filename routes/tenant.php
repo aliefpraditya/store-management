@@ -2,8 +2,15 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Tenant\CashierController;
+use App\Http\Controllers\Tenant\CashierProductController;
 use App\Http\Controllers\Tenant\DashboardController as TenantDashboardController;
 use App\Http\Controllers\Tenant\ProductController;
+use App\Http\Controllers\Tenant\ProductSearchController;
+use App\Http\Controllers\Tenant\SaleController;
+use App\Http\Controllers\Tenant\ShiftController;
+use App\Http\Controllers\Tenant\StockHistoryController;
+use App\Http\Controllers\Tenant\StockOpnameController;
 use App\Http\Controllers\Tenant\UnitController;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -22,13 +29,40 @@ use Stancl\Tenancy\Middleware\InitializeTenancyByPath;
 */
 
 Route::prefix('t/{tenant}')
-    ->middleware(['web', InitializeTenancyByPath::class, 'auth', 'store.access'])
+    ->middleware(['web', InitializeTenancyByPath::class, 'auth', 'store.access', 'shift.remember'])
     ->group(function () {
         Route::get('/', TenantDashboardController::class)->name('tenant.dashboard');
 
+        Route::prefix('cashier')->name('tenant.cashier.')->group(function () {
+            Route::get('/', [CashierController::class, 'index'])->name('index');
+            Route::get('products', CashierProductController::class)->name('products');
+            Route::post('shifts', [ShiftController::class, 'store'])->name('shifts.store');
+            Route::post('shifts/{shift}/close', [ShiftController::class, 'close'])->name('shifts.close');
+            Route::post('sales', [SaleController::class, 'store'])->name('sales.store');
+        });
+
         Route::middleware('store.admin')->group(function () {
+            Route::get('products/search', ProductSearchController::class)->name('tenant.products.search');
             Route::resource('products', ProductController::class)->except(['show'])->names('tenant.products');
             Route::resource('settings/units', UnitController::class)->only(['index', 'store', 'update', 'destroy'])->names('tenant.units');
+
+            Route::prefix('stock-opnames')->name('tenant.stock-opnames.')->scopeBindings()->group(function () {
+                Route::get('/', [StockOpnameController::class, 'index'])->name('index');
+                Route::get('create', [StockOpnameController::class, 'create'])->name('create');
+                Route::post('/', [StockOpnameController::class, 'store'])->name('store');
+                Route::get('{stock_opname}', [StockOpnameController::class, 'show'])->withTrashed()->name('show');
+                Route::post('{stock_opname}/start', [StockOpnameController::class, 'start'])->name('start');
+                Route::put('{stock_opname}/counts', [StockOpnameController::class, 'saveCounts'])->name('counts');
+                Route::post('{stock_opname}/items', [StockOpnameController::class, 'addItem'])->name('items.store');
+                Route::delete('{stock_opname}/items/{item}', [StockOpnameController::class, 'removeItem'])->name('items.destroy');
+                Route::post('{stock_opname}/zero-uncounted', [StockOpnameController::class, 'countUncountedAsZero'])->name('zero-uncounted');
+                Route::post('{stock_opname}/finish', [StockOpnameController::class, 'finish'])->name('finish');
+                Route::post('{stock_opname}/reopen', [StockOpnameController::class, 'reopen'])->name('reopen');
+                Route::post('{stock_opname}/post', [StockOpnameController::class, 'post'])->name('post');
+                Route::post('{stock_opname}/cancel', [StockOpnameController::class, 'cancel'])->name('cancel');
+            });
+
+            Route::get('stock-history', [StockHistoryController::class, 'index'])->name('tenant.stock-history.index');
         });
 
         Route::get('ping', function () {

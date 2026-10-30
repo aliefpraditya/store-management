@@ -16,7 +16,7 @@ const user = computed(() => page.props.auth.user);
 const brand = computed(() => ({ initial: store.value.receipt_prefix, name: store.value.name, sub: 'Toko' }));
 
 /**
- * Sidebar of a store. Only the dashboard, the item list and the units exist so far; the other entries are the planned R1 screens.
+ * Sidebar of a store. Only the dashboard, items, stock, the cashier and units exist so far; the other entries are the planned R1 screens.
  */
 const menuGroups = computed(() => {
     const groups = [
@@ -28,14 +28,14 @@ const menuGroups = computed(() => {
         {
             label: 'Stok',
             items: [
-                { label: 'Stok Opname', icon: 'fact_check' },
-                { label: 'Kartu Stok', icon: 'layers' },
+                { label: 'Stok Opname', icon: 'fact_check', href: store.value.stock_opnames_url },
+                { label: 'Histori Stok', icon: 'layers', href: store.value.stock_history_url },
             ],
         },
         {
             label: 'Penjualan',
             items: [
-                { label: 'Kasir', icon: 'shopping_cart' },
+                { label: 'Kasir', icon: 'shopping_cart', href: store.value.cashier_url },
                 { label: 'Riwayat Nota', icon: 'receipt_long' },
                 { label: 'Retur', icon: 'undo' },
                 { label: 'Surat Jalan', icon: 'local_shipping' },

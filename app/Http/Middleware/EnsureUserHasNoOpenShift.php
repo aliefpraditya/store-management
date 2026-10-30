@@ -1,0 +1,56 @@
+<?php
+
+namespace App\Http\Middleware;
+
+use App\Models\Store;
+use App\Models\User;
+use App\Services\ShiftService;
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+/**
+ * Keeps a cashier at the till: while the user has an open shift they cannot log out or open the central pages,
+ * they close the shift first. Store pages stay open, so an admin can still look up stock during a shift.
+ *
+ * Central pages and logout run outside any store, so the session remembers which store holds the shift (see
+ * {@see RememberOpenShift}); the real shift is checked there, and a flag that no longer matches one is dropped.
+ */
+class EnsureUserHasNoOpenShift
+{
+    /** Session key holding the code of the store where the user has an open shift. */
+    public const SESSION_KEY = 'open_shift_store';
+
+    private const LOCKED_MESSAGE = 'Tutup shift dulu sebelum keluar atau membuka halaman pusat.';
+
+    public function __construct(private readonly ShiftService $shifts) {}
+
+    public function handle(Request $request, Closure $next): Response
+    {
+        /** @var User|null $user */
+        $user = $request->user();
+        $store = $user === null ? null : $this->storeWithOpenShift($request, $user);
+
+        if ($store === null) {
+            return $next($request);
+        }
+
+        abort_if($request->expectsJson(), 423, self::LOCKED_MESSAGE);
+
+        return redirect()->route('tenant.cashier.index', ['tenant' => $store->code])->with('error', self::LOCKED_MESSAGE);
+    }
+
+    private function storeWithOpenShift(Request $request, User $user): ?Store
+    {
+        $code = $request->session()->get(self::SESSION_KEY);
+        $store = $code === null ? null : Store::query()->where('code', $code)->first();
+
+        if ($store !== null && $store->run(fn (): bool => $this->shifts->openShiftOf($user) !== null)) {
+            return $store;
+        }
+
+        $request->session()->forget(self::SESSION_KEY);
+
+        return null;
+    }
+}

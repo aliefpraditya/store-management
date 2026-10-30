@@ -1,8 +1,9 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import AppFooter from '../Components/AppFooter.vue';
+import { useFlashMessages } from '../Composables/useFlashMessages';
 
 const props = defineProps({
     title: { type: String, required: true },
@@ -23,6 +24,50 @@ const userInitial = computed(() => user.value.name.charAt(0).toUpperCase());
 
 const isDrawerOpen = ref(false);
 
+const MINI_STORAGE_KEY = 'mitra.sidebar.mini';
+
+/** Below this width (a tablet in landscape) the sidebar starts as an icon rail until the user opens it. */
+const WIDE_SCREEN_MIN_WIDTH = 1280;
+
+/**
+ * The remembered choice, or null when there is none or the browser blocks storage.
+ * @returns {boolean|null}
+ */
+function readStoredMini() {
+    try {
+        const stored = window.localStorage.getItem(MINI_STORAGE_KEY);
+
+        return stored === null ? null : stored === '1';
+    } catch {
+        return null;
+    }
+}
+
+const isMini = ref(readStoredMini() ?? window.innerWidth < WIDE_SCREEN_MIN_WIDTH);
+
+/** Mini mode only exists next to the page; on a phone the drawer is an overlay and always full width. */
+const isMiniActive = computed(() => isMini.value && $q.screen.gt.sm);
+
+/**
+ * One button for both layouts: it slides the overlay drawer in and out on small screens, and shrinks or
+ * widens the sidebar on tablets and desktops.
+ */
+function toggleSidebar() {
+    if ($q.screen.lt.md) {
+        isDrawerOpen.value = !isDrawerOpen.value;
+
+        return;
+    }
+
+    isMini.value = !isMini.value;
+
+    try {
+        window.localStorage.setItem(MINI_STORAGE_KEY, isMini.value ? '1' : '0');
+    } catch {
+        // Storage can be blocked; the sidebar then just forgets its state on reload.
+    }
+}
+
 const isActive = (item) => {
     if (!item.href) {
         return false;
@@ -33,26 +78,7 @@ const isActive = (item) => {
     return item.isExact ? page.url === path : page.url.startsWith(path);
 };
 
-watch(
-    () => page.props.flash.success,
-    (message) => message && $q.notify({ type: 'positive', message, position: 'top' }),
-    { immediate: true },
-);
-
-watch(
-    () => page.props.flash.error,
-    (message) =>
-        message &&
-        $q.notify({
-            type: 'negative',
-            message,
-            position: 'top',
-            multiLine: true,
-            timeout: 10000,
-            actions: [{ icon: 'close', color: 'white', round: true, dense: true }],
-        }),
-    { immediate: true },
-);
+useFlashMessages();
 
 function signOut() {
     router.post(page.props.urls.logout);
@@ -65,24 +91,36 @@ function signOut() {
     <q-layout view="lHh LpR lFf">
         <q-header bordered class="shell__header">
             <q-toolbar class="shell__toolbar">
-                <q-btn flat round dense icon="menu" class="lt-md" aria-label="Menu" @click="isDrawerOpen = !isDrawerOpen" />
+                <q-btn flat round dense icon="menu" :aria-label="isMiniActive ? 'Lebarkan menu' : 'Ciutkan menu'" @click="toggleSidebar" />
                 <q-toolbar-title class="shell__title">{{ props.title }}</q-toolbar-title>
+                <q-btn
+                    v-if="page.props.has_open_shift && page.props.store"
+                    color="positive"
+                    unelevated
+                    no-caps
+                    dense
+                    icon="shopping_cart"
+                    label="Kembali ke Kasir"
+                    class="q-mr-sm"
+                    @click="router.visit(page.props.store.cashier_url)"
+                />
                 <slot name="actions" />
             </q-toolbar>
         </q-header>
 
-        <q-drawer v-model="isDrawerOpen" show-if-above :width="248" class="shell__drawer">
+        <q-drawer v-model="isDrawerOpen" show-if-above :width="248" :mini="isMiniActive" :mini-width="68" class="shell__drawer">
             <div class="shell__nav">
                 <div class="shell__brand">
                     <div class="shell__logo">{{ brand.initial }}</div>
-                    <div>
+                    <div class="q-mini-drawer-hide">
                         <b>{{ brand.name }}</b>
                         <small>{{ brand.sub }}</small>
                     </div>
                 </div>
 
                 <template v-for="group in menuGroups" :key="group.label ?? 'main'">
-                    <div v-if="group.label" class="shell__group">{{ group.label }}</div>
+                    <div v-if="group.label" class="shell__group q-mini-drawer-hide">{{ group.label }}</div>
+                    <div v-if="group.label" class="shell__divider q-mini-drawer-only" />
 
                     <q-item
                         v-for="item in group.items"
@@ -97,20 +135,21 @@ function signOut() {
                         <q-item-section avatar class="shell__item-icon">
                             <q-icon :name="item.icon" size="20px" />
                         </q-item-section>
-                        <q-item-section>{{ item.label }}</q-item-section>
-                        <q-item-section v-if="!item.href && !group.label" side>
+                        <q-item-section class="q-mini-drawer-hide">{{ item.label }}</q-item-section>
+                        <q-item-section v-if="!item.href && !group.label" side class="q-mini-drawer-hide">
                             <span class="shell__soon">Segera</span>
                         </q-item-section>
+                        <q-tooltip v-if="isMiniActive" anchor="center right" self="center left" :offset="[10, 0]">{{ item.label }}</q-tooltip>
                     </q-item>
                 </template>
 
                 <div class="shell__me">
                     <div class="shell__avatar">{{ userInitial }}</div>
-                    <div class="shell__me-text">
+                    <div class="shell__me-text q-mini-drawer-hide">
                         <b>{{ user.name }}</b>
                         <small>{{ roleLabel }}</small>
                     </div>
-                    <q-btn flat round dense icon="logout" color="grey-5" aria-label="Keluar" @click="signOut">
+                    <q-btn v-if="!page.props.has_open_shift" flat round dense icon="logout" color="grey-5" aria-label="Keluar" @click="signOut">
                         <q-tooltip>Keluar</q-tooltip>
                     </q-btn>
                 </div>
@@ -272,6 +311,34 @@ function signOut() {
 .shell__me-text small {
     color: var(--app-mute);
     font-size: 11.5px;
+}
+
+.shell__divider {
+    margin: 8px 12px 6px;
+    border-top: 1px solid var(--app-dark-line);
+}
+
+.q-drawer--mini .shell__brand {
+    justify-content: center;
+    padding: 2px 0 14px;
+}
+
+.q-drawer--mini .shell__item {
+    justify-content: center;
+    padding: 0;
+}
+
+.q-drawer--mini .shell__item-icon {
+    padding-right: 0;
+}
+
+.q-drawer--mini .shell__item.shell__item--on {
+    box-shadow: inset 3px 0 0 var(--app-brand);
+}
+
+.q-drawer--mini .shell__me {
+    flex-direction: column;
+    padding: 12px 0;
 }
 
 .shell__page {

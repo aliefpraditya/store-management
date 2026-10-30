@@ -5,15 +5,18 @@ namespace App\Models;
 use App\Enums\CashShiftStatus;
 use App\Enums\ShiftDifferenceStatus;
 use Database\Factories\CashShiftFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * Lives in the store database. `cashier_id` points at a central user, so it has no relation.
  */
+#[Fillable(['client_uuid', 'register_id', 'business_date', 'cashier_id', 'cashier_name', 'opened_at', 'opening_cash', 'closed_at', 'expected_cash', 'counted_cash', 'cash_difference', 'deposit_amount', 'status', 'difference_status', 'closing_note'])]
 class CashShift extends Model implements AuditableContract
 {
     /** @use HasFactory<CashShiftFactory> */
@@ -45,5 +48,13 @@ class CashShift extends Model implements AuditableContract
     public function register(): BelongsTo
     {
         return $this->belongsTo(Register::class);
+    }
+
+    /**
+     * @return HasMany<Sale, $this>
+     */
+    public function sales(): HasMany
+    {
+        return $this->hasMany(Sale::class);
     }
 }

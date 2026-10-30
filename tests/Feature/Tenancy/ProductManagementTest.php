@@ -783,7 +783,7 @@ class ProductManagementTest extends TestCase
                 'number' => 'OP/0001',
                 'warehouse_id' => Warehouse::query()->where('code', 'MAIN')->value('id'),
                 'opname_date' => today(),
-                'scope' => 'all',
+                'scope' => 'selected',
                 'created_by' => 1,
             ]);
 
