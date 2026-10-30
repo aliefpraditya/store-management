@@ -60,7 +60,7 @@ section:last-of-type{break-after:auto}
         T5["Surat Jalan"]
         T6["Pengeluaran"]
         T7["Tutup Hari"]
-        K[("Kartu Stok per Gudang")]
+        K[("Histori Stok per Gudang")]
         T1 --&gt; T2
         T2 --&gt;|"selisih opname"| K
         T3 --&gt;|"stok berkurang"| K
@@ -148,7 +148,7 @@ section:last-of-type{break-after:auto}
     S2 --&gt;|"Tidak"| S4 --&gt; A12</pre></section>
 <section id="d4"><div class="sh"><h2>5.6 BPMN-5 — Stok Opname (per Gudang)</h2><span class="tag r1">R1</span></div><pre class="mermaid">flowchart TD
     subgraph ADM["Admin Toko"]
-        A1(["Buat opname: gudang, tanggal, cakupan semua / kategori / barang terpilih"]) --&gt; A2["Mulai: snapshot stok"]
+        A1(["Buat opname: gudang, tanggal, cakupan kategori &amp; merek / barang terpilih"]) --&gt; A2["Mulai: snapshot stok"]
         A6["Review selisih, isi alasan"]
         A7{"Setujui?"}
         A8["Posting"]
@@ -477,9 +477,11 @@ section:last-of-type{break-after:auto}
         string number UK
         bigint warehouse_id FK
         date opname_date
-        enum scope "all, category, selected"
+        enum scope "category, selected"
         bigint category_id FK
+        bigint brand_id FK
         enum status "draft, counting, review, posted, cancelled"
+        datetime deleted_at "soft delete, set when cancelled"
         datetime snapshot_at
         string reason_code "e.g. inter_store_transfer, opening_balance"
         bigint created_by

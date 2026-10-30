@@ -30,7 +30,7 @@ Asumsi: Laravel 13 API + Vue 3/**Quasar** (PWA-ready); go-live awal 1 toko (Mitr
 | 3 | Master pendukung per toko | Kategori, merek, satuan, supplier per toko; kebijakan satuan boleh dibeli/dijual; salin barang dari toko lain via Excel (**tanpa katalog pusat**, D27) | 4–6 |
 | 4 | Barang & harga (toko) | Multi-satuan, konversi, harga nominal/margin (tanpa pembulatan), histori harga, persen untung (margin) | 12–16 |
 | 5 | Import Excel | Template, validasi, pratinjau (dipakai juga untuk migrasi) | 3–4 |
-| 6 | Gudang, kartu stok, transfer antar-gudang | Ledger, saldo cache, row lock, rebuild, uji konkurensi, transfer | 8–10 |
+| 6 | Gudang, histori stok, transfer antar-gudang | Ledger, saldo cache, row lock, rebuild, uji konkurensi, transfer | 8–10 |
 | 7 | **Pembelian dari supplier** | Nota pembelian (`purchases`/`purchase_items`), status draft→ordered→partially_received→received/closed, tutup sisa, laporan pembelian per supplier | 8–10 |
 | 8 | Penerimaan kontainer | Multi-supplier, tanggal kirim/sampai/bongkar, biaya kontainer, **merujuk pembelian full/partial**, posting/batal, update status pembelian & harga beli | 12–15 |
 | 9 | Stok opname | Per gudang, cakupan, snapshot, hitung multi-satuan, posting | 6–8 |
@@ -39,7 +39,7 @@ Asumsi: Laravel 13 API + Vue 3/**Quasar** (PWA-ready); go-live awal 1 toko (Mitr
 | 12 | Retur | Refund/tukar (nilai retur dipotong otomatis), disposisi dead stock, approval Admin, kas keluar, bukti retur | 8–11 |
 | 13 | Persiapan offline-ready | `client_uuid` + endpoint idempoten, nomor per register, snapshot, API delta, pemisahan lapisan akses data di frontend | 3–5 |
 | 14 | Nota | Template + pratinjau + CSS 58/80 mm/A4 + pengaturan | 3–4 |
-| 15 | Laporan dasar | Penjualan bersih, laba (FIFO), nilai persediaan, stok per gudang, kartu stok, pembelian, penerimaan, opname, shift; ekspor | 6–8 |
+| 15 | Laporan dasar | Penjualan bersih, laba (FIFO), nilai persediaan, stok per gudang, histori stok, pembelian, penerimaan, opname, shift; ekspor | 6–8 |
 | 16 | Audit | `laravel-auditing` di pusat & toko, layar Audit Trail | 3–5 |
 | 17 | UI/UX | Penyempurnaan dari wireframe, konsistensi | 5–7 |
 | 18 | Migrasi data lama | ETL hanya Mitra Utama: barang/merek, template opname stok awal, transaksi (de-dup + harga turunan + hanya baris Mitra Utama pada nota campuran), hutang lama diekspor Excel, Excel konversi, rekonsiliasi, 2× dry-run, cutover | 14–18 |
@@ -111,7 +111,7 @@ Tarif acuan (asumsi): **freelancer menengah ±Rp 600–800 rb/MD**, **freelancer
 | Milestone | Isi | MD kasar (sebelum cadangan) |
 |---|---|---|
 | M1 | Tenancy, login/role, master barang per toko, barang & harga, import, audit, UI/UX | ±41–57 |
-| M2 | Gudang, kartu stok, **costing FIFO**, **pembelian**, penerimaan (merujuk pembelian), opname, transfer gudang, cek stok lintas toko | ±49–63 |
+| M2 | Gudang, histori stok, **costing FIFO**, **pembelian**, penerimaan (merujuk pembelian), opname, transfer gudang, cek stok lintas toko | ±49–63 |
 | M3 | Kasir online + shift & kas + nota + void + laporan dasar + persiapan offline-ready | ±31–43 |
 | M4 | Retur + migrasi data (Mitra Utama) + QA/UAT + deploy → **go-live online** | ±36–50 |
 | M5 (Fase 1b) | **Offline PWA, sinkronisasi, backup lokal** | ±35–48 |
@@ -156,7 +156,7 @@ Tiga tuas yang bisa dipakai sendiri-sendiri atau digabung: **(a) cakupan rilis p
 ### 6.1 Rilis bertahap: R1 Hemat → R2 → R3
 | Rilis | Isi | MD (sebelum cadangan) |
 |---|---|---|
-| **R1 Hemat (go-live Mitra Utama)** | Tenancy minimal (toko dibuat lewat perintah artisan, bukan layar lengkap), user & role, barang + multi-satuan + konversi + harga margin + histori harga, import Excel, 1 gudang + kartu stok, **pembelian**, **penerimaan kontainer** (multi-supplier, biaya kontainer), opname, kasir online, shift sederhana (buka/tutup + selisih, tanpa alur approval), nota, laporan minimal, audit (tanpa layar), persiapan offline-ready, migrasi **barang + stok awal saja**, QA, deploy. Modal memakai **harga beli terakhir** (tanpa FIFO) | **±112–151** (+ cadangan 10–15 % → **±125–170**) |
+| **R1 Hemat (go-live Mitra Utama)** | Tenancy minimal (toko dibuat lewat perintah artisan, bukan layar lengkap), user & role, barang + multi-satuan + konversi + harga margin + histori harga, import Excel, 1 gudang + histori stok, **pembelian**, **penerimaan kontainer** (multi-supplier, biaya kontainer), opname, kasir online, shift sederhana (buka/tutup + selisih, tanpa alur approval), nota, laporan minimal, audit (tanpa layar), persiapan offline-ready, migrasi **barang + stok awal saja**, QA, deploy. Modal memakai **harga beli terakhir** (tanpa FIFO) | **±112–151** (+ cadangan 10–15 % → **±125–170**) |
 | R2 (menyusul) | Costing FIFO (+9–11 di atas versi sederhana), retur refund/tukar + dead stock (8–11), katalog pusat + publish ke toko (12–16), transfer antar-gudang (2–3), cek stok lintas toko (3–4), approval selisih kas + rekap (2–3), layar audit (1–2), laporan lengkap (2–3), migrasi transaksi lama (8–10), polish UI (2) | ±49–65 |
 | R3 (Fase 1b) | Offline PWA + sinkronisasi + backup lokal | ±35–48 |
 
@@ -198,7 +198,7 @@ Cakupan rinci: [`analisis-sistem.md`](analisis-sistem.md) bagian 0.3. Peta menu 
 | 2 | Tenancy + Master Toko | Pusat (users, stores), **tambah toko** (provisioning DB otomatis + progres), user & akses minimal, routing login per role | 8–11 |
 | 3 | Barang (form sederhana) | Kategori, merek, satuan, barang per toko, multi-satuan + **konversi**, harga beli + **harga jual nominal per satuan**, boleh dijual/default, peringatan harga < modal (tanpa mode margin, pratinjau, histori) | 9–12 |
 | 4 | Import Excel | Barang + stok awal (template, validasi, pratinjau) | 4–5 |
-| 5 | Stok | `stock_movements` + `stocks` (2 gudang), StockService, kartu stok | 5–6 |
+| 5 | Stok | `stock_movements` + `stocks` (2 gudang), StockService, histori stok | 5–6 |
 | 6 | **Stok opname** | Cakupan semua/kategori/barang terpilih, snapshot, hitung multi-satuan, import hasil hitung, review selisih + alasan, posting Admin | 7–9 |
 | 7 | Kasir online + pembayaran | Cari/scan, barang + satuan, keranjang, bayar campuran, simpan atomik, nomor per register, riwayat nota, batal sebelum bayar | 12–16 |
 | 8 | Nota | Template + pratinjau + cetak browser (58/80 mm/A4) | 3–4 |
@@ -208,7 +208,7 @@ Cakupan rinci: [`analisis-sistem.md`](analisis-sistem.md) bagian 0.3. Peta menu 
 | 12 | **Pengeluaran** | Kategori, sumber laci/lainnya, kaitan shift | 3–4 |
 | 13 | **Tutup hari** | Checklist, snapshot laporan harian, penguncian, buka kembali | 4–6 |
 | 14 | Void oleh Admin | Pembalikan sederhana + alasan + audit | 2–3 |
-| 15 | Laporan minimal | Stok, kartu stok, selisih opname, penjualan, retur, pengeluaran, laporan harian, laba sederhana | 4–6 |
+| 15 | Laporan minimal | Stok, histori stok, selisih opname, penjualan, retur, pengeluaran, laporan harian, laba sederhana | 4–6 |
 | 16 | Audit | `laravel-auditing` aktif (tanpa layar) | 1–2 |
 | 17 | Persiapan offline-ready | `client_uuid`, idempotensi, snapshot harga | 2–3 |
 | 18 | UI/UX | Penyempurnaan dari wireframe | 4–5 |
@@ -265,7 +265,7 @@ Cakupan: **menu yang Anda sebutkan untuk R1** (bagian 7). Dua asumsi baru: (1) d
 | Fondasi & penunjang (auth, layout, audit, UI/UX, QA, deploy) | 25–35 | 12,5–17,5 | ±Rp 2,9 jt | ±4,3 jt | ±5,5 jt |
 | Master: tambah toko + user/akses | 8–11 | 4–5,5 | ±0,9 jt | ±1,4 jt | ±1,7 jt |
 | Barang (daftar, harga per satuan, konversi) + import Excel | 13–17 | 6,5–8,5 | ±1,4 jt | ±2,2 jt | ±2,7 jt |
-| Stok: kartu stok + **stok opname** | 12–15 | 6–7,5 | ±1,3 jt | ±2,0 jt | ±2,5 jt |
+| Stok: histori stok + **stok opname** | 12–15 | 6–7,5 | ±1,3 jt | ±2,0 jt | ±2,5 jt |
 | Kasir + pembayaran + nota + void Admin | 17–23 | 8,5–11,5 | ±1,9 jt | ±2,9 jt | ±3,7 jt |
 | Buka/tutup kas | 7–10 | 3,5–5 | ±0,8 jt | ±1,2 jt | ±1,6 jt |
 | Retur | 8–11 | 4–5,5 | ±0,9 jt | ±1,4 jt | ±1,7 jt |
