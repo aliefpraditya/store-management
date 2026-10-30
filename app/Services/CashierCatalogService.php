@@ -9,8 +9,9 @@ use Illuminate\Support\Collection;
 
 /**
  * The item lookup of the cashier screen: active products with the units they can be sold in, their price, and
- * how much is in the register's warehouse. A term that is exactly a unit's barcode finds that product alone and
- * tells which unit was scanned.
+ * how much is in the register's warehouse. Items in stock are listed before sold-out ones, so a broad term such as
+ * "cat" does not open with empty shelves; a specific term whose matches are all sold out still shows them. A term
+ * that is exactly a unit's barcode finds that product alone and tells which unit was scanned.
  *
  * @phpstan-type CatalogUnit array{id: int, code: string, conversion_factor: string, price: string, barcode: string|null}
  * @phpstan-type CatalogItem array{id: int, sku: string, name: string, base_unit: string, stock: string, units: list<CatalogUnit>, matched_unit_id: int|null}
@@ -18,6 +19,9 @@ use Illuminate\Support\Collection;
 class CashierCatalogService
 {
     private const RESULT_LIMIT = 20;
+
+    /** Whether the product has stock in the warehouse (the `?`); items that are sold out come after the ones in stock. */
+    private const IN_STOCK_FIRST_SQL = 'coalesce((select stocks.quantity from stocks where stocks.product_id = products.id and stocks.warehouse_id = ?), 0) > 0';
 
     /**
      * @return list<CatalogItem>
@@ -40,6 +44,7 @@ class CashierCatalogService
                 fn ($query, ProductUnit $unit) => $query->whereKey($unit->product_id),
                 fn ($query) => $query->search($term),
             )
+            ->orderByRaw(self::IN_STOCK_FIRST_SQL.' desc', [$warehouseId])
             ->orderBy('name')
             ->limit(self::RESULT_LIMIT)
             ->get()

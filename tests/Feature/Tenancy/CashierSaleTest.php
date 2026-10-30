@@ -374,4 +374,58 @@ class CashierSaleTest extends TestCase
 
         $this->actingAs($this->cashier)->getJson($this->url('products', ['q' => 'kuas']))->assertJsonPath('data.0.stock', '30.000');
     }
+
+    /**
+     * @return list<string> the names the lookup returns for the term, in order
+     */
+    private function lookupNames(string $term): array
+    {
+        return $this->actingAs($this->cashier)->getJson($this->url('products', ['q' => $term]))->json('data.*.name');
+    }
+
+    public function test_items_in_stock_come_before_sold_out_ones_in_the_lookup(): void
+    {
+        $this->sellableProduct('Cat A', '0');
+        $this->sellableProduct('Cat B', '5');
+        $this->sellableProduct('Cat C', '0');
+        $this->sellableProduct('Cat D', '3');
+
+        $this->assertSame(['Cat B', 'Cat D', 'Cat A', 'Cat C'], $this->lookupNames('cat'));
+    }
+
+    public function test_sold_out_items_do_not_crowd_in_stock_ones_out_of_the_result_limit(): void
+    {
+        foreach (range(1, 22) as $number) {
+            $this->sellableProduct(sprintf('Cat Habis %02d', $number), '0');
+        }
+
+        $this->sellableProduct('Cat Ada', '4');
+
+        $names = $this->lookupNames('cat');
+
+        $this->assertCount(20, $names);
+        $this->assertSame('Cat Ada', $names[0]);
+    }
+
+    public function test_a_specific_search_still_shows_items_when_all_matches_are_sold_out(): void
+    {
+        $this->sellableProduct('Cat Avian 1', '0');
+        $this->sellableProduct('Cat Avian 2', '0');
+        $this->sellableProduct('Cat Lain', '9');
+
+        $this->assertSame(['Cat Avian 1', 'Cat Avian 2'], $this->lookupNames('cat avian'));
+        $this->assertSame('Cat Lain', $this->lookupNames('cat')[0]);
+    }
+
+    public function test_stock_in_another_warehouse_does_not_count_as_in_stock(): void
+    {
+        $elsewhere = $this->sellableProduct('Cat A', '0');
+        $this->sellableProduct('Cat B', '2');
+        $this->store->run(fn () => Stock::query()->updateOrInsert(
+            ['product_id' => $elsewhere->id, 'warehouse_id' => Warehouse::query()->where('code', 'DEAD')->value('id')],
+            ['quantity' => 50],
+        ));
+
+        $this->assertSame(['Cat B', 'Cat A'], $this->lookupNames('cat'));
+    }
 }
