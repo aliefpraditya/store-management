@@ -5,37 +5,25 @@ namespace Tests\Feature\Tenancy;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
+use Tests\Concerns\PreparesStoreDatabase;
 use Tests\TestCase;
 
 class StoreAccessTest extends TestCase
 {
-    use RefreshDatabase;
+    use PreparesStoreDatabase, RefreshDatabase;
 
-    private const TEST_DATABASE = 'store_test_access';
+    private const STORE_DATABASE = 'store_test_access';
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        DB::connection('mysql')->statement('CREATE DATABASE IF NOT EXISTS `'.self::TEST_DATABASE.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-    }
-
-    protected function tearDown(): void
-    {
-        tenancy()->end();
-        DB::connection('mysql')->statement('DROP DATABASE IF EXISTS `'.self::TEST_DATABASE.'`');
-
-        parent::tearDown();
-    }
-
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
     private function store(array $attributes = []): Store
     {
-        return Store::factory()->create([
-            'code' => 'test_access',
-            'db_name' => self::TEST_DATABASE,
-            ...$attributes,
-        ]);
+        $store = $this->prepareStoreDatabase(['code' => 'test_access']);
+
+        $store->forceFill($attributes)->save();
+
+        return $store;
     }
 
     public function test_guest_is_rejected(): void
@@ -54,7 +42,7 @@ class StoreAccessTest extends TestCase
         $this->actingAs($user)
             ->getJson('/t/test_access/ping')
             ->assertOk()
-            ->assertJson(['store' => 'test_access', 'database' => self::TEST_DATABASE]);
+            ->assertJson(['store' => 'test_access', 'database' => self::STORE_DATABASE]);
     }
 
     public function test_super_admin_may_enter_any_store(): void

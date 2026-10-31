@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\StoreStatus;
 use Database\Factories\StoreFactory;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -61,6 +62,16 @@ class Store extends BaseTenant implements AuditableContract, TenantWithDatabase
             'schema_version',
             'created_at',
             'updated_at',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'status' => StoreStatus::class,
         ];
     }
 

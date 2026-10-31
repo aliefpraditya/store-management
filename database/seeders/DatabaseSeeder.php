@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Enums\StoreStatus;
+use App\Enums\UserRole;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -18,6 +20,7 @@ class DatabaseSeeder extends Seeder
     {
         $superAdmin = User::factory()->create([
             'name' => 'Super Admin',
+            'username' => 'admin',
             'email' => 'admin@example.test',
         ]);
         $superAdmin->forceFill(['is_super_admin' => true])->save();
@@ -27,13 +30,21 @@ class DatabaseSeeder extends Seeder
             'receipt_prefix' => 'MU',
             'name' => 'Mitra Utama',
             'db_name' => 'store_mitra_utama',
-            'status' => 'active',
+            'status' => StoreStatus::Active,
         ]);
 
         $storeAdmin = User::factory()->create([
             'name' => 'Admin Mitra Utama',
+            'username' => 'admin.mu',
             'email' => 'admin.mu@example.test',
         ]);
-        $store->users()->attach($storeAdmin->id, ['role' => 'admin']);
+        $store->users()->attach($storeAdmin->id, ['role' => UserRole::StoreAdmin->value]);
+
+        $cashier = User::factory()->create([
+            'name' => 'Kasir Mitra Utama',
+            'username' => 'kasir.mu',
+            'email' => 'kasir.mu@example.test',
+        ]);
+        $store->users()->attach($cashier->id, ['role' => UserRole::Cashier->value]);
     }
 }

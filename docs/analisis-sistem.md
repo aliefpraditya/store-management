@@ -85,17 +85,17 @@ Toko
 |---|---|---|---|
 | Master | **Tambah toko** (provisioning DB otomatis + progres), user & akses minimal, Dashboard Pusat | Cek stok lintas toko, layar Audit Trail, laporan overall (Fase 2) | — |
 | Barang | **Daftar barang per toko** dan **form barang sederhana**: sku, nama, kategori, merek, satuan dasar + satuan lain + **konversi**, **harga beli (modal)** per satuan dasar, **harga jual nominal per satuan**, satuan boleh dijual + default, barcode satuan, stok minimum, import Excel (barang + stok awal) | **Form Harga** (mode margin, pratinjau, persen untung, boleh dibeli), **histori perubahan harga jual/modal**, daftar layer FIFO, salin barang antar toko | — |
-| Stok | **Stok opname** (stok awal, penambahan dan koreksi stok; hitung fisik, selisih, alasan, posting Admin), kartu stok, 2 gudang tetap (*Main Warehouse*, *Dead Stock*) | **Pembelian** + **penerimaan kontainer** (multi-supplier, biaya kontainer), transfer antar-gudang, **FIFO** | — |
+| Stok | **Stok opname** (stok awal, penambahan dan koreksi stok; hitung fisik, selisih, alasan, posting Admin), histori stok, 2 gudang tetap (*Main Warehouse*, *Dead Stock*) | **Pembelian** + **penerimaan kontainer** (multi-supplier, biaya kontainer), transfer antar-gudang, **FIFO** | — |
 | Penjualan | **Kasir** online, **pembayaran** campur (tunai/transfer/QRIS/EDC), **nota** cetak, riwayat nota, batal sebelum bayar, void oleh Admin (sederhana), **buka/tutup kas** (modal tetap, setoran, selisih + approval Admin), **retur** (refund/tukar, dead stock, approval Admin), **surat jalan**, **pengeluaran**, **tutup hari** | — | ~~Offline PWA + sinkron + backup lokal~~ **dibatalkan (D34)** |
 | Costing | Modal = **harga beli terakhir** (diisi manual di Form Harga atau opsional saat opname); HPP nota = qty × harga beli terakhir (estimasi) | FIFO per layer | — |
-| Laporan | Stok, kartu stok, selisih opname, penjualan harian/periode, retur, pengeluaran per kategori, **laporan harian (tutup hari)**, rekap shift, laba sederhana | Laporan lengkap, nilai persediaan FIFO, pembelian per supplier | — |
+| Laporan | Stok, histori stok, selisih opname, penjualan harian/periode, retur, pengeluaran per kategori, **laporan harian (tutup hari)**, rekap shift, laba sederhana | Laporan lengkap, nilai persediaan FIFO, pembelian per supplier | — |
 | Data lama | **Barang + stok awal** (Excel / opname) | Transaksi lama | — |
 
 **Akibat teknis untuk R1**
 1. **Tabel R1** — pusat: `users`, `stores`, `store_users`, `store_provisioning_logs`. Toko: `categories`, `brands`, `units`, `products`, `product_units` (R1: `selling_price` nominal, `is_sellable`, `is_default_sale`), `warehouses` (2 baris), `stocks`, `stock_movements`, `stock_opnames`, `stock_opname_items`, `registers`, `cash_shifts`, `sales`, `sale_items`, `sale_payments`, `sale_cancellations`, `sale_returns`, `sale_return_items`, `delivery_notes`, `delivery_note_items`, `expense_categories`, `expenses`, `daily_closings`, `document_sequences`, `settings`, `audits`.
 2. **Belum ada di R1:** `price_histories` (dan kolom `product_units.price_mode`, `margin_percent`, `is_purchasable`), `suppliers`, `purchases`/`purchase_items`, `goods_receipts` (+suppliers, items, costs), `stock_transfers`, `stock_layers`/`stock_layer_allocations`. (`sync_issues` dibatalkan bersama offline, D34.) Ditambahkan lewat migrasi baru tanpa mengubah tabel R1.
 3. **Stok bertambah** hanya lewat **opname** (selisih positif), **retur**, **void**, dan import saldo awal; **berkurang** lewat penjualan dan opname (selisih negatif). **R1 tidak punya dokumen penerimaan/pembelian**: barang yang datang cukup dihitung lewat opname (parsial atau penuh). Harga beli diisi manual di Form Harga (histori sumber `manual`).
-4. **Costing sementara:** `sale_items.cost_total = base_quantity × products.cost_price`, `is_cost_estimated = true`; FIFO di R2 membuat layer awal dari nilai persediaan saat itu.
+4. **Costing sementara:** `sale_items.cost_total = quantity × product_units.cost_price` (modal satuan yang dijual), `is_cost_estimated = true`; FIFO di R2 membuat layer awal dari nilai persediaan saat itu.
 5. **Dead stock** di R1: retur bisa memilih gudang *Dead Stock*; memindahkannya kembali dilakukan lewat opname (tanpa transfer antar-gudang).
 6. **Surat jalan tidak mengubah stok** (7.7b); **pengeluaran** dari laci mengurangi tunai seharusnya shift (7.7c); **tutup hari** mengunci transaksi tanggal bisnis itu (7.7d). Konsep `cash_movements` digantikan `expenses`.
 7. **Void** hanya oleh Admin (sederhana, tercatat); batal sebelum bayar langsung oleh kasir.
@@ -111,7 +111,7 @@ Toko
 > **Catatan v0.7:** isi **R1** mengikuti peta menu di 0.3. Butir "penerimaan/pembelian" di F2 di bawah adalah **R2**; butir shift, retur, surat jalan, tutup hari, dan pengeluaran adalah **R1**.
 - **F0 Fondasi:** login + routing per role, master toko (provisioning DB), user & akses, audit.
 - **F1 Barang (per toko):** kategori, merek, satuan, supplier, barang, multi-satuan + konversi, satuan boleh dibeli/dijual, harga nominal/margin (tanpa pembulatan), histori harga, persen untung (margin), import Excel.
-- **F2 Stok:** multi-gudang, kartu stok, **pembelian dari supplier**, penerimaan kontainer multi-supplier (merujuk pembelian full/partial), stok opname, transfer antar-gudang, **cek stok barang di semua toko (Master/pusat)**.
+- **F2 Stok:** multi-gudang, histori stok, **pembelian dari supplier**, penerimaan kontainer multi-supplier (merujuk pembelian full/partial), stok opname, transfer antar-gudang, **cek stok barang di semua toko (Master/pusat)**.
 - **F3 Penjualan:** kasir (**online dulu, offline = Fase 1b**), pembayaran (tunai/transfer/QRIS/EDC), nota (browser print), shift & kas (2 shift/hari), pembatalan & void, retur (refund / tukar).
 - **F4 Migrasi data lama:** barang, merek, stok awal, transaksi — hanya Mitra Utama; hutang lama = info saja.
 
@@ -301,7 +301,7 @@ Akibat dan aturan:
 | konversi satuan | `product_units.conversion_factor` |
 | satuan boleh dibeli / boleh dijual | `product_units.is_purchasable` / `product_units.is_sellable` |
 | harga beli / jual / histori harga | `products.cost_price` / `product_units.selling_price` / `price_histories` |
-| gudang / stok / kartu stok | `warehouses` / `stocks` / `stock_movements` |
+| gudang / stok / histori stok | `warehouses` / `stocks` / `stock_movements` |
 | penerimaan / kontainer / biaya kontainer | `goods_receipts` / `goods_receipts.container_number` / `goods_receipt_costs` |
 | stok opname / pemindahan stok | `stock_opnames` / `stock_transfers` |
 | penjualan / pembayaran / pembatalan | `sales` / `sale_payments` / `sale_cancellations` |
@@ -311,7 +311,7 @@ Akibat dan aturan:
 | pengaturan / penomoran / audit | `settings` / `document_sequences` / `audits` |
 
 ### 4.6 Transfer stok (keputusan)
-- **Antar-gudang dalam satu toko:** MVP (satu dokumen, satu transaksi DB, dua baris kartu stok).
+- **Antar-gudang dalam satu toko:** MVP (satu dokumen, satu transaksi DB, dua baris histori stok).
 - **Antar-toko:** Fase 2 (dokumen di DB pusat, status dikirim → diterima). **Sementara:** opname parsial (cakupan *barang terpilih*) dengan kode alasan `inter_store_transfer` di kedua toko; tampil sebagai selisih bertanda khusus di laporan. Kekurangan yang diterima: tidak ada jejak asal-tujuan otomatis dan nilai modal tidak ikut pindah.
 
 ### 4.7 Laravel Auditing
@@ -319,7 +319,7 @@ Akibat dan aturan:
 | Hal | Rancangan |
 |---|---|
 | Paket | `owen-it/laravel-auditing`; tabel `audits` di **DB pusat dan setiap DB toko** (masuk set migrasi tenant) |
-| Model `Auditable` | pusat: `stores`, `users`, `store_users`. toko: `categories`, `brands`, `units`, `suppliers`, `products`, `product_units`, `warehouses`, `registers`, `purchases` (+items), `goods_receipts` (+items, costs), `stock_opnames`, `stock_transfers`, `sales` (event `updated`), `sale_cancellations`, `sale_returns`, `cash_shifts` (termasuk approval selisih), `settings` |
+| Model `Auditable` | pusat: `stores`, `users`, `store_users`. toko: `categories`, `brands`, `suppliers`, `products`, `product_units`, `warehouses`, `registers`, `purchases` (+items), `goods_receipts` (+items, costs), `stock_opnames`, `stock_transfers`, `sales` (event `updated`), `sale_cancellations`, `sale_returns`, `cash_shifts` (termasuk approval selisih), `settings` |
 | **Tidak** diaudit | `stock_movements`, `price_histories` (append-only & fungsi bisnis), `stocks` (cache), `audits`, `document_sequences` |
 | User | `user_id` dari sesi (user ada di DB pusat; di toko disimpan sebagai angka). Data hasil sinkronisasi offline: `user_id` kasir dikirim di payload dan di-set eksplisit |
 | Batasan | Update massal (query builder) **tidak** diaudit → perubahan penting wajib lewat Eloquent; ada uji otomatis |
@@ -394,7 +394,7 @@ flowchart TB
         T5["Surat Jalan"]
         T6["Pengeluaran"]
         T7["Tutup Hari"]
-        K[("Kartu Stok per Gudang")]
+        K[("Histori Stok per Gudang")]
         T1 --> T2
         T2 -->|"selisih opname"| K
         T3 -->|"stok berkurang"| K
@@ -569,7 +569,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     subgraph ADM["Admin Toko"]
-        A1(["Buat opname: gudang, tanggal, cakupan semua / kategori / barang terpilih"]) --> A2["Mulai: snapshot stok"]
+        A1(["Buat opname: gudang, tanggal, cakupan kategori & merek / barang terpilih"]) --> A2["Mulai: snapshot stok"]
         A6["Review selisih, isi alasan"]
         A7{"Setujui?"}
         A8["Posting"]
@@ -922,7 +922,8 @@ erDiagram
     users {
         bigint id PK
         string name
-        string email UK
+        string username UK "used to sign in"
+        string email UK "optional, not used to sign in"
         string password
         boolean is_super_admin
         boolean is_active
@@ -944,7 +945,7 @@ erDiagram
     store_users {
         bigint store_id PK, FK
         bigint user_id PK, FK
-        enum role "admin, warehouse, cashier"
+        enum role "admin, cashier (super admin = users.is_super_admin)"
     }
     store_provisioning_logs {
         bigint id PK
@@ -974,8 +975,8 @@ erDiagram
         string name
         bigint category_id FK
         bigint brand_id FK "nullable"
-        bigint base_unit_id FK
-        decimal cost_price "last purchase price per base unit; basis for margin pricing and COGS estimate"
+        string base_unit_code FK "units.code of the base unit"
+        decimal cost_price "copy of the base unit cost_price: last purchase price per base unit"
         decimal min_stock "base unit"
         boolean is_active
         string legacy_sku "old system id"
@@ -984,12 +985,13 @@ erDiagram
     product_units {
         bigint id PK
         bigint product_id FK
-        bigint unit_id FK
+        string unit_code FK "units.code, e.g. PCS"
         decimal conversion_factor "base units per 1 of this unit, 3 decimals"
         boolean is_base
         string barcode "unique, identifies this unit when scanned"
         smallint sort_order "display order of unit chips"
         boolean is_sellable "may appear in POS"
+        decimal cost_price "purchase price of this unit, 2 decimals; may differ per unit, defaults to base cost x conversion"
         decimal selling_price "exact, 2 decimals, no rounding"
         boolean is_default_sale "exactly one per product"
     }
@@ -1003,9 +1005,8 @@ erDiagram
         string name UK
     }
     units {
-        bigint id PK
-        string name UK
-        boolean allows_decimal
+        string code PK "short label and key, upper case, max 20 chars, e.g. PCS, DUS, KG"
+        string name UK "description, e.g. Pieces"
     }
 ```
 
@@ -1049,18 +1050,18 @@ erDiagram
 |---|---|---|
 | `categories` | `name`, `parent_id` (kosong di Fase 1, kategori datar) | `name` unik |
 | `brands` | `name` | `name` unik |
-| `units` | `name`, `allows_decimal` | `name` unik |
-| `products` | `sku`, `name`, `category_id` (wajib), `brand_id` (boleh kosong), `base_unit_id`, `cost_price` (harga beli terakhir per satuan dasar), `min_stock`, `is_active`, `legacy_sku` | `sku` unik per toko |
-| `product_units` | `unit_id`, `conversion_factor`, `is_base`, `barcode`, `sort_order`, `is_purchasable`, `is_sellable`, `price_mode`, `margin_percent`, `selling_price`, `is_default_sale` | satu baris per barang × satuan |
+| `units` | `code` (**kunci**: label pendek huruf besar, mis. PCS, DUS, KG; tampil di layar dan nota), `name` (keterangan, mis. Pieces) | `code` kunci utama, `name` unik; mengganti `code` merambat ke `products` dan `product_units`; satuan yang sedang dipakai tidak bisa dihapus |
+| `products` | `sku`, `name`, `category_id` (wajib), `brand_id` (boleh kosong), `base_unit_code`, `cost_price` (salinan modal satuan dasar), `min_stock`, `is_active`, `legacy_sku` | `sku` unik per toko |
+| `product_units` | `unit_code`, `conversion_factor`, `is_base`, `barcode`, `sort_order`, `is_purchasable`, `is_sellable`, `cost_price` (modal satuan ini), `price_mode`, `margin_percent`, `selling_price`, `is_default_sale` | satu baris per barang × satuan |
 | `price_histories` **(R2)** | harga lama → baru, mode, sumber, user | append-only |
 
 **Kendala integritas**
-1. Tepat **satu satuan dasar** per barang, `conversion_factor = 1`; `unique(product_id, unit_id)`; satuan dasar sama dengan `products.base_unit_id`.
-2. `conversion_factor` > 0, maks **3 desimal**; kuantitas desimal hanya bila `units.allows_decimal`.
+1. Tepat **satu satuan dasar** per barang, `conversion_factor = 1`; `unique(product_id, unit_code)`; satuan dasar sama dengan `products.base_unit_code`.
+2. `conversion_factor` > 0, maks **3 desimal**; semua satuan boleh berdesimal (kuantitas maks 3 desimal).
 3. **Barcode hanya di satuan** (`product_units.barcode`), unik per DB (boleh kosong). Scan barcode = menentukan barang **dan** satuannya.
 4. Tepat satu `is_default_sale` per barang, dan satuan itu harus `is_sellable`; minimal satu satuan `is_sellable` dan satu `is_purchasable`.
 5. `price_mode = nominal` → `margin_percent` kosong; `price_mode = margin` → 0 ≤ `margin_percent` < 100 dan `selling_price = modal_satuan / (1 − margin%/100)`; `selling_price` ≥ 0, 2 desimal, tanpa pembulatan.
-6. Barang tidak aktif tidak muncul di kasir/penerimaan, tetap muncul di laporan & kartu stok.
+6. Barang tidak aktif tidak muncul di kasir/penerimaan, tetap muncul di laporan & histori stok.
 7. Konversi dan satuan terkunci setelah ada stok/transaksi; barang bertransaksi tidak dapat dihapus; setiap perubahan harga menulis `price_histories`.
 
 **Penyesuaian dari tinjauan ulang**
@@ -1196,9 +1197,11 @@ erDiagram
         string number UK
         bigint warehouse_id FK
         date opname_date
-        enum scope "all, category, selected"
+        enum scope "category, selected"
         bigint category_id FK
+        bigint brand_id FK
         enum status "draft, counting, review, posted, cancelled"
+        datetime deleted_at "soft delete, set when cancelled"
         datetime snapshot_at
         string reason_code "e.g. inter_store_transfer, opening_balance"
         bigint created_by
@@ -1602,7 +1605,7 @@ erDiagram
 |---|---|---|
 | Super Admin (`users.is_super_admin`) | Semua toko + pusat | **Dashboard Pusat**: tombol toko, Master Toko, **Cek Stok Barang**, User & Akses |
 | Admin Toko (`admin`) | 1 toko | Langsung ke **Dashboard Toko** (semua menu toko) |
-| Warehouse (`warehouse`) | 1 toko | Dashboard Toko: Barang (baca), Opname (R1); Pembelian, Penerimaan, Gudang & Transfer (R2) |
+| ~~Warehouse (`warehouse`)~~ | — | **Ditunda**: untuk saat ini hanya 3 peran (Super Admin, Admin Toko, Kasir). Peran gudang ditambahkan lagi bila R2 membutuhkannya |
 | Cashier (`cashier`) | 1 toko | **Layar Kasir saja**, tanpa sidebar. Riwayat shift ini, cetak ulang, ajukan void/retur, buka/tutup shift ada **di dalam** layar kasir |
 
 **Matriks persetujuan**
@@ -1635,26 +1638,27 @@ erDiagram
 |---|---|---|
 | Info barang | sku, nama, kategori, merek, stok minimum, aktif | — |
 | Satuan | satuan dasar + satuan lain, **konversi**, barcode satuan, boleh dijual, satuan default | boleh dibeli (terkait penerimaan) |
-| Harga | **harga beli (modal) per satuan dasar** dan **harga jual nominal per satuan**; peringatan bila harga jual < modal | **Form Harga**: mode margin, pratinjau perubahan, persen untung (margin) per satuan |
+| Harga | **harga beli (modal) per satuan** (boleh berbeda tiap satuan; otomatis = modal dasar × konversi sampai diisi sendiri) dan **harga jual nominal per satuan**; peringatan bila harga jual < modal | **Form Harga**: mode margin, pratinjau perubahan, persen untung (margin) per satuan |
 | Histori | tidak ada layar; perubahan tercatat teknis di `audits` | **Histori perubahan harga jual/modal** (`price_histories`, tab Histori Harga, laporan), diisi awal dari `audits` |
-| Detail barang | Ringkasan + Kartu Stok | tab Histori Harga, daftar layer FIFO |
+| Detail barang | Ringkasan + Histori Stok | tab Histori Harga, daftar layer FIFO |
 Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mulai R2**; aturan lain berlaku sejak R1.
 
-**Layar:** Daftar Barang · Form Barang (tab *Info*, *Satuan & Harga*) · Detail Barang (*Ringkasan*, *Histori Harga*, *Kartu Stok*) · Master Kategori / Merek / Satuan / Supplier (semua milik toko) · Import Excel (barang + stok awal).
+**Layar:** Daftar Barang · Form Barang (tab *Info*, *Satuan & Harga*) · Detail Barang (*Ringkasan*, *Histori Harga*, *Histori Stok*) · Master Kategori / Merek / Satuan / Supplier (semua milik toko) · Import Excel (barang + stok awal).
 
 **Field barang:** `sku`, nama, kategori, merek (opsional), satuan dasar, stok minimum, aktif; per satuan: konversi, barcode, boleh dibeli, boleh dijual, mode harga (nominal/margin), nilai, harga jual, satuan default jual; harga beli terakhir (per satuan dasar).
 
 **Aturan bisnis**
-1. Tepat **1 satuan dasar** (`conversion_factor = 1`); konversi > 0, **maks 3 desimal**; kuantitas desimal hanya bila satuan `allows_decimal`.
-2. **Mode margin:** `selling_price = modal_satuan / (1 − margin_percent/100)`, `modal_satuan = cost_price × conversion_factor`; `margin_percent` ≥ 0 dan < 100. Contoh: modal 72.875 dan margin 37,5 % → 116.600. **Tanpa pembulatan** (D16), disimpan 2 desimal. Basis = **harga beli terakhir** (`cost_price`).
+1. Tepat **1 satuan dasar** (`conversion_factor = 1`); konversi > 0, **maks 3 desimal**; semua satuan boleh berdesimal (kuantitas maks 3 desimal).
+2. **Mode margin:** `selling_price = modal_satuan / (1 − margin_percent/100)`, `modal_satuan = product_units.cost_price`; `margin_percent` ≥ 0 dan < 100. Contoh: modal 72.875 dan margin 37,5 % → 116.600. **Tanpa pembulatan** (D16), disimpan 2 desimal. Basis = **harga beli terakhir** (`cost_price`).
 3. **Persen untung = margin** (dari harga jual) = `(harga jual − modal) / harga jual`, ditampilkan per satuan bersama nominal untung (A7). Untuk mode nominal, margin dihitung dari harga yang diketik.
 4. Harga jual < modal → peringatan + konfirmasi.
 5. `price_histories` append-only, otomatis tiap perubahan `cost_price`/`selling_price` (sumber: manual, penerimaan, hitung ulang, import); harga beli berubah → harga mode margin dihitung ulang (sumber `recalculation`).
 6. **Satuan boleh dibeli / boleh dijual:** hanya satuan `is_purchasable` muncul di Penerimaan; hanya `is_sellable` di Kasir. Admin Toko mengubahnya di Form Harga (diaudit). Batasan: minimal 1 satuan jual & 1 satuan beli; satuan default jual harus boleh dijual; satuan yang dipakai di dokumen draft tidak boleh dimatikan.
-7. Konversi terkunci setelah ada stok/transaksi; satuan yang pernah dipakai tidak bisa dihapus (hanya dimatikan lewat dua penanda di atas); barang bertransaksi tidak bisa dihapus.
+7. Konversi terkunci setelah ada stok/transaksi; satuan yang pernah dipakai tidak bisa dihapus (hanya dimatikan lewat dua penanda di atas); barang yang punya stok atau pernah bertransaksi (termasuk masuk opname) tidak bisa dihapus, hanya dinonaktifkan. Barang yang belum punya stok maupun transaksi boleh dihapus permanen oleh Admin (SKU dan barcode bisa dipakai lagi; kondisi terakhirnya tetap ada di `audits`).
 8. `sku` unik per toko. **Barcode hanya ada di satuan** (`product_units.barcode`, unik): scan barcode langsung memilih barang **dan** satuannya di kasir.
 9. Import Excel: template, validasi per baris, pratinjau sebelum simpan; histori sumber `import`. Dipakai juga untuk stok awal (`opening_balance`) dan migrasi.
 10. Lintas toko dicocokkan lewat `sku` (4.3); "salin barang dari toko lain" = ekspor/import Excel (R2).
+11. **Satuan** dikelola Admin Toko di **Pengaturan → Satuan** (tambah, ubah nama atau kode, hapus) dan bisa ditambah lewat jendela "Tambah satuan baru" di Form Barang tanpa kehilangan isian form. Satuan di Form Barang hanya bisa dipilih dari yang sudah ada. Mengganti kode merambat ke semua barang; satuan yang dipakai barang tidak bisa dihapus.
 
 **Detail barang — Histori Harga:** tab *Harga Beli* / *Harga Jual*: Tanggal · Lama → Baru · Δ% · Mode · Sumber · Oleh · Catatan (+ tautan dokumen). Ringkasan: harga beli terakhir, harga jual & **untung (margin) per satuan**. Daftar layer FIFO menyusul di R2.
 
@@ -1717,7 +1721,7 @@ Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mula
 ### 7.3 F2b — Stok Opname — **R1 (satu-satunya cara mengatur/menambah stok selain transaksi)**
 
 **Layar:** Daftar Opname · Form (header + tabel hitung) · Laporan Selisih.
-**Header:** gudang, tanggal, **cakupan** (`all` / `category` / `selected`), kode alasan (mis. `inter_store_transfer`, `opening_balance`).
+**Header:** gudang, tanggal, **cakupan** (`category` = kategori dan/atau merek, `selected` = barang terpilih; **tidak ada cakupan semua barang**), kode alasan (mis. `inter_store_transfer`, `opening_balance`).
 **Alur:** buat → mulai (snapshot) → hitung & input (boleh campur satuan, semua satuan) → selesai hitung → review → posting (Admin).
 
 **Aturan bisnis**
@@ -1727,9 +1731,17 @@ Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mula
 4. Satu barang-gudang tidak boleh ada di dua opname aktif.
 5. **Saldo awal migrasi:** opname berkode `opening_balance` yang menulis `opening_balance` (7.11).
 6. Opname parsial `inter_store_transfer` dipakai sebagai jembatan transfer antar-toko dan diberi penanda di laporan selisih.
-7. **R1 hanya opname:** tidak ada dokumen penerimaan/pembelian; barang yang datang dihitung lewat opname (cakupan *semua*, *kategori*, atau *barang terpilih*) dan selisih positif menambah stok.
+7. **R1 hanya opname:** tidak ada dokumen penerimaan/pembelian; barang yang datang dihitung lewat opname (cakupan *kategori & merek* atau *barang terpilih*) dan selisih positif menambah stok.
 8. Harga beli **tidak** diubah dari opname; diisi manual di Form Harga (histori harga mencatatnya). Penerimaan yang menjadi sumber otomatis harga beli datang di R2.
-9. Kode alasan baku: `opening_balance`, `stock_increase` (penambahan/barang datang), `damaged`, `lost`, `inter_store_transfer`, `correction`. **Import Excel hasil hitung** didukung (kolom sku, satuan, qty).
+9. Kode alasan baku: `routine` (**Opname Rutin**, cek berkala tanpa kejadian khusus), `opening_balance`, `stock_increase` (penambahan/barang datang), `damaged`, `lost`, `inter_store_transfer`, `correction`. **Import Excel hasil hitung** didukung (kolom sku, satuan, qty).
+10. **Cara hitung di layar (dibangun):** satu barang dihitung dari satu atau beberapa baris satuan (mis. 5 DUS + 3 PAIL), dijumlahkan ke satuan dasar dan disimpan sebagai satu `counted_quantity`. Hitungan tersimpan ditampilkan kembali dalam satuan dasar.
+11. **Barang yang belum dihitung dilewati saat posting** (stok tidak berubah). Tombol *Tandai yang belum dihitung = 0* adalah satu-satunya cara menjadikannya 0. *Selesai hitung* butuh minimal satu barang terhitung.
+12. **Cakupan *kategori & merek*** (pilih kategori, merek, atau keduanya; minimal salah satu) membuat daftar barang saat opname **dimulai** (snapshot); barang yang sedang dipegang opname aktif lain di gudang yang sama dilewati dan jumlahnya diberitahukan. Cakupan *barang terpilih*: barang ditambah/dihapus lewat pencarian selama draft atau menghitung.
+13. **Status:** draft → menghitung → review → diposting; review boleh kembali ke menghitung; batal boleh sampai sebelum posting. **Batal saat masih draft menghapus opname permanen** (nomornya tidak dipakai lagi). **Batal setelah itu (menghitung atau review) adalah soft delete:** status menjadi *dibatalkan* dan `deleted_at` terisi, sehingga opname tersembunyi dari daftar (hanya terlihat lewat filter status *Dibatalkan*) tetapi hitungannya tetap tersimpan sebagai catatan dan barangnya bebas lagi. Opname aktif = draft, menghitung, atau review. Nomor dokumen `OPN/{prefix}/{yymm}/{urut 4 digit}` (urut per bulan dari tanggal opname, lewat `document_sequences`). Alasan `opening_balance` menulis pergerakan bertipe `opening_balance`, alasan lain `opname_adjustment`.
+14. **Opname Rutin:** alasan `routine` adalah bawaan form. **Tidak ada opname semua barang** (tidak realistis untuk ribuan barang): cek rutin dilakukan per barang terpilih atau per kategori/merek. **Tidak ada tombol "semua sesuai sistem"**: setiap barang yang dicek harus diisi hitungannya satu per satu supaya petugas tetap teliti; bila semuanya cocok, posting tidak menulis pergerakan stok dan opname tercatat sebagai bukti cek.
+15. **Mode jumlah datang (alasan `stock_increase`, Penambahan stok):** yang diisi adalah jumlah barang yang datang, bukan total di rak, dan jumlah itu **ditambahkan** ke stok saat posting (`variance` = jumlah yang diisi, `balance_after` = stok live + jumlah). Tampilan menjadi *Jumlah datang* dan *Stok setelah*; alasan lain tetap memakai total fisik. Karena yang ditambahkan hanya yang datang, penjualan antara pengisian dan posting tidak membuat salah hitung. Jumlah tidak boleh negatif (pengurangan memakai alasan Rusak/Hilang/Koreksi). Item yang dikosongkan dilewati.
+16. **Belum dibangun:** ambang selisih besar yang wajib alasan (butuh layar Pengaturan Toko), opsi kunci penjualan saat opname, import Excel hasil hitung, dan laporan selisih terpisah (angka selisih dan nilai estimasi sudah tampil di halaman opname).
+17. **Histori Stok (dibangun):** halaman `/stock-history` membaca `stock_movements` terbaru dulu, dengan filter barang (pencarian), gudang, dan rentang tanggal. Kolom: waktu, nomor dokumen (opname, nota, retur), barang, jenis, masuk, keluar, saldo setelahnya (satuan dasar), gudang. Semua perubahan stok wajib lewat `StockService` yang menulis `stocks` dan satu baris `stock_movements` sekaligus. Ekspor Excel menyusul.
 
 ---
 
@@ -1742,7 +1754,7 @@ Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mula
 
 ### 7.4b F2d — Cek Stok Barang di Semua Toko (Master/Pusat) — **R2**
 
-**Layar (Dashboard Pusat → Cek Stok Barang; juga tombol "Cek di semua toko" dari detail katalog):** kotak cari (sku/barcode/nama) → hasil barang → tabel per **toko × gudang**: tipe gudang (`sellable`/`dead_stock`), stok dasar + tampilan satuan besar, stok minimum, status (OK/di bawah minimum), harga jual satuan default toko itu, kesegaran data (terakhir sinkron register). Di atas tabel: total stok jual semua toko dan total dead stock. Aksi: ekspor Excel, "Masuk ke toko" (buka kartu stok barang itu di toko tujuan).
+**Layar (Dashboard Pusat → Cek Stok Barang; juga tombol "Cek di semua toko" dari detail katalog):** kotak cari (sku/barcode/nama) → hasil barang → tabel per **toko × gudang**: tipe gudang (`sellable`/`dead_stock`), stok dasar + tampilan satuan besar, stok minimum, status (OK/di bawah minimum), harga jual satuan default toko itu, kesegaran data (terakhir sinkron register). Di atas tabel: total stok jual semua toko dan total dead stock. Aksi: ekspor Excel, "Masuk ke toko" (buka histori stok barang itu di toko tujuan).
 
 **Aturan bisnis:** lihat 4.8 (query langsung ke tiap DB toko, toko tak terjangkau tidak menggagalkan hasil, peringatan stok offline tertinggal). Tambahan: (1) hanya-baca; (2) filter jenis gudang (jual / dead stock / semua); (3) barang nonaktif tetap bisa dicari; (4) kasus satu SKU punya satuan berbeda per toko ditampilkan dengan satuan besar yang *boleh dijual* di toko itu, bila tidak ada → hanya satuan dasar; (5) pencarian tidak mengubah data dan tidak diaudit, tetapi akses endpoint dibatasi role Super Admin.
 
@@ -1763,13 +1775,22 @@ Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mula
 8. **Batal sebelum bayar:** langsung oleh kasir dengan alasan; dicatat di `sale_cancellations` (item, total, user, waktu); tidak memengaruhi stok/kas. **Void sesudah bayar:** ajukan → Admin menyetujui, hanya di shift berjalan, online (A2, A6).
 9. Total nota = jumlah subtotal item apa adanya (tanpa pembulatan).
 10. Harga manual hanya bila role mengizinkan; `is_manual_price` + audit.
-11. Cetak ulang menambah `print_count`; ke-2 dst. bertanda **SALINAN**; nota void bertanda **VOID**.
+11. Cetak ulang menambah `print_count`; ke-2 dst. bertanda **SALINAN**; nota void bertanda **VOID**. Nota dicetak di **jendela/tab baru** (lebar 80 mm) sehingga layar kasir tidak berubah.
 12. Kasir hanya melihat nota **shift sendiri**; Admin melihat semua.
 
 **Nota:** template (Vue/HTML) dengan header toko, nomor, tanggal, kasir, nama pelanggan (bila diisi), item, total, pembayaran, kembalian, footer; layout final menyusul. Browser print (D11); berfungsi offline (1b).
 
 **Edge case:** harga berubah saat di keranjang → peringatan sebelum bayar; scan barang nonaktif/tidak boleh dijual → ditolak; refresh/crash → keranjang pulih dari IndexedDB; dua tab → satu aktif per register.
 
+
+**Kasir dasar (dibangun, online):** halaman `/t/{kode}/cashier` untuk semua pengguna toko (Kasir, Admin, Super Admin); Kasir yang membuka dashboard diarahkan ke sini.
+- **Cakupan:** buka/tutup shift, kasir (cari nama/SKU/scan barcode, pilih satuan, ubah jumlah desimal, keranjang tersimpan per shift di browser), pembayaran campur (tunai, transfer, QRIS, EDC; kembalian hanya dari tunai), nota tersimpan beserta pengurangan stok (`stock_movements` tipe `sale`). Pintasan: F9 bayar, F8 kosongkan keranjang, F2 fokus pencarian.
+- **Aturan yang diterapkan server:** harga dan modal dibaca dari `product_units` (bukan dari layar kasir); stok kurang = **diblokir** (jumlah semua baris satu barang dijumlahkan dalam satuan dasar); satuan harus `is_sellable` dan barang aktif; `client_uuid` mencegah dobel simpan; nomor nota `INV/{prefix}/{register}/{yymm}/{urut}` per register per bulan; HPP = jumlah × modal satuan (R1).
+- **Shift:** satu shift terbuka per register dan per kasir; modal awal = `registers.fixed_opening_cash`; `expected_cash` = modal awal + tunai diterima − kembalian; selisih wajib catatan dan berstatus `pending_approval`; setoran = tunai dihitung − modal tetap. Hanya pembuka shift atau Admin yang boleh menutup.
+- **Kunci selama shift terbuka:** pengguna yang punya shift terbuka tidak bisa **logout** dan tidak bisa membuka **halaman pusat** sampai shift ditutup. Halaman toko (dashboard, barang, opname, histori stok, satuan) tetap terbuka supaya Admin bisa mengecek stok di tengah shift; ada tombol *Kembali ke Kasir* di bagian atas, dan tombol Keluar disembunyikan. Server yang menegakkan: middleware \`shift.remember\` mencatat di sesi setiap halaman toko apakah pengguna punya shift terbuka (juga menangkap shift yang tertinggal setelah login ulang), dan \`shift.closed\` mengunci logout dan halaman pusat berdasarkan catatan itu setelah dicek ke DB toko. Menutup browser tidak ditangani.
+- **Riwayat Nota (dibangun):** halaman `/t/{kode}/sales` dan detail nota **hanya untuk Admin dan Super Admin** (semua nota, bisa disaring per kasir); Kasir tidak bisa membukanya, termasuk detail nota miliknya sendiri, dan hanya memakai dialog nota shift berjalan di layar kasir (yang sudah memuat isi nota). Bawaan menampilkan nota hari ini; filter tanggal (dari–sampai, kosong = semua tanggal), cari nomor atau nama pelanggan, status (selesai/void). Ringkasan jumlah dan total hanya menghitung nota selesai (nota void tetap tampil di daftar). Di layar kasir tombol *Riwayat Nota* membuka **dialog nota shift berjalan** (terbaru di atas, cari nomor atau pelanggan, klik nota untuk melihat isinya), dengan tombol *Cetak/Cetak ulang*, *Retur* dan *Void* (dua terakhir nonaktif, "Segera") dan tautan ke halaman riwayat lengkap untuk nota lama; halaman itu tetap bisa dibuka selama shift terbuka. **Cetak** lewat cetak browser (kertas 80 mm): server menambah \`print_count\`, cetakan pertama adalah asli dan ke-2 dst. bertanda **SALINAN**; nota void bertanda **VOID**. Void dan retur belum ada.
+- **Register bawaan:** `K1` (Kasir 1, gudang Main Warehouse, modal tetap 0) dibuat oleh seeder toko; layar mengubah modal tetap belum ada.
+- **Belum dibangun:** cetak nota, tahan (F4), batal dengan catatan (`sale_cancellations`), void, retur, surat jalan, pengeluaran, harga manual, dan satu register aktif per tab.
 ---
 
 ### 7.6 F3b — Shift & Kas (2 Shift per Hari)
@@ -1787,6 +1808,8 @@ Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mula
 8. Laporan Z: total per metode, jumlah nota, batal/void, retur, pengeluaran laci, selisih, setoran.
 9. Sesudah semua shift hari itu ditutup dan selisihnya diputuskan, Admin menjalankan **Tutup Hari** (7.7d).
 
+**Dibangun (Rekap Shift, Admin):** menu *Rekap Shift* (grup Kas & Harian) → daftar semua shift terbaru dulu dengan filter nama kasir, status shift (berjalan/ditutup), status selisih, dan rentang tanggal; kolom shift/register, tanggal, kasir, jam, penjualan (total dan jumlah nota), selisih kas, dan keputusan; pita peringatan bila ada selisih menunggu. Halaman detail menampilkan penjualan per metode (tunai sudah dikurangi kembalian dan retur tunai), retur di shift itu (tautan ke retur), modal, tunai seharusnya, dihitung, selisih, setoran, dan catatan kasir. Selisih `pending_approval` diputuskan di sini dengan **Setujui/Tolak** dan **catatan wajib**; hasilnya (`approved`/`rejected`, pemutus, waktu, catatan) tersimpan dan tidak bisa diputuskan lagi. Setiap keputusan meminta **konfirmasi dialog** karena tidak bisa diubah. Selisih yang **ditolak** tetap muncul di *Perlu tindakan* (Dashboard) dan di pita Rekap Shift sampai Admin menekan **Tandai sudah ditindaklanjuti** (disimpan: `followed_up_by`, `followed_up_at`; filter *Ditolak, perlu tindak lanjut*). Mengisi isi tindak lanjut dan memberi tahu Kasir belum dibuat. Keputusan tidak menghalangi shift berikutnya. Di Dashboard, baris *Selisih kas* pada kartu Perlu tindakan menuju Rekap Shift yang sudah difilter menunggu persetujuan. **Belum:** Laporan Z cetak, ubah modal tetap register.
+
 ---
 
 ### 7.7 F3c — Retur (Refund / Tukar Barang) — **R1**
@@ -1795,7 +1818,7 @@ Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mula
 
 **Aturan bisnis**
 1. Retur selalu merujuk nota asli (A4); qty ≤ terjual − sudah diretur. **Tidak ada batas hari** (D18).
-2. **Disposisi per item:** `resellable` → stok kembali ke gudang jual; `dead_stock` → gudang `dead_stock`. Kartu stok `sale_return`. Penanganan dead stock lanjutan (jual diskon, musnah, retur supplier) = Fase 2; Fase 1: transfer gudang (dijual lagi) atau opname (musnah).
+2. **Disposisi per item:** `resellable` → stok kembali ke gudang jual; `dead_stock` → gudang `dead_stock`. Histori stok `sale_return`. Penanganan dead stock lanjutan (jual diskon, musnah, retur supplier) = Fase 2; Fase 1: transfer gudang (dijual lagi) atau opname (musnah).
 3. **Nilai** dari `unit_price` snapshot nota asli; laba dibalik sebesar modal **layer FIFO yang dipulihkan** (`cost_total`). Retur *resellable* mengisi kembali layer yang dipakai nota asli; *dead stock* membuat layer baru di gudang Dead Stock.
 4. **Default metode refund** mengikuti metode pembayaran nota asli (bisa diubah); kredit/hutang pelanggan tidak ada di Fase 1.
 5. **Refund:** metode `cash`/`transfer`/`qris`/`edc`; tunai tercatat sebagai kas keluar di shift berjalan.
@@ -1803,6 +1826,12 @@ Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mula
 7. **Approval Admin wajib** (`pending → completed/rejected`); Admin boleh langsung. Stok & kas baru berubah saat `completed`.
 8. `sales.return_status` otomatis `none/partial/full`; laporan menampilkan penjualan bersih.
 9. Retur online saja (A6).
+
+**Dibangun (tahap refund):** menu *Retur* (Admin): daftar dengan filter status, tanggal, dan cari nomor retur/nota/pelanggan, lencana jumlah retur yang menunggu; *Retur Baru* memilih nota selesai yang masih punya barang untuk diretur (atau dari tombol *Buat Retur* di halaman nota dan surat jalan); halaman detail dengan *Setujui*/*Tolak* dan *Cetak* bukti retur (jendela baru, 80 mm). Dari layar kasir: tombol *Retur* di dialog nota shift (hanya nota miliknya); Kasir **mengajukan** (status `pending`), Admin yang memakai layar kasir langsung **selesai**. Tiap barang punya tujuan **Dijual lagi** (kembali ke gudang tempat nota mengambilnya) atau **Dead stock**; metode refund bawaan = cara bayar terbanyak di nota (tunai/transfer/QRIS/EDC). Nilai = harga nota asli; `cost_total` = bagian modal baris nota. Nomor `RET/{prefiks}/{yymm}/{urut}`.
+- Retur `pending` **sudah mengunci jumlahnya** (jumlah retur ≤ terjual − pending − selesai); stok dan kas baru berubah saat disetujui; ditolak = jumlah dibebaskan lagi.
+- Retur dibuat di shift berjalan pembuatnya (`cash_shift_id`). Refund **tunai** yang selesai mengurangi tunai seharusnya di laci shift itu (ringkasan tutup shift menampilkan *Retur disetujui* dan *Retur tunai*). **Shift tidak bisa ditutup selama masih ada retur `pending` di shift itu**, supaya kas shift yang sudah ditutup tidak berubah.
+- `sales.return_status` menjadi `partial`/`full` dari retur yang **selesai**. Stok masuk lewat `StockService` (tipe `sale_return`, rujukan retur).
+- **Belum:** tukar barang (`resolution = exchange`, `return_credit`, penjualan pengganti), layer FIFO (R2), penolakan dengan alasan, pencegahan void nota yang punya retur (menunggu fitur void), dan `client_uuid` anti-kirim-ganda (tombol dikunci saat menyimpan).
 
 ---
 
@@ -1822,6 +1851,8 @@ Aturan 2, 3, dan 5 di bawah (mode margin, persen untung, histori) berlaku **mula
 4. Cetak A4/setengah A4 **tanpa harga** (pengaturan `delivery_note_show_prices`, default mati) dengan kolom tanda tangan pengirim dan penerima; cetak ulang bertanda **SALINAN**.
 5. Void nota yang punya surat jalan aktif ditolak sampai surat jalan dibatalkan atau selesai.
 6. Tutup hari tidak mensyaratkan surat jalan selesai (hanya peringatan jumlah yang belum selesai). Offline = R3.
+
+**Dibangun (Admin):** menu *Surat Jalan* (di atas Retur) → daftar dengan filter status, tanggal, dan cari nomor/penerima/nomor nota; *Surat Jalan Baru* memilih nota selesai (cari nomor atau pelanggan, hanya yang masih punya barang untuk diantar) atau dari tombol *Buat Surat Jalan* di halaman nota. Penerima, alamat, sopir, kendaraan, dan jumlah per barang (bawaan = sisa nota). Alur status: draft → *Tandai Dikirim* → *Selesaikan Pengiriman* (isi jumlah yang kembali per barang; sisanya terkirim; hasilnya Terkirim, Sebagian terkirim, atau Kembali) atau *Batalkan* (draft/dikirim). Nomor `SJ/{prefiks}/{YYMM}/{urut}`. Tidak mengubah stok. Cetak lewat browser **di jendela/tab baru** (halaman lembar surat jalan yang langsung membuka dialog cetak; layar asal tidak berubah; setengah A4 lanskap, tanpa harga, kolom tanda tangan pengirim dan penerima; cetak ke-2 dst. bertanda SALINAN). Jendela dibuka saat tombol diklik, jadi browser yang memblokir pop-up akan menampilkan pesan agar pop-up diizinkan. **Dari layar kasir:** Kasir membuat dan mencetak surat jalan untuk **nota miliknya sendiri** tanpa meninggalkan layar kasir, lewat tombol *Surat jalan* di dialog nota shift dan tombol *Surat Jalan* di dialog setelah pembayaran. Dialognya memuat surat jalan yang sudah dibuat untuk nota itu (dengan *Cetak/Cetak ulang*) dan form baru (penerima, telepon, alamat, sopir, kendaraan, jumlah per barang, bawaan = sisa nota) dengan tombol *Buat* dan *Buat & Cetak*. Mengubah status (kirim, selesai, batal) tetap di halaman Admin. **Belum:** tombol *Buat Retur* (nonaktif), pengaturan tampil harga, penolakan void nota yang punya surat jalan aktif (menunggu fitur void), dan ubah data surat jalan setelah dibuat (batalkan lalu buat ulang).
 
 ---
 
@@ -1878,7 +1909,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 
 ### 7.10 Laporan & Audit
 
-**Fase 1 (toko):** penjualan harian/periode (per kasir, metode bayar, **bersih setelah retur**), laba kotor per barang (HPP FIFO), **nilai persediaan FIFO per gudang**, stok per gudang (jual vs dead stock), stok minimum, kartu stok, **pembelian per supplier (dipesan vs diterima, sisa)**, penerimaan per supplier/kontainer (nilai barang & biaya kontainer), selisih opname, rekap shift & selisih kas, **pengeluaran per kategori**, **retur**, **laporan harian (tutup hari)**; (1b) antrean sinkronisasi. Ekspor Excel/PDF.
+**Fase 1 (toko):** penjualan harian/periode (per kasir, metode bayar, **bersih setelah retur**), laba kotor per barang (HPP FIFO), **nilai persediaan FIFO per gudang**, stok per gudang (jual vs dead stock), stok minimum, histori stok, **pembelian per supplier (dipesan vs diterima, sisa)**, penerimaan per supplier/kontainer (nilai barang & biaya kontainer), selisih opname, rekap shift & selisih kas, **pengeluaran per kategori**, **retur**, **laporan harian (tutup hari)**; (1b) antrean sinkronisasi. Ekspor Excel/PDF.
 **Audit Trail:** per model/user/tanggal (old → new) di pusat dan toko.
 **Fase 2 (dicatat):** laporan penjualan overall lintas toko untuk akuntansi di Master Toko.
 
@@ -1947,7 +1978,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 | M | Isi | Catatan |
 |---|---|---|
 | M1 | Tenancy, login + routing role, master toko, user/akses, audit, **master barang per toko**, barang & harga, import Excel | API **offline-ready** sejak awal (4.4) |
-| M2 | Gudang & kartu stok, **costing FIFO**, **pembelian dari supplier**, penerimaan kontainer (merujuk pembelian full/partial), opname, transfer antar-gudang, cek stok lintas toko (pusat) | |
+| M2 | Gudang & histori stok, **costing FIFO**, **pembelian dari supplier**, penerimaan kontainer (merujuk pembelian full/partial), opname, transfer antar-gudang, cek stok lintas toko (pusat) | |
 | M3 | Kasir online + shift & kas + nota + batal/void + laporan dasar | Layar kasir Quasar |
 | M4 | Retur (refund/tukar) + migrasi data (Mitra Utama) + UAT + deploy | **Go-live online, pilot 1 toko** |
 

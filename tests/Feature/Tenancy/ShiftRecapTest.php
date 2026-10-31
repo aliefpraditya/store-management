@@ -1,0 +1,263 @@
+<?php
+
+namespace Tests\Feature\Tenancy;
+
+use App\Enums\UserRole;
+use App\Models\CashShift;
+use App\Models\Product;
+use App\Models\Register;
+use App\Models\Sale;
+use App\Models\Store;
+use App\Models\User;
+use App\Services\SaleReturnService;
+use App\Services\SaleService;
+use App\Services\ShiftService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\BuildsCashierFixtures;
+use Tests\Concerns\PreparesStoreDatabase;
+use Tests\TestCase;
+
+class ShiftRecapTest extends TestCase
+{
+    use BuildsCashierFixtures, PreparesStoreDatabase, RefreshDatabase;
+
+    private const STORE_DATABASE = 'store_test_shift_recap';
+
+    private Store $store;
+
+    private User $admin;
+
+    private User $cashier;
+
+    private Product $brush;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->store = $this->prepareStoreDatabase(['code' => 'test_shift_recap', 'receipt_prefix' => 'TSH']);
+        $this->admin = $this->storeUser(UserRole::StoreAdmin);
+        $this->cashier = $this->storeUser();
+        $this->brush = $this->sellableProduct('Kuas', '100');
+    }
+
+    private function url(string $name, array $parameters = []): string
+    {
+        return route("tenant.shifts.{$name}", ['tenant' => $this->store->code, ...$parameters]);
+    }
+
+    private function sellBrushes(CashShift $shift, int $pieces): Sale
+    {
+        $pcs = $this->unitOf($this->brush, 'PCS');
+
+        return $this->store->run(fn (): Sale => app(SaleService::class)->create($shift, $this->cashier, [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_unit_id' => $pcs->id, 'quantity' => $pieces]],
+            'payments' => [['method' => 'cash', 'amount' => $pieces * 10000]],
+        ]));
+    }
+
+    /**
+     * The cashier sells five brushes (50.000 cash), counts 45.000 and closes: a difference of -5.000 waits for an admin.
+     */
+    private function shiftClosedWithShortage(): CashShift
+    {
+        $shift = $this->openShiftFor($this->cashier);
+        $this->sellBrushes($shift, 5);
+
+        return $this->store->run(fn (): CashShift => app(ShiftService::class)->close($shift, '45000', 'Uang kembalian kurang'));
+    }
+
+    private function shift(int $id): CashShift
+    {
+        return $this->store->run(fn (): CashShift => CashShift::query()->findOrFail($id));
+    }
+
+    public function test_only_admins_may_use_the_shift_recap(): void
+    {
+        $shift = $this->shiftClosedWithShortage();
+
+        $this->actingAs($this->cashier)->get($this->url('index'))->assertForbidden();
+        $this->actingAs($this->cashier)->get($this->url('show', ['shift' => $shift->id]))->assertForbidden();
+        $this->actingAs($this->cashier)->post($this->url('approve', ['shift' => $shift->id]), ['note' => 'ok'])->assertForbidden();
+        $this->actingAs($this->cashier)->post($this->url('reject', ['shift' => $shift->id]), ['note' => 'ok'])->assertForbidden();
+        $this->assertSame('pending_approval', $this->shift($shift->id)->difference_status->value);
+    }
+
+    public function test_the_list_shows_shifts_newest_first_with_their_receipts_and_difference(): void
+    {
+        $closed = $this->shiftClosedWithShortage();
+        $other = $this->storeUser();
+        $second = $this->store->run(fn () => Register::factory()->create(['code' => 'K2', 'name' => 'Kasir 2', 'warehouse_id' => $this->mainWarehouse()->id]));
+        $open = $this->openShiftFor($other, $second);
+
+        $this->actingAs($this->admin)->get($this->url('index'))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Tenant/Shifts/Index')
+            ->has('shifts.data', 2)
+            ->where('shifts.data.0.label', $open->label())
+            ->where('shifts.data.0.status', 'open')
+            ->where('shifts.data.0.sale_count', 0)
+            ->where('shifts.data.0.sales_total', '0.00')
+            ->where('shifts.data.0.register_name', 'Kasir 2')
+            ->where('shifts.data.1.label', $closed->label())
+            ->where('shifts.data.1.cashier_name', $this->cashier->name)
+            ->where('shifts.data.1.sale_count', 1)
+            ->where('shifts.data.1.sales_total', '50000.00')
+            ->where('shifts.data.1.cash_difference', '-5000.00')
+            ->where('shifts.data.1.difference_status_label', 'Menunggu persetujuan')
+            ->where('pending_difference_count', 1)
+            ->has('statuses', 2)
+            ->has('differences', 5));
+    }
+
+    public function test_the_list_can_be_filtered(): void
+    {
+        $closed = $this->shiftClosedWithShortage();
+        $other = $this->storeUser();
+        $second = $this->store->run(fn () => Register::factory()->create(['code' => 'K2', 'name' => 'Kasir 2', 'warehouse_id' => $this->mainWarehouse()->id]));
+        $this->openShiftFor($other, $second);
+
+        $this->actingAs($this->admin)->get($this->url('index', ['difference' => 'pending_approval']))->assertInertia(fn (Assert $page) => $page->has('shifts.data', 1)->where('shifts.data.0.id', $closed->id));
+        $this->actingAs($this->admin)->get($this->url('index', ['status' => 'open']))->assertInertia(fn (Assert $page) => $page->has('shifts.data', 1)->where('shifts.data.0.status', 'open'));
+        $this->actingAs($this->admin)->get($this->url('index', ['search' => $other->name]))->assertInertia(fn (Assert $page) => $page->has('shifts.data', 1)->where('shifts.data.0.cashier_name', $other->name));
+        $this->actingAs($this->admin)->get($this->url('index', ['from' => today()->addDay()->toDateString()]))->assertInertia(fn (Assert $page) => $page->has('shifts.data', 0));
+        $this->actingAs($this->admin)->get($this->url('index', ['from' => today()->toDateString(), 'to' => today()->toDateString()]))->assertInertia(fn (Assert $page) => $page->has('shifts.data', 2));
+    }
+
+    public function test_the_shift_page_shows_how_it_went_and_how_it_ended(): void
+    {
+        $shift = $this->shiftClosedWithShortage();
+
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Tenant/Shifts/Show')
+            ->where('shift.label', $shift->label())
+            ->where('shift.status', 'closed')
+            ->where('shift.sale_count', 1)
+            ->where('shift.total_sales', '50000.00')
+            ->where('shift.payments.0', ['method' => 'Tunai', 'amount' => '50000.00'])
+            ->where('shift.expected_cash', '50000.00')
+            ->where('shift.counted_cash', '45000.00')
+            ->where('shift.cash_difference', '-5000.00')
+            ->where('shift.deposit_amount', '45000.00')
+            ->where('shift.closing_note', 'Uang kembalian kurang')
+            ->where('shift.can_decide', true)
+            ->where('shift.urls.approve', $this->url('approve', ['shift' => $shift->id])));
+    }
+
+    public function test_the_shift_page_lists_its_returns_and_counts_the_cash_ones_in_the_drawer(): void
+    {
+        $shift = $this->openShiftFor($this->cashier);
+        $sale = $this->sellBrushes($shift, 5);
+        $this->store->run(fn () => app(SaleReturnService::class)->createApproved($sale, $shift, $this->admin, [
+            'refund_method' => 'cash',
+            'items' => [['sale_item_id' => $sale->items[0]->id, 'quantity' => 2, 'disposition' => 'resellable']],
+        ]));
+
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.status', 'open')
+            ->where('shift.expected_cash', '30000.00')
+            ->where('shift.returns_total', '20000.00')
+            ->where('shift.can_decide', false)
+            ->has('shift.returns', 1)
+            ->where('shift.returns.0.status_label', 'Selesai')
+            ->where('shift.returns.0.refund_amount', '20000.00'));
+    }
+
+    public function test_an_admin_can_approve_the_difference_with_a_note(): void
+    {
+        $shift = $this->shiftClosedWithShortage();
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['shift' => $shift->id]), ['note' => 'Sudah dicek rekaman'])->assertSessionHas('success', 'Selisih kas disetujui.');
+
+        $decided = $this->shift($shift->id);
+        $this->assertSame(['approved', $this->admin->id, 'Sudah dicek rekaman'], [$decided->difference_status->value, $decided->difference_approved_by, $decided->approval_note]);
+        $this->assertNotNull($decided->difference_approved_at);
+
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.can_decide', false)
+            ->where('shift.difference_status_label', 'Disetujui')
+            ->where('shift.decided_by_name', $this->admin->name)
+            ->where('shift.approval_note', 'Sudah dicek rekaman'));
+    }
+
+    public function test_an_admin_can_reject_the_difference(): void
+    {
+        $shift = $this->shiftClosedWithShortage();
+
+        $this->actingAs($this->admin)->post($this->url('reject', ['shift' => $shift->id]), ['note' => 'Tagih ke kasir'])->assertSessionHas('success', 'Selisih kas ditolak.');
+
+        $this->assertSame(['rejected', 'Tagih ke kasir'], [$this->shift($shift->id)->difference_status->value, $this->shift($shift->id)->approval_note]);
+    }
+
+    public function test_a_note_is_needed_and_a_decided_difference_cannot_be_decided_again(): void
+    {
+        $shift = $this->shiftClosedWithShortage();
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['shift' => $shift->id]), ['note' => ''])->assertSessionHasErrors('note');
+        $this->assertSame('pending_approval', $this->shift($shift->id)->difference_status->value);
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['shift' => $shift->id]), ['note' => 'ok']);
+        $this->actingAs($this->admin)->post($this->url('reject', ['shift' => $shift->id]), ['note' => 'ubah pikiran'])
+            ->assertSessionHas('error', 'Selisih kas shift ini berstatus Disetujui, jadi tidak bisa diputuskan lagi.');
+        $this->assertSame('approved', $this->shift($shift->id)->difference_status->value);
+    }
+
+    public function test_a_refused_difference_stays_on_the_list_until_it_is_marked_followed_up(): void
+    {
+        $shift = $this->shiftClosedWithShortage();
+        $this->actingAs($this->admin)->post($this->url('reject', ['shift' => $shift->id]), ['note' => 'Tagih ke kasir']);
+
+        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
+            ->where('follow_up_count', 1)
+            ->where('shifts.data.0.needs_follow_up', true)
+            ->has('differences', 5));
+        $this->actingAs($this->admin)->get($this->url('index', ['difference' => 'awaiting_follow_up']))->assertInertia(fn (Assert $page) => $page->has('shifts.data', 1));
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.needs_follow_up', true)
+            ->where('shift.urls.follow_up', $this->url('follow-up', ['shift' => $shift->id])));
+
+        $this->actingAs($this->admin)->post($this->url('follow-up', ['shift' => $shift->id]))->assertSessionHas('success', 'Selisih kas ditandai sudah ditindaklanjuti.');
+
+        $followedUp = $this->shift($shift->id);
+        $this->assertSame($this->admin->id, $followedUp->followed_up_by);
+        $this->assertNotNull($followedUp->followed_up_at);
+        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('follow_up_count', 0)->where('shifts.data.0.needs_follow_up', false));
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.needs_follow_up', false)
+            ->where('shift.followed_up_by_name', $this->admin->name));
+    }
+
+    public function test_only_a_refused_difference_not_yet_followed_up_can_be_marked(): void
+    {
+        $pending = $this->shiftClosedWithShortage();
+        $this->actingAs($this->admin)->post($this->url('follow-up', ['shift' => $pending->id]))
+            ->assertSessionHas('error', 'Hanya selisih kas yang ditolak dan belum ditindaklanjuti yang bisa ditandai.');
+
+        $this->actingAs($this->admin)->post($this->url('reject', ['shift' => $pending->id]), ['note' => 'Tagih']);
+        $this->actingAs($this->admin)->post($this->url('follow-up', ['shift' => $pending->id]));
+        $firstTime = $this->shift($pending->id)->followed_up_at;
+
+        $this->actingAs($this->admin)->post($this->url('follow-up', ['shift' => $pending->id]))->assertSessionHas('error');
+        $this->assertEquals($firstTime, $this->shift($pending->id)->followed_up_at);
+
+        $this->actingAs($this->cashier)->post($this->url('follow-up', ['shift' => $pending->id]))->assertForbidden();
+    }
+
+    public function test_a_shift_without_a_difference_has_nothing_to_decide(): void
+    {
+        $shift = $this->openShiftFor($this->cashier);
+        $closed = $this->store->run(fn (): CashShift => app(ShiftService::class)->close($shift, '0', null));
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['shift' => $closed->id]), ['note' => 'ok'])
+            ->assertSessionHas('error', 'Selisih kas shift ini berstatus Tidak ada selisih, jadi tidak bisa diputuskan lagi.');
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $closed->id]))->assertInertia(fn (Assert $page) => $page->where('shift.can_decide', false));
+    }
+
+    public function test_the_sidebar_and_dashboard_know_the_shift_recap(): void
+    {
+        $this->actingAs($this->admin)->get(route('tenant.dashboard', ['tenant' => $this->store->code]))
+            ->assertInertia(fn (Assert $page) => $page->where('store.shifts_url', $this->url('index')));
+    }
+}

@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wireframe POS Toko — R1</title>
+<title>Wireframe Mitra Manager — R1</title>
 <link rel="stylesheet" href="assets/wireframe.css">
 </head>
 <body>
 <div class="doc">
 <nav class="idx" id="idx">
-  <h1>POS Toko</h1>
+  <h1>Mitra Manager</h1>
   <p class="sub">Wireframe R1 · online · data contoh Mitra Utama</p>
   <div class="lg"><span class="rel">R1 dibangun dulu</span></div>
 </nav>
@@ -20,9 +20,9 @@
 <div class="bd pg">
   <div class="g3">
     <div class="card"><h4><span class="av"><svg class="ic s"><use href="#i-store"/></svg></span>Master</h4><div class="list">
-      <div><span class="t">Tambah Toko</span></div><div><span class="t">User &amp; Akses</span></div></div></div>
+      <div><span class="t">Master Toko (tambah &amp; siapkan database)</span></div><div><span class="t">User &amp; Akses</span></div></div></div>
     <div class="card"><h4><span class="av"><svg class="ic s"><use href="#i-box"/></svg></span>Barang &amp; Stok</h4><div class="list">
-      <div><span class="t">Daftar &amp; Form Barang</span></div><div><span class="t">Import Excel</span></div><div><span class="t">Stok Opname</span></div><div><span class="t">Kartu Stok</span></div></div></div>
+      <div><span class="t">Daftar &amp; Form Barang</span></div><div><span class="t">Satuan (Pengaturan)</span></div><div><span class="t">Import Excel</span></div><div><span class="t">Stok Opname</span></div><div><span class="t">Histori Stok</span></div></div></div>
     <div class="card"><h4><span class="av"><svg class="ic s"><use href="#i-cart"/></svg></span>Penjualan</h4><div class="list">
       <div><span class="t">Kasir &amp; Pembayaran</span></div><div><span class="t">Nota &amp; Riwayat</span></div><div><span class="t">Retur</span></div><div><span class="t">Surat Jalan</span></div></div></div>
   </div>
@@ -40,64 +40,72 @@
 <!-- 1 LOGIN -->
 <section class="scr" id="login" data-group="Pusat" data-nav="Login" data-title="Login" data-sub="Satu pintu masuk. Tujuan ditentukan oleh peran." data-rel="r1" data-url="pos.contoh.id/login">
 <div class="bd login">
-  <div class="art"><h2>POS Toko</h2><p>Kasir, stok, dan kas dalam satu tempat.</p></div>
+  <div class="art"><h2>Mitra Manager</h2><p>Kasir, stok, dan kas dalam satu tempat.</p></div>
   <div class="fm"><div>
     <img src="assets/logo-mitra-utama.jpg" alt="TB. Mitra Utama" style="width:120px;height:120px;object-fit:contain;display:block;margin:-10px 0 4px -14px">
     <h3 style="margin:0 0 4px;font-size:22px;letter-spacing:-.02em">Masuk</h3><p class="ink2" style="margin:0 0 20px">Gunakan akun Anda.</p>
-    <div class="f"><span>Email</span><div class="in ph">nama@perusahaan.com</div></div>
+    <div class="f"><span>Username</span><div class="in ph">nama.pengguna</div></div>
     <div class="f"><span>Password</span><div class="in">••••••••</div></div>
     <div class="b p w l" style="margin-top:6px">Masuk</div>
   </div></div>
 </div>
-<div class="row mt" style="gap:8px"><span class="ink2">Setelah login:</span><span class="c pri">Super Admin → Pusat</span><span class="c">Admin / Gudang → Dashboard Toko</span><span class="c">Kasir → Layar Kasir</span></div>
+<div class="row mt" style="gap:8px"><span class="ink2">Setelah login:</span><span class="c pri">Super Admin → Pusat</span><span class="c">Admin Toko → Dashboard Toko</span><span class="c">Kasir → Layar Kasir</span></div>
 </section>
 
 <!-- 2 DASHBOARD PUSAT -->
 <section class="scr" id="pusat" data-group="Pusat" data-nav="Dashboard Pusat" data-title="Dashboard Pusat" data-sub="Super Admin memilih toko atau menambah toko baru." data-rel="r1" data-url="pos.contoh.id/pusat">
 <div class="bd shell">
   <aside class="sb" data-side="pusat" data-on="Dashboard" data-who="Budi|Super Admin"></aside>
-  <div class="mn"><div class="tb"><h3>Dashboard</h3><span class="b"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Toko</span></div>
+  <div class="mn"><div class="tb"><h3>Dashboard</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Toko</span></div>
   <div class="pg">
     <div class="g3">
-      <div class="card"><div class="row"><div class="av"><svg class="ic s"><use href="#i-store"/></svg></div><div><b>Mitra Utama</b><div class="mute" style="font-size:12px">MU · 1 register</div></div><span class="c ok" style="margin-left:auto"><i class="dot"></i>Aktif</span></div>
-        <div class="mt kpi"><small>Penjualan hari ini</small><b>Rp 4.850.000</b><em>37 nota · 1 shift berjalan</em></div>
+      <div class="card"><div class="row" style="flex-wrap:nowrap"><div class="av"><svg class="ic s"><use href="#i-store"/></svg></div><div><b>Mitra Utama</b><div class="mute" style="font-size:12px">MU · mitra_utama</div></div><span class="c ok" style="margin-left:auto;flex:none"><i class="dot"></i>Aktif</span></div>
         <div class="b p w mt">Masuk ke toko <svg class="ic s"><use href="#i-arrow"/></svg></div></div>
-      <div class="card"><div class="row"><div class="av"><svg class="ic s"><use href="#i-store"/></svg></div><div><b>Cabang Pasar Baru</b><div class="mute" style="font-size:12px">PSB · 1 register</div></div><span class="c ok" style="margin-left:auto"><i class="dot"></i>Aktif</span></div>
-        <div class="mt kpi"><small>Penjualan hari ini</small><b>Rp 2.130.000</b><em>18 nota · belum ada shift</em></div>
+      <div class="card"><div class="row" style="flex-wrap:nowrap"><div class="av"><svg class="ic s"><use href="#i-store"/></svg></div><div><b>Cabang Pasar Baru</b><div class="mute" style="font-size:12px">PSB · pasar_baru</div></div><span class="c ok" style="margin-left:auto;flex:none"><i class="dot"></i>Aktif</span></div>
         <div class="b p w mt">Masuk ke toko <svg class="ic s"><use href="#i-arrow"/></svg></div></div>
+      <div class="card"><div class="row" style="flex-wrap:nowrap"><div class="av"><svg class="ic s"><use href="#i-store"/></svg></div><div><b>Cabang Timur</b><div class="mute" style="font-size:12px">TMR · cabang_timur</div></div><span class="c bad" style="margin-left:auto;flex:none"><i class="dot"></i>Gagal</span></div>
+        <div class="b w mt" style="opacity:.45">Masuk ke toko <svg class="ic s"><use href="#i-arrow"/></svg></div></div>
       <div class="card dash"><div><svg class="ic" style="width:26px;height:26px"><use href="#i-plus"/></svg><div class="mt2">Toko baru</div></div></div>
     </div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Hanya Mitra Utama yang aktif di awal; toko lain hanya contoh.</li><li>Laporan overall ditunda ke Fase 2.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Hanya Mitra Utama yang aktif di awal; toko lain hanya contoh.</li><li>Tombol masuk mati untuk toko yang belum aktif.</li><li>Penjualan per toko dan laporan overall menyusul (Fase 2).</li></ul></details>
 </section>
 
 <!-- 3 MASTER TOKO -->
-<section class="scr" id="master" data-group="Pusat" data-nav="Tambah Toko" data-title="Master Toko" data-sub="Tambah toko baru dan siapkan databasenya." data-rel="r1" data-url="pos.contoh.id/pusat/stores">
+<section class="scr" id="master" data-group="Pusat" data-nav="Master Toko" data-title="Master Toko" data-sub="Daftar toko, status database, dan aktif/nonaktif." data-rel="r1" data-url="pos.contoh.id/pusat/stores">
 <div class="bd shell">
   <aside class="sb" data-side="pusat" data-on="Master Toko" data-who="Budi|Super Admin"></aside>
   <div class="mn"><div class="tb"><h3>Master Toko</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Toko</span></div>
-  <div class="pg"><div class="cols">
-    <div class="tbl"><table class="t"><tr><th>Toko</th><th>Database</th><th>Nota</th><th>Status</th><th></th></tr>
-      <tr><td><b>Mitra Utama</b><small>mitra_utama</small></td><td>store_mitra_utama</td><td>MU</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
-      <tr><td><b>Cabang Pasar Baru</b><small>pasar_baru</small></td><td>store_pasar_baru</td><td>PSB</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
-      <tr><td><b>Cabang Timur</b><small>cabang_timur</small></td><td>—</td><td>TMR</td><td><span class="c bad">Gagal</span></td><td class="r"><span class="b s">Coba lagi</span></td></tr></table></div>
-    <div>
-      <div class="card"><h4>Toko baru</h4>
-        <div class="g2"><div class="f"><span>Nama toko</span><div class="in">Cabang Barat</div></div><div class="f"><span>Kode</span><div class="in dis">cabang_barat</div></div></div>
-        <div class="g2"><div class="f"><span>Nama database</span><div class="in">u123_store_cabang_barat</div></div><div class="f"><span>Prefiks nota</span><div class="in">CBB</div></div></div>
-        <div class="g2"><div class="f"><span>User database</span><div class="in">u123_cabang_barat</div></div><div class="f"><span>Password database</span><div class="in">••••••••••</div></div></div>
-        <div class="g2"><div class="f"><span>Admin awal</span><div class="in sel">Pilih user</div></div><div class="f"><span>Modal kas tetap</span><div class="in">Rp 500.000</div></div></div>
-        <div class="b p w">Buat &amp; siapkan database</div></div>
-      <div class="card mt"><h4>Menyiapkan…</h4>
-        <div class="chk"><span class="ico ok"><svg class="ic"><use href="#i-check"/></svg></span><span class="t">Uji koneksi database</span></div>
-        <div class="chk"><span class="ico ok"><svg class="ic"><use href="#i-check"/></svg></span><span class="t">Migrasi tabel</span></div>
-        <div class="chk"><span class="ico warn"><svg class="ic"><use href="#i-clock"/></svg></span><span class="t">Gudang &amp; pengaturan awal</span></div>
-        <div class="bar mt2"><i style="width:60%"></i></div></div>
-    </div>
-  </div></div></div>
+  <div class="pg">
+    <div class="tbl"><table class="t"><tr><th>Toko</th><th>Database</th><th>Nota</th><th>Status</th><th class="ct">Aktif</th><th></th></tr>
+      <tr><td><b>Mitra Utama</b><small>mitra_utama</small></td><td>store_mitra_utama</td><td>MU</td><td><span class="c ok"><i class="dot"></i>Aktif</span></td><td class="ct"><span class="sw on"></span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Cabang Pasar Baru</b><small>pasar_baru</small></td><td>store_pasar_baru</td><td>PSB</td><td><span class="c"><i class="dot"></i>Nonaktif</span></td><td class="ct"><span class="sw"></span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Cabang Timur</b><small>cabang_timur</small></td><td>store_cabang_timur</td><td>TMR</td><td><span class="c bad"><i class="dot"></i>Gagal</span><small style="color:var(--bad);display:block;max-width:260px">Uji koneksi database gagal: Access denied for user</small></td><td class="ct mute">—</td><td class="r"><span class="b s p">Coba lagi</span> <span class="b s">Edit</span></td></tr></table></div>
+  </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Database dibuat dulu di hPanel; aplikasi hanya menguji, migrasi, dan seed.</li><li>Kode toko tidak bisa diubah. Toko tidak dihapus, hanya dinonaktifkan.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Toko tidak dihapus, hanya dinonaktifkan. Toko yang belum selesai disiapkan tidak bisa diaktifkan.</li><li>Toko yang gagal disiapkan tetap tampil dengan pesan galatnya; perbaiki kredensial lewat Edit lalu Coba lagi (aman diulang).</li></ul></details>
+</section>
+
+<!-- 3b FORM TOKO -->
+<section class="scr" id="masterform" data-group="Pusat" data-nav="Form Toko" data-title="Tambah Toko" data-sub="Isi data toko dan database yang sudah dibuat di hPanel." data-rel="r1" data-url="pos.contoh.id/pusat/stores/create">
+<div class="bd shell">
+  <aside class="sb" data-side="pusat" data-on="Master Toko" data-who="Budi|Super Admin"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Tambah Toko</h3></div>
+  <div class="pg">
+    <div class="card"><h4>Toko</h4>
+      <div class="g2"><div class="f"><span>Nama toko</span><div class="in">Cabang Barat</div></div><div class="f"><span>Kode</span><div class="in">cabang_barat</div><small class="mute">Dipakai di alamat toko dan tidak bisa diubah nanti</small></div></div>
+      <div class="g2"><div class="f"><span>Prefiks nota</span><div class="in">CBB</div><small class="mute">Singkat, contoh MU</small></div><div class="f"><span>Telepon</span><div class="in">021-555-0199</div></div></div>
+      <div class="f"><span>Alamat</span><div class="in">Jl. Barat No. 1, Kota</div></div></div>
+    <div class="card mt"><h4>Database</h4>
+      <div class="tip" style="margin-bottom:12px"><svg class="ic s"><use href="#i-info"/></svg><span>Buat database dan user-nya dulu di hPanel. Aplikasi hanya menguji koneksi dan menyiapkan tabelnya.</span></div>
+      <div class="g2"><div class="f"><span>Nama database</span><div class="in">u123_store_cabang_barat</div></div><div class="f"><span>Host database</span><div class="in ph">Kosongkan untuk server bawaan</div></div></div>
+      <div class="g2"><div class="f"><span>User database</span><div class="in">u123_cabang_barat</div></div><div class="f"><span>Password database</span><div class="in">••••••••••</div></div></div></div>
+    <div class="row mt"><span class="b p">Buat &amp; siapkan database</span><span class="b">Batal</span></div>
+    <div class="tip ok mt"><svg class="ic s"><use href="#i-check"/></svg><span>Berhasil: toko langsung Aktif. Gagal: toko tersimpan dengan status Gagal dan pesan galat, lalu bisa diperbaiki dan dicoba lagi.</span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Kode dan nama database disarankan otomatis dari nama toko, boleh diubah sebelum disimpan.</li><li>Setelah toko aktif, bagian Database terkunci. Admin awal dan modal kas tetap menyusul bersama Register.</li></ul></details>
 </section>
 
 <!-- 4 USER & AKSES -->
@@ -105,48 +113,62 @@
 <div class="bd shell">
   <aside class="sb" data-side="pusat" data-on="User & Akses" data-who="Budi|Super Admin"></aside>
   <div class="mn"><div class="tb"><h3>User &amp; Akses</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah User</span></div>
-  <div class="pg"><div class="cols">
-    <div class="tbl"><table class="t"><tr><th>Nama</th><th>Peran</th><th>Toko</th><th>Aktif</th></tr>
-      <tr><td><b>Budi</b><small>admin@example.test</small></td><td><span class="c pri">Super Admin</span></td><td>Semua</td><td><span class="sw on"></span></td></tr>
-      <tr><td><b>Andi</b><small>admin.mu@example.test</small></td><td><span class="c">Admin</span></td><td>Mitra Utama</td><td><span class="sw on"></span></td></tr>
-      <tr><td><b>Sari</b><small>sari@example.test</small></td><td><span class="c">Kasir</span></td><td>Mitra Utama</td><td><span class="sw on"></span></td></tr>
-      <tr><td><b>Dedi</b><small>dedi@example.test</small></td><td><span class="c">Gudang</span></td><td>Mitra Utama</td><td><span class="sw"></span></td></tr></table></div>
-    <div class="card"><h4>User baru</h4>
-      <div class="f"><span>Nama</span><div class="in">Joko</div></div>
-      <div class="f"><span>Email</span><div class="in">joko@example.test</div></div>
-      <div class="f"><span>Peran</span><div class="seg"><span>Admin</span><span>Gudang</span><span class="on">Kasir</span></div></div>
-      <div class="f"><span>Toko</span><div class="in sel">Mitra Utama</div></div>
-      <div class="b p w">Simpan</div></div>
-  </div></div></div>
+  <div class="pg">
+    <div class="tbl"><table class="t"><tr><th>Nama</th><th>Peran</th><th>Toko</th><th class="ct">Aktif</th><th></th></tr>
+      <tr><td><b>Budi</b><small>admin</small></td><td><span class="c pri">Super Admin</span></td><td>Semua</td><td class="ct"><span class="sw on" style="opacity:.5"></span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Andi</b><small>admin.mu</small></td><td><span class="c">Admin Toko</span></td><td>Mitra Utama</td><td class="ct"><span class="sw on"></span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Sari</b><small>kasir.mu</small></td><td><span class="c">Kasir</span></td><td>Mitra Utama</td><td class="ct"><span class="sw on"></span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Dedi</b><small>dedi</small></td><td><span class="c">Kasir</span></td><td>Mitra Utama</td><td class="ct"><span class="sw"></span></td><td class="r"><span class="b s">Edit</span></td></tr></table></div>
+  </div></div>
 </div>
+<details class="nt"><summary>Catatan</summary><ul><li>Hanya Super Admin yang mengelola user. User tidak dihapus, hanya dinonaktifkan; akun sendiri tidak bisa dinonaktifkan.</li><li>Tiap user non-Super Admin masuk ke tepat satu toko.</li></ul></details>
+</section>
+
+<!-- 4b FORM USER -->
+<section class="scr" id="userform" data-group="Pusat" data-nav="Form User" data-title="Tambah User" data-sub="Satu user, satu peran, satu toko." data-rel="r1" data-url="pos.contoh.id/pusat/users/create">
+<div class="bd shell">
+  <aside class="sb" data-side="pusat" data-on="User & Akses" data-who="Budi|Super Admin"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Tambah User</h3></div>
+  <div class="pg"><div class="card" style="max-width:480px">
+    <div class="f"><span>Nama</span><div class="in">Joko</div></div>
+    <div class="f"><span>Username</span><div class="in">joko</div><small class="mute">Huruf kecil, angka, titik, garis bawah, atau strip</small></div>
+    <div class="f"><span>Password</span><div class="in">••••••••</div><small class="mute">Saat edit: kosongkan jika tidak diubah</small></div>
+    <div class="f"><span>Peran</span><div class="seg"><span>Super Admin</span><span>Admin Toko</span><span class="on">Kasir</span></div></div>
+    <div class="f"><span>Toko</span><div class="in sel">Mitra Utama</div></div>
+    <div class="f"><span>Aktif</span><div style="padding-top:6px"><span class="sw on"></span></div></div>
+    <div class="row mt"><span class="b p">Simpan</span><span class="b">Batal</span></div></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Kolom Toko hanya muncul untuk Admin Toko dan Kasir; Super Admin tidak punya toko.</li><li>Super Admin tidak bisa mengubah peran atau menonaktifkan akunnya sendiri.</li></ul></details>
 </section>
 
 <!-- 5 DASHBOARD TOKO -->
 <section class="scr" id="dash" data-group="Toko" data-nav="Dashboard Toko" data-title="Dashboard Toko" data-sub="Ringkasan hari ini dan hal yang perlu ditindak." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Dashboard" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Dashboard" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Selamat siang, Andi</h3><span class="b"><svg class="ic s"><use href="#i-plus"/></svg>Opname baru</span><span class="b p"><svg class="ic s"><use href="#i-cart"/></svg>Buka Kasir</span></div>
   <div class="pg">
     <div class="g3">
-      <div class="card kpi"><small>Penjualan bersih hari ini</small><b>Rp 4.400.000</b><em>Rp 4.850.000 − retur Rp 450.000</em></div>
-      <div class="card kpi"><small>Stok di bawah minimum</small><b>12 barang</b><em>Lihat daftar →</em></div>
+      <div class="card kpi"><small>Penjualan bersih hari ini</small><b>Rp 4.400.000</b><em>3 nota · Rp 4.850.000 − retur Rp 450.000</em></div>
+      <div class="card kpi"><small>Stok di bawah minimum</small><b>12 barang</b><em>Perlu restock</em></div>
       <div class="card kpi"><small>Perlu tindakan</small><b>4</b><em>1 retur · 1 selisih kas · 2 surat jalan</em></div>
     </div>
     <div class="g2 mt">
       <div class="card"><h4>Menunggu persetujuan</h4><div class="list">
-        <div><span class="t">Retur · RET/MU/2610/0003<small>diajukan Sari</small></span><span class="c warn">Retur</span><span class="b s">Tinjau</span></div>
-        <div><span class="t">Shift #0424<small>selisih −Rp 10.000</small></span><span class="c bad">Selisih kas</span><span class="b s">Tinjau</span></div></div></div>
+        <div><span class="t">Retur · RET/MU/2610/0003<small>Rp 120.000</small></span><span class="c warn">Retur</span><span class="b s">Tinjau</span></div>
+        <div><span class="t">Selisih kas · Shift #0002<small>-Rp 10.000</small></span><span class="c bad">Selisih kas</span><span class="b s">Tinjau</span></div></div></div>
       <div class="card"><h4>Shift berjalan</h4><div class="list">
-        <div><div class="av">S</div><span class="t">Sari · Kasir 1<small>sejak 08:00 · shift pagi</small></span><span class="c ok"><i class="dot"></i>Buka</span></div></div></div>
+        <div><div class="av">S</div><span class="t">Sari · Kasir 1<small>sejak 08:00</small></span><span class="c ok"><i class="dot"></i>Buka</span></div></div></div>
     </div>
   </div></div>
 </div>
+<details class="nt"><summary>Catatan</summary><ul><li>Penjualan bersih = nota selesai hari ini dikurangi retur selesai hari ini. Nota void tidak dihitung.</li><li>Kasir tidak melihat dashboard ini, hanya layar Kasir. Tombol cepat dan tombol Tinjau menyusul bersama layarnya.</li></ul></details>
 </section>
 
 <!-- 6 DAFTAR BARANG -->
 <section class="scr" id="blist" data-group="Barang & Stok" data-nav="Daftar Barang" data-title="Daftar Barang" data-sub="Barang milik toko ini. Stok jual dan dead stock dipisah." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Daftar Barang</h3><span class="b"><svg class="ic s"><use href="#i-upload"/></svg>Import Excel</span><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Barang</span></div>
   <div class="pg">
     <div class="row" style="margin-bottom:14px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cari nama, SKU, atau barcode</div><div class="in sel grow">Semua kategori</div><div class="in sel grow">Semua status</div></div>
@@ -154,37 +176,39 @@
       <tr><td><b>Cat Tembok Putih 5kg</b><small>MU0001 · Cat · Dulux</small></td><td class="r">7 DUS + 2 PAIL</td><td class="r"><span class="c warn">1 PAIL</span></td><td class="r">72.875</td><td class="r">PAIL 116.600</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
       <tr><td><b>Paku 5cm</b><small>MU0002 · Bangunan</small></td><td class="r">120,5 KG</td><td class="r mute">—</td><td class="r">18.000</td><td class="r">KG 24.000</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
       <tr><td><b>Lampu LED 9W</b><small>MU0003 · Listrik</small></td><td class="r"><span class="c bad">3 PCS</span><small>min 12</small></td><td class="r"><span class="c warn">1 PCS</span></td><td class="r">9.500</td><td class="r">PCS 15.000</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
-      <tr><td><b>Kuas 3"</b><small>MU0004 · Cat</small></td><td class="r">38 PCS</td><td class="r mute">—</td><td class="r">6.000</td><td class="r">PCS 9.000</td><td><span class="c">Nonaktif</span></td><td class="r"><span class="b s">Edit</span></td></tr></table></div>
-    <div class="row mt2 mute" style="justify-content:space-between"><span>1–4 dari 1.759 barang</span><span>‹ 1 2 3 … ›</span></div>
+      <tr><td><b>Kuas 3"</b><small>MU0004 · Cat</small></td><td class="r">38 PCS</td><td class="r mute">—</td><td class="r">6.000</td><td class="r">PCS 9.000</td><td><span class="c">Nonaktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>Lem Kayu Putih</b><small>MU0005 · Perekat</small></td><td class="r">0 BOTOL</td><td class="r mute">—</td><td class="r">8.000</td><td class="r">BOTOL 12.000</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span> <span class="b s bad">Hapus</span></td></tr></table></div>
+    <div class="row mt2 mute" style="justify-content:space-between"><span>1–5 dari 1.759 barang</span><span>‹ 1 2 3 … ›</span></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Barang dibuat langsung di toko; tidak ada katalog pusat.</li><li>Dead stock tidak muncul di kasir.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Barang dibuat langsung di toko; tidak ada katalog pusat. Satuan ditampilkan dengan kodenya.</li><li>Tombol Hapus hanya muncul untuk barang tanpa stok dan tanpa transaksi (hapus permanen). Barang lain cukup dinonaktifkan.</li><li>Dead stock tidak muncul di kasir.</li></ul></details>
 </section>
 
 <!-- 7 FORM BARANG -->
-<section class="scr" id="bform" data-group="Barang & Stok" data-nav="Form Barang" data-title="Form Barang" data-sub="Info, satuan, konversi, dan harga dalam satu form." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products/MU0001/edit">
+<section class="scr" id="bform" data-group="Barang & Stok" data-nav="Form Barang" data-title="Form Barang" data-sub="Info, satuan, konversi, dan modal per satuan dalam satu form." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products/1/edit">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin"></aside>
-  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Cat Tembok Putih 5kg</h3><span class="b">Batal</span><span class="b p">Simpan</span></div>
+  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin Toko"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Edit Barang</h3><span class="b">Batal</span><span class="b p">Simpan</span></div>
   <div class="pg">
     <div class="card"><h4>Info barang</h4>
       <div class="g4"><div class="f"><span>SKU</span><div class="in">MU0001</div></div><div class="f" style="grid-column:span 3"><span>Nama</span><div class="in">Cat Tembok Putih 5kg</div></div></div>
       <div class="g4"><div class="f"><span>Kategori</span><div class="in sel">Cat</div></div><div class="f"><span>Merek</span><div class="in sel">Dulux</div></div><div class="f"><span>Stok minimum</span><div class="in">8 PAIL</div></div><div class="f"><span>Aktif</span><div style="padding-top:6px"><span class="sw on"></span></div></div></div></div>
     <div class="card mt"><h4>Satuan &amp; harga</h4>
-      <div class="g4"><div class="f"><span>Satuan dasar</span><div class="in sel">PAIL</div></div><div class="f"><span>Harga beli (per satuan dasar)</span><div class="in">Rp 72.875</div></div></div>
-      <table class="t"><tr><th>Satuan</th><th>Konversi</th><th>Barcode</th><th class="r">Modal</th><th class="r">Harga jual</th><th class="ct">Dijual</th><th class="ct">Default</th><th></th></tr>
-        <tr><td><b>PAIL</b> <span class="c pri">dasar</span></td><td>1</td><td class="mute">8991234567890</td><td class="r">72.875</td><td class="r"><span class="in mini">116.600</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd on"></span></td><td></td></tr>
-        <tr><td><span class="in mini sel">DUS</span></td><td><span class="in mini">4</span></td><td class="mute">18991234567897</td><td class="r">291.500</td><td class="r"><span class="in mini">437.250</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd"></span></td><td class="r"><span class="b s bad">Hapus</span></td></tr></table>
+      <div class="tip warn" style="margin-bottom:12px"><svg class="ic s"><use href="#i-alert"/></svg><span>Satuan dan konversi terkunci karena barang ini sudah punya stok. Satuan baru tetap bisa ditambah.</span></div>
+      <div class="g2"><div class="f"><span>Satuan dasar</span><div class="in sel">PAIL</div></div><div class="ink2" style="font-size:12.5px;align-self:center">Modal adalah harga beli per satuan, jadi tiap satuan bisa berbeda. Satuan lain otomatis mengikuti modal dasar × konversi sampai modalnya diisi sendiri.</div></div>
+      <table class="t"><tr><th>Satuan</th><th>Konversi</th><th>Barcode</th><th>Modal</th><th>Harga jual</th><th class="ct">Dijual</th><th class="ct">Default</th><th></th></tr>
+        <tr><td><b>PAIL</b> <span class="c pri">dasar</span></td><td>1</td><td class="mute">8991234567890</td><td><span class="in mini">72.875</span></td><td><span class="in mini">116.600</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd on"></span></td><td></td></tr>
+        <tr><td><span class="in mini sel">DUS</span></td><td><span class="in mini">4</span></td><td class="mute">18991234567897</td><td><span class="in mini">280.000</span></td><td><span class="in mini">437.250</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd"></span></td><td></td></tr></table>
       <div class="row mt2"><span class="b s"><svg class="ic s"><use href="#i-plus"/></svg>Tambah satuan</span><span class="sp"></span><span class="tip warn" style="padding:6px 12px"><svg class="ic s"><use href="#i-alert"/></svg>Harga di bawah modal meminta konfirmasi</span></div></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Modal tiap satuan = harga beli × konversi.</li><li>Konversi terkunci setelah ada stok atau transaksi.</li><li>Mode margin dan histori harga ada di R2.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Modal diisi per satuan (beli per dus dan per kaleng bisa beda). Di contoh, DUS dimodali 280.000, bukan 4 × 72.875.</li><li>Satuan dan konversi terkunci setelah ada stok atau transaksi.</li><li>Tombol Hapus muncul di pojok atas bila barang belum punya stok atau transaksi.</li><li>Satuan dipilih dari daftar; yang belum ada ditambah lewat "Tambah satuan baru" tanpa kehilangan isian form.</li><li>Mode margin dan histori harga ada di R2.</li></ul></details>
 </section>
 
 <!-- 8 IMPORT -->
 <section class="scr" id="import" data-group="Barang & Stok" data-nav="Import Excel" data-title="Import Excel" data-sub="Masukkan barang dan stok awal sekaligus." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products/import">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Import Excel</h3><span class="b"><svg class="ic s"><use href="#i-down"/></svg>Unduh template</span></div>
   <div class="pg">
     <div class="steps"><span class="done"><svg class="ic s"><use href="#i-check"/></svg>Unggah</span><span class="cur">Periksa</span><span>Simpan</span></div>
@@ -203,7 +227,7 @@
 <!-- 9 OPNAME -->
 <section class="scr" id="opname" data-group="Barang & Stok" data-nav="Stok Opname" data-title="Stok Opname" data-sub="Satu-satunya cara menambah atau mengoreksi stok di R1." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/stock-opnames/2">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Stok Opname" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Stok Opname" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>OPN/MU/2610/0002</h3><span class="b">Simpan</span><span class="b">Selesai hitung</span><span class="b ok">Posting</span></div>
   <div class="pg">
     <div class="steps"><span class="done"><svg class="ic s"><use href="#i-check"/></svg>Draft</span><span class="cur">Menghitung</span><span>Review</span><span>Diposting</span></div>
@@ -219,11 +243,11 @@
 <details class="nt"><summary>Catatan</summary><ul><li>Penjualan tetap jalan saat menghitung; selisih dihitung dari snapshot + mutasi.</li><li>Hanya Admin yang bisa posting. Hitungan boleh campur satuan.</li><li>Stok awal dan barang datang dimasukkan lewat sini.</li></ul></details>
 </section>
 
-<!-- 10 KARTU STOK -->
-<section class="scr" id="kartu" data-group="Barang & Stok" data-nav="Kartu Stok" data-title="Kartu Stok" data-sub="Semua pergerakan stok satu barang." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/stock-card/MU0001">
+<!-- 10 HISTORI STOK -->
+<section class="scr" id="histori" data-group="Barang & Stok" data-nav="Histori Stok" data-title="Histori Stok" data-sub="Semua pergerakan stok satu barang." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/stock-history/MU0001">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Kartu Stok" data-who="Andi|Admin"></aside>
-  <div class="mn"><div class="tb"><h3>Kartu Stok</h3><span class="b"><svg class="ic s"><use href="#i-down"/></svg>Excel</span></div>
+  <aside class="sb" data-side="store" data-on="Histori Stok" data-who="Andi|Admin Toko"></aside>
+  <div class="mn"><div class="tb"><h3>Histori Stok</h3><span class="b"><svg class="ic s"><use href="#i-down"/></svg>Excel</span></div>
   <div class="pg">
     <div class="row" style="margin-bottom:14px"><div class="in grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cat Tembok Putih 5kg · MU0001</div><div class="in sel grow">Main Warehouse</div><div class="in grow">1–25 Okt 2026</div></div>
     <div class="tbl"><table class="t"><tr><th>Waktu</th><th>Dokumen</th><th>Jenis</th><th class="r">Masuk</th><th class="r">Keluar</th><th class="r">Saldo</th></tr>
@@ -323,7 +347,7 @@
 <!-- 15 RIWAYAT -->
 <section class="scr" id="riwayat" data-group="Penjualan" data-nav="Riwayat Nota & Void" data-title="Riwayat Nota" data-sub="Cari nota, cetak ulang, retur, atau void (Admin)." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/sales">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Riwayat Nota" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Riwayat Nota" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Riwayat Nota</h3></div>
   <div class="pg"><div class="cols">
     <div>
@@ -347,7 +371,7 @@
 <!-- 16 RETUR -->
 <section class="scr" id="retur" data-group="Penjualan" data-nav="Retur" data-title="Retur" data-sub="Refund atau tukar barang, stok kembali." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/returns/new">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Retur" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Retur" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Retur nota …/0118</h3><span class="mute">24 Okt 2026</span></div>
   <div class="pg"><div class="cols">
     <div>
@@ -371,7 +395,7 @@
 <!-- 17 SURAT JALAN -->
 <section class="scr" id="sj" data-group="Penjualan" data-nav="Surat Jalan" data-title="Surat Jalan" data-sub="Dokumen antar barang. Tidak mengubah stok." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/delivery-notes">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Surat Jalan" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Surat Jalan" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Surat Jalan</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Baru dari nota</span></div>
   <div class="pg"><div class="cols">
     <div class="tbl"><table class="t"><tr><th>Surat jalan</th><th>Penerima</th><th>Status</th><th></th></tr>
@@ -393,7 +417,7 @@
 <!-- 18 PENGELUARAN -->
 <section class="scr" id="pengeluaran" data-group="Kas & Harian" data-nav="Pengeluaran" data-title="Pengeluaran" data-sub="Uang keluar dari laci kasir atau sumber lain." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/expenses">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Pengeluaran" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Pengeluaran" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Pengeluaran</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Pengeluaran</span></div>
   <div class="pg">
     <div class="g3"><div class="card kpi"><small>Dari laci</small><b>120.000</b></div><div class="card kpi"><small>Sumber lain</small><b>1.250.000</b></div><div class="card kpi"><small>Total 24 Okt</small><b>1.370.000</b></div></div>
@@ -431,7 +455,7 @@
 <!-- 20 REKAP SHIFT -->
 <section class="scr" id="rekap" data-group="Kas & Harian" data-nav="Rekap Shift" data-title="Rekap Shift" data-sub="Admin meninjau tiap shift dan menyetujui selisih kas." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/shifts">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Rekap Shift" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Rekap Shift" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Rekap Shift</h3><div class="in mini">22–25 Okt 2026</div></div>
   <div class="pg"><div class="cols">
     <div class="tbl"><table class="t"><tr><th>Shift</th><th>Kasir</th><th class="r">Setoran</th><th class="r">Selisih</th><th>Status</th></tr>
@@ -451,7 +475,7 @@
 <!-- 21 TUTUP HARI -->
 <section class="scr" id="tutuphari" data-group="Kas & Harian" data-nav="Tutup Hari" data-title="Tutup Hari" data-sub="Rekonsiliasi akhir hari, lalu kunci transaksi tanggal itu." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/daily-closings/2026-10-24">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Tutup Hari" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Tutup Hari" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Sabtu, 24 Okt 2026</h3><div class="in mini">Ganti tanggal</div></div>
   <div class="pg"><div class="cols">
     <div>
@@ -475,7 +499,7 @@
 <!-- 22 LAPORAN -->
 <section class="scr" id="laporan" data-group="Kas & Harian" data-nav="Laporan" data-title="Laporan" data-sub="Penjualan, stok, selisih opname, retur, dan pengeluaran." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/reports">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Laporan" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Laporan" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Laporan</h3><span class="b"><svg class="ic s"><use href="#i-down"/></svg>Excel</span></div>
   <div class="pg">
     <div class="tabs"><span class="on">Penjualan</span><span>Stok</span><span>Selisih opname</span><span>Retur</span><span>Pengeluaran</span></div>
@@ -487,10 +511,49 @@
 <details class="nt"><summary>Catatan</summary><ul><li>Laba memakai modal = harga beli terakhir (estimasi) di R1.</li></ul></details>
 </section>
 
-<!-- 23 PENGATURAN -->
-<section class="scr" id="setelan" data-group="Kas & Harian" data-nav="Pengaturan" data-title="Pengaturan Toko" data-sub="Nota, register, dan kategori pengeluaran." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/settings">
+<!-- 22b SATUAN -->
+<section class="scr" id="satuan" data-group="Pengaturan" data-nav="Satuan" data-title="Satuan" data-sub="Kode, nama, dan pemakaian tiap satuan barang." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/settings/units">
 <div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Pengaturan" data-who="Andi|Admin"></aside>
+  <aside class="sb" data-side="store" data-on="Satuan" data-who="Andi|Admin Toko"></aside>
+  <div class="mn"><div class="tb"><h3>Satuan</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Satuan</span></div>
+  <div class="pg">
+    <div class="tbl"><table class="t"><tr><th>Kode</th><th>Nama</th><th>Dipakai</th><th></th></tr>
+      <tr><td><b>DUS</b></td><td>Dus</td><td>12 barang</td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>KALENG</b></td><td>Kaleng</td><td>8 barang</td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>KG</b></td><td>Kilogram</td><td>5 barang</td><td class="r"><span class="b s">Edit</span></td></tr>
+      <tr><td><b>BOTOL</b></td><td>Botol</td><td class="mute">Belum dipakai</td><td class="r"><span class="b s">Edit</span> <span class="b s bad">Hapus</span></td></tr></table></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Kode (PCS, DUS, KG) adalah kunci satuan dan tampil di layar dan nota; nama (Pieces) hanya keterangan.</li><li>Mengganti kode ikut mengubahnya di semua barang. Hapus hanya untuk satuan yang belum dipakai.</li></ul></details>
+</section>
+
+<!-- 22c TAMBAH SATUAN -->
+<section class="scr" id="satuanbaru" data-group="Pengaturan" data-nav="Tambah Satuan" data-title="Tambah Satuan" data-sub="Dari Form Barang: pilih satuan atau tambah baru lewat jendela." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products/create">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin Toko"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Tambah Barang</h3></div>
+  <div class="pg"><div class="g2">
+    <div class="card"><h4>Satuan dasar</h4>
+      <div class="f"><span>Satuan dasar</span><div class="in sel">KG</div></div>
+      <div class="list" style="border:1px solid var(--line);border-radius:12px;padding:4px 0">
+        <div><span class="t">DUS<small>Dus</small></span></div>
+        <div><span class="t">KALENG<small>Kaleng</small></span></div>
+        <div><span class="t">KG<small>Kilogram</small></span></div>
+        <div><span class="t" style="color:var(--brand)"><b>+ Tambah satuan baru</b></span></div></div></div>
+    <div class="scrim" style="min-height:0;border-radius:var(--r)"><div class="modal" style="max-width:380px">
+      <h3>Tambah satuan</h3>
+      <div class="f mt"><span>Kode (mis. PCS)</span><div class="in">PCS</div><small class="mute">Huruf besar, maksimal 20 karakter</small></div>
+      <div class="f"><span>Nama (mis. Pieces)</span><div class="in">Pieces</div><small class="mute">Boleh dikosongkan, nama ikut kodenya</small></div>
+      <div class="row mt" style="justify-content:flex-end"><span class="b">Batal</span><span class="b p">Simpan</span></div></div></div>
+  </div></div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Jendela ini juga muncul dari halaman Satuan. Dari Form Barang, isian yang sudah diketik tidak hilang dan satuan baru langsung terpilih.</li><li>Satuan di Form Barang hanya bisa dipilih dari yang sudah ada.</li></ul></details>
+</section>
+
+<!-- 23 PENGATURAN -->
+<section class="scr" id="setelan" data-group="Pengaturan" data-nav="Pengaturan Toko" data-title="Pengaturan Toko" data-sub="Nota, register, dan kategori pengeluaran." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/settings">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Pengaturan Toko" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Pengaturan</h3><span class="b p">Simpan</span></div>
   <div class="pg"><div class="g2">
     <div class="card"><h4>Nota</h4><div class="f"><span>Nama di nota</span><div class="in">MITRA UTAMA</div></div><div class="f"><span>Alamat</span><div class="in">Jl. Merdeka 12, Kota</div></div><div class="g2"><div class="f"><span>Telepon</span><div class="in">021-555-0123</div></div><div class="f"><span>Kertas</span><div class="seg"><span>58</span><span class="on">80 mm</span></div></div></div><div class="f"><span>Footer</span><div class="in">Terima kasih</div></div></div>

@@ -1,0 +1,161 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\WarehouseType;
+use Database\Factories\ProductFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use OwenIt\Auditing\Auditable;
+use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
+
+/**
+ * Lives in the store database. Quantities and `cost_price` are per base unit.
+ */
+#[Fillable(['sku', 'name', 'category_id', 'brand_id', 'base_unit_code', 'cost_price', 'min_stock', 'is_active'])]
+class Product extends Model implements AuditableContract
+{
+    /** @use HasFactory<ProductFactory> */
+    use Auditable, HasFactory, SoftDeletes;
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function casts(): array
+    {
+        return [
+            'cost_price' => 'decimal:2',
+            'min_stock' => 'decimal:3',
+            'is_active' => 'boolean',
+        ];
+    }
+
+    /**
+     * @return BelongsTo<Category, $this>
+     */
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * @return BelongsTo<Brand, $this>
+     */
+    public function brand(): BelongsTo
+    {
+        return $this->belongsTo(Brand::class);
+    }
+
+    /**
+     * @return BelongsTo<Unit, $this>
+     */
+    public function baseUnit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class, 'base_unit_code');
+    }
+
+    /**
+     * @return HasMany<ProductUnit, $this>
+     */
+    public function productUnits(): HasMany
+    {
+        return $this->hasMany(ProductUnit::class)->orderBy('sort_order');
+    }
+
+    /**
+     * @return HasMany<Stock, $this>
+     */
+    public function stocks(): HasMany
+    {
+        return $this->hasMany(Stock::class);
+    }
+
+    /**
+     * True when the product has stock or appears in any stock movement, receipt or opname. Such a product
+     * keeps its units and conversions and can no longer be deleted, only deactivated.
+     */
+    private const HAS_TRANSACTIONS_SQL = '(exists (select 1 from stock_movements where stock_movements.product_id = products.id)
+        or exists (select 1 from sale_items where sale_items.product_id = products.id)
+        or exists (select 1 from stock_opname_items where stock_opname_items.product_id = products.id)
+        or exists (select 1 from stocks where stocks.product_id = products.id and stocks.quantity != 0))';
+
+    public function hasTransactions(): bool
+    {
+        return (bool) static::query()
+            ->whereKey($this->getKey())
+            ->selectRaw(self::HAS_TRANSACTIONS_SQL.' as has_transactions')
+            ->value('has_transactions');
+    }
+
+    /**
+     * Adds a `has_transactions` flag to every row, see {@see self::hasTransactions()}.
+     *
+     * @param  Builder<Product>  $query
+     */
+    public function scopeWithTransactionFlag(Builder $query): void
+    {
+        $query->selectRaw(self::HAS_TRANSACTIONS_SQL.' as has_transactions');
+    }
+
+    /**
+     * Adds `sellable_stock` and `dead_stock`: the product's total in the warehouses of each type.
+     *
+     * @param  Builder<Product>  $query
+     */
+    public function scopeWithStockTotals(Builder $query): void
+    {
+        $totalIn = fn (WarehouseType $type) => Stock::query()
+            ->selectRaw('coalesce(sum(stocks.quantity), 0)')
+            ->whereColumn('stocks.product_id', 'products.id')
+            ->whereIn('stocks.warehouse_id', Warehouse::query()->select('id')->where('type', $type));
+
+        $query->addSelect([
+            'products.*',
+            'sellable_stock' => $totalIn(WarehouseType::Sellable),
+            'dead_stock' => $totalIn(WarehouseType::DeadStock),
+        ]);
+    }
+
+    /**
+     * Matches the name, the SKU, or the barcode of any of the product's units.
+     *
+     * @param  Builder<Product>  $query
+     */
+    public function scopeSearch(Builder $query, ?string $term): void
+    {
+        $term = trim((string) $term);
+
+        if ($term === '') {
+            return;
+        }
+
+        $query->where(function (Builder $query) use ($term): void {
+            $query->where('products.name', 'like', "%{$term}%")
+                ->orWhere('products.sku', 'like', "%{$term}%")
+                ->orWhereHas('productUnits', fn (Builder $units) => $units->where('barcode', 'like', "%{$term}%"));
+        });
+    }
+
+    /**
+     * Active products whose stock in the sellable warehouses is under their minimum.
+     * Products without a minimum are never "low".
+     *
+     * @param  Builder<Product>  $query
+     */
+    public function scopeBelowMinimumStock(Builder $query): void
+    {
+        $query->where('is_active', true)
+            ->where('min_stock', '>', 0)
+            ->whereRaw(
+                '(select coalesce(sum(stocks.quantity), 0) from stocks
+                    join warehouses on warehouses.id = stocks.warehouse_id
+                    where stocks.product_id = products.id and warehouses.type = ?) < products.min_stock',
+                [WarehouseType::Sellable->value],
+            );
+    }
+}
