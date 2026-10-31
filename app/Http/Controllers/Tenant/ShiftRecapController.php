@@ -8,7 +8,7 @@ use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\DecideShiftDifferenceRequest;
 use App\Http\Resources\CashShiftListResource;
-use App\Http\Resources\CashShiftResource;
+use App\Http\Resources\ShiftRecapResource;
 use App\Models\CashShift;
 use App\Models\SaleReturn;
 use App\Services\ShiftRecapService;
@@ -62,7 +62,7 @@ class ShiftRecapController extends Controller
 
         return Inertia::render('Tenant/Shifts/Show', [
             'shift' => [
-                ...CashShiftResource::make($shift, $this->shifts->summarize($shift), $returns)->resolve(),
+                ...ShiftRecapResource::make($shift, $this->shifts->summarize($shift), $returns)->resolve(),
                 'urls' => [
                     'index' => route('tenant.shifts.index', ['tenant' => tenant('code')]),
                     'approve' => route('tenant.shifts.approve', ['tenant' => tenant('code'), 'shift' => $shift->id]),

@@ -71,6 +71,32 @@ class SaleService
     }
 
     /**
+     * What the cart would cost right now, line by line, without selling anything. Used to settle an exchange before
+     * the replacement receipt exists.
+     *
+     * @param  list<SaleLine>  $items
+     * @return array{total: string, lines: list<array{product_unit_id: int, name: string, unit: string, quantity: string, unit_price: string, subtotal: string}>}
+     *
+     * @throws SaleException
+     */
+    public function quote(array $items): array
+    {
+        $lines = $this->priceLines($items);
+
+        return [
+            'total' => (string) $lines->reduce(fn (BigDecimal $sum, array $line): BigDecimal => $sum->plus($line['subtotal']), BigDecimal::zero())->toScale(2),
+            'lines' => $lines->map(fn (array $line): array => [
+                'product_unit_id' => $line['attributes']['product_unit_id'],
+                'name' => $line['product_name'],
+                'unit' => $line['attributes']['unit_name'],
+                'quantity' => $line['attributes']['quantity'],
+                'unit_price' => $line['attributes']['unit_price'],
+                'subtotal' => $line['attributes']['subtotal'],
+            ])->values()->all(),
+        ];
+    }
+
+    /**
      * A double submit gets the receipt it already made. A `client_uuid` that belongs to someone else's sale is
      * refused, so a receipt cannot be read by sending its uuid.
      *
@@ -234,7 +260,7 @@ class SaleService
      *
      * @throws SaleException
      */
-    private function settle(BigDecimal $total, array $payments): array
+    public function settle(BigDecimal $total, array $payments): array
     {
         $paidTotal = BigDecimal::zero();
         $cashReceived = BigDecimal::zero();

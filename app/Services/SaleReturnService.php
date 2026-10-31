@@ -8,6 +8,7 @@ use App\Enums\ReturnDisposition;
 use App\Enums\SaleReturnStatus;
 use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
+use App\Exceptions\SaleException;
 use App\Exceptions\SaleReturnException;
 use App\Models\CashShift;
 use App\Models\Sale;
@@ -20,6 +21,7 @@ use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Takes goods back from a receipt and gives the money back. A return is asked for in the asker's running shift and
@@ -27,10 +29,14 @@ use Illuminate\Support\Facades\DB;
  * refund count against the shift's drawer. Goods waiting for approval already count as returned, so the same
  * goods cannot be returned twice. The value follows the price on the receipt.
  *
- * Exchanging goods is not part of this yet: every return is a refund.
+ * A return is either a refund or an exchange. In an exchange the customer takes other goods instead: they are sold on
+ * a receipt of their own, paid with the credit of the returned goods, and the customer pays what is more or gets the
+ * rest back as a refund. That receipt is made when the return is approved, so nothing of it moves before then.
  *
  * @phpstan-type ReturnLine array{sale_item_id: int, quantity: numeric-string|float|int, disposition: string}
- * @phpstan-type ReturnData array{refund_method: string, reason?: string|null, items: list<ReturnLine>}
+ * @phpstan-type ExchangeLine array{product_unit_id: int, quantity: numeric-string|float|int}
+ * @phpstan-type ExchangePayment array{method: string, amount: numeric-string|float|int, reference?: string|null}
+ * @phpstan-type ReturnData array{resolution?: string, refund_method: string, refund_account?: string|null, reason?: string|null, items: list<ReturnLine>, exchange_items?: list<ExchangeLine>, exchange_payments?: list<ExchangePayment>}
  */
 class SaleReturnService
 {
@@ -42,6 +48,7 @@ class SaleReturnService
     public function __construct(
         private readonly StockService $stockLedger,
         private readonly DocumentNumberGenerator $numbers,
+        private readonly SaleService $sales,
     ) {}
 
     /**
@@ -101,16 +108,24 @@ class SaleReturnService
             $rows = $this->priceRows($sale, $data['items']);
             $total = $rows->reduce(fn (BigDecimal $sum, array $row): BigDecimal => $sum->plus($row['attributes']['refund_subtotal']), BigDecimal::zero());
 
+            $isExchange = ($data['resolution'] ?? 'refund') === 'exchange';
+            $exchange = $isExchange ? $this->priceExchange($data, $total) : null;
+            $refund = $exchange['refund'] ?? $total;
+            $refundMethod = PaymentMethod::from($data['refund_method']);
+            $refundAccount = $this->refundAccountOf($refundMethod, $refund, $data['refund_account'] ?? null);
+
             $saleReturn = SaleReturn::query()->create([
                 'number' => $this->numbers->next(self::NUMBER_TYPE, now()),
                 'sale_id' => $sale->id,
                 'register_id' => $shift->register_id,
                 'cash_shift_id' => $shift->id,
                 'returned_at' => now(),
-                'resolution' => 'refund',
-                'refund_method' => PaymentMethod::from($data['refund_method']),
+                'resolution' => $isExchange ? 'exchange' : 'refund',
+                'refund_method' => $refundMethod,
+                'refund_account' => $refundAccount,
                 'credit_amount' => (string) $total->toScale(2),
-                'refund_amount' => (string) $total->toScale(2),
+                'refund_amount' => (string) $refund->toScale(2),
+                'exchange_data' => $exchange['data'] ?? null,
                 'status' => SaleReturnStatus::Pending,
                 'reason' => filled($data['reason'] ?? null) ? trim($data['reason']) : null,
                 'requested_by' => $requester->id,
@@ -157,6 +172,10 @@ class SaleReturnService
                 );
             }
 
+            if ($saleReturn->isExchange()) {
+                $this->sellReplacement($saleReturn);
+            }
+
             $saleReturn->forceFill(['status' => SaleReturnStatus::Completed, 'approved_by' => $approver->id])->save();
             $this->refreshReturnStatus($saleReturn->sale);
 
@@ -176,6 +195,121 @@ class SaleReturnService
 
             return $saleReturn->load('items.saleItem');
         });
+    }
+
+    /**
+     * Money paid back by transfer, QRIS or EDC needs the account it goes to. Cash, or nothing to pay back, needs none.
+     *
+     * @throws SaleReturnException
+     */
+    private function refundAccountOf(PaymentMethod $method, BigDecimal $refund, ?string $account): ?string
+    {
+        if ($method === PaymentMethod::Cash || $refund->isZero()) {
+            return null;
+        }
+
+        return filled($account) ? trim($account) : throw SaleReturnException::refundAccountMissing();
+    }
+
+    /**
+     * Prices the replacement goods now and settles them against the value of what comes back: the customer pays
+     * what is more, or gets the rest back. Checked when the exchange is asked for, so it is refused on the spot
+     * rather than when an admin looks at it.
+     *
+     * @param  ReturnData  $data
+     * @return array{data: array<string, mixed>, refund: BigDecimal}
+     *
+     * @throws SaleReturnException
+     */
+    private function priceExchange(array $data, BigDecimal $credit): array
+    {
+        $extraPayments = $this->extraPaymentsOf($data['exchange_payments'] ?? []);
+
+        try {
+            $quote = $this->sales->quote($data['exchange_items']);
+            $replacementTotal = BigDecimal::of($quote['total']);
+
+            $this->sales->settle($replacementTotal, $this->exchangePayments($credit, $replacementTotal, $extraPayments));
+        } catch (SaleException $exception) {
+            throw SaleReturnException::fromSale($exception);
+        }
+
+        return [
+            'data' => ['items' => $quote['lines'], 'replacement_total' => $quote['total'], 'payments' => $extraPayments],
+            'refund' => $credit->minus($this->creditUsed($credit, $replacementTotal)),
+        ];
+    }
+
+    /**
+     * Makes the receipt for the replacement goods in the shift of the return, paid with the return's credit and
+     * whatever the customer added. Prices are read again: if they moved since the exchange was asked for and the
+     * payments no longer cover it, approving fails with the reason instead of selling short.
+     *
+     * @throws SaleReturnException
+     */
+    private function sellReplacement(SaleReturn $saleReturn): void
+    {
+        $exchange = $saleReturn->exchange_data;
+        $credit = BigDecimal::of($saleReturn->credit_amount);
+        $items = array_map(fn (array $line): array => ['product_unit_id' => $line['product_unit_id'], 'quantity' => $line['quantity']], $exchange['items']);
+
+        try {
+            $replacementTotal = BigDecimal::of($this->sales->quote($items)['total']);
+
+            $sale = $this->sales->create(
+                CashShift::query()->findOrFail($saleReturn->cash_shift_id),
+                User::query()->findOrFail($saleReturn->requested_by),
+                [
+                    'client_uuid' => (string) Str::uuid(),
+                    'customer_name' => $saleReturn->sale->customer_name,
+                    'items' => $items,
+                    'payments' => $this->exchangePayments($credit, $replacementTotal, $exchange['payments']),
+                ],
+            );
+        } catch (SaleException $exception) {
+            throw SaleReturnException::fromSale($exception);
+        }
+
+        $saleReturn->forceFill([
+            'exchange_sale_id' => $sale->id,
+            'refund_amount' => (string) $credit->minus($this->creditUsed($credit, $replacementTotal))->toScale(2),
+        ]);
+    }
+
+    /**
+     * The payments of the replacement receipt: the return's credit as far as the goods cost, and the customer's own
+     * payments only when the goods cost more than the credit.
+     *
+     * @param  list<array{method: string, amount: string, reference: string|null}>  $extraPayments
+     * @return list<array{method: string, amount: string, reference?: string|null}>
+     */
+    private function exchangePayments(BigDecimal $credit, BigDecimal $replacementTotal, array $extraPayments): array
+    {
+        $payments = [['method' => PaymentMethod::ReturnCredit->value, 'amount' => (string) $this->creditUsed($credit, $replacementTotal)->toScale(2)]];
+
+        return $replacementTotal->isGreaterThan($credit) ? [...$payments, ...$extraPayments] : $payments;
+    }
+
+    private function creditUsed(BigDecimal $credit, BigDecimal $replacementTotal): BigDecimal
+    {
+        return $credit->isLessThan($replacementTotal) ? $credit : $replacementTotal;
+    }
+
+    /**
+     * @param  list<array{method: string, amount: numeric-string|float|int, reference?: string|null}>  $payments
+     * @return list<array{method: string, amount: string, reference: string|null}>
+     */
+    private function extraPaymentsOf(array $payments): array
+    {
+        return collect($payments)
+            ->reject(fn (array $payment): bool => BigDecimal::of((string) $payment['amount'])->isZero())
+            ->map(fn (array $payment): array => [
+                'method' => $payment['method'],
+                'amount' => (string) BigDecimal::of((string) $payment['amount'])->toScale(2),
+                'reference' => filled($payment['reference'] ?? null) ? trim($payment['reference']) : null,
+            ])
+            ->values()
+            ->all();
     }
 
     /**

@@ -3,7 +3,7 @@ import { formatRupiah } from '../Composables/useMoneyFormat';
 import { formatQuantity } from '../Composables/useQuantityFormat';
 
 defineProps({
-    /** @type {{number: string, returned_at: string, status: string, status_label: string, cashier_name: string, refund_method_label: string, refund_amount: string, reason: string|null, sale: {number: string, customer_name: string|null}, store: {name: string, address: string|null, phone: string|null}, items: object[]}} */
+    /** @type {{number: string, returned_at: string, status: string, status_label: string, cashier_name: string, refund_method_label: string, credit_amount: string, refund_amount: string, exchange: {items: object[], total: string, payments: object[]}|null, reason: string|null, sale: {number: string, customer_name: string|null}, store: {name: string, address: string|null, phone: string|null}, items: object[]}} */
     saleReturn: { type: Object, required: true },
 });
 
@@ -28,6 +28,7 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
             <span>Kasir: {{ saleReturn.cashier_name }}</span>
             <span v-if="saleReturn.sale.customer_name">Pelanggan: {{ saleReturn.sale.customer_name }}</span>
             <span v-if="saleReturn.reason">Alasan: {{ saleReturn.reason }}</span>
+            <span v-if="saleReturn.refund_account">Rekening: {{ saleReturn.refund_account }}</span>
         </div>
 
         <ul class="return-print__items">
@@ -37,7 +38,24 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
             </li>
         </ul>
 
-        <dl class="return-print__totals">
+        <template v-if="saleReturn.exchange">
+            <p class="return-print__section">Ditukar dengan</p>
+            <ul class="return-print__items">
+                <li v-for="(item, index) in saleReturn.exchange.items" :key="index">
+                    <span>{{ item.name }}</span>
+                    <span class="return-print__line"><span>{{ formatQuantity(item.quantity) }} {{ item.unit }} × {{ formatRupiah(item.unit_price) }}</span><b>{{ formatRupiah(item.subtotal) }}</b></span>
+                </li>
+            </ul>
+
+            <dl class="return-print__totals">
+                <div><dt>Nilai retur</dt><dd>{{ formatRupiah(saleReturn.credit_amount) }}</dd></div>
+                <div><dt>Nilai pengganti</dt><dd>{{ formatRupiah(saleReturn.exchange.total) }}</dd></div>
+                <div v-for="payment in saleReturn.exchange.payments" :key="payment.method"><dt>Tambah ({{ payment.method }})</dt><dd>{{ formatRupiah(payment.amount) }}</dd></div>
+                <div v-if="Number(saleReturn.refund_amount) > 0" class="return-print__total"><dt>Dikembalikan ({{ saleReturn.refund_method_label }})</dt><dd>{{ formatRupiah(saleReturn.refund_amount) }}</dd></div>
+            </dl>
+        </template>
+
+        <dl v-else class="return-print__totals">
             <div class="return-print__total"><dt>Dikembalikan</dt><dd>{{ formatRupiah(saleReturn.refund_amount) }}</dd></div>
             <div><dt>Lewat</dt><dd>{{ saleReturn.refund_method_label }}</dd></div>
         </dl>
@@ -112,6 +130,11 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
 .return-print__line {
     display: flex;
     justify-content: space-between;
+}
+
+.return-print__section {
+    margin: 6px 0 2px;
+    font-weight: 700;
 }
 
 .return-print__totals {

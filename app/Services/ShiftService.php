@@ -105,7 +105,7 @@ class ShiftService
         return [
             'sale_count' => (clone $completedSales)->count(),
             'total_sales' => (string) BigDecimal::of((string) (clone $completedSales)->sum('total'))->toScale(2),
-            'returns_total' => (string) BigDecimal::of((string) (clone $completedReturns)->sum('refund_amount'))->toScale(2),
+            'returns_total' => (string) BigDecimal::of((string) (clone $completedReturns)->sum('credit_amount'))->toScale(2),
             'cash_refunds' => (string) $cashRefunds->toScale(2),
             'payments' => $payments,
             'opening_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->toScale(2),

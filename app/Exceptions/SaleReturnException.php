@@ -29,6 +29,11 @@ class SaleReturnException extends Exception
         return new self("{$productName} melebihi yang masih bisa diretur, sisa {$remainingText}.");
     }
 
+    public static function refundAccountMissing(): self
+    {
+        return new self('Isi rekening penerima untuk pengembalian uang non tunai.');
+    }
+
     public static function shiftNotOpen(): self
     {
         return new self('Buka shift dulu untuk membuat retur.');
@@ -37,6 +42,14 @@ class SaleReturnException extends Exception
     public static function noWarehouseFor(string $dispositionLabel): self
     {
         return new self("Gudang untuk \"{$dispositionLabel}\" belum ada di toko ini.");
+    }
+
+    /**
+     * A problem with the replacement goods or their payment, in the words of the sale.
+     */
+    public static function fromSale(SaleException $exception): self
+    {
+        return new self($exception->getMessage(), previous: $exception);
     }
 
     public static function wrongStatus(string $action, string $statusLabel): self

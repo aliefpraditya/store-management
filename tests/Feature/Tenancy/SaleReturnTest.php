@@ -220,6 +220,31 @@ class SaleReturnTest extends TestCase
         $this->assertSame(0, $this->store->run(fn () => SaleReturn::query()->count()));
     }
 
+    public function test_a_refund_by_transfer_needs_the_account_it_goes_to(): void
+    {
+        $sale = $this->sellBrushes($this->admin, $this->adminShift, 5);
+
+        $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 1, 'resellable', ['refund_method' => 'transfer']))
+            ->assertSessionHas('error', 'Isi rekening penerima untuk pengembalian uang non tunai.');
+        $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 1, 'resellable', ['refund_method' => 'qris', 'refund_account' => '   ']))
+            ->assertSessionHas('error', 'Isi rekening penerima untuk pengembalian uang non tunai.');
+        $this->assertSame(0, $this->store->run(fn () => SaleReturn::query()->count()));
+
+        $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 1, 'resellable', ['refund_method' => 'transfer', 'refund_account' => '  BCA 123 a.n. Budi ']))->assertSessionHas('success');
+
+        $this->assertSame('BCA 123 a.n. Budi', $this->saleReturn()->refund_account);
+        $this->actingAs($this->admin)->get($this->url('show', ['sale_return' => $this->saleReturn()->id]))->assertInertia(fn (Assert $page) => $page->where('saleReturn.refund_account', 'BCA 123 a.n. Budi'));
+    }
+
+    public function test_a_cash_refund_keeps_no_account(): void
+    {
+        $sale = $this->sellBrushes($this->admin, $this->adminShift, 5);
+
+        $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 1, 'resellable', ['refund_account' => 'BCA 123']))->assertSessionHas('success');
+
+        $this->assertNull($this->saleReturn()->refund_account);
+    }
+
     public function test_a_voided_receipt_cannot_be_returned(): void
     {
         $sale = $this->sellBrushes($this->admin, $this->adminShift, 5);
@@ -281,7 +306,7 @@ class SaleReturnTest extends TestCase
         $this->assertSame('50000.00', $summarize()['expected_cash']);
 
         $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 2));
-        $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 1, 'resellable', ['refund_method' => 'transfer']));
+        $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 1, 'resellable', ['refund_method' => 'transfer', 'refund_account' => 'BCA 123 a.n. Budi']));
 
         $summary = $summarize();
         $this->assertSame(['30000.00', '20000.00', '30000.00', '30000.00'], [$summary['expected_cash'], $summary['cash_refunds'], $summary['payments']['cash'], $summary['returns_total']]);

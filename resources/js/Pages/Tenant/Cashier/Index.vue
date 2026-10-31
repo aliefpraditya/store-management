@@ -9,6 +9,7 @@ import SaleDoneDialog from '../../../Components/Cashier/SaleDoneDialog.vue';
 import ShiftClosedDialog from '../../../Components/Cashier/ShiftClosedDialog.vue';
 import DeliveryNoteDialog from '../../../Components/Cashier/DeliveryNoteDialog.vue';
 import ReturnDialog from '../../../Components/Cashier/ReturnDialog.vue';
+import ReturnLookupDialog from '../../../Components/Cashier/ReturnLookupDialog.vue';
 import ReceiptHistoryDialog from '../../../Components/Cashier/ReceiptHistoryDialog.vue';
 import ShiftOpenPanel from '../../../Components/Cashier/ShiftOpenPanel.vue';
 import { newUuid, useCart } from '../../../Composables/useCart';
@@ -53,6 +54,7 @@ const isShiftClosedOpen = ref(false);
 const isReceiptsOpen = ref(false);
 const isDeliveryOpen = ref(false);
 const deliveryReceipt = ref(null);
+const isReturnLookupOpen = ref(false);
 const isReturnOpen = ref(false);
 const returnReceipt = ref(null);
 let saleUuid = newUuid();
@@ -305,7 +307,7 @@ function onKeydown(event) {
 
     const shortcuts = { F9: openPayment, F8: clearCart, F2: () => searchInput.value?.focus() };
 
-    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value && !isReturnOpen.value) {
+    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value && !isReturnLookupOpen.value && !isReturnOpen.value) {
         event.preventDefault();
         shortcuts[event.key]();
     }
@@ -336,6 +338,7 @@ onBeforeUnmount(() => {
                     </div>
                     <div class="till__bar-actions">
                         <q-btn v-if="shift" flat no-caps dense icon="receipt_long" label="Riwayat Nota" @click="isReceiptsOpen = true" />
+                        <q-btn v-if="shift" flat no-caps dense icon="undo" label="Retur" @click="isReturnLookupOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense color="negative" icon="lock_clock" label="Tutup Shift" @click="openClose">
                             <q-tooltip>Tutup shift dulu untuk keluar</q-tooltip>
                         </q-btn>
@@ -449,7 +452,8 @@ onBeforeUnmount(() => {
         <ShiftClosedDialog v-model="isShiftClosedOpen" :result="closed_shift" />
         <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" @return="openReturn" />
         <DeliveryNoteDialog v-model="isDeliveryOpen" :receipt="deliveryReceipt" />
-        <ReturnDialog v-model="isReturnOpen" :receipt="returnReceipt" @saved="refreshShiftSummary" />
+        <ReturnLookupDialog v-if="shift" v-model="isReturnLookupOpen" :lookup-url="urls.return_lookup" @found="openReturn" />
+        <ReturnDialog v-model="isReturnOpen" :receipt="returnReceipt" :products-url="urls.products" @saved="refreshShiftSummary" />
     </q-layout>
 </template>
 

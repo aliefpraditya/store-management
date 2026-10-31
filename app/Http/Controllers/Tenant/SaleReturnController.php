@@ -86,6 +86,7 @@ class SaleReturnController extends Controller
                 'index' => route('tenant.returns.index', ['tenant' => tenant('code')]),
                 'store' => route('tenant.returns.store', ['tenant' => tenant('code')]),
                 'sales' => route('tenant.returns.sales', ['tenant' => tenant('code')]),
+                'products' => route('tenant.cashier.products', ['tenant' => tenant('code')]),
             ],
         ]);
     }

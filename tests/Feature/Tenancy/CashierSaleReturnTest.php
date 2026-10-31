@@ -149,19 +149,70 @@ class CashierSaleReturnTest extends TestCase
         $this->actingAs($this->cashier)->postJson($store, $this->body($sale, 1, 'lost'))->assertUnprocessable()->assertJsonValidationErrors('items.0.disposition');
         $this->actingAs($this->cashier)->postJson($store, $this->body($sale, 0))->assertUnprocessable()->assertJsonPath('message', 'Pilih minimal satu barang yang diretur.');
         $this->actingAs($this->cashier)->postJson($store, $this->body($sale, 6))->assertUnprocessable()->assertJsonPath('message', 'Kuas melebihi yang masih bisa diretur, sisa 5 PCS.');
+        $this->actingAs($this->cashier)->postJson($store, [...$this->body($sale, 1), 'refund_method' => 'transfer'])->assertUnprocessable()
+            ->assertJsonPath('message', 'Isi rekening penerima untuk pengembalian uang non tunai.');
 
         $this->assertSame(0, $this->returnCount());
     }
 
-    public function test_a_cashier_cannot_touch_the_receipt_of_someone_else_but_an_admin_can(): void
+    public function test_a_cashier_can_ask_for_a_return_on_the_receipt_of_another_cashier(): void
     {
         $other = $this->storeUser();
         $register = $this->store->run(fn () => Register::factory()->create(['code' => 'K2', 'name' => 'Kasir 2', 'warehouse_id' => $this->mainWarehouse()->id]));
         $theirs = $this->sellBrushes($other, $this->openShiftFor($other, $register), 5);
 
-        $this->actingAs($this->cashier)->getJson($this->url('receipts.return', ['sale' => $theirs->id]))->assertForbidden();
-        $this->actingAs($this->cashier)->postJson($this->url('receipts.returns.store', ['sale' => $theirs->id]), $this->body($theirs, 1))->assertForbidden();
-        $this->assertSame(0, $this->returnCount());
+        $this->actingAs($this->cashier)->getJson($this->url('receipts.return', ['sale' => $theirs->id]))->assertOk()->assertJsonPath('data.number', $theirs->number);
+        $this->actingAs($this->cashier)->postJson($this->url('receipts.returns.store', ['sale' => $theirs->id]), $this->body($theirs, 1))
+            ->assertCreated()
+            ->assertJsonPath('data.status', 'pending');
+
+        $saleReturn = $this->store->run(fn () => SaleReturn::query()->sole());
+        $this->assertSame([$this->cashier->id, $this->shift->id], [$saleReturn->requested_by, $saleReturn->cash_shift_id]);
+        $this->assertSame('95.000', $this->stockInPieces($this->brush));
+    }
+
+    public function test_the_till_finds_a_receipt_by_its_full_number_only(): void
+    {
+        $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
+
+        $this->actingAs($this->cashier)->getJson($this->url('returns.lookup', ['number' => $sale->number]))->assertOk()
+            ->assertJsonPath('data.number', $sale->number)
+            ->assertJsonPath('data.return_url', $this->url('receipts.return', ['sale' => $sale->id]))
+            ->assertJsonPath('data.return_store_url', $this->url('receipts.returns.store', ['sale' => $sale->id]));
+
+        $this->actingAs($this->cashier)->getJson($this->url('returns.lookup', ['number' => substr($sale->number, 0, -2)]))->assertNotFound()
+            ->assertJsonPath('message', 'Nota tidak ditemukan. Ketik nomor nota selengkapnya.');
+        $this->actingAs($this->cashier)->getJson($this->url('returns.lookup', ['number' => 'INV/TIDAK/ADA']))->assertNotFound();
+        $this->actingAs($this->cashier)->getJson($this->url('returns.lookup'))->assertNotFound();
+    }
+
+    public function test_a_refund_by_transfer_keeps_the_account_of_the_customer(): void
+    {
+        $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
+
+        $this->actingAs($this->cashier)->postJson($this->url('receipts.returns.store', ['sale' => $sale->id]), [...$this->body($sale, 1), 'refund_method' => 'transfer', 'refund_account' => 'BCA 123'])
+            ->assertCreated()
+            ->assertJsonPath('data.refund_account', 'BCA 123');
+    }
+
+    public function test_a_voided_receipt_is_not_found_for_a_return(): void
+    {
+        $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
+        $this->store->run(fn () => Sale::query()->whereKey($sale->id)->update(['status' => 'voided']));
+
+        $this->actingAs($this->cashier)->getJson($this->url('returns.lookup', ['number' => $sale->number]))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Retur hanya bisa dibuat dari nota yang selesai, bukan nota void.');
+    }
+
+    public function test_the_receipt_lookup_needs_a_login(): void
+    {
+        $this->getJson($this->url('returns.lookup', ['number' => 'INV/1']))->assertUnauthorized();
+    }
+
+    public function test_the_till_gives_the_return_lookup_address(): void
+    {
+        $this->actingAs($this->cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('urls.return_lookup', $this->url('returns.lookup')));
     }
 
     public function test_the_slip_can_be_printed_by_who_asked_and_by_admins(): void

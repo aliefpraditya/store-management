@@ -53,6 +53,7 @@ Route::prefix('t/{tenant}')
             Route::post('receipts/{sale}/delivery-notes', [CashierDeliveryNoteController::class, 'store'])->name('receipts.delivery-notes.store');
             Route::post('delivery-notes/{delivery_note}/print', [CashierDeliveryNoteController::class, 'print'])->name('delivery-notes.print');
             Route::get('delivery-notes/{delivery_note}/sheet', [CashierDeliveryNoteController::class, 'sheet'])->name('delivery-notes.sheet');
+            Route::get('returns/lookup', [CashierSaleReturnController::class, 'lookup'])->name('returns.lookup');
             Route::get('receipts/{sale}/return', [CashierSaleReturnController::class, 'show'])->name('receipts.return');
             Route::post('receipts/{sale}/returns', [CashierSaleReturnController::class, 'store'])->name('receipts.returns.store');
             Route::get('returns/{sale_return}/sheet', [CashierSaleReturnController::class, 'sheet'])->name('returns.sheet');

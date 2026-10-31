@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\PaymentMethod;
 use App\Enums\SaleReturnStatus;
 use App\Models\SaleReturn;
 use Illuminate\Http\Request;
@@ -26,9 +27,14 @@ class SaleReturnResource extends JsonResource
             'returned_at' => $this->returned_at->toIso8601String(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
+            'resolution' => $this->resolution,
+            'resolution_label' => $this->isExchange() ? 'Tukar barang' : 'Refund',
             'refund_method' => $this->refund_method->value,
             'refund_method_label' => $this->refund_method->label(),
+            'refund_account' => $this->refund_account,
+            'credit_amount' => $this->credit_amount,
             'refund_amount' => $this->refund_amount,
+            'exchange' => $this->isExchange() ? $this->exchangeOf() : null,
             'reason' => $this->reason,
             'cashier_name' => $this->cashShift->cashier_name,
             'sale' => ['id' => $this->sale->id, 'number' => $this->sale->number, 'customer_name' => $this->sale->customer_name],
@@ -43,6 +49,30 @@ class SaleReturnResource extends JsonResource
                 'disposition_label' => $item->disposition->label(),
             ])->values()->all(),
             'is_pending' => $this->status === SaleReturnStatus::Pending,
+        ];
+    }
+
+    /**
+     * The replacement goods as the customer chose them, what the customer paid on top, and the receipt once approved.
+     *
+     * The addresses to count a print of that receipt and to show it are the till's receipt ones, which both an admin
+     * and the cashier whose receipt it is may use.
+     *
+     * @return array{items: list<array<string, string>>, total: string, payments: list<array{method: string, amount: string}>, sale_number: string|null, print_url: string|null, sheet_url: string|null}
+     */
+    private function exchangeOf(): array
+    {
+        $exchange = $this->exchange_data;
+        $saleId = $this->exchange_sale_id;
+        $receiptUrl = fn (string $name): ?string => $saleId === null ? null : route("tenant.cashier.receipts.{$name}", ['tenant' => tenant('code'), 'sale' => $saleId]);
+
+        return [
+            'items' => $exchange['items'],
+            'total' => $exchange['replacement_total'],
+            'payments' => array_map(fn (array $payment): array => ['method' => PaymentMethod::from($payment['method'])->label(), 'amount' => $payment['amount']], $exchange['payments']),
+            'sale_number' => $this->exchangeSale?->number,
+            'print_url' => $receiptUrl('print'),
+            'sheet_url' => $receiptUrl('sheet'),
         ];
     }
 }
