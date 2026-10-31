@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\CashShiftStatus;
 use App\Enums\PaymentMethod;
+use App\Enums\SaleReturnStatus;
 use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Exceptions\ShiftException;
@@ -11,6 +12,7 @@ use App\Models\CashShift;
 use App\Models\Register;
 use App\Models\Sale;
 use App\Models\SalePayment;
+use App\Models\SaleReturn;
 use App\Models\User;
 use Brick\Math\BigDecimal;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +22,7 @@ use Illuminate\Support\Str;
  * Opens and closes a cashier's shift. A register has one open shift at a time; the opening cash is the register's
  * fixed amount, and closing compares the counted cash with what the receipts say should be in the drawer.
  *
- * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
+ * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
  */
 class ShiftService
 {
@@ -70,7 +72,8 @@ class ShiftService
     }
 
     /**
-     * What happened in the shift so far. Cash is what stayed in the drawer: received minus the change given.
+     * What happened in the shift so far. Cash is what stayed in the drawer: received minus the change given and the
+     * refunds paid out in cash. A return still waiting for approval has paid nothing yet.
      *
      * @return ShiftSummary
      */
@@ -92,13 +95,18 @@ class ShiftService
             $payments[$method->value] = (string) BigDecimal::of((string) ($receivedByMethod[$method->value] ?? 0))->toScale(2);
         }
 
+        $completedReturns = SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Completed);
+        $cashRefunds = BigDecimal::of((string) (clone $completedReturns)->where('refund_method', PaymentMethod::Cash)->sum('refund_amount'));
+
         $changeGiven = BigDecimal::of((string) (clone $completedSales)->sum('change_amount'));
-        $cashInDrawer = BigDecimal::of($payments[PaymentMethod::Cash->value])->minus($changeGiven);
+        $cashInDrawer = BigDecimal::of($payments[PaymentMethod::Cash->value])->minus($changeGiven)->minus($cashRefunds);
         $payments[PaymentMethod::Cash->value] = (string) $cashInDrawer->toScale(2);
 
         return [
             'sale_count' => (clone $completedSales)->count(),
             'total_sales' => (string) BigDecimal::of((string) (clone $completedSales)->sum('total'))->toScale(2),
+            'returns_total' => (string) BigDecimal::of((string) (clone $completedReturns)->sum('refund_amount'))->toScale(2),
+            'cash_refunds' => (string) $cashRefunds->toScale(2),
             'payments' => $payments,
             'opening_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->toScale(2),
             'expected_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->plus($cashInDrawer)->toScale(2),
@@ -118,6 +126,12 @@ class ShiftService
 
             if ($shift->status !== CashShiftStatus::Open) {
                 throw ShiftException::notOpen();
+            }
+
+            $pendingReturnCount = SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Pending)->count();
+
+            if ($pendingReturnCount > 0) {
+                throw ShiftException::hasPendingReturns($pendingReturnCount);
             }
 
             $expectedCash = BigDecimal::of($this->summarize($shift)['expected_cash']);

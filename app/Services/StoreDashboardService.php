@@ -22,8 +22,10 @@ use Carbon\CarbonInterface;
  * @phpstan-type Summary array{
  *     sales: array{gross_total: string, returns_total: string, net_total: string, receipt_count: int},
  *     low_stock_count: int,
- *     pending: array{returns: int, cash_differences: int, delivery_notes: int, total: int},
+ *     pending: array{returns: int, cash_differences: int, cash_difference_follow_ups: int, delivery_notes: int, total: int},
  *     approvals: list<array{kind: string, reference: string, amount: string}>,
+ *     cash_difference_follow_ups: list<array{reference: string, cashier_name: string, amount: string, show_url: string}>,
+ *     unfinished_delivery_notes: list<array{reference: string, recipient_name: string, status_label: string, show_url: string}>,
  *     open_shifts: list<array{id: int, cashier_name: string, register_name: string, opened_at: string}>
  * }
  */
@@ -43,6 +45,7 @@ class StoreDashboardService
         $pending = [
             'returns' => $pendingReturns->count(),
             'cash_differences' => $pendingDifferences->count(),
+            'cash_difference_follow_ups' => CashShift::query()->awaitingFollowUp()->count(),
             'delivery_notes' => $unfinishedDeliveryNotes->count(),
         ];
 
@@ -54,6 +57,8 @@ class StoreDashboardService
                 ...$this->pendingReturnApprovals(),
                 ...$this->pendingCashDifferenceApprovals(),
             ],
+            'cash_difference_follow_ups' => $this->cashDifferenceFollowUps(),
+            'unfinished_delivery_notes' => $this->unfinishedDeliveryNotes(),
             'open_shifts' => $this->openShifts(),
         ];
     }
@@ -113,8 +118,50 @@ class StoreDashboardService
             ->get()
             ->map(fn (CashShift $shift): array => [
                 'kind' => 'cash_difference',
-                'reference' => 'Shift #'.str_pad((string) $shift->id, 4, '0', STR_PAD_LEFT),
+                'reference' => $shift->label(),
                 'amount' => $shift->cash_difference,
+            ])
+            ->all();
+    }
+
+    /**
+     * Refused cash differences nobody has followed up yet, oldest first.
+     *
+     * @return list<array{reference: string, cashier_name: string, amount: string, show_url: string}>
+     */
+    private function cashDifferenceFollowUps(): array
+    {
+        return CashShift::query()
+            ->awaitingFollowUp()
+            ->orderBy('id')
+            ->limit(self::APPROVAL_LIMIT)
+            ->get()
+            ->map(fn (CashShift $shift): array => [
+                'reference' => $shift->label(),
+                'cashier_name' => $shift->cashier_name,
+                'amount' => $shift->cash_difference,
+                'show_url' => route('tenant.shifts.show', ['tenant' => tenant('code'), 'shift' => $shift->id]),
+            ])
+            ->all();
+    }
+
+    /**
+     * The delivery notes still on their way, oldest first since those have waited longest.
+     *
+     * @return list<array{reference: string, recipient_name: string, status_label: string, show_url: string}>
+     */
+    private function unfinishedDeliveryNotes(): array
+    {
+        return DeliveryNote::query()
+            ->whereIn('status', DeliveryNoteStatus::unfinished())
+            ->orderBy('id')
+            ->limit(self::APPROVAL_LIMIT)
+            ->get()
+            ->map(fn (DeliveryNote $note): array => [
+                'reference' => $note->number,
+                'recipient_name' => $note->recipient_name,
+                'status_label' => $note->status->label(),
+                'show_url' => route('tenant.delivery-notes.show', ['tenant' => tenant('code'), 'delivery_note' => $note->id]),
             ])
             ->all();
     }

@@ -105,9 +105,7 @@ async function print() {
             <q-btn outline no-caps dense color="primary" icon="print" :label="note.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="isPrinting" class="q-mr-sm" @click="print" />
             <q-btn v-if="note.can_ship" color="primary" unelevated no-caps dense label="Tandai Dikirim" @click="ship" />
             <q-btn v-if="note.can_complete" color="positive" unelevated no-caps dense label="Selesaikan Pengiriman" @click="openComplete" />
-            <q-btn v-if="isFinished && note.items.some((item) => Number(item.quantity_returned) > 0)" outline no-caps dense color="grey-7" icon="undo" label="Buat Retur" disable>
-                <q-tooltip>Segera</q-tooltip>
-            </q-btn>
+            <q-btn v-if="isFinished && note.items.some((item) => Number(item.quantity_returned) > 0)" outline no-caps dense color="primary" icon="undo" label="Buat Retur" class="q-ml-sm" @click="router.visit(note.sale.new_return_url)" />
         </template>
 
         <article class="note">

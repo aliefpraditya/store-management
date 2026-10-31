@@ -38,13 +38,13 @@ const menuGroups = computed(() => {
                 { label: 'Kasir', icon: 'shopping_cart', href: store.value.cashier_url },
                 { label: 'Riwayat Nota', icon: 'receipt_long', href: store.value.sales_url },
                 { label: 'Surat Jalan', icon: 'local_shipping', href: store.value.delivery_notes_url },
-                { label: 'Retur', icon: 'undo' },
+                { label: 'Retur', icon: 'undo', href: store.value.returns_url },
             ],
         },
         {
             label: 'Kas & Harian',
             items: [
-                { label: 'Rekap Shift', icon: 'schedule' },
+                { label: 'Rekap Shift', icon: 'schedule', href: store.value.shifts_url },
                 { label: 'Pengeluaran', icon: 'remove_circle_outline' },
                 { label: 'Tutup Hari', icon: 'lock' },
                 { label: 'Laporan', icon: 'bar_chart' },

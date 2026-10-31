@@ -104,6 +104,8 @@ class ShiftReceiptController extends Controller
             'delivery_note_store_url' => route('tenant.cashier.receipts.delivery-notes.store', ['tenant' => tenant('code'), 'sale' => $sale->id]),
             'print_url' => route('tenant.cashier.receipts.print', ['tenant' => tenant('code'), 'sale' => $sale->id]),
             'sheet_url' => route('tenant.cashier.receipts.sheet', ['tenant' => tenant('code'), 'sale' => $sale->id]),
+            'return_url' => route('tenant.cashier.receipts.return', ['tenant' => tenant('code'), 'sale' => $sale->id]),
+            'return_store_url' => route('tenant.cashier.receipts.returns.store', ['tenant' => tenant('code'), 'sale' => $sale->id]),
         ];
     }
 }

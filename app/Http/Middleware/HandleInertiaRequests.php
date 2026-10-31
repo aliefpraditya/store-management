@@ -61,7 +61,7 @@ class HandleInertiaRequests extends Middleware
     /**
      * The store of the current page, for every page under /t/{code}; null on central pages.
      *
-     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, units_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string}|null
+     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, units_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string}|null
      */
     private function currentStore(): ?array
     {
@@ -84,6 +84,8 @@ class HandleInertiaRequests extends Middleware
             'cashier_url' => route('tenant.cashier.index', ['tenant' => $store->code]),
             'sales_url' => route('tenant.sales.index', ['tenant' => $store->code]),
             'delivery_notes_url' => route('tenant.delivery-notes.index', ['tenant' => $store->code]),
+            'returns_url' => route('tenant.returns.index', ['tenant' => $store->code]),
+            'shifts_url' => route('tenant.shifts.index', ['tenant' => $store->code]),
         ];
     }
 }

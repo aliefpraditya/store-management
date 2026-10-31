@@ -5,13 +5,16 @@ declare(strict_types=1);
 use App\Http\Controllers\Tenant\CashierController;
 use App\Http\Controllers\Tenant\CashierDeliveryNoteController;
 use App\Http\Controllers\Tenant\CashierProductController;
+use App\Http\Controllers\Tenant\CashierSaleReturnController;
 use App\Http\Controllers\Tenant\DashboardController as TenantDashboardController;
 use App\Http\Controllers\Tenant\DeliveryNoteController;
 use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\ProductSearchController;
 use App\Http\Controllers\Tenant\SaleController;
 use App\Http\Controllers\Tenant\SaleHistoryController;
+use App\Http\Controllers\Tenant\SaleReturnController;
 use App\Http\Controllers\Tenant\ShiftController;
+use App\Http\Controllers\Tenant\ShiftRecapController;
 use App\Http\Controllers\Tenant\ShiftReceiptController;
 use App\Http\Controllers\Tenant\StockHistoryController;
 use App\Http\Controllers\Tenant\StockOpnameController;
@@ -50,6 +53,9 @@ Route::prefix('t/{tenant}')
             Route::post('receipts/{sale}/delivery-notes', [CashierDeliveryNoteController::class, 'store'])->name('receipts.delivery-notes.store');
             Route::post('delivery-notes/{delivery_note}/print', [CashierDeliveryNoteController::class, 'print'])->name('delivery-notes.print');
             Route::get('delivery-notes/{delivery_note}/sheet', [CashierDeliveryNoteController::class, 'sheet'])->name('delivery-notes.sheet');
+            Route::get('receipts/{sale}/return', [CashierSaleReturnController::class, 'show'])->name('receipts.return');
+            Route::post('receipts/{sale}/returns', [CashierSaleReturnController::class, 'store'])->name('receipts.returns.store');
+            Route::get('returns/{sale_return}/sheet', [CashierSaleReturnController::class, 'sheet'])->name('returns.sheet');
         });
 
         Route::middleware('store.admin')->group(function () {
@@ -64,6 +70,25 @@ Route::prefix('t/{tenant}')
                 Route::post('{delivery_note}/cancel', [DeliveryNoteController::class, 'cancel'])->name('cancel');
                 Route::post('{delivery_note}/print', [DeliveryNoteController::class, 'print'])->name('print');
                 Route::get('{delivery_note}/sheet', [DeliveryNoteController::class, 'sheet'])->name('sheet');
+            });
+
+            Route::prefix('shifts')->name('tenant.shifts.')->group(function () {
+                Route::get('/', [ShiftRecapController::class, 'index'])->name('index');
+                Route::get('{shift}', [ShiftRecapController::class, 'show'])->name('show');
+                Route::post('{shift}/approve', [ShiftRecapController::class, 'approve'])->name('approve');
+                Route::post('{shift}/reject', [ShiftRecapController::class, 'reject'])->name('reject');
+                Route::post('{shift}/follow-up', [ShiftRecapController::class, 'followUp'])->name('follow-up');
+            });
+
+            Route::prefix('returns')->name('tenant.returns.')->group(function () {
+                Route::get('/', [SaleReturnController::class, 'index'])->name('index');
+                Route::get('create', [SaleReturnController::class, 'create'])->name('create');
+                Route::get('sales', [SaleReturnController::class, 'sales'])->name('sales');
+                Route::post('/', [SaleReturnController::class, 'store'])->name('store');
+                Route::get('{sale_return}', [SaleReturnController::class, 'show'])->name('show');
+                Route::post('{sale_return}/approve', [SaleReturnController::class, 'approve'])->name('approve');
+                Route::post('{sale_return}/reject', [SaleReturnController::class, 'reject'])->name('reject');
+                Route::get('{sale_return}/sheet', [SaleReturnController::class, 'sheet'])->name('sheet');
             });
 
             Route::get('sales', [SaleHistoryController::class, 'index'])->name('tenant.sales.index');

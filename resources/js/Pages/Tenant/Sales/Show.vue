@@ -16,6 +16,7 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
     <StoreLayout :title="sale.number">
         <template #actions>
             <q-btn flat no-caps dense icon="arrow_back" label="Riwayat Nota" class="q-mr-sm" @click="router.visit(urls.index)" />
+            <q-btn v-if="sale.status === 'completed'" outline no-caps dense color="primary" icon="undo" label="Buat Retur" class="q-mr-sm" @click="router.visit(urls.new_return)" />
             <q-btn v-if="sale.status === 'completed'" outline no-caps dense color="primary" icon="local_shipping" label="Buat Surat Jalan" @click="router.visit(urls.new_delivery_note)" />
         </template>
 

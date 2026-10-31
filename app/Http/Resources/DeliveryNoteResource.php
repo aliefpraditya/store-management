@@ -41,6 +41,7 @@ class DeliveryNoteResource extends JsonResource
             'sale' => [
                 'number' => $this->sale->number,
                 'show_url' => route('tenant.sales.show', ['tenant' => tenant('code'), 'sale' => $this->sale_id]),
+                'new_return_url' => route('tenant.returns.create', ['tenant' => tenant('code'), 'sale' => $this->sale_id]),
             ],
             'items' => $this->items->map(fn ($item): array => [
                 'id' => $item->id,

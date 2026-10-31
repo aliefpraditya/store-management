@@ -8,6 +8,7 @@ import PaymentDialog from '../../../Components/Cashier/PaymentDialog.vue';
 import SaleDoneDialog from '../../../Components/Cashier/SaleDoneDialog.vue';
 import ShiftClosedDialog from '../../../Components/Cashier/ShiftClosedDialog.vue';
 import DeliveryNoteDialog from '../../../Components/Cashier/DeliveryNoteDialog.vue';
+import ReturnDialog from '../../../Components/Cashier/ReturnDialog.vue';
 import ReceiptHistoryDialog from '../../../Components/Cashier/ReceiptHistoryDialog.vue';
 import ShiftOpenPanel from '../../../Components/Cashier/ShiftOpenPanel.vue';
 import { newUuid, useCart } from '../../../Composables/useCart';
@@ -52,6 +53,8 @@ const isShiftClosedOpen = ref(false);
 const isReceiptsOpen = ref(false);
 const isDeliveryOpen = ref(false);
 const deliveryReceipt = ref(null);
+const isReturnOpen = ref(false);
+const returnReceipt = ref(null);
 let saleUuid = newUuid();
 
 const timeFormat = new Intl.DateTimeFormat('id-ID', { timeStyle: 'short' });
@@ -275,6 +278,25 @@ function openDelivery(receipt) {
     isDeliveryOpen.value = true;
 }
 
+function confirmSignOut() {
+    $q.dialog({
+        title: 'Keluar?',
+        message: 'Anda akan keluar dari akun ini.',
+        cancel: { label: 'Batal', flat: true, noCaps: true },
+        ok: { label: 'Keluar', color: 'negative', unelevated: true, noCaps: true },
+        persistent: true,
+    }).onOk(() => router.post(page.props.urls.logout));
+}
+
+/** Opens the return dialog for a receipt of the receipt list. */
+function openReturn(receipt) {
+    returnReceipt.value = receipt;
+    isReturnOpen.value = true;
+}
+
+/** A finished return changes the drawer, so the figures of the close-shift dialog are fetched again. */
+const refreshShiftSummary = () => router.reload({ only: ['summary'] });
+
 /** F9 pays, F8 empties the cart, F2 goes to the search box. */
 function onKeydown(event) {
     if (!props.shift) {
@@ -283,7 +305,7 @@ function onKeydown(event) {
 
     const shortcuts = { F9: openPayment, F8: clearCart, F2: () => searchInput.value?.focus() };
 
-    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value) {
+    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value && !isReturnOpen.value) {
         event.preventDefault();
         shortcuts[event.key]();
     }
@@ -318,7 +340,7 @@ onBeforeUnmount(() => {
                             <q-tooltip>Tutup shift dulu untuk keluar</q-tooltip>
                         </q-btn>
                         <q-btn v-if="can_leave_to_dashboard" flat no-caps dense icon="space_dashboard" label="Dashboard" @click="router.visit(urls.dashboard)" />
-                        <q-btn v-if="!shift" flat no-caps dense icon="logout" label="Keluar" @click="router.post(page.props.urls.logout)" />
+                        <q-btn v-if="!shift" flat no-caps dense icon="logout" label="Keluar" @click="confirmSignOut" />
                     </div>
                 </header>
 
@@ -425,8 +447,9 @@ onBeforeUnmount(() => {
         <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :payment-methods="payment_methods" :is-processing="isClosing" @confirm="closeShift" />
         <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" @delivery="openDelivery" />
         <ShiftClosedDialog v-model="isShiftClosedOpen" :result="closed_shift" />
-        <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" />
+        <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" @return="openReturn" />
         <DeliveryNoteDialog v-model="isDeliveryOpen" :receipt="deliveryReceipt" />
+        <ReturnDialog v-model="isReturnOpen" :receipt="returnReceipt" @saved="refreshShiftSummary" />
     </q-layout>
 </template>
 

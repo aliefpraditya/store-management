@@ -1,13 +1,15 @@
 <script setup>
 import { computed } from 'vue';
-import { usePage } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import StoreLayout from '../../Layouts/StoreLayout.vue';
 
-const props = defineProps({
+defineProps({
     summary: { type: Object, required: true },
 });
 
 const page = usePage();
+
+const store = computed(() => page.props.store);
 
 const rupiah = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
@@ -39,22 +41,19 @@ function greeting() {
 
 const title = `${greeting()}, ${page.props.auth.user.name}`;
 
-const pendingBreakdown = computed(() => {
-    const { returns, cash_differences, delivery_notes } = props.summary.pending;
-
-    return [
-        returns > 0 ? `${returns} retur` : null,
-        cash_differences > 0 ? `${cash_differences} selisih kas` : null,
-        delivery_notes > 0 ? `${delivery_notes} surat jalan` : null,
-    ]
-        .filter(Boolean)
-        .join(' · ');
-});
-
 const approvalLabels = {
     return: { title: 'Retur', badge: 'Retur', tone: 'warn' },
     cash_difference: { title: 'Selisih kas', badge: 'Selisih kas', tone: 'bad' },
 };
+
+/**
+ * Where an item waiting for approval is decided: the return list or the shift recap, both already narrowed to
+ * what is waiting.
+ * @param {string} kind `return` or `cash_difference`
+ * @returns {string}
+ */
+const approvalHref = (kind) =>
+    kind === 'return' ? `${store.value.returns_url}?status=pending` : `${store.value.shifts_url}?difference=pending_approval`;
 
 const formatTime = (isoDate) =>
     new Date(isoDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
@@ -63,43 +62,86 @@ const formatTime = (isoDate) =>
 <template>
     <StoreLayout :title="title">
         <div class="kpis">
-            <article class="card">
+            <Link :href="store.sales_url" class="card card--link">
                 <small>Penjualan bersih hari ini</small>
                 <b>{{ formatRupiah(summary.sales.net_total) }}</b>
                 <em>
                     {{ summary.sales.receipt_count }} nota ·
                     {{ formatRupiah(summary.sales.gross_total) }} − retur {{ formatRupiah(summary.sales.returns_total) }}
                 </em>
-            </article>
+            </Link>
 
-            <article class="card">
+            <Link :href="store.stock_opnames_url" class="card card--link">
                 <small>Stok di bawah minimum</small>
                 <b>{{ summary.low_stock_count }} barang</b>
                 <em>{{ summary.low_stock_count > 0 ? 'Perlu restock' : 'Semua stok aman' }}</em>
-            </article>
-
-            <article class="card">
-                <small>Perlu tindakan</small>
-                <b>{{ summary.pending.total }}</b>
-                <em>{{ pendingBreakdown || 'Semua beres' }}</em>
-            </article>
+            </Link>
         </div>
 
         <div class="lists">
             <section class="card">
-                <h2>Menunggu persetujuan</h2>
+                <h2 class="attention__title">
+                    Perlu tindakan
+                    <span v-if="summary.pending.total > 0" class="attention__count">{{ summary.pending.total }}</span>
+                </h2>
 
-                <p v-if="summary.approvals.length === 0" class="empty">Tidak ada yang menunggu.</p>
+                <p v-if="summary.pending.total === 0" class="empty">Semua beres.</p>
 
-                <ul v-else class="list">
-                    <li v-for="item in summary.approvals" :key="`${item.kind}-${item.reference}`">
-                        <span class="list__text">
-                            {{ approvalLabels[item.kind].title }} · {{ item.reference }}
-                            <small>{{ formatRupiah(item.amount) }}</small>
-                        </span>
-                        <span class="chip" :class="`chip--${approvalLabels[item.kind].tone}`">{{ approvalLabels[item.kind].badge }}</span>
-                    </li>
-                </ul>
+                <template v-else>
+                    <div v-if="summary.approvals.length > 0" class="group">
+                        <h3 class="group__title">
+                            Menunggu persetujuan
+                            <span>{{ summary.pending.returns + summary.pending.cash_differences }}</span>
+                        </h3>
+                        <ul class="list">
+                            <li v-for="item in summary.approvals" :key="`${item.kind}-${item.reference}`">
+                                <Link :href="approvalHref(item.kind)" class="list__text list__link">
+                                    {{ approvalLabels[item.kind].title }} · {{ item.reference }}
+                                    <small>{{ formatRupiah(item.amount) }}</small>
+                                </Link>
+                                <span class="chip" :class="`chip--${approvalLabels[item.kind].tone}`">{{ approvalLabels[item.kind].badge }}</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div v-if="summary.cash_difference_follow_ups.length > 0" class="group">
+                        <h3 class="group__title">
+                            Selisih kas perlu tindak lanjut
+                            <span>{{ summary.pending.cash_difference_follow_ups }}</span>
+                        </h3>
+                        <ul class="list">
+                            <li v-for="shift in summary.cash_difference_follow_ups" :key="shift.reference">
+                                <Link :href="shift.show_url" class="list__text list__link">
+                                    {{ shift.reference }} · {{ shift.cashier_name }}
+                                    <small>{{ formatRupiah(shift.amount) }}</small>
+                                </Link>
+                                <span class="chip chip--bad">Ditolak</span>
+                            </li>
+                        </ul>
+                        <Link v-if="summary.pending.cash_difference_follow_ups > summary.cash_difference_follow_ups.length" :href="`${store.shifts_url}?difference=awaiting_follow_up`" class="more">
+                            Lihat semua {{ summary.pending.cash_difference_follow_ups }} selisih
+                        </Link>
+                    </div>
+
+                    <div v-if="summary.unfinished_delivery_notes.length > 0" class="group">
+                        <h3 class="group__title">
+                            Surat jalan belum selesai
+                            <span>{{ summary.pending.delivery_notes }}</span>
+                        </h3>
+                        <ul class="list">
+                            <li v-for="note in summary.unfinished_delivery_notes" :key="note.reference">
+                                <Link :href="note.show_url" class="list__text list__link">
+                                    {{ note.reference }}
+                                    <small>{{ note.recipient_name }}</small>
+                                </Link>
+                                <span class="chip chip--off">{{ note.status_label }}</span>
+                            </li>
+                        </ul>
+                        <Link v-if="summary.pending.delivery_notes > summary.unfinished_delivery_notes.length" :href="store.delivery_notes_url" class="more">
+                            Lihat semua {{ summary.pending.delivery_notes }} surat jalan
+                        </Link>
+                    </div>
+                </template>
             </section>
 
             <section class="card">
@@ -143,6 +185,18 @@ const formatTime = (isoDate) =>
     background: var(--app-surface);
 }
 
+.card--link {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.card--link:hover {
+    border-color: var(--app-brand);
+    box-shadow: 0 1px 6px rgb(0 0 0 / 8%);
+}
+
 .card small {
     display: block;
     color: var(--app-ink-soft);
@@ -163,11 +217,73 @@ const formatTime = (isoDate) =>
 }
 
 .card h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin: 0 0 10px;
     font-size: 14px;
     font-weight: 700;
     letter-spacing: normal;
     line-height: 1.4;
+}
+
+.card .attention__title {
+    gap: 10px;
+    margin-bottom: 14px;
+    font-size: 20px;
+}
+
+.attention__count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 30px;
+    height: 30px;
+    padding: 0 9px;
+    border-radius: 99px;
+    background: #fdf1e0;
+    color: #c2710c;
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.group + .group {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 2px solid var(--app-line);
+}
+
+.card .group__title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 4px;
+    padding: 7px 12px;
+    border-left: 4px solid #c2710c;
+    border-radius: 6px;
+    background: #f5f6f8;
+    font-size: 13.5px;
+    font-weight: 700;
+}
+
+.group__title span {
+    color: var(--app-mute);
+    font-weight: 600;
+}
+
+.more {
+    display: inline-block;
+    margin-top: 8px;
+    color: var(--app-brand);
+    font-size: 13px;
+}
+
+.list__link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.list__link:hover {
+    color: var(--app-brand);
 }
 
 .empty {
@@ -249,5 +365,10 @@ const formatTime = (isoDate) =>
 .chip--bad {
     background: #fde8ee;
     color: #be123c;
+}
+
+.chip--off {
+    background: #eef0f3;
+    color: #5b6472;
 }
 </style>

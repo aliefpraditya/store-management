@@ -34,6 +34,21 @@ class ShiftException extends Exception
         return new self("Shift ini dibuka oleh {$cashierName}.");
     }
 
+    public static function hasPendingReturns(int $count): self
+    {
+        return new self("Masih ada {$count} retur yang menunggu persetujuan Admin. Selesaikan dulu sebelum menutup shift.");
+    }
+
+    public static function differenceNotPending(string $statusLabel): self
+    {
+        return new self("Selisih kas shift ini berstatus {$statusLabel}, jadi tidak bisa diputuskan lagi.");
+    }
+
+    public static function notAwaitingFollowUp(): self
+    {
+        return new self('Hanya selisih kas yang ditolak dan belum ditindaklanjuti yang bisa ditandai.');
+    }
+
     public static function differenceNeedsNote(): self
     {
         return new self('Ada selisih kas, isi catatan penutupan.');

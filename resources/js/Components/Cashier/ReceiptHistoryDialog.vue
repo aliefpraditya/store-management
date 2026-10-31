@@ -17,7 +17,7 @@ const props = defineProps({
     canOpenHistory: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['update:modelValue', 'delivery']);
+const emit = defineEmits(['update:modelValue', 'delivery', 'return']);
 
 const $q = useQuasar();
 
@@ -132,7 +132,7 @@ async function print(receipt) {
                         <div class="receipt__actions">
                             <q-btn outline no-caps dense color="primary" icon="print" :label="receipt.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="printingId === receipt.id" @click="print(receipt)" />
                             <q-btn v-if="receipt.status === 'completed'" outline no-caps dense color="primary" icon="local_shipping" label="Surat jalan" @click="emit('delivery', receipt)" />
-                            <q-btn outline no-caps dense color="grey-7" icon="undo" label="Retur" disable><q-tooltip>Segera</q-tooltip></q-btn>
+                            <q-btn v-if="receipt.status === 'completed'" outline no-caps dense color="primary" icon="undo" label="Retur" @click="emit('return', receipt)" />
                             <q-btn outline no-caps dense color="grey-7" icon="block" label="Void" disable><q-tooltip>Segera</q-tooltip></q-btn>
                             <q-btn v-if="canOpenHistory && receipt.show_url" flat no-caps dense icon="open_in_new" label="Lihat detail" class="receipt__more" @click="router.visit(receipt.show_url)" />
                         </div>

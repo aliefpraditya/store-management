@@ -53,6 +53,7 @@ class SaleHistoryController extends Controller
             'urls' => [
                 'index' => route('tenant.sales.index', ['tenant' => $store->code]),
                 'new_delivery_note' => route('tenant.delivery-notes.create', ['tenant' => $store->code, 'sale' => $sale->id]),
+                'new_return' => route('tenant.returns.create', ['tenant' => $store->code, 'sale' => $sale->id]),
             ],
         ]);
     }

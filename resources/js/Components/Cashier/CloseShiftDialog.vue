@@ -5,7 +5,7 @@ import { formatRupiah } from '../../Composables/useMoneyFormat';
 
 const props = defineProps({
     modelValue: { type: Boolean, required: true },
-    /** @type {{sale_count: number, total_sales: string, payments: Record<string, string>, opening_cash: string, expected_cash: string}} */
+    /** @type {{sale_count: number, total_sales: string, returns_total: string, cash_refunds: string, payments: Record<string, string>, opening_cash: string, expected_cash: string}} */
     summary: { type: Object, required: true },
     paymentMethods: { type: Array, required: true },
     isProcessing: { type: Boolean, default: false },
@@ -52,6 +52,8 @@ function confirm() {
                         <dt>{{ method.label }}</dt>
                         <dd>{{ formatRupiah(summary.payments[method.value]) }}</dd>
                     </div>
+                    <div v-if="Number(summary.returns_total) > 0"><dt>Retur disetujui</dt><dd>{{ formatRupiah(summary.returns_total) }}</dd></div>
+                    <div v-if="Number(summary.cash_refunds) > 0"><dt>Retur tunai (sudah mengurangi tunai)</dt><dd>{{ formatRupiah(summary.cash_refunds) }}</dd></div>
                     <div><dt>Modal kas awal</dt><dd>{{ formatRupiah(summary.opening_cash) }}</dd></div>
                     <div class="close__expected"><dt>Tunai seharusnya di laci</dt><dd>{{ formatRupiah(summary.expected_cash) }}</dd></div>
                 </dl>

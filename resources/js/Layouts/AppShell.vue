@@ -81,7 +81,13 @@ const isActive = (item) => {
 useFlashMessages();
 
 function signOut() {
-    router.post(page.props.urls.logout);
+    $q.dialog({
+        title: 'Keluar?',
+        message: 'Anda akan keluar dari akun ini.',
+        cancel: { label: 'Batal', flat: true, noCaps: true },
+        ok: { label: 'Keluar', color: 'negative', unelevated: true, noCaps: true },
+        persistent: true,
+    }).onOk(() => router.post(page.props.urls.logout));
 }
 </script>
 
