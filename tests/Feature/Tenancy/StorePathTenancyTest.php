@@ -6,42 +6,25 @@ use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Concerns\PreparesStoreDatabase;
 use Tests\TestCase;
 
 class StorePathTenancyTest extends TestCase
 {
-    use RefreshDatabase;
+    use PreparesStoreDatabase, RefreshDatabase;
 
-    private const TEST_DATABASE = 'store_test_alpha';
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        DB::connection('mysql')->statement('CREATE DATABASE IF NOT EXISTS `'.self::TEST_DATABASE.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
-    }
-
-    protected function tearDown(): void
-    {
-        tenancy()->end();
-        DB::connection('mysql')->statement('DROP DATABASE IF EXISTS `'.self::TEST_DATABASE.'`');
-
-        parent::tearDown();
-    }
+    private const STORE_DATABASE = 'store_test_alpha';
 
     public function test_store_code_in_url_switches_to_that_stores_database(): void
     {
-        Store::factory()->create([
-            'code' => 'test_alpha',
-            'db_name' => self::TEST_DATABASE,
-        ]);
+        $this->prepareStoreDatabase(['code' => 'test_alpha']);
 
         $this->actingAs(User::factory()->create(['is_super_admin' => true]))
             ->getJson('/t/test_alpha/ping')
             ->assertOk()
             ->assertJson([
                 'store' => 'test_alpha',
-                'database' => self::TEST_DATABASE,
+                'database' => self::STORE_DATABASE,
             ]);
     }
 

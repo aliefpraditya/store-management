@@ -27,7 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'store.access' => EnsureUserCanAccessStore::class,
             'super.admin' => EnsureUserIsSuperAdmin::class,
             'store.admin' => EnsureUserIsStoreAdmin::class,
-            'shift.closed' => EnsureUserHasNoOpenShift::class,
+            'shift.none-open' => EnsureUserHasNoOpenShift::class,
             'shift.remember' => RememberOpenShift::class,
         ]);
 

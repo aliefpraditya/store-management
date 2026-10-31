@@ -11,6 +11,26 @@ enum DeliveryNoteStatus: string
     case Returned = 'returned';
     case Cancelled = 'cancelled';
 
+    public function label(): string
+    {
+        return match ($this) {
+            self::Draft => 'Draft',
+            self::Shipped => 'Dikirim',
+            self::Delivered => 'Terkirim',
+            self::PartiallyDelivered => 'Sebagian terkirim',
+            self::Returned => 'Kembali',
+            self::Cancelled => 'Dibatalkan',
+        };
+    }
+
+    /**
+     * Can still be cancelled: nothing has been confirmed yet.
+     */
+    public function canBeCancelled(): bool
+    {
+        return $this->isUnfinished();
+    }
+
     /**
      * Still needs someone to act on it (ship it, or confirm the delivery).
      */

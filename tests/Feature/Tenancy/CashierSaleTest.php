@@ -6,6 +6,7 @@ use App\Enums\PaymentMethod;
 use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
 use App\Enums\UserRole;
+use App\Exceptions\SaleException;
 use App\Models\CashShift;
 use App\Models\ProductUnit;
 use App\Models\Register;
@@ -15,6 +16,7 @@ use App\Models\StockMovement;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\SaleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -215,12 +217,12 @@ class CashierSaleTest extends TestCase
     public function test_an_inactive_item_or_a_unit_not_for_sale_is_refused(): void
     {
         $inactive = $this->sellableProduct('Lama', '10', ['is_active' => false]);
-        $this->sell([[$this->unitOf($inactive, 'PCS'), 1]], [['cash', 10000]])->assertSessionHas('error', 'Lama tidak bisa dijual dengan satuan itu.');
+        $this->sell([[$this->unitOf($inactive, 'PCS'), 1]], [['cash', 10000]])->assertSessionHas('error', 'Lama sudah tidak aktif atau dihapus. Hapus dari keranjang.');
 
         $brush = $this->sellableProduct('Kuas', '10');
         $dozen = $this->unitOf($brush, 'DUS');
         $this->store->run(fn () => $dozen->update(['is_sellable' => false]));
-        $this->sell([[$dozen, 1]], [['cash', 110000]])->assertSessionHas('error', 'Kuas tidak bisa dijual dengan satuan itu.');
+        $this->sell([[$dozen, 1]], [['cash', 110000]])->assertSessionHas('error', 'Kuas tidak bisa dijual dengan satuan itu. Pilih satuan lain.');
 
         $this->assertSame(0, $this->salesCount());
     }
@@ -249,6 +251,77 @@ class CashierSaleTest extends TestCase
         $this->assertSame(1, $this->salesCount());
         $this->assertSame('97.000', $this->stockInPieces($brush));
         $this->assertSame(1, $this->store->run(fn () => StockMovement::query()->where('type', StockMovementType::Sale)->count()));
+    }
+
+    public function test_sending_the_same_receipt_again_after_the_shift_closed_still_returns_the_first_receipt(): void
+    {
+        $brush = $this->sellableProduct();
+        $payload = [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_unit_id' => $this->unitOf($brush, 'PCS')->id, 'quantity' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 10000]],
+        ];
+        $this->actingAs($this->cashier)->post($this->url('sales.store'), $payload)->assertSessionHas('last_sale');
+        $shift = $this->store->run(fn () => CashShift::query()->where('cashier_id', $this->cashier->id)->firstOrFail());
+        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'closing_note' => 'Uji'])->assertSessionHas('success');
+
+        $this->store->run(function () use ($shift, $payload): void {
+            $service = app(SaleService::class);
+            $first = Sale::query()->sole();
+
+            $this->assertSame($first->id, $service->create($shift, $this->cashier, $payload)->id);
+            $this->assertSame(1, Sale::query()->count());
+        });
+    }
+
+    public function test_a_receipt_code_that_belongs_to_another_cashiers_sale_is_refused_not_returned(): void
+    {
+        $brush = $this->sellableProduct();
+        $payload = [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_unit_id' => $this->unitOf($brush, 'PCS')->id, 'quantity' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 10000]],
+        ];
+        $this->actingAs($this->cashier)->post($this->url('sales.store'), $payload)->assertSessionHas('last_sale');
+        $otherCashier = $this->storeUser();
+        $this->store->run(fn () => Register::factory()->create(['code' => 'K2', 'name' => 'Kasir 2', 'warehouse_id' => $this->mainWarehouse()->id]));
+        $this->openShiftFor($otherCashier, $this->store->run(fn () => Register::query()->where('code', 'K2')->firstOrFail()));
+
+        $this->actingAs($otherCashier)->post($this->url('sales.store'), $payload)
+            ->assertSessionMissing('last_sale')
+            ->assertSessionHas('error', 'Kode transaksi ini sudah dipakai transaksi lain. Muat ulang halaman lalu coba lagi.');
+
+        $this->assertSame(1, $this->salesCount());
+    }
+
+    public function test_a_cart_line_whose_product_unit_vanished_is_refused_with_a_reload_hint(): void
+    {
+        $brush = $this->sellableProduct();
+        $unit = $this->unitOf($brush, 'PCS');
+
+        $this->store->run(function () use ($unit): void {
+            $shift = CashShift::query()->where('cashier_id', $this->cashier->id)->firstOrFail();
+            $saleInput = [
+                'client_uuid' => (string) Str::uuid(),
+                'items' => [['product_unit_id' => $unit->id + 9999, 'quantity' => 1]],
+                'payments' => [['method' => 'cash', 'amount' => 10000]],
+            ];
+
+            $this->expectException(SaleException::class);
+            $this->expectExceptionMessage('Ada barang di keranjang yang tidak ditemukan lagi.');
+
+            app(SaleService::class)->create($shift, $this->cashier, $saleInput);
+        });
+    }
+
+    public function test_a_product_without_a_stock_row_is_refused_as_out_of_stock(): void
+    {
+        $brush = $this->sellableProduct('Kuas', '1');
+        $this->store->run(fn () => Stock::query()->where('product_id', $brush->id)->delete());
+
+        $this->sell([[$this->unitOf($brush, 'PCS'), 1]], [['cash', 10000]])->assertSessionHas('error', 'Stok Kuas tidak cukup, tersisa 0 PCS.');
+
+        $this->assertSame(0, $this->salesCount());
     }
 
     public function test_the_sale_input_is_validated(): void

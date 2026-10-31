@@ -27,17 +27,22 @@ class DocumentNumberGenerator
     public function next(string $type, CarbonInterface $date, ?Register $register = null): string
     {
         $period = $date->format('ym');
-        $key = ['type' => $type, 'register_id' => $register?->id ?? self::NO_REGISTER_ID, 'period' => $period];
+        $sequenceKey = ['type' => $type, 'register_id' => $register?->id ?? self::NO_REGISTER_ID, 'period' => $period];
 
-        DB::table(self::SEQUENCES_TABLE)->insertOrIgnore([...$key, 'last_number' => 0]);
+        $sequence = DB::table(self::SEQUENCES_TABLE)->where($sequenceKey);
+        $currentNumber = (clone $sequence)->lockForUpdate()->value('last_number');
 
-        $sequence = DB::table(self::SEQUENCES_TABLE)->where($key);
-        $lastNumber = (int) (clone $sequence)->lockForUpdate()->value('last_number') + 1;
-        $sequence->update(['last_number' => $lastNumber]);
+        if ($currentNumber === null) {
+            DB::table(self::SEQUENCES_TABLE)->insertOrIgnore([...$sequenceKey, 'last_number' => 0]);
+            $currentNumber = (clone $sequence)->lockForUpdate()->value('last_number');
+        }
+
+        $nextNumber = (int) $currentNumber + 1;
+        $sequence->update(['last_number' => $nextNumber]);
 
         /** @var Store $store */
         $store = tenant();
 
-        return implode('/', array_filter([$type, $store->receipt_prefix, $register?->code, $period, sprintf('%04d', $lastNumber)]));
+        return implode('/', array_filter([$type, $store->receipt_prefix, $register?->code, $period, sprintf('%04d', $nextNumber)]));
     }
 }

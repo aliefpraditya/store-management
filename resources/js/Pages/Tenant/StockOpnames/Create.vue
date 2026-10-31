@@ -1,5 +1,6 @@
 <script setup>
 import { router, useForm } from '@inertiajs/vue3';
+import DateInput from '../../../Components/DateInput.vue';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -55,7 +56,7 @@ function submit() {
                         :error="!!form.errors.warehouse_id"
                         :error-message="form.errors.warehouse_id"
                     />
-                    <q-input v-model="form.opname_date" type="date" label="Tanggal" outlined :error="!!form.errors.opname_date" :error-message="form.errors.opname_date" />
+                    <DateInput v-model="form.opname_date" label="Tanggal" outlined :error="!!form.errors.opname_date" :error-message="form.errors.opname_date" />
                 </div>
 
                 <div class="field">

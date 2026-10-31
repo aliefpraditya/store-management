@@ -19,6 +19,9 @@ class SaleReceiptResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
+            'id' => $this->id,
+            'delivery_url' => route('tenant.cashier.receipts.delivery', ['tenant' => tenant('code'), 'sale' => $this->id]),
+            'delivery_note_store_url' => route('tenant.cashier.receipts.delivery-notes.store', ['tenant' => tenant('code'), 'sale' => $this->id]),
             'number' => $this->number,
             'sold_at' => $this->sold_at->toIso8601String(),
             'cashier_name' => $this->cashier_name,

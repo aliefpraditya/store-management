@@ -112,7 +112,23 @@ class OpenShiftLockTest extends TestCase
 
         $this->actingAs($superAdmin)->getJson(route('central.users.index'))
             ->assertStatus(423)
-            ->assertJsonPath('message', self::LOCKED_MESSAGE);
+            ->assertJsonPath('message', self::LOCKED_MESSAGE)
+            ->assertJsonStructure(['code', 'message', 'more_info']);
+    }
+
+    public function test_a_shift_in_another_store_stays_remembered_when_a_store_page_is_opened(): void
+    {
+        $this->actingAs($this->admin)
+            ->withSession([EnsureUserHasNoOpenShift::SESSION_KEY => ['other_store']])
+            ->get($this->url('tenant.products.index'))
+            ->assertSessionHas(EnsureUserHasNoOpenShift::SESSION_KEY, ['other_store']);
+
+        $this->openShiftFor($this->admin);
+
+        $this->actingAs($this->admin)
+            ->withSession([EnsureUserHasNoOpenShift::SESSION_KEY => ['other_store']])
+            ->get($this->url('tenant.products.index'))
+            ->assertSessionHas(EnsureUserHasNoOpenShift::SESSION_KEY, ['other_store', $this->store->code]);
     }
 
     public function test_logout_and_the_central_pages_open_again_once_the_shift_is_closed(): void
@@ -150,7 +166,7 @@ class OpenShiftLockTest extends TestCase
         $superAdmin = User::factory()->create(['is_super_admin' => true]);
 
         $this->actingAs($superAdmin)
-            ->withSession([EnsureUserHasNoOpenShift::SESSION_KEY => $this->store->code])
+            ->withSession([EnsureUserHasNoOpenShift::SESSION_KEY => [$this->store->code]])
             ->get(route('central.dashboard'))
             ->assertOk()
             ->assertSessionMissing(EnsureUserHasNoOpenShift::SESSION_KEY);

@@ -61,6 +61,14 @@ class Sale extends Model implements AuditableContract
     }
 
     /**
+     * @return BelongsTo<Register, $this>
+     */
+    public function register(): BelongsTo
+    {
+        return $this->belongsTo(Register::class);
+    }
+
+    /**
      * @return BelongsTo<CashShift, $this>
      */
     public function cashShift(): BelongsTo

@@ -8,7 +8,7 @@ defineProps({
     sale: { type: Object, default: null },
 });
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'delivery']);
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 </script>
@@ -42,6 +42,7 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
             </q-card-section>
 
             <q-card-actions align="right">
+                <q-btn outline no-caps color="primary" icon="local_shipping" label="Surat Jalan" @click="emit('delivery', sale)" />
                 <q-btn color="primary" unelevated no-caps label="Transaksi Baru" autofocus v-close-popup />
             </q-card-actions>
         </q-card>

@@ -17,10 +17,10 @@ Route::middleware('guest')->group(function () {
     Route::post('login', [AuthenticatedSessionController::class, 'store']);
 });
 
-Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->middleware(['auth', 'shift.closed'])->name('logout');
+Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->middleware(['auth', 'shift.none-open'])->name('logout');
 Route::prefix('pusat')
     ->name('central.')
-    ->middleware(['auth', 'super.admin', 'shift.closed'])
+    ->middleware(['auth', 'super.admin', 'shift.none-open'])
     ->group(function () {
         Route::get('/', DashboardController::class)->name('dashboard');
 

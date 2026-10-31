@@ -46,7 +46,7 @@ class HandleInertiaRequests extends Middleware
                 'error' => fn () => $request->session()->get('error'),
             ],
             'store' => fn () => $this->currentStore(),
-            'has_open_shift' => fn () => $request->session()->has(EnsureUserHasNoOpenShift::SESSION_KEY),
+            'has_open_shift' => fn () => $request->session()->get(EnsureUserHasNoOpenShift::SESSION_KEY, []) !== [],
             'urls' => [
                 'home' => route('home'),
                 'central_dashboard' => route('central.dashboard'),
@@ -61,7 +61,7 @@ class HandleInertiaRequests extends Middleware
     /**
      * The store of the current page, for every page under /t/{code}; null on central pages.
      *
-     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, units_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string}|null
+     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, units_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string}|null
      */
     private function currentStore(): ?array
     {
@@ -82,6 +82,8 @@ class HandleInertiaRequests extends Middleware
             'stock_opnames_url' => route('tenant.stock-opnames.index', ['tenant' => $store->code]),
             'stock_history_url' => route('tenant.stock-history.index', ['tenant' => $store->code]),
             'cashier_url' => route('tenant.cashier.index', ['tenant' => $store->code]),
+            'sales_url' => route('tenant.sales.index', ['tenant' => $store->code]),
+            'delivery_notes_url' => route('tenant.delivery-notes.index', ['tenant' => $store->code]),
         ];
     }
 }

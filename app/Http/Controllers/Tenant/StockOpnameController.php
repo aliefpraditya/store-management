@@ -19,6 +19,7 @@ use App\Models\Product;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
 use App\Models\Warehouse;
+use App\Services\StockOpnameReport;
 use App\Services\StockOpnameService;
 use Closure;
 use Illuminate\Http\RedirectResponse;
@@ -32,7 +33,7 @@ class StockOpnameController extends Controller
 
     private const ITEMS_PER_PAGE = 50;
 
-    public function __construct(private readonly StockOpnameService $opnames) {}
+    public function __construct(private readonly StockOpnameService $opnames, private readonly StockOpnameReport $report) {}
 
     public function index(Request $request): Response
     {
@@ -82,12 +83,12 @@ class StockOpnameController extends Controller
         $search = $request->string('search')->toString();
         $filter = $request->string('filter')->toString();
 
-        $items = $this->opnames->paginateItems($stockOpname, $search, $filter, self::ITEMS_PER_PAGE)
+        $items = $this->report->paginateItems($stockOpname, $search, $filter, self::ITEMS_PER_PAGE)
             ->through(fn (StockOpnameItem $item): array => StockOpnameItemResource::make($item)->resolve());
 
         return Inertia::render('Tenant/StockOpnames/Show', [
             'opname' => StockOpnameResource::make($stockOpname->load(['warehouse', 'category', 'brand', 'creator']))->resolve(),
-            'summary' => $this->opnames->summarize($stockOpname),
+            'summary' => $this->report->summarize($stockOpname),
             'items' => $items,
             'filters' => ['search' => $search, 'filter' => $filter],
         ]);
@@ -95,7 +96,7 @@ class StockOpnameController extends Controller
 
     public function start(StockOpname $stockOpname): RedirectResponse
     {
-        return $this->perform(function () use ($stockOpname): string {
+        return $this->redirectBackWithOutcome(function () use ($stockOpname): string {
             $skippedCount = $this->opnames->start($stockOpname);
 
             return $skippedCount === 0
@@ -106,7 +107,7 @@ class StockOpnameController extends Controller
 
     public function saveCounts(SaveStockOpnameCountsRequest $request, StockOpname $stockOpname): RedirectResponse
     {
-        return $this->perform(function () use ($request, $stockOpname): string {
+        return $this->redirectBackWithOutcome(function () use ($request, $stockOpname): string {
             $this->opnames->saveCounts($stockOpname, $request->validated('counts'));
 
             return 'Hitungan disimpan.';
@@ -115,7 +116,7 @@ class StockOpnameController extends Controller
 
     public function addItem(AddStockOpnameProductRequest $request, StockOpname $stockOpname): RedirectResponse
     {
-        return $this->perform(function () use ($request, $stockOpname): string {
+        return $this->redirectBackWithOutcome(function () use ($request, $stockOpname): string {
             $this->opnames->addProduct($stockOpname, Product::query()->findOrFail($request->validated('product_id')));
 
             return 'Barang ditambahkan.';
@@ -124,7 +125,7 @@ class StockOpnameController extends Controller
 
     public function removeItem(StockOpname $stockOpname, StockOpnameItem $item): RedirectResponse
     {
-        return $this->perform(function () use ($stockOpname, $item): string {
+        return $this->redirectBackWithOutcome(function () use ($stockOpname, $item): string {
             $this->opnames->removeItem($stockOpname, $item);
 
             return 'Barang dihapus dari opname.';
@@ -133,7 +134,7 @@ class StockOpnameController extends Controller
 
     public function countUncountedAsZero(StockOpname $stockOpname): RedirectResponse
     {
-        return $this->perform(function () use ($stockOpname): string {
+        return $this->redirectBackWithOutcome(function () use ($stockOpname): string {
             $this->opnames->countUncountedAsZero($stockOpname);
 
             return 'Barang yang belum dihitung ditandai 0.';
@@ -142,7 +143,7 @@ class StockOpnameController extends Controller
 
     public function finish(StockOpname $stockOpname): RedirectResponse
     {
-        return $this->perform(function () use ($stockOpname): string {
+        return $this->redirectBackWithOutcome(function () use ($stockOpname): string {
             $this->opnames->finishCounting($stockOpname);
 
             return 'Hitungan selesai, silakan review selisihnya.';
@@ -151,7 +152,7 @@ class StockOpnameController extends Controller
 
     public function reopen(StockOpname $stockOpname): RedirectResponse
     {
-        return $this->perform(function () use ($stockOpname): string {
+        return $this->redirectBackWithOutcome(function () use ($stockOpname): string {
             $this->opnames->reopenCounting($stockOpname);
 
             return 'Opname dibuka untuk dihitung ulang.';
@@ -160,7 +161,7 @@ class StockOpnameController extends Controller
 
     public function post(Request $request, StockOpname $stockOpname): RedirectResponse
     {
-        return $this->perform(function () use ($request, $stockOpname): string {
+        return $this->redirectBackWithOutcome(function () use ($request, $stockOpname): string {
             $this->opnames->post($stockOpname, $request->user()->id);
 
             return 'Opname diposting, stok sudah diperbarui.';
@@ -184,7 +185,7 @@ class StockOpnameController extends Controller
      *
      * @param  Closure(): string  $step  returns the success message
      */
-    private function perform(Closure $step): RedirectResponse
+    private function redirectBackWithOutcome(Closure $step): RedirectResponse
     {
         try {
             return back()->with('success', $step());

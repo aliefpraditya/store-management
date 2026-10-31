@@ -7,6 +7,8 @@ import CloseShiftDialog from '../../../Components/Cashier/CloseShiftDialog.vue';
 import PaymentDialog from '../../../Components/Cashier/PaymentDialog.vue';
 import SaleDoneDialog from '../../../Components/Cashier/SaleDoneDialog.vue';
 import ShiftClosedDialog from '../../../Components/Cashier/ShiftClosedDialog.vue';
+import DeliveryNoteDialog from '../../../Components/Cashier/DeliveryNoteDialog.vue';
+import ReceiptHistoryDialog from '../../../Components/Cashier/ReceiptHistoryDialog.vue';
 import ShiftOpenPanel from '../../../Components/Cashier/ShiftOpenPanel.vue';
 import { newUuid, useCart } from '../../../Composables/useCart';
 import { useFlashMessages } from '../../../Composables/useFlashMessages';
@@ -32,6 +34,8 @@ useFlashMessages();
 const cart = useCart(toRef(() => props.shift?.id ?? null));
 
 const SEARCH_DELAY_MS = 200;
+const LOOKUP_FAILED_MESSAGE = 'Pencarian barang gagal. Periksa koneksi, lalu coba lagi.';
+const LOOKUP_FAILED_NOTIFY_GROUP = 'lookup-failed';
 
 const searchInput = ref(null);
 const query = ref('');
@@ -45,6 +49,9 @@ const isCloseOpen = ref(false);
 const isClosing = ref(false);
 const isSaleDoneOpen = ref(false);
 const isShiftClosedOpen = ref(false);
+const isReceiptsOpen = ref(false);
+const isDeliveryOpen = ref(false);
+const deliveryReceipt = ref(null);
 let saleUuid = newUuid();
 
 const timeFormat = new Intl.DateTimeFormat('id-ID', { timeStyle: 'short' });
@@ -53,8 +60,9 @@ const shiftSince = computed(() => (props.shift ? timeFormat.format(new Date(prop
 
 /**
  * Looks items up on the server. An answer that arrives after a newer search was started is dropped, so slow
- * responses cannot replace fresher results.
- * @returns {Promise<object[]|null>} null when the answer is stale
+ * responses cannot replace fresher results. A failed lookup is told to the cashier and leaves the results as they
+ * were, so it is never mistaken for "no such item".
+ * @returns {Promise<object[]|null>} null when the answer is stale or the lookup failed
  */
 async function fetchResults(term) {
     const searchId = ++latestSearchId;
@@ -66,10 +74,32 @@ async function fetchResults(term) {
             return null;
         }
 
-        return response.ok ? (await response.json()).data : [];
+        if (!response.ok) {
+            const failure = await response.json().catch(() => ({}));
+
+            if (searchId === latestSearchId) {
+                notifyLookupFailed(failure.code ? failure.message : LOOKUP_FAILED_MESSAGE);
+            }
+
+            return null;
+        }
+
+        return (await response.json()).data;
     } catch {
-        return searchId === latestSearchId ? [] : null;
+        if (searchId === latestSearchId) {
+            notifyLookupFailed(LOOKUP_FAILED_MESSAGE);
+        }
+
+        return null;
     }
+}
+
+/**
+ * One toast for a failing lookup, however many searches fail in a row while the cashier keeps typing.
+ * @param {string} message
+ */
+function notifyLookupFailed(message) {
+    $q.notify({ type: 'negative', message, position: 'top', group: LOOKUP_FAILED_NOTIFY_GROUP });
 }
 
 watch(query, (term) => {
@@ -83,10 +113,10 @@ watch(query, (term) => {
     }
 
     searchTimer = setTimeout(async () => {
-        const found = await fetchResults(term.trim());
+        const foundItems = await fetchResults(term.trim());
 
-        if (found !== null) {
-            results.value = found;
+        if (foundItems !== null) {
+            results.value = foundItems;
         }
     }, SEARCH_DELAY_MS);
 });
@@ -110,21 +140,21 @@ async function submitSearch() {
 
     clearTimeout(searchTimer);
 
-    const found = await fetchResults(term);
+    const foundItems = await fetchResults(term);
 
-    if (found === null) {
+    if (foundItems === null) {
         return;
     }
 
-    results.value = found;
+    results.value = foundItems;
 
-    const scanned = found.find((item) => item.matched_unit_id !== null);
+    const scanned = foundItems.find((item) => item.matched_unit_id !== null);
 
     if (scanned) {
         cart.add(scanned, scanned.matched_unit_id);
         resetSearch();
-    } else if (found.length === 1) {
-        cart.add(found[0], found[0].units[0].id);
+    } else if (foundItems.length === 1) {
+        cart.add(foundItems[0], foundItems[0].units[0].id);
         resetSearch();
     }
 }
@@ -178,7 +208,7 @@ function clearCart() {
 function submitSale({ customer_name, payments }) {
     router.post(
         props.urls.sales,
-        { client_uuid: saleUuid, customer_name, items: cart.payload.value, payments },
+        { client_uuid: saleUuid, customer_name, items: cart.saleItemsPayload.value, payments },
         {
             preserveScroll: true,
             onStart: () => (isPaying.value = true),
@@ -205,8 +235,8 @@ function openClose() {
     isCloseOpen.value = true;
 }
 
-function closeShift(payload) {
-    router.post(props.shift.close_url, payload, {
+function closeShift(closingCount) {
+    router.post(props.shift.close_url, closingCount, {
         onStart: () => (isClosing.value = true),
         onFinish: () => (isClosing.value = false),
         onSuccess: () => (isCloseOpen.value = false),
@@ -235,6 +265,16 @@ watch(
     { immediate: true },
 );
 
+/**
+ * Opens the delivery note dialog for a receipt, from the receipt list or from the sale that was just paid; the
+ * dialog that sent it makes way for it.
+ */
+function openDelivery(receipt) {
+    deliveryReceipt.value = receipt;
+    isSaleDoneOpen.value = false;
+    isDeliveryOpen.value = true;
+}
+
 /** F9 pays, F8 empties the cart, F2 goes to the search box. */
 function onKeydown(event) {
     if (!props.shift) {
@@ -243,7 +283,7 @@ function onKeydown(event) {
 
     const shortcuts = { F9: openPayment, F8: clearCart, F2: () => searchInput.value?.focus() };
 
-    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value) {
+    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value) {
         event.preventDefault();
         shortcuts[event.key]();
     }
@@ -273,6 +313,7 @@ onBeforeUnmount(() => {
                         <small v-else>Belum ada shift</small>
                     </div>
                     <div class="till__bar-actions">
+                        <q-btn v-if="shift" flat no-caps dense icon="receipt_long" label="Riwayat Nota" @click="isReceiptsOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense color="negative" icon="lock_clock" label="Tutup Shift" @click="openClose">
                             <q-tooltip>Tutup shift dulu untuk keluar</q-tooltip>
                         </q-btn>
@@ -382,8 +423,10 @@ onBeforeUnmount(() => {
 
         <PaymentDialog v-model="isPaymentOpen" :total="cart.total.value" :methods="payment_methods" :is-processing="isPaying" @confirm="submitSale" />
         <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :payment-methods="payment_methods" :is-processing="isClosing" @confirm="closeShift" />
-        <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" />
+        <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" @delivery="openDelivery" />
         <ShiftClosedDialog v-model="isShiftClosedOpen" :result="closed_shift" />
+        <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" />
+        <DeliveryNoteDialog v-model="isDeliveryOpen" :receipt="deliveryReceipt" />
     </q-layout>
 </template>
 

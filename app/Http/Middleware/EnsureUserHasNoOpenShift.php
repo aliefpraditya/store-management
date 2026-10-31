@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\ApiErrorCode;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\ShiftService;
@@ -13,13 +14,13 @@ use Symfony\Component\HttpFoundation\Response;
  * Keeps a cashier at the till: while the user has an open shift they cannot log out or open the central pages,
  * they close the shift first. Store pages stay open, so an admin can still look up stock during a shift.
  *
- * Central pages and logout run outside any store, so the session remembers which store holds the shift (see
- * {@see RememberOpenShift}); the real shift is checked there, and a flag that no longer matches one is dropped.
+ * Central pages and logout run outside any store, so the session remembers which stores hold a shift (see
+ * {@see RememberOpenShift}); the real shift is checked there, and a code that no longer matches one is dropped.
  */
 class EnsureUserHasNoOpenShift
 {
-    /** Session key holding the code of the store where the user has an open shift. */
-    public const SESSION_KEY = 'open_shift_store';
+    /** Session key holding the codes of the stores where the user has an open shift. */
+    public const SESSION_KEY = 'open_shift_stores';
 
     private const LOCKED_MESSAGE = 'Tutup shift dulu sebelum keluar atau membuka halaman pusat.';
 
@@ -35,22 +36,39 @@ class EnsureUserHasNoOpenShift
             return $next($request);
         }
 
-        abort_if($request->expectsJson(), 423, self::LOCKED_MESSAGE);
+        if ($request->expectsJson()) {
+            return response()->json([
+                'code' => ApiErrorCode::ShiftIsOpen->value,
+                'message' => self::LOCKED_MESSAGE,
+                'more_info' => 'Tutup shift di kasir toko '.$store->name.'.',
+            ], Response::HTTP_LOCKED);
+        }
 
         return redirect()->route('tenant.cashier.index', ['tenant' => $store->code])->with('error', self::LOCKED_MESSAGE);
     }
 
+    /**
+     * The first remembered store that still has the user's shift open; remembered stores that no longer do are forgotten.
+     */
     private function storeWithOpenShift(Request $request, User $user): ?Store
     {
-        $code = $request->session()->get(self::SESSION_KEY);
-        $store = $code === null ? null : Store::query()->where('code', $code)->first();
+        $rememberedCodes = (array) $request->session()->get(self::SESSION_KEY, []);
+        $stillOpenCodes = [];
+        $firstOpenStore = null;
 
-        if ($store !== null && $store->run(fn (): bool => $this->shifts->openShiftOf($user) !== null)) {
-            return $store;
+        foreach (Store::query()->whereIn('code', $rememberedCodes)->get() as $store) {
+            if ($store->run(fn (): bool => $this->shifts->openShiftOf($user) !== null)) {
+                $stillOpenCodes[] = $store->code;
+                $firstOpenStore ??= $store;
+            }
         }
 
-        $request->session()->forget(self::SESSION_KEY);
+        if ($stillOpenCodes === []) {
+            $request->session()->forget(self::SESSION_KEY);
+        } else {
+            $request->session()->put(self::SESSION_KEY, $stillOpenCodes);
+        }
 
-        return null;
+        return $firstOpenStore;
     }
 }

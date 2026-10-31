@@ -132,6 +132,23 @@ class LegacyProductImportTest extends TestCase
         return $this->store->run(fn () => Product::query()->where('sku', $sku)->with(['category', 'brand', 'productUnits'])->firstOrFail());
     }
 
+    public function test_a_selling_row_with_no_price_is_imported_as_a_zero_price_instead_of_stopping_the_import(): void
+    {
+        $this->legacyItem('MU0006', 'LEM KAYU', 1, 1, '0', 1);
+        $this->legacyPrice('MU0006', 1, 'beli', 3000);
+        $this->legacyPrice('MU0006', 1, 'jual', 5000);
+        DB::connection(LegacyProductImporter::CONNECTION)->table('konversi')->insert([
+            'barangs_id' => 'MU0006', 'satuans_id' => 5, 'konversi' => 1, 'harga' => null, 'ket' => 'jual', 'created_at' => '2021-08-16 00:00:00',
+        ]);
+
+        $this->assertSame(8, $this->import()['created']);
+
+        $dozen = $this->product('MU0006')->productUnits->firstWhere('unit_code', 'LSN');
+        $this->assertNotNull($dozen);
+        $this->assertEquals(0, $dozen->selling_price);
+        $this->assertEquals(36000, $dozen->cost_price);
+    }
+
     public function test_only_mitra_utama_items_are_imported_with_their_category_and_brand(): void
     {
         $result = $this->import();

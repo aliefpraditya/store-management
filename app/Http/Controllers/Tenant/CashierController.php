@@ -42,6 +42,8 @@ class CashierController extends Controller
                 'products' => route('tenant.cashier.products', ['tenant' => $code]),
                 'sales' => route('tenant.cashier.sales.store', ['tenant' => $code]),
                 'dashboard' => route('tenant.dashboard', ['tenant' => $code]),
+                'sales_history' => route('tenant.sales.index', ['tenant' => $code]),
+                'receipts' => route('tenant.cashier.receipts', ['tenant' => $code]),
             ],
         ]);
     }

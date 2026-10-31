@@ -53,7 +53,7 @@ class SaveStockOpnameCountsRequest extends FormRequest
                 $opname = $this->route('stock_opname');
                 $rows = $this->input('counts');
 
-                $items = StockOpnameItem::query()
+                $itemsById = StockOpnameItem::query()
                     ->where('stock_opname_id', $opname->id)
                     ->whereIn('id', array_column($rows, 'item_id'))
                     ->with('product.productUnits')
@@ -61,7 +61,7 @@ class SaveStockOpnameCountsRequest extends FormRequest
                     ->keyBy('id');
 
                 foreach ($rows as $index => $row) {
-                    $item = $items->get($row['item_id']);
+                    $item = $itemsById->get($row['item_id']);
 
                     if ($item === null) {
                         $validator->errors()->add("counts.{$index}.item_id", 'Barang tidak ada di opname ini.');

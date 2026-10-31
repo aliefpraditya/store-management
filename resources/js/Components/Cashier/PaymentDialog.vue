@@ -32,15 +32,15 @@ watch(
 
 const amountOf = (line) => Number(line.amount) || 0;
 
-const paid = computed(() => roundMoney(lines.value.reduce((sum, line) => sum + amountOf(line), 0)));
+const paidTotal = computed(() => roundMoney(lines.value.reduce((sum, line) => sum + amountOf(line), 0)));
 
 const cashPaid = computed(() => lines.value.filter((line) => line.method === 'cash').reduce((sum, line) => sum + amountOf(line), 0));
 
-const change = computed(() => roundMoney(paid.value - props.total));
+const changeAmount = computed(() => roundMoney(paidTotal.value - props.total));
 
-const isCovered = computed(() => paid.value >= props.total);
+const isCovered = computed(() => paidTotal.value >= props.total);
 
-const isChangeFromCash = computed(() => change.value <= cashPaid.value);
+const isChangeFromCash = computed(() => changeAmount.value <= cashPaid.value);
 
 const canConfirm = computed(() => props.total > 0 && isCovered.value && isChangeFromCash.value && !props.isProcessing);
 
@@ -54,7 +54,7 @@ function setCash(amount) {
 }
 
 function addLine() {
-    const remaining = roundMoney(Math.max(props.total - paid.value, 0));
+    const remaining = roundMoney(Math.max(props.total - paidTotal.value, 0));
 
     lines.value.push({ ...blankLine('qris'), amount: remaining > 0 ? remaining : '' });
 }
@@ -130,11 +130,11 @@ function confirm() {
             <q-card-section class="payment__result" :class="{ 'payment__result--short': !isCovered }">
                 <template v-if="!isCovered">
                     <span>Kurang</span>
-                    <b>{{ formatRupiah(roundMoney(total - paid)) }}</b>
+                    <b>{{ formatRupiah(roundMoney(total - paidTotal)) }}</b>
                 </template>
                 <template v-else>
                     <span>Kembalian</span>
-                    <b>{{ formatRupiah(change) }}</b>
+                    <b>{{ formatRupiah(changeAmount) }}</b>
                 </template>
             </q-card-section>
             <q-card-section v-if="isCovered && !isChangeFromCash" class="payment__warning">Kembalian hanya bisa diberikan dari pembayaran tunai.</q-card-section>

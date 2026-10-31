@@ -110,7 +110,7 @@ export function useCart(shiftId) {
     }
 
     /** The lines as the sale request wants them. */
-    const payload = computed(() => lines.value.map((line) => ({ product_unit_id: line.unitId, quantity: quantityOf(line) })));
+    const saleItemsPayload = computed(() => lines.value.map((line) => ({ product_unit_id: line.unitId, quantity: quantityOf(line) })));
 
-    return { lines, total, isEmpty, hasOverStock, payload, unitOf, quantityOf, priceOf, subtotalOf, isOverStock, add, remove, clear };
+    return { lines, total, isEmpty, hasOverStock, saleItemsPayload, unitOf, quantityOf, priceOf, subtotalOf, isOverStock, add, remove, clear };
 }

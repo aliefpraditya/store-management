@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
+import DateInput from '../../../Components/DateInput.vue';
 import ProductSearchSelect from '../../../Components/ProductSearchSelect.vue';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -62,8 +63,8 @@ watch([selectedProduct, warehouseId, from, to], () => applyFilters());
                 dense
                 class="filters__select"
             />
-            <q-input v-model="from" type="date" label="Dari" outlined dense clearable class="filters__date" />
-            <q-input v-model="to" type="date" label="Sampai" outlined dense clearable class="filters__date" />
+            <DateInput v-model="from" label="Dari" outlined dense clearable class="filters__date" />
+            <DateInput v-model="to" label="Sampai" outlined dense clearable class="filters__date" />
         </div>
 
         <div class="history">

@@ -3,7 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\StockOpnameItem;
-use App\Services\StockOpnameService;
+use App\Services\StockOpnameReport;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Http\Request;
@@ -11,7 +11,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * One counted product. Expects `product.baseUnit`, `product.productUnits` and the `system_quantity`,
- * `variance_quantity` and `product_cost_price` columns from {@see StockOpnameService::paginateItems()}.
+ * `variance_quantity` and `product_cost_price` columns from {@see StockOpnameReport::paginateItems()}.
  *
  * @mixin StockOpnameItem
  */

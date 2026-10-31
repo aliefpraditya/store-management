@@ -75,6 +75,14 @@ class User extends Authenticatable implements AuditableContract
     }
 
     /**
+     * Whether this user manages the store (store admin or super admin) rather than only working its till.
+     */
+    public function isAdminIn(Store $store): bool
+    {
+        return in_array($this->roleIn($store), [UserRole::SuperAdmin, UserRole::StoreAdmin], true);
+    }
+
+    /**
      * Null only for a non-super-admin who has no store yet.
      *
      * @return Attribute<UserRole|null, never>

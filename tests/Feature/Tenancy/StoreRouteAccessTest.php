@@ -66,9 +66,9 @@ class StoreRouteAccessTest extends TestCase
 
     public function test_the_cashier_screen_routes_are_open_to_every_user_of_the_store(): void
     {
-        $cashierRoutes = array_filter($this->storeRoutes(), fn (RoutingRoute $route): bool => str_starts_with((string) $route->getName(), 'tenant.cashier.'));
+        $cashierRoutes = array_filter($this->storeRoutes(), fn (RoutingRoute $route): bool => $this->isOpenToCashiers($route));
 
-        $this->assertCount(5, $cashierRoutes);
+        $this->assertCount(12, $cashierRoutes);
 
         foreach ($cashierRoutes as $route) {
             $middleware = app('router')->gatherRouteMiddleware($route);
@@ -79,15 +79,23 @@ class StoreRouteAccessTest extends TestCase
     }
 
     /**
-     * Only the dashboard (which sends cashiers to their screen), the cashier screen routes and the ping check are
-     * open to cashiers.
+     * The cashier screen, with the receipts of the running shift in its dialog. The receipt history pages are not
+     * part of it: they are for admins.
+     */
+    private function isOpenToCashiers(RoutingRoute $route): bool
+    {
+        return str_starts_with((string) $route->getName(), 'tenant.cashier.');
+    }
+
+    /**
+     * Only the dashboard (which sends cashiers to their screen), the cashier screen and the ping check are open to
+     * cashiers.
      */
     public function test_every_other_store_route_is_for_store_admins_only(): void
     {
         $adminRoutes = array_filter(
             $this->storeRoutes(),
-            fn (RoutingRoute $route): bool => ! in_array($route->getName(), ['tenant.dashboard', 'tenant.ping'], true)
-                && ! str_starts_with((string) $route->getName(), 'tenant.cashier.'),
+            fn (RoutingRoute $route): bool => ! in_array($route->getName(), ['tenant.dashboard', 'tenant.ping'], true) && ! $this->isOpenToCashiers($route),
         );
 
         $names = array_map(fn (RoutingRoute $route): string => (string) $route->getName(), $adminRoutes);
@@ -96,7 +104,9 @@ class StoreRouteAccessTest extends TestCase
         $this->assertCount(4, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.units.')));
         $this->assertCount(13, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-opnames.')));
         $this->assertCount(1, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-history.')));
-        $this->assertCount(25, $adminRoutes);
+        $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.sales.')));
+        $this->assertCount(10, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.delivery-notes.')));
+        $this->assertCount(37, $adminRoutes);
 
         foreach ($adminRoutes as $route) {
             $this->assertContains(

@@ -16,7 +16,22 @@ class SaleException extends Exception
 
     public static function notSellable(string $productName): self
     {
-        return new self("{$productName} tidak bisa dijual dengan satuan itu.");
+        return new self("{$productName} tidak bisa dijual dengan satuan itu. Pilih satuan lain.");
+    }
+
+    public static function productUnavailable(string $productName): self
+    {
+        return new self("{$productName} sudah tidak aktif atau dihapus. Hapus dari keranjang.");
+    }
+
+    public static function receiptIdInUse(): self
+    {
+        return new self('Kode transaksi ini sudah dipakai transaksi lain. Muat ulang halaman lalu coba lagi.');
+    }
+
+    public static function lineNotFound(): self
+    {
+        return new self('Ada barang di keranjang yang tidak ditemukan lagi. Muat ulang halaman lalu masukkan barangnya lagi.');
     }
 
     public static function insufficientStock(string $productName, string $availableText): self

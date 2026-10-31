@@ -19,6 +19,8 @@ use App\Models\Store;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\StockOpnameReport;
+use Brick\Math\BigDecimal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -801,6 +803,50 @@ class StockOpnameTest extends TestCase
         $this->assertSame('9.000', $this->stockOf($untouched));
         $this->assertNull($this->item($opname, $untouched)->variance);
         $this->assertSame(1, $this->inStore(fn () => StockMovement::query()->count()));
+    }
+
+    public function test_posting_writes_movements_in_product_order_whatever_order_the_items_were_added(): void
+    {
+        $first = $this->makeProduct('Cat', '5');
+        $second = $this->makeProduct('Kuas', '5');
+        $opname = $this->opnameInStatus(StockOpnameStatus::Review);
+        $this->addItem($opname, $second, '6', '5');
+        $this->addItem($opname, $first, '6', '5');
+
+        $this->action('post', $opname);
+
+        $this->assertSame(
+            [$first->id, $second->id],
+            $this->inStore(fn () => StockMovement::query()->orderBy('id')->pluck('product_id')->all()),
+        );
+    }
+
+    /**
+     * The review screen works the variance out in SQL and posting in PHP; they must agree for both kinds of count.
+     */
+    public function test_the_variance_on_the_review_screen_is_the_one_that_gets_posted(): void
+    {
+        foreach ([StockOpnameReason::Routine, StockOpnameReason::StockIncrease] as $reason) {
+            $short = $this->makeProduct('Cat '.$reason->value, '24');
+            $over = $this->makeProduct('Kuas '.$reason->value, '10');
+            $opname = $this->opname(['status' => StockOpnameStatus::Review, 'reason_code' => $reason]);
+            $this->addItem($opname, $short, '23', '24');
+            $this->addItem($opname, $over, '15', '10');
+
+            $onScreen = fn () => $this->inStore(fn () => app(StockOpnameReport::class)->paginateItems($opname->fresh(), null, null, 50)
+                ->getCollection()->mapWithKeys(fn (StockOpnameItem $item): array => [$item->product_id => $item->getAttribute('variance_quantity')])->all());
+
+            $beforePosting = $onScreen();
+            $this->action('post', $opname)->assertSessionHas('success');
+            $afterPosting = $onScreen();
+
+            foreach ([$short, $over] as $product) {
+                $posted = $this->item($opname, $product)->variance;
+
+                $this->assertTrue(BigDecimal::of($beforePosting[$product->id])->isEqualTo($posted), "{$reason->value}: screen before posting differs from the posted variance");
+                $this->assertTrue(BigDecimal::of($afterPosting[$product->id])->isEqualTo($posted), "{$reason->value}: screen after posting differs from the posted variance");
+            }
+        }
     }
 
     public function test_an_opening_balance_opname_writes_opening_balance_movements(): void

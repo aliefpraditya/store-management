@@ -78,7 +78,7 @@ class ShiftService
     {
         $completedSales = Sale::query()->where('cash_shift_id', $shift->id)->where('status', SaleStatus::Completed);
 
-        $received = SalePayment::query()
+        $receivedByMethod = SalePayment::query()
             ->join('sales', 'sales.id', '=', 'sale_payments.sale_id')
             ->where('sales.cash_shift_id', $shift->id)
             ->where('sales.status', SaleStatus::Completed)
@@ -89,7 +89,7 @@ class ShiftService
         $payments = [];
 
         foreach (PaymentMethod::forCashier() as $method) {
-            $payments[$method->value] = (string) BigDecimal::of((string) ($received[$method->value] ?? 0))->toScale(2);
+            $payments[$method->value] = (string) BigDecimal::of((string) ($receivedByMethod[$method->value] ?? 0))->toScale(2);
         }
 
         $changeGiven = BigDecimal::of((string) (clone $completedSales)->sum('change_amount'));

@@ -12,6 +12,7 @@ use App\Models\Register;
 use App\Models\Store;
 use App\Services\ShiftService;
 use Illuminate\Http\RedirectResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class ShiftController extends Controller
 {
@@ -38,10 +39,10 @@ class ShiftController extends Controller
         $user = $request->user();
         $isAdmin = in_array($user->roleIn($store), [UserRole::SuperAdmin, UserRole::StoreAdmin], true);
 
-        abort_unless($isAdmin || $shift->cashier_id === $user->id, 403);
+        abort_unless($isAdmin || $shift->cashier_id === $user->id, Response::HTTP_FORBIDDEN);
 
         try {
-            $closed = $this->shifts->close($shift, (string) $request->validated('counted_cash'), $request->validated('closing_note'));
+            $closedShift = $this->shifts->close($shift, (string) $request->validated('counted_cash'), $request->validated('closing_note'));
         } catch (ShiftException $exception) {
             return back()->with('error', $exception->getMessage());
         }
@@ -49,10 +50,10 @@ class ShiftController extends Controller
         return redirect()->route('tenant.cashier.index', ['tenant' => $store->code])
             ->with('success', 'Shift ditutup.')
             ->with('closed_shift', [
-                'expected_cash' => $closed->expected_cash,
-                'counted_cash' => $closed->counted_cash,
-                'cash_difference' => $closed->cash_difference,
-                'deposit_amount' => $closed->deposit_amount,
+                'expected_cash' => $closedShift->expected_cash,
+                'counted_cash' => $closedShift->counted_cash,
+                'cash_difference' => $closedShift->cash_difference,
+                'deposit_amount' => $closedShift->deposit_amount,
             ]);
     }
 }

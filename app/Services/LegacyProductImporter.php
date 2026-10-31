@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\Unit;
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -63,18 +65,15 @@ class LegacyProductImporter
         $legacy = DB::connection(self::CONNECTION);
 
         $unitNames = $legacy->table('satuans')->pluck('nama', 'id');
-        $unitCountBefore = Unit::query()->count();
+        $lookups = new LegacyCatalogLookups(
+            unitNames: $unitNames,
+            brandNames: $legacy->table('brands')->pluck('nama', 'id'),
+            categoryNames: $legacy->table('jenis')->pluck('nama', 'id'),
+            priceRows: $this->activePriceRows(),
+        );
+        $newUnitCount = $this->createMissingUnits($unitNames);
 
-        foreach ($unitNames->map(fn (?string $name): string => trim((string) $name))->filter() as $unitName) {
-            $this->unitFor($unitName);
-        }
-
-        $newUnitCount = Unit::query()->count() - $unitCountBefore;
-        $brandNames = $legacy->table('brands')->pluck('nama', 'id');
-        $categoryNames = $legacy->table('jenis')->pluck('nama', 'id');
         $items = $legacy->table('barangs')->where('owners_id', self::MITRA_UTAMA_OWNER_ID)->orderBy('id')->get();
-        $priceRows = $this->activePriceRows();
-
         $skus = $this->skusByLegacyId($items->pluck('id'));
         $existingSkus = Product::withTrashed()->pluck('sku')->map(fn (string $sku): string => Str::lower($sku))->flip();
         $usedBarcodes = ProductUnit::query()->whereNotNull('barcode')->pluck('barcode')->map(fn (string $barcode): string => Str::lower($barcode))->flip();
@@ -90,65 +89,131 @@ class LegacyProductImporter
                 continue;
             }
 
-            $name = trim((string) $item->nama);
-            $rows = $priceRows[$item->id] ?? collect();
-            $buyRow = $rows->firstWhere('ket', 'beli');
-            $sellRows = $rows->where('ket', 'jual')->values();
-            $baseUnitId = $buyRow->satuans_id ?? $sellRows->first()?->satuans_id;
+            $importOutcome = $this->importItem($item, $sku, $lookups, $usedBarcodes);
+            $result['review'] = [...$result['review'], ...$importOutcome['review']];
 
-            if ($baseUnitId === null) {
-                $result['review'][] = $this->reviewRow($sku, $name, 'Satuan', '-', 'Barang tidak punya satuan aktif, tidak diimpor');
+            if (! $importOutcome['is_created']) {
+                continue;
+            }
+
+            $existingSkus->put(Str::lower($sku), 0);
+
+            if ($importOutcome['barcode'] !== null) {
+                $usedBarcodes->put(Str::lower($importOutcome['barcode']), 0);
+            }
+
+            $result['created']++;
+            $result['extra_units'] += $importOutcome['extra_unit_count'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * @param  Collection<int, string|null>  $unitNames  old unit names by old unit id
+     * @return int how many units the store did not have yet
+     */
+    private function createMissingUnits(Collection $unitNames): int
+    {
+        $unitCountBefore = Unit::query()->count();
+
+        foreach ($unitNames->map(fn (?string $name): string => trim((string) $name))->filter() as $unitName) {
+            $this->unitFor($unitName);
+        }
+
+        return Unit::query()->count() - $unitCountBefore;
+    }
+
+    /**
+     * Creates one product from an old item, unless it has no unit at all.
+     *
+     * @param  Collection<string, int>  $usedBarcodes  lower-case barcodes already taken, as keys
+     * @return array{is_created: bool, barcode: string|null, extra_unit_count: int, review: list<ReviewRow>}
+     */
+    private function importItem(object $item, string $sku, LegacyCatalogLookups $lookups, Collection $usedBarcodes): array
+    {
+        $name = trim((string) $item->nama);
+        $itemPriceRows = $lookups->priceRows[$item->id] ?? collect();
+        $buyRow = $itemPriceRows->firstWhere('ket', 'beli');
+        $sellRows = $itemPriceRows->where('ket', 'jual')->values();
+        $baseUnitId = $buyRow->satuans_id ?? $sellRows->first()?->satuans_id;
+
+        if ($baseUnitId === null) {
+            return [
+                'is_created' => false,
+                'barcode' => null,
+                'extra_unit_count' => 0,
+                'review' => [$this->reviewRow($sku, $name, 'Satuan', '-', 'Barang tidak punya satuan aktif, tidak diimpor')],
+            ];
+        }
+
+        $reviewRows = [];
+        $baseName = trim((string) $lookups->unitNames[$baseUnitId]);
+        $baseCost = $buyRow !== null && $buyRow->harga > 1 ? BigDecimal::of((string) $buyRow->harga) : BigDecimal::zero();
+        $barcode = $this->usableBarcode($item->barcode, $usedBarcodes);
+
+        if ($barcode === null && $this->isRealBarcode($item->barcode)) {
+            $reviewRows[] = $this->reviewRow($sku, $name, 'Barcode', (string) $item->barcode, 'Barcode tidak valid atau sudah dipakai barang lain, dikosongkan');
+        }
+
+        $baseUnitRow = $this->unitRow($baseName, 1.0, $baseCost, $this->priceOf($sellRows->firstWhere('satuans_id', $baseUnitId)), $barcode, true);
+        $extraUnits = $this->extraUnitRows($sellRows->where('satuans_id', '!=', $baseUnitId), $baseName, $baseCost, $baseUnitRow['unit']['code'], $lookups->unitNames);
+
+        foreach ($extraUnits['skipped'] as $skippedUnit) {
+            $reviewRows[] = $this->reviewRow($sku, $name, "Satuan {$skippedUnit['unit_name']}", $skippedUnit['price'], "Isi per {$baseName} tidak diketahui, satuan tidak diimpor");
+        }
+
+        $this->products->create([
+            'sku' => $sku,
+            'name' => $name,
+            'category' => ['name' => trim((string) ($lookups->categoryNames[$item->jenis_id] ?? '')) ?: self::FALLBACK_CATEGORY],
+            'brand' => $this->brandOf($lookups->brandNames[$item->brands_id] ?? null),
+            'min_stock' => max(0, (int) $item->minimal_stok),
+            'is_active' => $item->status_aktif === 'Aktif',
+            'units' => [$baseUnitRow, ...$extraUnits['unit_rows']],
+        ]);
+
+        return ['is_created' => true, 'barcode' => $barcode, 'extra_unit_count' => count($extraUnits['unit_rows']), 'review' => $reviewRows];
+    }
+
+    /**
+     * The selling units other than the base unit. One whose content per base unit cannot be told, or whose code the
+     * item already uses, is left out and reported.
+     *
+     * @param  Collection<int, object>  $extraSellRows
+     * @param  Collection<int, string|null>  $unitNames  old unit names by old unit id
+     * @return array{unit_rows: list<array<string, mixed>>, skipped: list<array{unit_name: string, price: string}>}
+     */
+    private function extraUnitRows(Collection $extraSellRows, string $baseName, BigDecimal $baseCost, string $baseUnitCode, Collection $unitNames): array
+    {
+        $unitRows = [];
+        $skipped = [];
+        $usedUnitCodes = [$baseUnitCode];
+
+        foreach ($extraSellRows as $sellRow) {
+            $extraName = trim((string) $unitNames[$sellRow->satuans_id]);
+            $factor = $this->extraUnitFactor($extraName, $baseName, (float) $sellRow->konversi);
+            $unitRow = $factor === null ? null : $this->unitRow($extraName, $factor, $baseCost->multipliedBy((string) $factor)->toScale(2, RoundingMode::HalfUp), $this->priceOf($sellRow), null, false);
+
+            if ($unitRow === null || in_array($unitRow['unit']['code'], $usedUnitCodes, true)) {
+                $skipped[] = ['unit_name' => $extraName, 'price' => (string) $this->priceOf($sellRow)];
 
                 continue;
             }
 
-            $baseName = trim((string) $unitNames[$baseUnitId]);
-            $baseCost = $buyRow !== null && $buyRow->harga > 1 ? (float) $buyRow->harga : 0.0;
-            $barcode = $this->usableBarcode($item->barcode, $usedBarcodes);
-
-            if ($barcode === null && $this->isRealBarcode($item->barcode)) {
-                $result['review'][] = $this->reviewRow($sku, $name, 'Barcode', (string) $item->barcode, 'Barcode tidak valid atau sudah dipakai barang lain, dikosongkan');
-            }
-
-            $unitRows = [$this->unitRow($baseName, 1.0, $baseCost, (float) ($sellRows->firstWhere('satuans_id', $baseUnitId)->harga ?? 0), $barcode, true)];
-            $usedUnitCodes = [$unitRows[0]['unit']['code']];
-
-            foreach ($sellRows->where('satuans_id', '!=', $baseUnitId) as $sellRow) {
-                $extraName = trim((string) $unitNames[$sellRow->satuans_id]);
-                $factor = $this->extraUnitFactor($extraName, $baseName, (float) $sellRow->konversi);
-                $unitRow = $factor === null ? null : $this->unitRow($extraName, $factor, round($baseCost * $factor, 2), (float) $sellRow->harga, null, false);
-
-                if ($unitRow === null || in_array($unitRow['unit']['code'], $usedUnitCodes, true)) {
-                    $result['review'][] = $this->reviewRow($sku, $name, "Satuan {$extraName}", (string) $sellRow->harga, "Isi per {$baseName} tidak diketahui, satuan tidak diimpor");
-
-                    continue;
-                }
-
-                $unitRows[] = $unitRow;
-                $usedUnitCodes[] = $unitRow['unit']['code'];
-                $result['extra_units']++;
-            }
-
-            $this->products->create([
-                'sku' => $sku,
-                'name' => $name,
-                'category' => ['name' => trim((string) ($categoryNames[$item->jenis_id] ?? '')) ?: self::FALLBACK_CATEGORY],
-                'brand' => $this->brandOf($brandNames[$item->brands_id] ?? null),
-                'min_stock' => max(0, (int) $item->minimal_stok),
-                'is_active' => $item->status_aktif === 'Aktif',
-                'units' => $unitRows,
-            ]);
-
-            $existingSkus->put(Str::lower($sku), 0);
-
-            if ($barcode !== null) {
-                $usedBarcodes->put(Str::lower($barcode), 0);
-            }
-
-            $result['created']++;
+            $unitRows[] = $unitRow;
+            $usedUnitCodes[] = $unitRow['unit']['code'];
         }
 
-        return $result;
+        return ['unit_rows' => $unitRows, 'skipped' => $skipped];
+    }
+
+    /**
+     * An old price row can have no price at all; that counts as 0, as it always has.
+     */
+    private function priceOf(?object $priceRow): BigDecimal
+    {
+        return BigDecimal::of((string) ($priceRow?->harga ?? 0));
     }
 
     /**
@@ -205,15 +270,15 @@ class LegacyProductImporter
     /**
      * @return array<string, mixed> a unit row as {@see ProductService} takes it
      */
-    private function unitRow(string $oldUnitName, float $factor, float $cost, float $price, ?string $barcode, bool $isBase): array
+    private function unitRow(string $oldUnitName, float $factor, BigDecimal $cost, BigDecimal $price, ?string $barcode, bool $isBase): array
     {
         return [
             'unit' => ['code' => $this->unitFor($oldUnitName)->code],
             'conversion_factor' => $factor,
             'barcode' => $barcode,
             'is_sellable' => true,
-            'cost_price' => $cost,
-            'selling_price' => $price,
+            'cost_price' => (string) $cost,
+            'selling_price' => (string) $price,
             'is_default_sale' => $isBase,
         ];
     }
