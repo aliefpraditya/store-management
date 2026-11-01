@@ -146,23 +146,28 @@
 <section class="scr" id="dash" data-group="Toko" data-nav="Dashboard Toko" data-title="Dashboard Toko" data-sub="Ringkasan hari ini dan hal yang perlu ditindak." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Dashboard" data-who="Andi|Admin Toko"></aside>
-  <div class="mn"><div class="tb"><h3>Selamat siang, Andi</h3><span class="b"><svg class="ic s"><use href="#i-plus"/></svg>Opname baru</span><span class="b p"><svg class="ic s"><use href="#i-cart"/></svg>Buka Kasir</span></div>
+  <div class="mn"><div class="tb"><h3>Selamat siang, Andi</h3><span class="b ok"><svg class="ic s"><use href="#i-cart"/></svg>Kembali ke Kasir</span></div>
   <div class="pg">
-    <div class="g3">
+    <div class="g2">
       <div class="card kpi"><small>Penjualan bersih hari ini</small><b>Rp 4.400.000</b><em>3 nota · Rp 4.850.000 − retur Rp 450.000</em></div>
       <div class="card kpi"><small>Stok di bawah minimum</small><b>12 barang</b><em>Perlu restock</em></div>
-      <div class="card kpi"><small>Perlu tindakan</small><b>4</b><em>1 retur · 1 selisih kas · 2 surat jalan</em></div>
     </div>
     <div class="g2 mt">
-      <div class="card"><h4>Menunggu persetujuan</h4><div class="list">
-        <div><span class="t">Retur · RET/MU/2610/0003<small>Rp 120.000</small></span><span class="c warn">Retur</span><span class="b s">Tinjau</span></div>
-        <div><span class="t">Selisih kas · Shift #0002<small>-Rp 10.000</small></span><span class="c bad">Selisih kas</span><span class="b s">Tinjau</span></div></div></div>
+      <div class="card"><h4 style="font-size:19px">Perlu tindakan <span class="c warn" style="font-size:15px;padding:3px 12px">4</span></h4>
+        <div class="row" style="justify-content:space-between;background:var(--soft);border-left:4px solid var(--warn);border-radius:6px;padding:6px 12px;font-weight:700;font-size:12.5px;margin:6px 0 2px"><span>Menunggu persetujuan</span><span class="mute">2</span></div>
+        <div class="list">
+          <div><span class="t">Retur · RET/MU/2610/0003<small>Rp 120.000</small></span><span class="c warn">Retur</span></div>
+          <div><span class="t">Selisih kas · Shift #0002<small>−Rp 10.000</small></span><span class="c bad">Selisih kas</span></div></div>
+        <div class="row" style="justify-content:space-between;background:var(--soft);border-left:4px solid var(--warn);border-radius:6px;padding:6px 12px;font-weight:700;font-size:12.5px;margin:14px 0 2px;border-top:0"><span>Surat jalan belum selesai</span><span class="mute">2</span></div>
+        <div class="list">
+          <div><span class="t">SJ/MU/2610/0007<small>CV Maju</small></span><span class="c">Draft</span></div>
+          <div><span class="t">SJ/MU/2610/0006<small>Pak Haji Rahmat</small></span><span class="c">Dikirim</span></div></div></div>
       <div class="card"><h4>Shift berjalan</h4><div class="list">
         <div><div class="av">S</div><span class="t">Sari · Kasir 1<small>sejak 08:00</small></span><span class="c ok"><i class="dot"></i>Buka</span></div></div></div>
     </div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Penjualan bersih = nota selesai hari ini dikurangi retur selesai hari ini. Nota void tidak dihitung.</li><li>Kasir tidak melihat dashboard ini, hanya layar Kasir. Tombol cepat dan tombol Tinjau menyusul bersama layarnya.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Kartu penjualan membuka Riwayat Nota; kartu stok minimum membuka Stok Opname untuk sementara.</li><li>Satu kartu <i>Perlu tindakan</i>: retur dan selisih kas menunggu keputusan, selisih kas ditolak yang belum ditindaklanjuti, dan surat jalan belum selesai. Barisnya membuka retur, Rekap Shift, atau surat jalan terkait.</li><li>Penjualan bersih = nota selesai hari ini dikurangi nilai retur selesai hari ini. Kasir tidak melihat dashboard ini.</li></ul></details>
 </section>
 
 <!-- 6 DAFTAR BARANG -->
@@ -261,24 +266,22 @@
 </section>
 
 <!-- 11 BUKA SHIFT -->
-<section class="scr" id="shiftbuka" data-group="Penjualan" data-nav="Buka Shift" data-title="Buka Shift" data-sub="Wajib sebelum berjualan. Modal kas tetap." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/pos">
+<section class="scr" id="shiftbuka" data-group="Penjualan" data-nav="Buka Shift" data-title="Buka Shift" data-sub="Wajib sebelum berjualan. Modal kas tetap." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
 <div class="bd full" style="background:var(--bg)">
   <div class="scrim"><div class="modal">
-    <h3>Buka Shift</h3><p class="ink2" style="margin:0 0 18px">Kasir 1 · Sari</p>
+    <p class="mute" style="margin:0">Mitra Utama</p><h3>Buka shift</h3><p class="ink2" style="margin:0 0 18px">K1 · Kasir 1</p>
     <div class="f"><span>Modal kas awal</span><div class="in big dis"><svg class="ic"><use href="#i-lock"/></svg>Rp 500.000</div></div>
-    <div class="row" style="margin:14px 0"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span><span>Laci sudah berisi modal di atas</span></div>
-    <div class="tip warn" style="margin-bottom:16px"><svg class="ic s"><use href="#i-alert"/></svg><span>Shift sebelumnya: selisih −Rp 10.000 menunggu approval.</span></div>
-    <div class="b p w l">Buka Shift &amp; Mulai</div>
+    <div class="b p w l mt">Buka Shift</div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Modal tetap hanya diubah Admin.</li><li>Tanpa shift terbuka, kasir tidak bisa menjual.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Modal tetap hanya diubah Admin. Satu register hanya punya satu shift terbuka, dan satu kasir satu shift.</li><li>Selama shift terbuka, Kasir tidak bisa keluar; shift ditutup dulu. Admin tetap bisa membuka menu toko, dan tombol keluar di sidebar memberi peringatan dengan jalan pintas ke Kasir.</li></ul></details>
 </section>
 
 <!-- 12 KASIR -->
-<section class="scr" id="kasir" data-group="Penjualan" data-nav="Kasir" data-title="Kasir" data-sub="Satu layar penuh, tanpa menu samping." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/pos">
+<section class="scr" id="kasir" data-group="Penjualan" data-nav="Kasir" data-title="Kasir" data-sub="Satu layar penuh, tanpa menu samping." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
 <div class="bd">
   <div class="tb" style="background:#fff"><div class="av">S</div><div><b>Sari</b><div class="mute" style="font-size:12px">Mitra Utama · Kasir 1 · Shift #0425</div></div><span class="sp"></span>
-    <span class="b s g"><svg class="ic s"><use href="#i-receipt"/></svg>Riwayat</span><span class="b s g"><svg class="ic s"><use href="#i-undo"/></svg>Retur</span><span class="b s g"><svg class="ic s"><use href="#i-truck"/></svg>Surat Jalan</span><span class="b s g"><svg class="ic s"><use href="#i-minus"/></svg>Pengeluaran</span><span class="b s bad">Tutup Shift</span></div>
+    <span class="b s g"><svg class="ic s"><use href="#i-receipt"/></svg>Riwayat Nota</span><span class="b s g"><svg class="ic s"><use href="#i-undo"/></svg>Retur</span><span class="b s g"><svg class="ic s"><use href="#i-minus"/></svg>Pengeluaran</span><span class="b s bad">Tutup Shift</span></div>
   <div class="pos">
     <div class="pl">
       <div class="search"><svg class="ic"><use href="#i-search"/></svg>Scan barcode atau ketik nama / SKU<kbd>F2</kbd></div>
@@ -303,30 +306,46 @@
     </div>
   </div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Enter pada barcode memasukkan satuan default; barcode satuan langsung memilih satuannya.</li><li>Stok kurang → diblokir. Hanya satuan "dijual" yang tampil.</li><li>Batal sebelum bayar langsung, dicatat. Tanpa kredit atau hutang.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Bar atas: Riwayat Nota (nota shift ini, cetak ulang, surat jalan, retur), Retur (cari nota lewat nomor lengkap), dan Tutup Shift. Admin juga punya tombol Dashboard. Pengeluaran menyusul.</li><li>Enter pada barcode memasukkan satuan default; barcode satuan langsung memilih satuannya.</li><li>Stok kurang → diblokir. Hanya satuan "dijual" yang tampil.</li><li>Batal sebelum bayar langsung, dicatat. Tanpa kredit atau hutang.</li></ul></details>
 </section>
 
 <!-- 13 PEMBAYARAN -->
-<section class="scr" id="bayar" data-group="Penjualan" data-nav="Pembayaran" data-title="Pembayaran" data-sub="Bisa campur tunai, transfer, QRIS, dan EDC." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/pos">
+<section class="scr" id="bayar" data-group="Penjualan" data-nav="Pembayaran" data-title="Pembayaran" data-sub="Bisa campur tunai, transfer, QRIS, dan EDC." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
 <div class="bd full" style="background:var(--bg)">
   <div class="scrim"><div class="modal" style="max-width:520px">
-    <div class="row"><h3 style="flex:1">Pembayaran</h3><span class="mute">INV/MU/K1/2610/0125</span></div>
+    <div class="row"><h3 style="flex:1">Pembayaran</h3></div>
     <div class="total" style="margin:6px 0 16px">Rp 937.500</div>
-    <div class="seg" style="margin-bottom:14px"><span class="on">Tunai</span><span>Transfer</span><span>QRIS</span><span>EDC</span></div>
-    <div class="f"><span>Diterima</span><div class="in big">Rp 500.000</div></div>
-    <div class="row" style="gap:6px;margin-bottom:14px"><span class="b s">Uang pas</span><span class="b s">50.000</span><span class="b s">100.000</span><span class="b s">500.000</span></div>
-    <div class="card flat sum" style="padding:12px 16px"><div><span>Tunai</span><b>500.000</b></div><div><span>QRIS</span><b>437.500</b></div><div class="t"><span>Sisa</span><span style="color:var(--ok)">Lunas</span></div></div>
-    <div class="row mt"><span class="ck"></span><span>Buat surat jalan (barang diantar)</span></div>
-    <div class="b ok w l mt"><svg class="ic"><use href="#i-printer"/></svg>Selesai &amp; Cetak Nota</div>
+    <div class="row" style="gap:8px;margin-bottom:8px"><div class="in sel" style="width:120px">Tunai</div><div class="in grow">Rp 500.000</div></div>
+    <div class="row" style="gap:8px;margin-bottom:12px"><div class="in sel" style="width:120px">QRIS</div><div class="in grow">Rp 437.500</div><span class="b s g"><svg class="ic s"><use href="#i-x"/></svg></span></div>
+    <div class="row" style="gap:6px;margin-bottom:14px"><span class="b s">Uang pas</span><span class="b s">50.000</span><span class="b s">100.000</span><span class="b s">500.000</span><span class="b s g"><svg class="ic s"><use href="#i-plus"/></svg>Metode lain</span></div>
+    <div class="in ph" style="margin-bottom:12px">Nama pelanggan (opsional)</div>
+    <div class="card flat sum" style="padding:12px 16px"><div><span>Dibayar</span><b>937.500</b></div><div class="t"><span>Kembalian</span><span style="color:var(--ok)">Rp 0</span></div></div>
+    <div class="row mt"><span class="b">Batal</span><span class="b ok l" style="flex:1">Bayar Rp 937.500</span></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Satu transaksi atomik: nota, item, pembayaran, dan stok.</li><li>Hanya tunai yang masuk hitungan kas shift.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Satu transaksi atomik: nota, item, pembayaran, dan stok. Stok kurang diblokir.</li><li>Kembalian hanya dari pembayaran tunai. Hanya tunai yang masuk hitungan kas shift.</li></ul></details>
+</section>
+
+<!-- 13b NOTA SELESAI -->
+<section class="scr" id="selesai" data-group="Penjualan" data-nav="Nota Selesai" data-title="Nota Selesai" data-sub="Kembalian ditampilkan besar. Nota dan surat jalan dari sini." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal" style="max-width:440px;padding:0;overflow:hidden">
+    <div class="row" style="background:var(--ok2);color:var(--ok);padding:16px 22px;justify-content:space-between;align-items:baseline"><span>Kembalian</span><b style="font-size:30px">Rp 62.500</b></div>
+    <div style="padding:18px 22px">
+      <b>INV/MU/K1/2610/0125</b><div class="mute" style="font-size:12.5px">25 Okt 2026 10:44 · Pak Budi</div>
+      <div class="list mt2"><div><span class="t">Cat Tembok Putih 5kg<small>2 DUS × 437.250</small></span><b>874.500</b></div><div><span class="t">Kuas 3"<small>3 PCS × 9.000</small></span><b>27.000</b></div><div><span class="t">Paku 5cm<small>1,5 KG × 24.000</small></span><b>36.000</b></div></div>
+      <div class="sum mt2"><div class="t"><span>Total</span><span>937.500</span></div><div><span>Tunai</span><span>500.000</span></div><div><span>QRIS</span><span>437.500</span></div></div>
+      <div class="row mt"><span class="b grow"><svg class="ic s"><use href="#i-truck"/></svg>Surat Jalan</span><span class="b p grow">Transaksi Baru</span></div>
+    </div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Surat Jalan dari sini membuka form surat jalan untuk nota ini (lihat Surat Jalan di Kasir).</li><li>Cetak nota dilakukan dari Riwayat Nota di Kasir; cetak otomatis menyusul.</li></ul></details>
 </section>
 
 <!-- 14 NOTA -->
-<section class="scr" id="nota" data-group="Penjualan" data-nav="Nota" data-title="Nota" data-sub="Cetak lewat browser. Layout final menyusul." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/pos/receipt">
+<section class="scr" id="nota" data-group="Penjualan" data-nav="Nota" data-title="Nota" data-sub="Dibuka di jendela baru dan langsung dicetak." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier/receipts/125/sheet">
 <div class="bd pg" style="background:var(--bg);padding:28px">
-  <div class="row" style="justify-content:center;margin-bottom:16px"><div class="seg"><span>58 mm</span><span class="on">80 mm</span></div><span class="b p"><svg class="ic s"><use href="#i-printer"/></svg>Cetak</span><span class="b"><svg class="ic s"><use href="#i-truck"/></svg>Surat Jalan</span></div>
+  <div class="row" style="justify-content:center;margin-bottom:16px"><span class="b p"><svg class="ic s"><use href="#i-printer"/></svg>Cetak</span><span class="b">Tutup</span></div>
   <div class="receipt">
     <div class="ctr"><b>MITRA UTAMA</b><br>Jl. Merdeka 12, Kota<br>Telp 021-555-0123</div><hr>
     <div class="l"><span>No</span><span>INV/MU/K1/2610/0125</span></div>
@@ -341,77 +360,248 @@
     <div class="ctr">Terima kasih</div>
   </div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Cetak ulang bertanda SALINAN; nota void bertanda VOID.</li><li>Header, footer, dan kertas diatur di Pengaturan.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Nota dibuka di jendela atau tab baru, jadi layar kasir tidak berubah; dialog cetak muncul sendiri. Kertas 80 mm.</li><li>Cetak ulang bertanda SALINAN; nota void bertanda VOID. Nota pengganti dari tukar barang berpembayaran "Kredit retur".</li></ul></details>
 </section>
 
 <!-- 15 RIWAYAT -->
-<section class="scr" id="riwayat" data-group="Penjualan" data-nav="Riwayat Nota & Void" data-title="Riwayat Nota" data-sub="Cari nota, cetak ulang, retur, atau void (Admin)." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/sales">
+<section class="scr" id="riwayat" data-group="Penjualan" data-nav="Riwayat Nota" data-title="Riwayat Nota" data-sub="Admin mencari nota lama, melihat detail, lalu retur atau surat jalan." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/sales">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Riwayat Nota" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Riwayat Nota</h3></div>
   <div class="pg"><div class="cols">
     <div>
-      <div class="row" style="margin-bottom:14px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Nomor nota</div><div class="in sel grow">Hari ini</div><div class="in sel grow">Semua status</div></div>
-      <div class="tbl"><table class="t"><tr><th>Nota</th><th>Metode</th><th class="r">Total</th><th>Status</th><th></th></tr>
-        <tr class="hl"><td><b>…/0125</b><small>10:44 · Sari</small></td><td>Tunai + QRIS</td><td class="r">937.500</td><td><span class="c ok">Selesai</span></td><td class="r"><span class="b s bad">Void</span></td></tr>
-        <tr><td><b>…/0123</b><small>10:31 · Sari</small></td><td>QRIS</td><td class="r">54.000</td><td><span class="c ok">Selesai</span> <span class="c warn">retur sebagian</span></td><td class="r"><span class="b s">Retur</span></td></tr>
-        <tr><td><b>…/0122</b><small>10:12 · Joko</small></td><td>Transfer</td><td class="r">2.150.000</td><td><span class="c bad">VOID</span></td><td></td></tr></table></div>
+      <div class="row" style="margin-bottom:10px;flex-wrap:wrap"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Nomor nota atau pelanggan</div><div class="in grow">Dari 25 Okt</div><div class="in grow">Sampai 25 Okt</div><div class="in sel grow">Semua kasir</div><div class="in sel grow">Semua status</div></div>
+      <div class="row" style="margin-bottom:10px"><span class="c">3 nota</span><b>Rp 3.141.500</b><span class="mute">tidak termasuk nota void</span></div>
+      <div class="tbl"><table class="t"><tr><th>Nota</th><th>Pelanggan</th><th>Metode</th><th class="r">Total</th><th>Status</th></tr>
+        <tr class="hl"><td><b>…/0125</b><small>10:44 · Sari</small></td><td>Pak Budi</td><td>Tunai + QRIS</td><td class="r">937.500</td><td><span class="c ok">Selesai</span></td></tr>
+        <tr><td><b>…/0123</b><small>10:31 · Sari</small></td><td class="mute">—</td><td>QRIS</td><td class="r">54.000</td><td><span class="c ok">Selesai</span></td></tr>
+        <tr><td><b>…/0122</b><small>10:12 · Joko</small></td><td>CV Maju</td><td>Transfer</td><td class="r">2.150.000</td><td><span class="c bad">Void</span></td></tr></table></div>
     </div>
     <div>
-      <div class="card"><h4>Void nota …/0125</h4><div class="f"><span>Alasan</span><div class="in">Salah input satuan</div></div>
+      <div class="card"><h4>Nota …/0125</h4>
+        <div class="list"><div><span class="t">Cat Tembok Putih 5kg<small>2 DUS × 437.250</small></span><b>874.500</b></div><div><span class="t">Kuas 3"<small>3 PCS × 9.000</small></span><b>27.000</b></div></div>
+        <div class="sum mt2"><div class="t"><span>Total</span><span>937.500</span></div><div><span>Tunai</span><span>500.000</span></div><div><span>QRIS</span><span>437.500</span></div></div>
+        <div class="row mt2"><span class="b grow"><svg class="ic s"><use href="#i-undo"/></svg>Buat Retur</span><span class="b grow"><svg class="ic s"><use href="#i-truck"/></svg>Buat Surat Jalan</span></div></div>
+      <div class="card mt"><h4>Void nota</h4><div class="f"><span>Alasan</span><div class="in">Salah input satuan</div></div>
         <div class="tip warn"><svg class="ic s"><use href="#i-info"/></svg><span>Stok kembali 2 DUS Cat, 3 PCS Kuas, 1,5 KG Paku.</span></div>
         <div class="b bad w mt2">Void nota</div></div>
-      <div class="card mt"><h4>Batal sebelum bayar</h4><div class="list"><div><span class="t">3 item · Rp 180.000<small>10:02 · Pelanggan batal</small></span></div><div><span class="t">1 item · Rp 45.000<small>09:15 · Salah scan</small></span></div></div></div>
     </div>
   </div></div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Void hanya oleh Admin dan tercatat; nota tidak dihapus.</li><li>Nota hari yang sudah ditutup memakai Retur.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Halaman ini hanya untuk Admin. Kasir memakai dialog Riwayat Nota di layar kasir (nota shift ini saja).</li><li>Tanggal bawaan hari ini; klik di mana saja pada kolom tanggal membuka kalender.</li><li>Void (kartu bawah) menyusul. Nota hari yang sudah ditutup memakai Retur.</li></ul></details>
+</section>
+
+<!-- 15b NOTA SHIFT DI KASIR -->
+<section class="scr" id="riwayatkasir" data-group="Penjualan" data-nav="Nota Shift di Kasir" data-title="Nota Shift di Kasir" data-sub="Dialog di layar kasir: nota shift ini saja, cetak ulang, surat jalan, retur." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal" style="max-width:560px">
+    <h3>Nota shift ini</h3>
+    <div class="in ph" style="margin:8px 0 12px"><svg class="ic s"><use href="#i-search"/></svg>Cari nomor nota atau nama pelanggan</div>
+    <div class="list">
+      <div><span class="t"><b>INV/MU/K1/2610/0125</b><small>10:44 · Pak Budi</small></span><b>Rp 937.500</b></div>
+      <div style="display:block"><div class="row" style="width:100%;justify-content:space-between"><span class="t"><b>INV/MU/K1/2610/0123</b><small>10:31</small></span><b>Rp 54.000</b></div>
+        <div class="row mt2" style="gap:6px"><span class="b s"><svg class="ic s"><use href="#i-printer"/></svg>Cetak ulang</span><span class="b s"><svg class="ic s"><use href="#i-truck"/></svg>Surat jalan</span><span class="b s"><svg class="ic s"><use href="#i-undo"/></svg>Retur</span><span class="b s g">Void (menyusul)</span></div></div>
+      <div><span class="t"><b>INV/MU/K1/2610/0121</b><small>10:02</small></span><b>Rp 180.000</b></div>
+    </div>
+    <div class="row mt"><span class="sp"></span><span class="b">Tutup</span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Kasir hanya melihat nota shift yang sedang berjalan; nota lama dibuka Admin lewat Riwayat Nota.</li><li>Tombol Retur lain: tombol <b>Retur</b> di bar atas kasir mencari nota lewat nomor lengkap.</li></ul></details>
 </section>
 
 <!-- 16 RETUR -->
-<section class="scr" id="retur" data-group="Penjualan" data-nav="Retur" data-title="Retur" data-sub="Refund atau tukar barang, stok kembali." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/returns/new">
+<section class="scr" id="returlist" data-group="Penjualan" data-nav="Daftar Retur" data-title="Daftar Retur" data-sub="Admin melihat semua retur dan memutuskan yang menunggu." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/returns">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Retur" data-who="Andi|Admin Toko"></aside>
-  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Retur nota …/0118</h3><span class="mute">24 Okt 2026</span></div>
+  <div class="mn"><div class="tb"><h3>Retur</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Retur Baru</span></div>
+  <div class="pg">
+    <div class="tip warn" style="margin-bottom:12px"><svg class="ic s"><use href="#i-clock"/></svg><span><b>2</b> retur menunggu persetujuan Anda.</span><span class="b s" style="margin-left:auto">Lihat</span></div>
+    <div class="row" style="margin-bottom:12px;flex-wrap:wrap"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Nomor retur, nomor nota, atau pelanggan</div><div class="in sel grow">Semua status</div><div class="in grow">Dari</div><div class="in grow">Sampai</div></div>
+    <div class="tbl"><table class="t"><tr><th>Nomor</th><th>Waktu</th><th>Nota</th><th>Kasir</th><th>Nilai retur</th><th>Status</th></tr>
+      <tr class="hl"><td><b>RET/MU/2610/0003</b></td><td>25 Okt 10:50</td><td>…/0118</td><td>Sari</td><td>Rp 452.250 <small>Refund Tunai</small></td><td><span class="c warn">Menunggu persetujuan</span></td></tr>
+      <tr><td><b>RET/MU/2610/0002</b></td><td>25 Okt 09:30</td><td>…/0110</td><td>Joko</td><td>Rp 120.000 <small>Tukar barang</small></td><td><span class="c warn">Menunggu persetujuan</span></td></tr>
+      <tr><td><b>RET/MU/2610/0001</b></td><td>24 Okt 15:20</td><td>…/0099</td><td>Sari</td><td>Rp 60.000 <small>Refund Transfer</small></td><td><span class="c ok">Selesai</span></td></tr></table></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Retur yang menunggu sudah menahan jumlahnya, jadi barang yang sama tidak bisa diretur dua kali. Stok dan kas baru berubah saat disetujui.</li><li>Shift tidak bisa ditutup selama masih ada retur menunggu di shift itu.</li></ul></details>
+</section>
+
+<!-- 16b RETUR BARU -->
+<section class="scr" id="retur" data-group="Penjualan" data-nav="Retur Baru" data-title="Retur Baru — Refund" data-sub="Pilih nota, barang, dan ke mana barang masuk. Uang kembali sesuai harga nota." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/returns/create">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Retur" data-who="Andi|Admin Toko"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Retur Baru</h3><span class="b">Batal</span><span class="b p">Simpan Retur</span></div>
+  <div class="pg">
+    <div class="card"><h4>Nota</h4><div class="in"><svg class="ic s"><use href="#i-receipt"/></svg>INV/MU/K1/2610/0118 · Pak Haji Rahmat</div></div>
+    <div class="card mt"><h4>Barang yang diretur</h4>
+      <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Di nota</th><th class="r">Bisa diretur</th><th>Diretur</th><th>Barang masuk ke</th></tr>
+        <tr><td><b>Cat Tembok Putih 5kg</b><small>Rp 437.250 / DUS</small></td><td class="r">2 DUS</td><td class="r">2 DUS</td><td><span class="in mini">1 DUS</span></td><td><span class="in mini sel">Dijual lagi</span></td></tr>
+        <tr><td><b>Lampu LED 9W</b><small>Rp 15.000 / PCS</small></td><td class="r">3 PCS</td><td class="r">3 PCS</td><td><span class="in mini">1 PCS</span></td><td><span class="in mini sel">Dead stock</span></td></tr>
+</table></div></div>
+    <div class="card mt"><h4>Penyelesaian</h4>
+      <div class="seg" style="margin-bottom:14px"><span class="on">Refund</span><span>Tukar barang</span></div>
+      <div class="g2"><div class="f"><span>Dikembalikan lewat</span><div class="in sel">Transfer</div></div><div class="f"><span>Rekening penerima</span><div class="in">BCA 1234567 a.n. Rahmat</div></div></div>
+      <div class="row" style="justify-content:space-between;align-items:baseline"><span class="ink2">Total dikembalikan</span><b style="font-size:22px">Rp 452.250</b></div>
+      <div class="f mt"><span>Alasan retur (opsional)</span><div class="in">Salah warna; lampu pecah</div></div>
+      <div class="tip mt2"><svg class="ic s"><use href="#i-info"/></svg><span>Retur tunai keluar dari laci shift Anda yang sedang berjalan. Harga mengikuti nota asli.</span></div></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Metode bawaan = cara bayar terbanyak di nota. Transfer, QRIS, dan EDC wajib rekening penerima; tunai tidak.</li><li>Tanpa batas hari. Retur dari Admin langsung selesai; retur kasir menunggu persetujuan.</li><li>Admin perlu shift berjalan karena retur tercatat di kas shift itu.</li></ul></details>
+</section>
+
+<!-- 16c TUKAR BARANG -->
+<section class="scr" id="tukar" data-group="Penjualan" data-nav="Tukar Barang" data-title="Retur Baru — Tukar Barang" data-sub="Barang pengganti dipilih di sini. Nilai retur dipakai lebih dulu." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/returns/create">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Retur" data-who="Andi|Admin Toko"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Retur Baru</h3><span class="b">Batal</span><span class="b p">Simpan Retur</span></div>
   <div class="pg"><div class="cols">
     <div>
-      <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Terjual</th><th>Retur</th><th>Kondisi</th><th class="r">Nilai</th></tr>
-        <tr><td><b>Cat Tembok Putih 5kg</b><small>DUS · 437.250</small></td><td class="r">2</td><td><span class="qty"><span>−</span><b>1</b><span>+</span></span></td><td><span class="c ok">Tetap dijual</span></td><td class="r">437.250</td></tr>
-        <tr><td><b>Lampu LED 9W</b><small>PCS · 15.000</small></td><td class="r">3</td><td><span class="qty"><span>−</span><b>1</b><span>+</span></span></td><td><span class="c warn">Dead stock</span></td><td class="r">15.000</td></tr>
-        <tr><td><b>Paku 5cm</b><small>KG · 24.000</small></td><td class="r">2</td><td><span class="qty"><span>−</span><b>0</b><span>+</span></span></td><td class="mute">—</td><td class="r mute">0</td></tr></table></div>
-      <div class="f mt"><span>Alasan</span><div class="in">Salah warna; lampu pecah</div></div>
+      <div class="card"><h4>Barang yang diretur</h4>
+        <div class="list"><div><span class="t">Cat Tembok Putih 5kg<small>Rp 437.250 / DUS · bisa diretur 2</small></span><span class="in mini">1 DUS</span><span class="in mini sel">Dijual lagi</span></div></div></div>
+      <div class="card mt"><h4>Penyelesaian</h4><div class="seg" style="margin-bottom:12px"><span>Refund</span><span class="on">Tukar barang</span></div>
+        <div class="in ph" style="margin-bottom:10px"><svg class="ic s"><use href="#i-search"/></svg>Cari barang pengganti</div>
+        <div class="list"><div><span class="t">Cat Tembok Putih 5kg · 25kg<small>stok 12 PAIL</small></span><span class="in mini sel">PAIL</span><span class="in mini">4</span><b>Rp 466.400</b></div></div></div>
     </div>
     <div>
-      <div class="card"><div class="seg" style="margin-bottom:14px"><span class="on">Refund</span><span>Tukar barang</span></div>
-        <div class="sum"><div><span>Nilai retur</span><span>452.250</span></div><div><span>Metode</span><span>Tunai</span></div><div class="t"><span>Refund</span><span>Rp 452.250</span></div></div>
-        <div class="b p w mt">Ajukan Retur</div></div>
-      <div class="tip warn mt"><svg class="ic s"><use href="#i-clock"/></svg><span>Menunggu persetujuan Admin. Stok &amp; kas berubah setelah disetujui.</span></div>
+      <div class="card"><h4>Hitungan</h4>
+        <div class="sum"><div><span>Nilai barang pengganti</span><span>466.400</span></div><div><span>Nilai barang yang diretur</span><span>437.250</span></div><div class="t"><span>Pelanggan menambah</span><span>Rp 29.150</span></div></div>
+        <div class="g2 mt"><div class="f"><span>Dibayar lewat</span><div class="in sel">Tunai</div></div><div class="f"><span>Jumlah dibayar</span><div class="in">30.000</div></div></div>
+        <div class="tip mt2"><svg class="ic s"><use href="#i-info"/></svg><span>Bila pengganti lebih murah, sisanya dikembalikan lewat metode refund (rekening untuk non tunai).</span></div></div>
+      <div class="tip warn mt"><svg class="ic s"><use href="#i-clock"/></svg><span>Nota pengganti dibuat saat retur disetujui. Harga dan stok dicek lagi saat itu.</span></div>
     </div>
   </div></div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Tukar barang: nilai retur otomatis memotong penjualan baru di kasir.</li><li>Tanpa batas hari. Refund memakai harga di nota asli.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Pelanggan menambah selisih lewat satu pembayaran; tunai boleh lebih dan diberi kembalian. Pembayaran kurang ditolak.</li><li>Nota pengganti dibayar "Kredit retur" sebesar nilai retur yang terpakai, ditambah pembayaran pelanggan.</li></ul></details>
+</section>
+
+<!-- 16d DETAIL RETUR -->
+<section class="scr" id="returdetail" data-group="Penjualan" data-nav="Detail Retur" data-title="Detail Retur" data-sub="Admin memeriksa, lalu menyetujui atau menolak. Bukti dan nota pengganti dicetak dari sini." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/returns/2">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Retur" data-who="Andi|Admin Toko"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg>Retur</span><h3>RET/MU/2610/0002</h3><span class="b"><svg class="ic s"><use href="#i-printer"/></svg>Cetak Bukti Retur</span><span class="b bad">Tolak</span><span class="b p">Setujui</span></div>
+  <div class="pg"><div class="card">
+    <div class="row" style="justify-content:space-between;align-items:flex-start"><div><b style="font-size:17px">RET/MU/2610/0002</b><div class="mute" style="font-size:12.5px">25 Okt 09:30 · kasir Joko</div><div class="mute" style="font-size:12.5px">Nota …/0110 · CV Maju</div></div><span class="c warn">Menunggu persetujuan</span></div>
+    <div class="sum mt2"><div><span>Penyelesaian</span><span>Tukar barang</span></div><div><span>Nilai retur</span><span>120.000</span></div><div><span>Alasan</span><span>Salah ukuran</span></div></div>
+    <div class="tbl mt"><table class="t"><tr><th>Barang</th><th class="r">Jumlah</th><th class="r">Harga</th><th class="r">Subtotal</th><th>Masuk ke</th></tr>
+      <tr><td>Lampu LED 9W</td><td class="r">8 PCS</td><td class="r">15.000</td><td class="r">120.000</td><td><span class="c ok">Dijual lagi</span></td></tr></table></div>
+    <h4 style="margin:18px 0 8px">Barang pengganti</h4>
+    <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Jumlah</th><th class="r">Harga</th><th class="r">Subtotal</th></tr>
+      <tr><td>Lampu LED 12W</td><td class="r">8 PCS</td><td class="r">17.500</td><td class="r">140.000</td></tr></table></div>
+    <div class="sum mt2"><div><span>Nilai pengganti</span><span>140.000</span></div><div><span>Pelanggan menambah</span><span>20.000 lewat Tunai</span></div><div><span>Nota pengganti</span><span class="mute">dibuat saat disetujui</span></div></div>
+  </div></div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Setelah disetujui, tombol <b>Cetak Nota Pengganti</b> muncul dan nomor nota pengganti terisi.</li><li>Setujui dan Tolak meminta konfirmasi. Bila stok pengganti kurang atau harga naik sampai pembayaran tak cukup, persetujuan gagal dan retur tetap menunggu.</li><li>Retur refund non tunai menampilkan rekening penerima.</li></ul></details>
+</section>
+
+<!-- 16e RETUR DI KASIR -->
+<section class="scr" id="returkasir" data-group="Penjualan" data-nav="Retur di Kasir" data-title="Retur di Kasir" data-sub="Kasir mencari nota lewat nomor lengkap lalu mengajukan retur ke Admin." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
+<div class="bd pg" style="background:var(--bg)">
+  <div class="g2">
+    <div class="card"><h4>1 · Cari nota</h4>
+      <p class="mute" style="margin:0 0 10px;font-size:12.5px">Ketik nomor nota yang dibawa pelanggan. Retur menunggu persetujuan Admin.</p>
+      <div class="f"><span>Nomor nota</span><div class="in">INV/MU/K1/2610/0118</div></div>
+      <div class="row mt2"><span class="sp"></span><span class="b">Batal</span><span class="b p">Cari Nota</span></div>
+      <div class="tip warn mt2"><svg class="ic s"><use href="#i-alert"/></svg><span>Nomor sebagian tidak menemukan apa pun: nota lama tidak bisa ditelusuri.</span></div></div>
+    <div class="card"><h4>2 · Retur — nota INV/MU/K1/2610/0118</h4>
+      <div class="list"><div><span class="t">Cat Tembok Putih 5kg<small>dibeli 2 DUS · Rp 437.250</small></span><span class="in mini">1 DUS</span><span class="in mini sel">Dijual lagi</span></div></div>
+      <div class="seg mt2" style="margin-bottom:10px"><span class="on">Refund</span><span>Tukar barang</span></div>
+      <div class="f"><span>Uang dikembalikan lewat</span><div class="in sel">Transfer</div></div>
+      <div class="f"><span>Rekening penerima</span><div class="in">BCA 1234567 a.n. Rahmat</div></div>
+      <div class="row" style="margin:6px 0"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span><span>Cetak bukti retur setelah disimpan</span></div>
+      <div class="row" style="justify-content:space-between;align-items:baseline"><span class="ink2">Total dikembalikan</span><b style="font-size:20px">Rp 437.250</b></div>
+      <div class="row mt2"><span class="sp"></span><span class="b">Tutup</span><span class="b p">Ajukan Retur</span></div></div>
+  </div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Kasir boleh mengajukan retur untuk nota mana pun di toko, tetapi selalu menunggu persetujuan Admin; stok dan kas belum berubah.</li><li>Di bawah form tampil retur yang sudah diajukan untuk nota itu, dengan tombol Cetak (dan Nota pengganti setelah disetujui).</li></ul></details>
+</section>
+
+<!-- 16f BUKTI RETUR -->
+<section class="scr" id="returslip" data-group="Penjualan" data-nav="Bukti Retur" data-title="Bukti Retur" data-sub="Satu kertas untuk retur: refund atau tukar barang." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/returns/2/sheet">
+<div class="bd pg" style="background:var(--bg);padding:28px">
+  <div class="row" style="justify-content:center;margin-bottom:16px"><span class="b p"><svg class="ic s"><use href="#i-printer"/></svg>Cetak</span><span class="b">Tutup</span></div>
+  <div class="receipt">
+    <div class="ctr"><b>MITRA UTAMA</b><br>Jl. Merdeka 12, Kota<br>Telp 021-555-0123</div><hr>
+    <div class="ctr"><b>BUKTI RETUR</b><br><b>MENUNGGU PERSETUJUAN</b></div><hr>
+    <div class="l"><span>No</span><span>RET/MU/2610/0002</span></div>
+    <div class="l"><span>Tgl</span><span>25-10-2026 09:30</span></div>
+    <div class="l"><span>Nota</span><span>INV/MU/K1/2610/0110</span></div>
+    <div class="l"><span>Kasir</span><span>Joko</span></div>
+    <div class="l"><span>Alasan</span><span>Salah ukuran</span></div><hr>
+    Lampu LED 9W<div class="l"><span>&nbsp;8 PCS x 15.000</span><span>120.000</span></div><hr>
+    <div class="ctr"><b>Ditukar dengan</b></div>
+    Lampu LED 12W<div class="l"><span>&nbsp;8 PCS x 17.500</span><span>140.000</span></div><hr>
+    <div class="l"><span>Nilai retur</span><span>120.000</span></div>
+    <div class="l"><span>Nilai pengganti</span><span>140.000</span></div>
+    <div class="l"><span>Tambah (Tunai)</span><span>20.000</span></div><hr>
+    <div class="ctr" style="padding-top:20px">______________<br>Penerima uang</div><hr>
+    <div class="ctr">Terima kasih</div>
+  </div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Bukan nota kredit: toko tidak punya piutang atau PPN di Fase 1. Refund tidak membuat nota penjualan; tukar barang membuat nota pengganti biasa.</li><li>Dibuka di jendela baru dan dicetak otomatis setelah kasir mengajukan retur; bertanda status selama belum disetujui. Refund non tunai mencantumkan rekening.</li></ul></details>
 </section>
 
 <!-- 17 SURAT JALAN -->
 <section class="scr" id="sj" data-group="Penjualan" data-nav="Surat Jalan" data-title="Surat Jalan" data-sub="Dokumen antar barang. Tidak mengubah stok." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/delivery-notes">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Surat Jalan" data-who="Andi|Admin Toko"></aside>
-  <div class="mn"><div class="tb"><h3>Surat Jalan</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Baru dari nota</span></div>
+  <div class="mn"><div class="tb"><h3>Surat Jalan</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Surat Jalan Baru</span></div>
   <div class="pg"><div class="cols">
-    <div class="tbl"><table class="t"><tr><th>Surat jalan</th><th>Penerima</th><th>Status</th><th></th></tr>
-      <tr class="hl"><td><b>SJ/MU/2610/0007</b><small>Nota …/0125</small></td><td>CV Maju</td><td><span class="c">Draft</span></td><td class="r"><span class="b s">Buka</span></td></tr>
-      <tr><td><b>SJ/MU/2610/0006</b><small>Nota …/0118</small></td><td>Pak Haji Rahmat</td><td><span class="c pri">Dikirim</span></td><td class="r"><span class="b s">Update</span></td></tr>
-      <tr><td><b>SJ/MU/2610/0005</b><small>Nota …/0110</small></td><td>Proyek Villa Asri</td><td><span class="c warn">Sebagian</span></td><td class="r"><span class="b s">Retur</span></td></tr>
-      <tr><td><b>SJ/MU/2610/0004</b><small>Nota …/0099</small></td><td>CV Maju</td><td><span class="c ok">Diterima</span></td><td class="r"><span class="b s">Cetak</span></td></tr></table></div>
-    <div class="card"><h4>SJ/MU/2610/0007</h4>
-      <div class="f"><span>Penerima</span><div class="in">Pak Wahyu (CV Maju)</div></div>
+    <div>
+      <div class="row" style="margin-bottom:12px;flex-wrap:wrap"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Nomor, penerima, atau nomor nota</div><div class="in sel grow">Semua status</div><div class="in grow">Dari</div><div class="in grow">Sampai</div></div>
+      <div class="tbl"><table class="t"><tr><th>Nomor</th><th>Penerima</th><th>Nota</th><th class="r">Barang</th><th>Status</th></tr>
+        <tr class="hl"><td><b>SJ/MU/2610/0007</b><small>25 Okt</small></td><td>CV Maju</td><td>…/0125</td><td class="r">2</td><td><span class="c">Draft</span></td></tr>
+        <tr><td><b>SJ/MU/2610/0006</b><small>25 Okt</small></td><td>Pak Haji Rahmat</td><td>…/0118</td><td class="r">1</td><td><span class="c warn">Dikirim</span></td></tr>
+        <tr><td><b>SJ/MU/2610/0005</b><small>24 Okt</small></td><td>Proyek Villa Asri</td><td>…/0110</td><td class="r">3</td><td><span class="c warn">Sebagian terkirim</span></td></tr>
+        <tr><td><b>SJ/MU/2610/0004</b><small>24 Okt</small></td><td>CV Maju</td><td>…/0099</td><td class="r">2</td><td><span class="c ok">Terkirim</span></td></tr></table></div>
+    </div>
+    <div class="card"><h4>Surat Jalan Baru</h4>
+      <div class="f"><span>Nota</span><div class="in"><svg class="ic s"><use href="#i-receipt"/></svg>INV/MU/K1/2610/0125</div></div>
+      <div class="g2"><div class="f"><span>Nama penerima</span><div class="in">Pak Wahyu (CV Maju)</div></div><div class="f"><span>Telepon</span><div class="in">0812-0000</div></div></div>
       <div class="f"><span>Alamat</span><div class="in">Jl. Raya Industri 21</div></div>
-      <div class="g2"><div class="f"><span>Sopir</span><div class="in">Dedi</div></div><div class="f"><span>Kendaraan</span><div class="in">B 9123 XY</div></div></div>
-      <div class="list" style="margin-bottom:10px"><div><span class="t">Cat Tembok Putih 5kg<small>nota 2 DUS</small></span><span class="in mini">2</span></div><div><span class="t">Kuas 3"<small>nota 3 PCS</small></span><span class="in mini">3</span></div><div><span class="t">Paku 5cm<small>dibawa pembeli</small></span><span class="in mini">0</span></div></div>
-      <div class="row"><span class="b grow">Simpan draft</span><span class="b p grow"><svg class="ic s"><use href="#i-printer"/></svg>Cetak</span></div></div>
+      <div class="g2"><div class="f"><span>Sopir</span><div class="in">Dedi</div></div><div class="f"><span>No. kendaraan</span><div class="in">B 9123 XY</div></div></div>
+      <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Di nota</th><th class="r">Sisa</th><th>Diantar</th></tr>
+        <tr><td>Cat Tembok Putih 5kg</td><td class="r">2 DUS</td><td class="r">2 DUS</td><td><span class="in mini">2</span></td></tr>
+        <tr><td>Kuas 3"</td><td class="r">3 PCS</td><td class="r">3 PCS</td><td><span class="in mini">3</span></td></tr>
+        <tr><td>Paku 5cm</td><td class="r">1,5 KG</td><td class="r">1,5 KG</td><td><span class="in mini">0</span></td></tr></table></div>
+      <div class="row mt2"><span class="b">Batal</span><span class="b p grow">Buat Surat Jalan</span></div></div>
   </div></div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Dibuat dari nota; satu nota boleh beberapa surat jalan.</li><li>Cetak tanpa harga, dengan kolom tanda tangan.</li><li>Barang pulang hanya penanda; stok kembali lewat Retur.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Dibuat dari nota selesai; satu nota boleh beberapa surat jalan selama jumlahnya tidak melebihi nota. Baris 0 tidak ikut.</li><li>Status: Draft → Dikirim → Terkirim, Sebagian terkirim, atau Kembali; atau Dibatalkan. Surat jalan tidak mengubah stok.</li></ul></details>
+</section>
+
+<!-- 17b DETAIL SURAT JALAN -->
+<section class="scr" id="sjdetail" data-group="Penjualan" data-nav="Detail Surat Jalan" data-title="Detail Surat Jalan" data-sub="Kirim, selesaikan, batalkan, atau cetak. Cetak di jendela baru." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/delivery-notes/6">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Surat Jalan" data-who="Andi|Admin Toko"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg>Surat Jalan</span><h3>SJ/MU/2610/0006</h3><span class="b"><svg class="ic s"><use href="#i-printer"/></svg>Cetak ulang</span><span class="b ok">Selesaikan Pengiriman</span></div>
+  <div class="pg"><div class="card">
+    <div class="row" style="justify-content:space-between;align-items:flex-start"><div><b style="font-size:17px">SJ/MU/2610/0006</b><div class="mute" style="font-size:12.5px">25 Okt · dibuat Sari</div><div class="mute" style="font-size:12.5px">Nota …/0118</div></div><span class="c warn">Dikirim</span></div>
+    <div class="sum mt2"><div><span>Penerima</span><span>Pak Haji Rahmat · 0813-1111</span></div><div><span>Alamat</span><span>Jl. Pasar Baru 8</span></div><div><span>Pengirim</span><span>Dedi · B 9123 XY</span></div><div><span>Dikirim</span><span>25 Okt 11:05</span></div></div>
+    <div class="tbl mt"><table class="t"><tr><th>Barang</th><th class="r">Diantar</th></tr>
+      <tr><td>Cat Tembok Putih 5kg</td><td class="r">2 DUS</td></tr></table></div>
+    <div class="tip mt"><svg class="ic s"><use href="#i-info"/></svg><span>Selesaikan Pengiriman: isi jumlah yang kembali ke toko; sisanya dianggap diterima. Tombol <b>Buat Retur</b> muncul bila ada yang kembali.</span></div>
+  </div></div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Draft: Tandai Dikirim atau Batalkan. Dikirim: Selesaikan Pengiriman atau Batalkan. Surat jalan selesai tidak bisa dibatalkan.</li><li>Cetak ke-2 dst. bertanda SALINAN, tanpa harga, dengan kolom tanda tangan pengirim dan penerima (A5 lanskap).</li></ul></details>
+</section>
+
+<!-- 17c SURAT JALAN DI KASIR -->
+<section class="scr" id="sjkasir" data-group="Penjualan" data-nav="Surat Jalan di Kasir" data-title="Surat Jalan di Kasir" data-sub="Dari nota shift atau setelah bayar: lihat yang sudah diantar, buat yang baru." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal" style="max-width:560px">
+    <h3>Surat jalan</h3><p class="mute" style="margin:0 0 10px;font-size:12.5px">Nota INV/MU/K1/2610/0125</p>
+    <div class="mute" style="font-size:12px;font-weight:700;letter-spacing:.04em;margin-bottom:4px">RINGKASAN PENGIRIMAN</div>
+    <div style="font-size:13px;margin-bottom:10px"><b>Cat Tembok Putih 5kg</b><br><span class="mute">Nota 2 DUS · di surat jalan 1 · diterima 0 · <b style="color:var(--bad)">sisa 1</b></span></div>
+    <div class="mute" style="font-size:12px;font-weight:700;letter-spacing:.04em;margin-bottom:4px">SUDAH DIBUAT</div>
+    <div class="card flat" style="padding:8px 12px;margin-bottom:10px"><div class="row" style="justify-content:space-between"><b>SJ/MU/2610/0007</b><span class="c">Draft</span><span class="b s"><svg class="ic s"><use href="#i-printer"/></svg>Cetak ulang</span></div><div class="row" style="justify-content:space-between;font-size:13px"><span>Cat Tembok Putih 5kg</span><span>1 DUS <small class="mute">belum dikirim</small></span></div></div>
+    <div class="mute" style="font-size:12px;font-weight:700;letter-spacing:.04em;margin-bottom:4px">SURAT JALAN BARU</div>
+    <div class="f"><span>Nama penerima</span><div class="in">Pak Budi</div></div>
+    <div class="g2"><div class="f"><span>Telepon</span><div class="in">—</div></div><div class="f"><span>No. kendaraan</span><div class="in">—</div></div></div>
+    <div class="row" style="justify-content:space-between;margin:6px 0"><span>Cat Tembok Putih 5kg<small class="mute" style="display:block">sisa 1 DUS</small></span><span class="in mini">1</span></div>
+    <div class="row mt"><span class="sp"></span><span class="b">Tutup</span><span class="b">Buat</span><span class="b p"><svg class="ic s"><use href="#i-printer"/></svg>Buat &amp; Cetak</span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Kasir membuat dan mencetak surat jalan untuk nota miliknya; Admin untuk nota mana pun. Mengubah status tetap di halaman Admin.</li><li>Ringkasan menunjukkan berapa yang masuk surat jalan, sudah diterima, dan sisanya.</li></ul></details>
 </section>
 
 <!-- 18 PENGELUARAN -->
@@ -438,38 +628,60 @@
 </section>
 
 <!-- 19 TUTUP SHIFT -->
-<section class="scr" id="shifttutup" data-group="Kas & Harian" data-nav="Tutup Shift" data-title="Tutup Shift" data-sub="Hitung uang di laci, lihat selisih, cetak Laporan Z." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/pos">
+<section class="scr" id="shifttutup" data-group="Kas & Harian" data-nav="Tutup Shift" data-title="Tutup Shift" data-sub="Hitung uang di laci dan lihat selisih." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
 <div class="bd full" style="background:var(--bg)">
   <div class="scrim"><div class="modal" style="max-width:520px">
-    <h3>Tutup Shift #0425</h3><p class="ink2" style="margin:0 0 14px">Kasir 1 · Sari</p>
-    <div class="sum"><div><span>Penjualan tunai</span><span>3.250.000</span></div><div><span>Transfer · QRIS · EDC</span><span>1.600.000</span></div><div><span>Refund tunai</span><span>−150.000</span></div><div><span>Pengeluaran laci</span><span>−50.000</span></div><div><span>Modal awal</span><span>500.000</span></div><div class="t"><span>Tunai seharusnya</span><span>3.550.000</span></div></div>
-    <div class="g2 mt"><div class="f"><span>Tunai hasil hitung</span><div class="in big">3.540.000</div></div><div class="f"><span>Selisih</span><div class="in big" style="color:var(--bad)">−10.000</div></div></div>
-    <div class="f"><span>Catatan selisih</span><div class="in">Kembalian kurang Rp 10.000</div></div>
-    <div class="tip"><svg class="ic s"><use href="#i-wallet"/></svg><span>Modal 500.000 tinggal di laci · <b>setoran Rp 3.040.000</b></span></div>
-    <div class="b bad w l mt">Tutup Shift &amp; Cetak Laporan Z</div>
+    <h3>Tutup shift</h3>
+    <div class="sum mt2"><div><span>Jumlah nota</span><span>14</span></div><div><span>Total penjualan</span><span>4.850.000</span></div><div><span>Tunai (sudah dikurangi kembalian dan retur tunai)</span><span>3.100.000</span></div><div><span>Transfer</span><span>900.000</span></div><div><span>QRIS</span><span>700.000</span></div><div><span>EDC</span><span>0</span></div><div><span>Retur disetujui</span><span>450.000</span></div><div><span>Retur tunai</span><span>150.000</span></div><div><span>Modal kas awal</span><span>500.000</span></div><div class="t"><span>Tunai seharusnya di laci</span><span>3.600.000</span></div></div>
+    <div class="g2 mt"><div class="f"><span>Tunai yang dihitung</span><div class="in big">3.590.000</div></div><div class="f"><span>Selisih</span><div class="in big" style="color:var(--bad)">−10.000</div></div></div>
+    <div class="f"><span>Catatan selisih (wajib)</span><div class="in">Kembalian kurang Rp 10.000</div></div>
+    <div class="tip"><svg class="ic s"><use href="#i-wallet"/></svg><span>Modal 500.000 tinggal di laci · <b>setoran Rp 3.090.000</b></span></div>
+    <div class="row mt"><span class="sp"></span><span class="b">Batal</span><span class="b bad">Tutup Shift</span></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Selisih ≠ 0 wajib catatan dan menunggu approval Admin; tidak memblokir shift berikutnya.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Selisih ≠ 0 wajib catatan dan menunggu keputusan Admin di Rekap Shift; tidak memblokir shift berikutnya.</li><li>Shift tidak bisa ditutup selama masih ada retur yang menunggu persetujuan di shift itu. Laporan Z cetak dan pengeluaran laci menyusul.</li></ul></details>
 </section>
 
 <!-- 20 REKAP SHIFT -->
-<section class="scr" id="rekap" data-group="Kas & Harian" data-nav="Rekap Shift" data-title="Rekap Shift" data-sub="Admin meninjau tiap shift dan menyetujui selisih kas." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/shifts">
+<section class="scr" id="rekap" data-group="Kas & Harian" data-nav="Rekap Shift" data-title="Rekap Shift" data-sub="Admin meninjau tiap shift dan memutuskan selisih kas." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/shifts">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Rekap Shift" data-who="Andi|Admin Toko"></aside>
-  <div class="mn"><div class="tb"><h3>Rekap Shift</h3><div class="in mini">22–25 Okt 2026</div></div>
-  <div class="pg"><div class="cols">
-    <div class="tbl"><table class="t"><tr><th>Shift</th><th>Kasir</th><th class="r">Setoran</th><th class="r">Selisih</th><th>Status</th></tr>
-      <tr><td><b>#0425</b><small>25 Okt · berjalan</small></td><td>Sari</td><td class="r mute">—</td><td class="r mute">—</td><td><span class="c ok">Buka</span></td></tr>
-      <tr class="hl"><td><b>#0424</b><small>24 Okt · siang</small></td><td>Joko</td><td class="r">2.270.000</td><td class="r"><span class="c bad">−10.000</span></td><td><span class="c warn">Menunggu</span></td></tr>
-      <tr><td><b>#0423</b><small>24 Okt · pagi</small></td><td>Sari</td><td class="r">1.650.000</td><td class="r"><span class="c ok">0</span></td><td><span class="c">Selesai</span></td></tr>
-      <tr><td><b>#0422</b><small>23 Okt · siang</small></td><td>Joko</td><td class="r">2.495.000</td><td class="r"><span class="c warn">+15.000</span></td><td><span class="c ok">Disetujui</span></td></tr></table></div>
-    <div class="card"><h4>Tinjau shift #0424</h4>
-      <div class="sum"><div><span>Tunai seharusnya</span><span>2.780.000</span></div><div><span>Dihitung</span><span>2.770.000</span></div><div class="t"><span>Selisih</span><span style="color:var(--bad)">−10.000</span></div></div>
-      <div class="mute mt2" style="font-size:12.5px">Catatan kasir: kembalian kurang Rp 10.000</div>
-      <div class="f mt"><span>Catatan approval</span><div class="in">Dicatat sebagai selisih kembalian</div></div>
-      <div class="row"><span class="b bad grow">Tolak</span><span class="b ok grow">Setujui</span></div></div>
+  <div class="mn"><div class="tb"><h3>Rekap Shift</h3></div>
+  <div class="pg">
+    <div class="tip warn" style="margin-bottom:8px"><svg class="ic s"><use href="#i-clock"/></svg><span><b>1</b> selisih kas menunggu keputusan Anda.</span><span class="b s" style="margin-left:auto">Lihat</span></div>
+    <div class="tip warn" style="margin-bottom:12px"><svg class="ic s"><use href="#i-info"/></svg><span><b>1</b> selisih kas yang ditolak belum ditindaklanjuti.</span><span class="b s" style="margin-left:auto">Lihat</span></div>
+    <div class="row" style="margin-bottom:12px;flex-wrap:wrap"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Nama kasir</div><div class="in sel grow">Semua shift</div><div class="in sel grow">Semua selisih</div><div class="in grow">Dari</div><div class="in grow">Sampai</div></div>
+    <div class="tbl"><table class="t"><tr><th>Shift</th><th>Kasir</th><th>Jam</th><th class="r">Penjualan</th><th class="r">Selisih kas</th><th>Keputusan</th></tr>
+      <tr><td><b>Shift #0425</b><small>Kasir 1 · 25 Okt</small></td><td>Sari</td><td>08:00 <span class="c ok">Berjalan</span></td><td class="r">1.250.000<small>5 nota</small></td><td class="r mute">–</td><td></td></tr>
+      <tr class="hl"><td><b>Shift #0424</b><small>Kasir 2 · 24 Okt</small></td><td>Joko</td><td>13:00–20:00</td><td class="r">2.770.000<small>9 nota</small></td><td class="r" style="color:var(--bad)">−10.000</td><td><span class="c warn">Menunggu persetujuan</span></td></tr>
+      <tr><td><b>Shift #0423</b><small>Kasir 1 · 24 Okt</small></td><td>Sari</td><td>07:55–13:00</td><td class="r">1.650.000<small>6 nota</small></td><td class="r">0</td><td><span class="c">Tidak ada selisih</span></td></tr>
+      <tr><td><b>Shift #0421</b><small>Kasir 1 · 23 Okt</small></td><td>Joko</td><td>13:00–20:00</td><td class="r">2.495.000<small>8 nota</small></td><td class="r" style="color:var(--bad)">−5.000</td><td><span class="c bad">Ditolak</span><small style="color:var(--warn);font-weight:600">perlu tindak lanjut</small></td></tr></table></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Menu Admin. Dashboard menautkan baris selisih kas ke daftar ini yang sudah difilter.</li><li>Ke halaman detail dengan mengklik baris.</li></ul></details>
+</section>
+
+<!-- 20b DETAIL SHIFT -->
+<section class="scr" id="rekapdetail" data-group="Kas & Harian" data-nav="Detail Shift" data-title="Detail Shift" data-sub="Penjualan, kas, retur, dan keputusan selisih satu shift." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/shifts/424">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Rekap Shift" data-who="Andi|Admin Toko"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg>Rekap Shift</span><h3>Shift #0424</h3></div>
+  <div class="pg"><div class="card" style="max-width:720px">
+    <div class="row" style="justify-content:space-between;align-items:flex-start"><div><b style="font-size:17px">Shift #0424</b><div class="mute" style="font-size:12.5px">Kasir 2 · Joko · 24 Okt 2026</div><div class="mute" style="font-size:12.5px">Buka 24 Okt 13:00 · tutup 24 Okt 20:00</div></div><span class="c">Ditutup</span></div>
+    <h4 style="margin:16px 0 6px">Penjualan</h4>
+    <div class="sum"><div><span>Jumlah nota</span><span>9</span></div><div><span>Total penjualan</span><span>2.770.000</span></div><div><span>Tunai</span><span>1.870.000</span></div><div><span>Transfer · QRIS · EDC</span><span>900.000</span></div></div>
+    <h4 style="margin:16px 0 6px">Kas</h4>
+    <div class="sum"><div><span>Modal kas awal</span><span>500.000</span></div><div><span>Tunai seharusnya di laci</span><span>2.380.000</span></div><div><span>Tunai dihitung</span><span>2.370.000</span></div><div class="t"><span>Selisih</span><span style="color:var(--bad)">−10.000</span></div></div>
+    <div class="mute mt2" style="font-size:12.5px">Catatan kasir: kembalian kurang Rp 10.000</div>
+    <h4 style="margin:16px 0 6px">Retur di shift ini</h4>
+    <div class="list"><div><b>RET/MU/2610/0002</b><span class="c ok">Selesai</span><span style="margin-left:auto">Rp 120.000 <small class="mute">Tukar barang</small></span></div></div>
+    <h4 style="margin:16px 0 6px">Keputusan selisih <span class="c warn">Menunggu persetujuan</span></h4>
+    <div class="f"><span>Catatan keputusan</span><div class="in">Dicatat sebagai selisih kembalian</div></div>
+    <div class="row"><span class="sp"></span><span class="b bad">Tolak</span><span class="b p">Setujui</span></div>
+
   </div></div></div>
 </div>
+<details class="nt"><summary>Catatan</summary><ul><li>Catatan keputusan wajib untuk Setujui maupun Tolak. Keputusan tidak menghalangi shift berikutnya.</li><li>Setelah ditolak muncul tombol <b>Tandai sudah ditindaklanjuti</b>. Mengisi isi tindak lanjut dan memberi tahu kasir menyusul.</li></ul></details>
 </section>
 
 <!-- 21 TUTUP HARI -->
