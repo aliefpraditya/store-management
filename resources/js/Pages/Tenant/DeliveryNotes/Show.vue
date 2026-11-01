@@ -99,8 +99,11 @@ async function print() {
 
 <template>
     <StoreLayout :title="note.number">
+        <template #back>
+            <q-btn flat no-caps dense icon="arrow_back" label="Surat Jalan" class="q-ml-sm" @click="router.visit(note.urls.index)" />
+        </template>
+
         <template #actions>
-            <q-btn flat no-caps dense icon="arrow_back" label="Surat Jalan" class="q-mr-sm" @click="router.visit(note.urls.index)" />
             <q-btn v-if="note.can_cancel" flat no-caps dense color="negative" label="Batalkan" class="q-mr-sm" @click="cancel" />
             <q-btn outline no-caps dense color="primary" icon="print" :label="note.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="isPrinting" class="q-mr-sm" @click="print" />
             <q-btn v-if="note.can_ship" color="primary" unelevated no-caps dense label="Tandai Dikirim" @click="ship" />

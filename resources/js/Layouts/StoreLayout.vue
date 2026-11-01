@@ -62,7 +62,7 @@ const menuGroups = computed(() => {
     if (user.value.is_super_admin) {
         groups.unshift({
             label: 'Pusat',
-            items: [{ label: 'Kembali ke Pusat', icon: 'arrow_back', href: page.props.urls.central_dashboard }],
+            items: [{ label: 'Kembali ke Pusat', icon: 'arrow_back', href: page.props.app_urls.central_dashboard }],
         });
     }
 
@@ -72,6 +72,10 @@ const menuGroups = computed(() => {
 
 <template>
     <AppShell :title="title" :menu-groups="menuGroups" :brand="brand" :role-label="user.is_super_admin ? 'Super Admin' : 'Admin Toko'">
+        <template v-if="$slots.back" #back>
+            <slot name="back" />
+        </template>
+
         <template #actions>
             <slot name="actions" />
         </template>

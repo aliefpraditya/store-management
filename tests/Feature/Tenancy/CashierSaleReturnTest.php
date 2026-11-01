@@ -212,7 +212,9 @@ class CashierSaleReturnTest extends TestCase
 
     public function test_the_till_gives_the_return_lookup_address(): void
     {
-        $this->actingAs($this->cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('urls.return_lookup', $this->url('returns.lookup')));
+        $this->actingAs($this->cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
+            ->where('urls.return_lookup', $this->url('returns.lookup'))
+            ->where('app_urls.logout', route('logout')));
     }
 
     public function test_the_slip_can_be_printed_by_who_asked_and_by_admins(): void

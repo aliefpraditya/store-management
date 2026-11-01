@@ -104,7 +104,7 @@ function submit() {
 
             <div class="user-form__actions">
                 <q-btn type="submit" color="primary" unelevated no-caps label="Simpan" :loading="form.processing" />
-                <q-btn flat no-caps label="Batal" @click="router.visit(page.props.urls.central_users)" />
+                <q-btn flat no-caps label="Batal" @click="router.visit(page.props.app_urls.central_users)" />
             </div>
         </q-form>
     </CentralLayout>

@@ -287,7 +287,7 @@ function confirmSignOut() {
         cancel: { label: 'Batal', flat: true, noCaps: true },
         ok: { label: 'Keluar', color: 'negative', unelevated: true, noCaps: true },
         persistent: true,
-    }).onOk(() => router.post(page.props.urls.logout));
+    }).onOk(() => router.post(page.props.app_urls.logout));
 }
 
 /** Opens the return dialog for a receipt of the receipt list. */

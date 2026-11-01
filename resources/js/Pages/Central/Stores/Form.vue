@@ -175,7 +175,7 @@ function submit() {
 
             <div class="store-form__actions">
                 <q-btn type="submit" color="primary" unelevated no-caps :label="isEditing ? 'Simpan' : 'Buat & siapkan database'" :loading="form.processing" />
-                <q-btn flat no-caps label="Batal" @click="router.visit(page.props.urls.central_stores)" />
+                <q-btn flat no-caps label="Batal" @click="router.visit(page.props.app_urls.central_stores)" />
             </div>
         </q-form>
     </CentralLayout>

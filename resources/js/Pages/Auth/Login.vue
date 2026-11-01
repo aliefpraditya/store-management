@@ -15,7 +15,7 @@ const form = useForm({
 const isPasswordVisible = ref(false);
 
 function submit() {
-    form.post(page.props.urls.login, {
+    form.post(page.props.app_urls.login, {
         onFinish: () => form.reset('password'),
     });
 }

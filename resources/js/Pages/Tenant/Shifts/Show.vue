@@ -68,8 +68,8 @@ function markFollowedUp() {
 
 <template>
     <StoreLayout :title="shift.label">
-        <template #actions>
-            <q-btn flat no-caps dense icon="arrow_back" label="Rekap Shift" @click="router.visit(shift.urls.index)" />
+        <template #back>
+            <q-btn flat no-caps dense icon="arrow_back" label="Rekap Shift" class="q-ml-sm" @click="router.visit(shift.urls.index)" />
         </template>
 
         <article class="shift">

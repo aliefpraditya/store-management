@@ -47,7 +47,8 @@ class HandleInertiaRequests extends Middleware
             ],
             'store' => fn () => $this->currentStore(),
             'has_open_shift' => fn () => $request->session()->get(EnsureUserHasNoOpenShift::SESSION_KEY, []) !== [],
-            'urls' => [
+            // Not named `urls`: many pages pass a `urls` prop of their own, which would replace this one.
+            'app_urls' => [
                 'home' => route('home'),
                 'central_dashboard' => route('central.dashboard'),
                 'central_stores' => route('central.stores.index'),

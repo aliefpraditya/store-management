@@ -75,8 +75,11 @@ async function print() {
 
 <template>
     <StoreLayout :title="saleReturn.number">
+        <template #back>
+            <q-btn flat no-caps dense icon="arrow_back" label="Retur" class="q-ml-sm" @click="router.visit(saleReturn.urls.index)" />
+        </template>
+
         <template #actions>
-            <q-btn flat no-caps dense icon="arrow_back" label="Retur" class="q-mr-sm" @click="router.visit(saleReturn.urls.index)" />
             <q-btn outline no-caps dense color="primary" icon="print" label="Cetak Bukti Retur" :loading="isPrinting" class="q-mr-sm" @click="print" />
             <q-btn v-if="saleReturn.exchange?.sheet_url" outline no-caps dense color="primary" icon="receipt_long" label="Cetak Nota Pengganti" :loading="isPrintingReplacement" class="q-mr-sm" @click="printReplacement" />
             <template v-if="saleReturn.is_pending">

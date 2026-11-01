@@ -15,9 +15,9 @@ const menuGroups = computed(() => [
     {
         label: null,
         items: [
-            { label: 'Dashboard', icon: 'space_dashboard', href: page.props.urls.central_dashboard, isExact: true },
-            { label: 'Master Toko', icon: 'storefront', href: page.props.urls.central_stores },
-            { label: 'User & Akses', icon: 'group', href: page.props.urls.central_users },
+            { label: 'Dashboard', icon: 'space_dashboard', href: page.props.app_urls.central_dashboard, isExact: true },
+            { label: 'Master Toko', icon: 'storefront', href: page.props.app_urls.central_stores },
+            { label: 'User & Akses', icon: 'group', href: page.props.app_urls.central_users },
         ],
     },
 ]);
