@@ -29,6 +29,11 @@ class ExpenseException extends Exception
         return new self('Pengeluaran ini sudah dibatalkan.');
     }
 
+    public static function dayClosed(string $dateText): self
+    {
+        return new self("Hari {$dateText} sudah ditutup, jadi pengeluaran pada tanggal itu tidak bisa ditambah atau dibatalkan. Minta Super Admin membuka kembali hari itu.");
+    }
+
     public static function drawerShiftClosed(): self
     {
         return new self('Shift pengeluaran ini sudah ditutup, jadi tidak bisa dibatalkan. Selisih kasnya diputuskan di Rekap Shift.');

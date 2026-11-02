@@ -46,7 +46,7 @@ const menuGroups = computed(() => {
             items: [
                 { label: 'Rekap Shift', icon: 'schedule', href: store.value.shifts_url },
                 { label: 'Pengeluaran', icon: 'remove_circle_outline', href: store.value.expenses_url },
-                { label: 'Tutup Hari', icon: 'lock' },
+                { label: 'Tutup Hari', icon: 'lock', href: store.value.daily_closings_url },
                 { label: 'Laporan', icon: 'bar_chart' },
             ],
         },

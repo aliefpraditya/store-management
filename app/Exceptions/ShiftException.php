@@ -54,6 +54,11 @@ class ShiftException extends Exception
         return new self('Hanya selisih kas yang ditolak dan belum ditindaklanjuti yang bisa ditandai.');
     }
 
+    public static function dayClosed(string $dateText): self
+    {
+        return new self("Hari {$dateText} sudah ditutup. Minta Super Admin membuka kembali hari itu sebelum membuka shift.");
+    }
+
     public static function differenceNeedsNote(): self
     {
         return new self('Ada selisih kas, isi catatan penutupan.');

@@ -9,6 +9,7 @@ use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Exceptions\ShiftException;
 use App\Models\CashShift;
+use App\Models\DailyClosing;
 use App\Models\Register;
 use App\Models\Sale;
 use App\Models\SalePayment;
@@ -48,6 +49,10 @@ class ShiftService
 
             if (! $register->is_active) {
                 throw ShiftException::noRegister();
+            }
+
+            if (DailyClosing::isClosedOn(today())) {
+                throw ShiftException::dayClosed(today()->format('d/m/Y'));
             }
 
             if ($this->openShiftOf($user) !== null) {

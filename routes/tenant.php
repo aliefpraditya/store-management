@@ -7,6 +7,7 @@ use App\Http\Controllers\Tenant\CashierDeliveryNoteController;
 use App\Http\Controllers\Tenant\CashierExpenseController;
 use App\Http\Controllers\Tenant\CashierProductController;
 use App\Http\Controllers\Tenant\CashierSaleReturnController;
+use App\Http\Controllers\Tenant\DailyClosingController;
 use App\Http\Controllers\Tenant\DashboardController as TenantDashboardController;
 use App\Http\Controllers\Tenant\DeliveryNoteController;
 use App\Http\Controllers\Tenant\ExpenseCategoryController;
@@ -94,6 +95,14 @@ Route::prefix('t/{tenant}')
                 Route::post('{sale_return}/approve', [SaleReturnController::class, 'approve'])->name('approve');
                 Route::post('{sale_return}/reject', [SaleReturnController::class, 'reject'])->name('reject');
                 Route::get('{sale_return}/sheet', [SaleReturnController::class, 'sheet'])->name('sheet');
+            });
+
+            Route::prefix('daily-closings')->name('tenant.daily-closings.')->group(function () {
+                Route::get('/', [DailyClosingController::class, 'index'])->name('index');
+                Route::get('{date}', [DailyClosingController::class, 'show'])->where('date', '\d{4}-\d{2}-\d{2}')->name('show');
+                Route::post('{date}', [DailyClosingController::class, 'store'])->where('date', '\d{4}-\d{2}-\d{2}')->name('store');
+                Route::post('{date}/reopenings', [DailyClosingController::class, 'reopen'])->where('date', '\d{4}-\d{2}-\d{2}')->name('reopen');
+                Route::get('{date}/sheet', [DailyClosingController::class, 'sheet'])->where('date', '\d{4}-\d{2}-\d{2}')->name('sheet');
             });
 
             Route::prefix('expenses')->name('tenant.expenses.')->group(function () {

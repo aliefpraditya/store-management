@@ -7,6 +7,7 @@ use App\Enums\ExpenseSource;
 use App\Enums\ExpenseStatus;
 use App\Exceptions\ExpenseException;
 use App\Models\CashShift;
+use App\Models\DailyClosing;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\User;
@@ -44,7 +45,7 @@ class ExpenseService
     public function paginate(array $filters, int $perPage): LengthAwarePaginator
     {
         return $this->filtered($filters)
-            ->with(['category', 'cashShift.register'])
+            ->with(['category', 'cashShift.register', 'dailyClosing'])
             ->orderByDesc('business_date')
             ->orderByDesc('id')
             ->paginate($perPage)
@@ -162,9 +163,10 @@ class ExpenseService
     }
 
     /**
-     * Records money paid from somewhere other than a drawer, on the day it was paid. Nothing is locked here, so two
-     * sends of the same expense at the same moment can both pass the check; the second one is stopped by the unique
-     * marker, its transaction is rolled back (the number is not used up), and it gets the first expense back.
+     * Records money paid from somewhere other than a drawer, on the day it was paid. The registers are locked so the
+     * day cannot be closed at the same moment ({@see DailyClosing::lockAgainstClosing()}); that does not stop two sends
+     * of the same expense, which can both pass the check: the second one is stopped by the unique marker, its
+     * transaction is rolled back (the number is not used up), and it gets the first expense back.
      *
      * @param  ExpenseInput  $expenseInput
      *
@@ -174,9 +176,19 @@ class ExpenseService
     {
         try {
             return DB::transaction(function () use ($creator, $businessDate, $expenseInput): Expense {
+                DailyClosing::lockAgainstClosing();
+
                 $alreadyRecordedExpense = $this->alreadyRecorded($expenseInput['client_uuid'], $creator, ExpenseSource::Other, null);
 
-                return $alreadyRecordedExpense ?? $this->create($creator, ExpenseSource::Other, $businessDate, null, $expenseInput);
+                if ($alreadyRecordedExpense !== null) {
+                    return $alreadyRecordedExpense;
+                }
+
+                if (DailyClosing::isClosedOn($businessDate)) {
+                    throw ExpenseException::dayClosed($businessDate->format('d/m/Y'));
+                }
+
+                return $this->create($creator, ExpenseSource::Other, $businessDate, null, $expenseInput);
             });
         } catch (UniqueConstraintViolationException $exception) {
             return $this->alreadyRecorded($expenseInput['client_uuid'], $creator, ExpenseSource::Other, null) ?? throw $exception;
@@ -192,6 +204,8 @@ class ExpenseService
     public function void(Expense $expense, User $admin, string $reason): Expense
     {
         return DB::transaction(function () use ($expense, $admin, $reason): Expense {
+            DailyClosing::lockAgainstClosing();
+
             $lockedExpense = Expense::query()->lockForUpdate()->findOrFail($expense->id);
 
             if ($lockedExpense->source === ExpenseSource::Drawer) {

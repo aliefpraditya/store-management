@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CashShiftStatus;
+use App\Enums\DailyClosingStatus;
 use App\Enums\ExpenseSource;
 use App\Enums\ExpenseStatus;
 use App\Exceptions\ExpenseException;
@@ -42,7 +43,8 @@ class Expense extends Model implements AuditableContract
     /**
      * Why this expense cannot be voided now, or null when it can. A drawer expense of a shift that has been counted and
      * closed can no longer be undone: the closed shift's cash figures were settled with it. Needs `cashShift` loaded
-     * for a drawer expense. The one place this rule lives, for the button on the list and for the voiding itself.
+     * for a drawer expense. An expense of a day that has been closed is locked too. The one place this rule lives, for
+     * the button on the list and for the voiding itself.
      */
     public function voidBlocker(): ?ExpenseException
     {
@@ -54,7 +56,32 @@ class Expense extends Model implements AuditableContract
             return ExpenseException::drawerShiftClosed();
         }
 
+        if ($this->isOnClosedDay()) {
+            return ExpenseException::dayClosed($this->business_date->format('d/m/Y'));
+        }
+
         return null;
+    }
+
+    /**
+     * Uses the `dailyClosing` relation when a list loaded it for all its rows at once, and asks the database otherwise
+     * (voiding an expense must look at the day as it is at that moment).
+     */
+    private function isOnClosedDay(): bool
+    {
+        if ($this->relationLoaded('dailyClosing')) {
+            return $this->dailyClosing?->status === DailyClosingStatus::Closed;
+        }
+
+        return DailyClosing::isClosedOn($this->business_date);
+    }
+
+    /**
+     * @return BelongsTo<DailyClosing, $this>
+     */
+    public function dailyClosing(): BelongsTo
+    {
+        return $this->belongsTo(DailyClosing::class, 'business_date', 'business_date');
     }
 
     public function isVoidable(): bool

@@ -8,7 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * One row of the admin's expense list. Expects `category`, and `cashShift.register` for a drawer expense.
+ * One row of the admin's expense list. Expects `category`, `dailyClosing`, and `cashShift.register` for a drawer expense.
  *
  * @mixin Expense
  */
