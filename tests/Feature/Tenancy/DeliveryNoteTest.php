@@ -13,6 +13,7 @@ use App\Models\StockMovement;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsCashierFixtures;
@@ -65,6 +66,7 @@ class DeliveryNoteTest extends TestCase
     private function payload(Sale $sale, array $items, array $overrides = []): array
     {
         return [
+            'client_uuid' => (string) Str::uuid(),
             'sale_id' => $sale->id,
             'recipient_name' => 'Pak Budi',
             'recipient_phone' => '0812-0000',
@@ -242,7 +244,7 @@ class DeliveryNoteTest extends TestCase
         $this->assertSame(DeliveryNoteStatus::Shipped, $shipped->status);
         $this->assertNotNull($shipped->shipped_at);
 
-        $this->actingAs($this->admin)->post($this->url('ship', ['delivery_note' => $note->id]))->assertSessionHas('error', 'Surat jalan berstatus Dikirim, jadi tidak bisa dikirim.');
+        $this->actingAs($this->admin)->post($this->url('ship', ['delivery_note' => $note->id]))->assertSessionHas('error', 'Surat jalan tidak bisa dikirim karena berstatus Dikirim. Muat ulang halaman untuk melihat status terbarunya.');
     }
 
     public function test_a_delivery_where_everything_arrived_is_delivered(): void
@@ -299,7 +301,7 @@ class DeliveryNoteTest extends TestCase
         $this->createNote($sale, [[$paint, 3]]);
         $note = $this->note();
 
-        $this->complete($note, [[$note->items[0]->id, 3, 0]])->assertSessionHas('error', 'Surat jalan berstatus Draft, jadi tidak bisa diselesaikan.');
+        $this->complete($note, [[$note->items[0]->id, 3, 0]])->assertSessionHas('error', 'Surat jalan tidak bisa diselesaikan karena berstatus Draft. Muat ulang halaman untuk melihat status terbarunya.');
     }
 
     public function test_a_draft_or_shipped_note_can_be_cancelled_but_a_finished_one_cannot(): void
@@ -335,10 +337,10 @@ class DeliveryNoteTest extends TestCase
         [$sale, $paint] = $this->makeSale(['number' => 'INV/1']);
         $this->createNote($sale, [[$paint, 6]]);
         $note = $this->note();
-        $sheetUrl = $this->url('sheet', ['delivery_note' => $note->id]);
+        $printUrl = $this->url('print', ['delivery_note' => $note->id]);
 
-        $this->actingAs($this->admin)->postJson($this->url('print', ['delivery_note' => $note->id]));
-        $this->actingAs($this->admin)->get($sheetUrl)->assertOk()->assertInertia(fn (Assert $page) => $page
+        $firstSheetUrl = $this->actingAs($this->admin)->postJson($printUrl)->json('data.sheet_url');
+        $this->actingAs($this->admin)->get($firstSheetUrl)->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Tenant/Print/DeliveryNote')
             ->where('note.number', $note->number)
             ->where('note.is_copy', false)
@@ -349,8 +351,148 @@ class DeliveryNoteTest extends TestCase
             ->missing('note.items.0.unit_price')
             ->missing('note.items.0.subtotal'));
 
-        $this->actingAs($this->admin)->postJson($this->url('print', ['delivery_note' => $note->id]));
-        $this->actingAs($this->admin)->get($sheetUrl)->assertInertia(fn (Assert $page) => $page->where('note.is_copy', true));
+        $secondSheetUrl = $this->actingAs($this->admin)->postJson($printUrl)->json('data.sheet_url');
+        $this->actingAs($this->admin)->get($secondSheetUrl)->assertInertia(fn (Assert $page) => $page->where('note.is_copy', true));
+    }
+
+    public function test_a_sheet_keeps_saying_what_its_own_print_was_even_after_later_prints(): void
+    {
+        [$sale, $paint] = $this->makeSale();
+        $this->createNote($sale, [[$paint, 6]]);
+        $printUrl = $this->url('print', ['delivery_note' => $this->note()->id]);
+
+        $originalSheetUrl = $this->actingAs($this->admin)->postJson($printUrl)->json('data.sheet_url');
+        $this->actingAs($this->admin)->postJson($printUrl);
+
+        $this->actingAs($this->admin)->get($originalSheetUrl)->assertInertia(fn (Assert $page) => $page->where('note.is_copy', false));
+        $this->assertSame(2, $this->note()->print_count);
+    }
+
+    public function test_the_sheet_cannot_be_opened_without_the_address_a_print_gave(): void
+    {
+        [$sale, $paint] = $this->makeSale();
+        $this->createNote($sale, [[$paint, 6]]);
+        $note = $this->note();
+        $signedSheetUrl = $this->actingAs($this->admin)->postJson($this->url('print', ['delivery_note' => $note->id]))->json('data.sheet_url');
+
+        $this->actingAs($this->admin)->get($this->url('sheet', ['delivery_note' => $note->id]))->assertForbidden();
+        $this->actingAs($this->admin)->get(str_replace('print=1', 'print=2', $signedSheetUrl))->assertForbidden();
+        $this->assertSame(1, $this->note()->print_count);
+    }
+
+    public function test_a_cancelled_note_can_still_be_printed_and_says_so_on_the_sheet(): void
+    {
+        [$sale, $paint] = $this->makeSale();
+        $this->createNote($sale, [[$paint, 6]]);
+        $note = $this->note();
+        $this->actingAs($this->admin)->post($this->url('cancel', ['delivery_note' => $note->id]));
+
+        $sheetUrl = $this->actingAs($this->admin)->postJson($this->url('print', ['delivery_note' => $note->id]))->assertOk()->json('data.sheet_url');
+
+        $this->actingAs($this->admin)->get($sheetUrl)->assertInertia(fn (Assert $page) => $page->where('note.status', 'cancelled'));
+    }
+
+    public function test_sending_the_same_note_twice_makes_it_once(): void
+    {
+        [$sale, $paint] = $this->makeSale();
+        $payload = $this->payload($sale, [[$paint, 3]]);
+
+        $this->actingAs($this->admin)->post($this->url('store'), $payload)->assertSessionHas('success');
+        $this->actingAs($this->admin)->post($this->url('store'), $payload)->assertSessionHas('success');
+
+        $this->assertSame(1, $this->store->run(fn () => DeliveryNote::query()->count()));
+    }
+
+    public function test_a_note_uuid_that_belongs_to_someone_else_is_refused(): void
+    {
+        [$sale, $paint] = $this->makeSale();
+        $payload = $this->payload($sale, [[$paint, 3]]);
+        $this->actingAs($this->admin)->post($this->url('store'), $payload);
+
+        $this->actingAs($this->storeUser(UserRole::StoreAdmin))->post($this->url('store'), $payload)
+            ->assertSessionHas('error', 'Pengajuan surat jalan ini sudah tercatat untuk orang atau nota lain. Muat ulang layar lalu coba lagi.');
+
+        $this->assertSame(1, $this->store->run(fn () => DeliveryNote::query()->count()));
+    }
+
+    public function test_a_note_needs_its_uuid(): void
+    {
+        [$sale, $paint] = $this->makeSale();
+
+        $this->createNote($sale, [[$paint, 3]], ['client_uuid' => 'bukan-uuid'])->assertSessionHasErrors('client_uuid');
+    }
+
+    public function test_the_same_line_sent_twice_is_added_up_before_it_is_checked_against_what_is_left(): void
+    {
+        [$sale, $paint] = $this->makeSale();
+
+        $this->createNote($sale, [[$paint, 6], [$paint, 6]])
+            ->assertSessionHas('error', 'Cat Tembok melebihi sisa nota yang belum diantar, sisa 10 PAIL.');
+
+        $this->assertSame(0, $this->store->run(fn () => DeliveryNote::query()->count()));
+    }
+
+    public function test_the_outcome_of_an_item_that_is_not_on_the_note_or_sent_twice_is_refused(): void
+    {
+        [$sale, $paint, $brush] = $this->makeSale();
+        $note = $this->shippedNote($sale, [[$paint, 6]]);
+        $otherNote = $this->shippedNote($sale, [[$brush, 2]]);
+        $message = 'Ada hasil untuk barang yang tidak ada di surat jalan ini, atau barang yang sama diisi dua kali.';
+
+        $this->complete($note, [[$note->items[0]->id, 6, 0], [$otherNote->items[0]->id, 2, 0]])->assertSessionHas('error', $message);
+        $this->actingAs($this->admin)->post($this->url('complete', ['delivery_note' => $note->id]), ['results' => [
+            ['item_id' => $note->items[0]->id, 'quantity_delivered' => 6, 'quantity_returned' => 0],
+            ['item_id' => $note->items[0]->id, 'quantity_delivered' => 6, 'quantity_returned' => 0],
+        ]])->assertSessionHasErrors('results.1.item_id');
+
+        $this->assertSame(DeliveryNoteStatus::Shipped, $this->note($note->id)->status);
+        $this->assertSame(DeliveryNoteStatus::Shipped, $this->note($otherNote->id)->status);
+    }
+
+    public function test_only_admins_may_complete_or_cancel_a_note(): void
+    {
+        [$sale, $paint] = $this->makeSale();
+        $note = $this->shippedNote($sale, [[$paint, 6]]);
+
+        $this->actingAs($this->storeUser())->post($this->url('complete', ['delivery_note' => $note->id]), ['results' => [['item_id' => $note->items[0]->id, 'quantity_delivered' => 6, 'quantity_returned' => 0]]])->assertForbidden();
+        $this->actingAs($this->storeUser())->post($this->url('cancel', ['delivery_note' => $note->id]))->assertForbidden();
+
+        $this->assertSame(DeliveryNoteStatus::Shipped, $this->note($note->id)->status);
+    }
+
+    public function test_completing_a_note_leaves_an_audit_record_of_what_arrived(): void
+    {
+        config(['audit.console' => true]);
+        [$sale, $paint] = $this->makeSale();
+        $note = $this->shippedNote($sale, [[$paint, 6]]);
+
+        $this->complete($note, [[$note->items[0]->id, 4, 2]]);
+
+        $audit = $this->store->run(fn () => $this->note($note->id)->items[0]->audits()->where('event', 'updated')->sole());
+        $this->assertEquals([4, 2], [$audit->new_values['quantity_delivered'], $audit->new_values['quantity_returned']]);
+    }
+
+    public function test_receipts_that_are_fully_on_notes_do_not_crowd_the_receipt_lookup(): void
+    {
+        [$open] = $this->makeSale(['number' => 'INV/OPEN', 'sold_at' => now()->subDays(3)]);
+
+        foreach (range(1, 11) as $number) {
+            [$usedUp, $usedUpPaint, $usedUpBrush] = $this->makeSale(['number' => "INV/USED{$number}"]);
+            $this->createNote($usedUp, [[$usedUpPaint, 10], [$usedUpBrush, 4]])->assertSessionHas('success');
+        }
+
+        $this->actingAs($this->admin)->getJson($this->url('sales', ['q' => 'INV/']))
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.number', $open->number);
+    }
+
+    public function test_the_list_can_be_filtered_up_to_a_day(): void
+    {
+        [$sale, $paint] = $this->makeSale();
+        $this->createNote($sale, [[$paint, 1]]);
+
+        $this->actingAs($this->admin)->get($this->url('index', ['to' => today()->subDay()->toDateString()]))->assertInertia(fn (Assert $page) => $page->has('notes.data', 0));
+        $this->actingAs($this->admin)->get($this->url('index', ['to' => today()->toDateString()]))->assertInertia(fn (Assert $page) => $page->has('notes.data', 1));
     }
 
     public function test_the_list_shows_notes_newest_first_and_can_be_filtered(): void
@@ -392,7 +534,7 @@ class DeliveryNoteTest extends TestCase
             ->where('note.items.0.name', 'Cat Tembok')
             ->where('note.sale.number', $sale->number)
             ->where('note.urls.print', $this->url('print', ['delivery_note' => $note->id]))
-            ->where('note.urls.sheet', $this->url('sheet', ['delivery_note' => $note->id])));
+            ->missing('note.urls.sheet'));
     }
 
     public function test_the_create_page_can_come_with_a_receipt_and_what_is_left_to_deliver(): void

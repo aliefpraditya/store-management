@@ -51,16 +51,16 @@ class SaveStockOpnameCountsRequest extends FormRequest
 
                 /** @var StockOpname $opname */
                 $opname = $this->route('stock_opname');
-                $rows = $this->input('counts');
+                $countRows = $this->input('counts');
 
                 $itemsById = StockOpnameItem::query()
                     ->where('stock_opname_id', $opname->id)
-                    ->whereIn('id', array_column($rows, 'item_id'))
+                    ->whereIn('id', array_column($countRows, 'item_id'))
                     ->with('product.productUnits')
                     ->get()
                     ->keyBy('id');
 
-                foreach ($rows as $index => $row) {
+                foreach ($countRows as $index => $row) {
                     $item = $itemsById->get($row['item_id']);
 
                     if ($item === null) {

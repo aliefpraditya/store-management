@@ -94,12 +94,12 @@ const formatTime = (isoDate) =>
                             <span>{{ summary.pending.returns + summary.pending.cash_differences }}</span>
                         </h3>
                         <ul class="list">
-                            <li v-for="item in summary.approvals" :key="`${item.kind}-${item.reference}`">
-                                <Link :href="approvalHref(item.kind)" class="list__text list__link">
-                                    {{ approvalLabels[item.kind].title }} · {{ item.reference }}
-                                    <small>{{ formatRupiah(item.amount) }}</small>
+                            <li v-for="approval in summary.approvals" :key="`${approval.kind}-${approval.reference}`">
+                                <Link :href="approvalHref(approval.kind)" class="list__text list__link">
+                                    {{ approvalLabels[approval.kind].title }} · {{ approval.reference }}
+                                    <small>{{ formatRupiah(approval.amount) }}</small>
                                 </Link>
-                                <span class="chip" :class="`chip--${approvalLabels[item.kind].tone}`">{{ approvalLabels[item.kind].badge }}</span>
+                                <span class="chip" :class="`chip--${approvalLabels[approval.kind].tone}`">{{ approvalLabels[approval.kind].badge }}</span>
                             </li>
                         </ul>
                     </div>

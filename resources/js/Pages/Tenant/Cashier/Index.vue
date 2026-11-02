@@ -10,6 +10,7 @@ import ShiftClosedDialog from '../../../Components/Cashier/ShiftClosedDialog.vue
 import DeliveryNoteDialog from '../../../Components/Cashier/DeliveryNoteDialog.vue';
 import ReturnDialog from '../../../Components/Cashier/ReturnDialog.vue';
 import ReturnLookupDialog from '../../../Components/Cashier/ReturnLookupDialog.vue';
+import ExpenseDialog from '../../../Components/Cashier/ExpenseDialog.vue';
 import ReceiptHistoryDialog from '../../../Components/Cashier/ReceiptHistoryDialog.vue';
 import ShiftOpenPanel from '../../../Components/Cashier/ShiftOpenPanel.vue';
 import { newUuid, useCart } from '../../../Composables/useCart';
@@ -40,8 +41,8 @@ const LOOKUP_FAILED_MESSAGE = 'Pencarian barang gagal. Periksa koneksi, lalu cob
 const LOOKUP_FAILED_NOTIFY_GROUP = 'lookup-failed';
 
 const searchInput = ref(null);
-const query = ref('');
-const results = ref([]);
+const searchTerm = ref('');
+const searchResults = ref([]);
 let latestSearchId = 0;
 let searchTimer;
 
@@ -57,6 +58,7 @@ const deliveryReceipt = ref(null);
 const isReturnLookupOpen = ref(false);
 const isReturnOpen = ref(false);
 const returnReceipt = ref(null);
+const isExpenseOpen = ref(false);
 let saleUuid = newUuid();
 
 const timeFormat = new Intl.DateTimeFormat('id-ID', { timeStyle: 'short' });
@@ -107,12 +109,12 @@ function notifyLookupFailed(message) {
     $q.notify({ type: 'negative', message, position: 'top', group: LOOKUP_FAILED_NOTIFY_GROUP });
 }
 
-watch(query, (term) => {
+watch(searchTerm, (term) => {
     clearTimeout(searchTimer);
 
     if (term.trim() === '') {
         latestSearchId++;
-        results.value = [];
+        searchResults.value = [];
 
         return;
     }
@@ -121,14 +123,14 @@ watch(query, (term) => {
         const foundItems = await fetchResults(term.trim());
 
         if (foundItems !== null) {
-            results.value = foundItems;
+            searchResults.value = foundItems;
         }
     }, SEARCH_DELAY_MS);
 });
 
 function resetSearch() {
-    query.value = '';
-    results.value = [];
+    searchTerm.value = '';
+    searchResults.value = [];
     nextTick(() => searchInput.value?.focus());
 }
 
@@ -137,7 +139,7 @@ function resetSearch() {
  * leaves the results for the cashier to pick a unit.
  */
 async function submitSearch() {
-    const term = query.value.trim();
+    const term = searchTerm.value.trim();
 
     if (term === '') {
         return;
@@ -151,12 +153,12 @@ async function submitSearch() {
         return;
     }
 
-    results.value = foundItems;
+    searchResults.value = foundItems;
 
-    const scanned = foundItems.find((item) => item.matched_unit_id !== null);
+    const scannedItem = foundItems.find((item) => item.matched_unit_id !== null);
 
-    if (scanned) {
-        cart.add(scanned, scanned.matched_unit_id);
+    if (scannedItem) {
+        cart.add(scannedItem, scannedItem.matched_unit_id);
         resetSearch();
     } else if (foundItems.length === 1) {
         cart.add(foundItems[0], foundItems[0].units[0].id);
@@ -240,8 +242,8 @@ function openClose() {
     isCloseOpen.value = true;
 }
 
-function closeShift(closingCount) {
-    router.post(props.shift.close_url, closingCount, {
+function closeShift(closingForm) {
+    router.post(props.shift.close_url, closingForm, {
         onStart: () => (isClosing.value = true),
         onFinish: () => (isClosing.value = false),
         onSuccess: () => (isCloseOpen.value = false),
@@ -262,8 +264,8 @@ watch(
 
 watch(
     () => props.closed_shift,
-    (result) => {
-        if (result) {
+    (closedShiftTotals) => {
+        if (closedShiftTotals) {
             isShiftClosedOpen.value = true;
         }
     },
@@ -296,7 +298,7 @@ function openReturn(receipt) {
     isReturnOpen.value = true;
 }
 
-/** A finished return changes the drawer, so the figures of the close-shift dialog are fetched again. */
+/** A finished return or an expense changes the drawer, so the figures of the close-shift dialog are fetched again. */
 const refreshShiftSummary = () => router.reload({ only: ['summary'] });
 
 /** F9 pays, F8 empties the cart, F2 goes to the search box. */
@@ -307,15 +309,52 @@ function onKeydown(event) {
 
     const shortcuts = { F9: openPayment, F8: clearCart, F2: () => searchInput.value?.focus() };
 
-    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value && !isReturnLookupOpen.value && !isReturnOpen.value) {
+    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value && !isReturnLookupOpen.value && !isReturnOpen.value && !isExpenseOpen.value) {
         event.preventDefault();
         shortcuts[event.key]();
+    }
+}
+
+/**
+ * The cart survives a refresh in the browser, with the prices and stock it had then. They are fetched again, so the
+ * total on the screen is the one the server will charge; what changed is told to the cashier.
+ */
+async function refreshCart() {
+    try {
+        const { changed, removed } = await cart.refresh(async (unitIds) => {
+            const unitsQuery = unitIds.map((unitId) => `units[]=${unitId}`).join('&');
+            const response = await fetch(`${props.urls.products}?${unitsQuery}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+
+            if (!response.ok) {
+                throw new Error('Cart lookup failed');
+            }
+
+            return (await response.json()).data;
+        });
+
+        if (removed.length > 0) {
+            $q.notify({ type: 'warning', position: 'top', message: `${removed.map((line) => line.product.name).join(', ')} tidak bisa dijual lagi, dihapus dari keranjang.` });
+        }
+
+        if (changed.length > 0) {
+            $q.notify({
+                type: 'warning',
+                position: 'top',
+                message: `Harga berubah: ${changed.map(({ line, priceBefore }) => `${line.product.name} ${formatRupiah(priceBefore)} → ${formatRupiah(cart.priceOf(line))}`).join(', ')}.`,
+            });
+        }
+    } catch {
+        // The server prices the sale again anyway; a failed refresh only leaves the screen's figures as they were.
     }
 }
 
 onMounted(() => {
     window.addEventListener('keydown', onKeydown);
     searchInput.value?.focus();
+
+    if (props.shift) {
+        refreshCart();
+    }
 });
 
 onBeforeUnmount(() => {
@@ -339,6 +378,7 @@ onBeforeUnmount(() => {
                     <div class="till__bar-actions">
                         <q-btn v-if="shift" flat no-caps dense icon="receipt_long" label="Riwayat Nota" @click="isReceiptsOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense icon="undo" label="Retur" @click="isReturnLookupOpen = true" />
+                        <q-btn v-if="shift" flat no-caps dense icon="remove_circle_outline" label="Pengeluaran" @click="isExpenseOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense color="negative" icon="lock_clock" label="Tutup Shift" @click="openClose">
                             <q-tooltip>Tutup shift dulu untuk keluar</q-tooltip>
                         </q-btn>
@@ -353,7 +393,7 @@ onBeforeUnmount(() => {
                     <section class="finder">
                         <q-input
                             ref="searchInput"
-                            v-model="query"
+                            v-model="searchTerm"
                             outlined
                             clearable
                             placeholder="Cari nama, SKU, atau scan barcode (Enter)"
@@ -363,11 +403,11 @@ onBeforeUnmount(() => {
                             <template #prepend><q-icon name="search" /></template>
                         </q-input>
 
-                        <p v-if="query.trim() === ''" class="finder__hint">Ketik atau scan barang. F2 fokus ke pencarian, F9 bayar, F8 kosongkan keranjang.</p>
-                        <p v-else-if="results.length === 0" class="finder__hint">Tidak ada barang yang cocok.</p>
+                        <p v-if="searchTerm.trim() === ''" class="finder__hint">Ketik atau scan barang. F2 fokus ke pencarian, F9 bayar, F8 kosongkan keranjang.</p>
+                        <p v-else-if="searchResults.length === 0" class="finder__hint">Tidak ada barang yang cocok.</p>
 
                         <ul class="finder__results">
-                            <li v-for="item in results" :key="item.id" class="item">
+                            <li v-for="item in searchResults" :key="item.id" class="item">
                                 <div class="item__info">
                                     <b>{{ item.name }}</b>
                                     <small :class="{ item__empty: Number(item.stock) <= 0 }">{{ item.sku }} · {{ Number(item.stock) <= 0 ? 'stok habis' : `stok ${formatStock(item.stock, item.units, item.base_unit)}` }}</small>
@@ -446,14 +486,15 @@ onBeforeUnmount(() => {
             </q-page>
         </q-page-container>
 
-        <PaymentDialog v-model="isPaymentOpen" :total="cart.total.value" :methods="payment_methods" :is-processing="isPaying" @confirm="submitSale" />
+        <PaymentDialog v-model="isPaymentOpen" :total="cart.total.value" :payment-methods="payment_methods" :is-processing="isPaying" @confirm="submitSale" />
         <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :payment-methods="payment_methods" :is-processing="isClosing" @confirm="closeShift" />
         <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" @delivery="openDelivery" />
-        <ShiftClosedDialog v-model="isShiftClosedOpen" :result="closed_shift" />
+        <ShiftClosedDialog v-model="isShiftClosedOpen" :shift-totals="closed_shift" />
         <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" @return="openReturn" />
         <DeliveryNoteDialog v-model="isDeliveryOpen" :receipt="deliveryReceipt" />
         <ReturnLookupDialog v-if="shift" v-model="isReturnLookupOpen" :lookup-url="urls.return_lookup" @found="openReturn" />
         <ReturnDialog v-model="isReturnOpen" :receipt="returnReceipt" :products-url="urls.products" @saved="refreshShiftSummary" />
+        <ExpenseDialog v-if="shift" v-model="isExpenseOpen" :list-url="urls.expenses" :store-url="urls.expenses_store" :expected-cash="summary?.expected_cash ?? null" @saved="refreshShiftSummary" />
     </q-layout>
 </template>
 

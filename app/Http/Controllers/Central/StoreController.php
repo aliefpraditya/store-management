@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Central;
 
+use App\Enums\ProvisioningResult;
 use App\Exceptions\StoreProvisioningException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Central\SaveStoreRequest;
@@ -18,24 +19,24 @@ use Inertia\Response;
 class StoreController extends Controller
 {
     public function __construct(
-        private readonly StoreService $stores,
-        private readonly StoreProvisioner $provisioner,
+        private readonly StoreService $storeService,
+        private readonly StoreProvisioner $storeProvisioner,
     ) {}
 
     public function index(): Response
     {
-        $stores = Store::query()
+        $storeList = Store::query()
             ->addSelect(['failure_message' => StoreProvisioningLog::query()
                 ->select('message')
                 ->whereColumn('store_id', 'stores.id')
-                ->where('result', 'failed')
+                ->where('result', ProvisioningResult::Failed)
                 ->latest('id')
                 ->limit(1)])
             ->orderBy('name')
             ->get();
 
         return Inertia::render('Central/Stores/Index', [
-            'stores' => StoreResource::collection($stores)->resolve(),
+            'stores' => StoreResource::collection($storeList)->resolve(),
             'create_url' => route('central.stores.create'),
         ]);
     }
@@ -54,10 +55,10 @@ class StoreController extends Controller
      */
     public function store(SaveStoreRequest $request): RedirectResponse
     {
-        $store = $this->stores->create($request->validated());
+        $store = $this->storeService->create($request->validated());
 
         try {
-            $this->provisioner->provision($store);
+            $this->storeProvisioner->provision($store);
         } catch (StoreProvisioningException $exception) {
             return redirect()->route('central.stores.index')
                 ->with('error', "Toko disimpan, tetapi database belum siap. {$exception->getMessage()}");
@@ -76,7 +77,7 @@ class StoreController extends Controller
 
     public function update(SaveStoreRequest $request, Store $store): RedirectResponse
     {
-        $this->stores->update($store, $request->validated());
+        $this->storeService->update($store, $request->validated());
 
         return redirect()->route('central.stores.index')->with('success', 'Toko disimpan.');
     }

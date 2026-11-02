@@ -18,28 +18,28 @@ use Inertia\Response;
  */
 class UnitController extends Controller
 {
-    public function __construct(private readonly UnitService $units) {}
+    public function __construct(private readonly UnitService $unitService) {}
 
     public function index(): Response
     {
-        $units = Unit::query()->withCount('productUnits')->orderBy('code')->get();
+        $unitList = Unit::query()->withCount('productUnits')->orderBy('code')->get();
 
         return Inertia::render('Tenant/Settings/Units/Index', [
-            'units' => UnitResource::collection($units)->resolve(),
+            'units' => UnitResource::collection($unitList)->resolve(),
             'create_url' => route('tenant.units.store', ['tenant' => tenant('code')]),
         ]);
     }
 
     public function store(SaveUnitRequest $request): RedirectResponse
     {
-        $this->units->create($request->validated());
+        $this->unitService->create($request->validated());
 
         return back()->with('success', 'Satuan ditambahkan.');
     }
 
     public function update(SaveUnitRequest $request, Unit $unit): RedirectResponse
     {
-        $this->units->update($unit, $request->validated());
+        $this->unitService->update($unit, $request->validated());
 
         return back()->with('success', 'Satuan disimpan.');
     }
@@ -47,7 +47,7 @@ class UnitController extends Controller
     public function destroy(Unit $unit): RedirectResponse
     {
         try {
-            $this->units->delete($unit);
+            $this->unitService->delete($unit);
         } catch (UnitInUseException $exception) {
             return back()->with('error', $exception->getMessage());
         }

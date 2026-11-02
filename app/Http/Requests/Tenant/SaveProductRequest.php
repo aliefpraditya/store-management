@@ -4,7 +4,7 @@ namespace App\Http\Requests\Tenant;
 
 use App\Models\Product;
 use App\Models\Unit;
-use Brick\Math\BigDecimal;
+use App\Services\ProductService;
 use Closure;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -41,6 +41,7 @@ class SaveProductRequest extends FormRequest
             'brand.name' => ['nullable', 'string', 'max:255'],
             'min_stock' => ['required', 'numeric', 'min:0', 'max:999999999999', 'decimal:0,3'],
             'is_active' => ['required', 'boolean'],
+            'version' => $editedProduct === null ? ['nullable'] : ['required', 'integer'],
             'units' => ['required', 'array', 'min:1'],
             'units.*.id' => ['nullable', 'integer'],
             'units.*.unit' => ['required', 'array'],
@@ -76,7 +77,7 @@ class SaveProductRequest extends FormRequest
                 $this->validateCategoryIsChosen($validator);
                 $this->validateUnitsAreDistinct($validator);
                 $this->validateSellingSetup($validator);
-                $this->validateLockedUnits($validator);
+                $this->validateUnitsCanBeSaved($validator);
             },
         ];
     }
@@ -166,24 +167,24 @@ class SaveProductRequest extends FormRequest
             $validator->errors()->add('units', 'Minimal satu satuan harus bisa dijual.');
         }
 
-        $defaults = collect($rows)->filter(fn (array $row): bool => (bool) $row['is_default_sale']);
+        $defaultSaleRows = collect($rows)->filter(fn (array $row): bool => (bool) $row['is_default_sale']);
 
-        if ($defaults->count() !== 1) {
+        if ($defaultSaleRows->count() !== 1) {
             $validator->errors()->add('units', 'Pilih tepat satu satuan default untuk kasir.');
 
             return;
         }
 
-        if (! $defaults->first()['is_sellable']) {
+        if (! $defaultSaleRows->first()['is_sellable']) {
             $validator->errors()->add('units', 'Satuan default kasir harus bisa dijual.');
         }
     }
 
     /**
-     * After stock or transactions exist, existing units keep their identity and conversion and cannot be
-     * removed; the base unit stays first. New units can still be added.
+     * Shows the unit problems the service would refuse the save for (units locked by stock or history, two rows
+     * swapping units) as errors on the form, before anything is written. The service checks them again under the lock.
      */
-    private function validateLockedUnits(Validator $validator): void
+    private function validateUnitsCanBeSaved(Validator $validator): void
     {
         $product = $this->editedProduct();
 
@@ -191,42 +192,8 @@ class SaveProductRequest extends FormRequest
             return;
         }
 
-        $existing = $product->productUnits()->get()->keyBy('id');
-        $rows = $this->unitRows();
-
-        foreach ($rows as $index => $row) {
-            if (filled($row['id'] ?? null) && ! $existing->has($row['id'])) {
-                $validator->errors()->add("units.{$index}.id", 'Satuan tidak dikenal.');
-            }
-        }
-
-        if (! $product->hasTransactions()) {
-            return;
-        }
-
-        $submittedIds = collect($rows)->pluck('id')->filter()->map(fn ($id) => (int) $id);
-
-        if ($existing->keys()->diff($submittedIds)->isNotEmpty()) {
-            $validator->errors()->add('units', 'Satuan yang sudah dipakai tidak bisa dihapus.');
-        }
-
-        if ((int) ($rows[0]['id'] ?? 0) !== (int) $existing->firstWhere('is_base', true)?->id) {
-            $validator->errors()->add('units.0.unit.code', 'Satuan dasar tidak bisa diganti setelah ada stok atau transaksi.');
-        }
-
-        foreach ($rows as $index => $row) {
-            $current = $existing->get($row['id'] ?? null);
-
-            if ($current === null) {
-                continue;
-            }
-
-            $unitChanged = $this->unitKey($row) !== Unit::normalizeCode($current->unit_code);
-            $conversionChanged = BigDecimal::of((string) $row['conversion_factor'])->compareTo($current->conversion_factor) !== 0;
-
-            if ($unitChanged || $conversionChanged) {
-                $validator->errors()->add("units.{$index}.conversion_factor", 'Satuan dan konversi terkunci setelah ada stok atau transaksi.');
-            }
+        foreach (app(ProductService::class)->unitProblems($product, $this->unitRows()) as $problem) {
+            $validator->errors()->add($problem['field'], $problem['message']);
         }
     }
 

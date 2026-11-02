@@ -29,18 +29,8 @@ class SaleReceiptResource extends JsonResource
             'total' => $this->total,
             'paid_total' => $this->paid_total,
             'change_amount' => $this->change_amount,
-            'items' => $this->items->map(fn ($item): array => [
-                'name' => $item->product_name,
-                'unit' => $item->unit_name,
-                'quantity' => $item->quantity,
-                'unit_price' => $item->unit_price,
-                'subtotal' => $item->subtotal,
-            ])->values()->all(),
-            'payments' => $this->payments->map(fn ($payment): array => [
-                'method' => $payment->method->label(),
-                'amount' => $payment->amount,
-                'reference' => $payment->reference,
-            ])->values()->all(),
+            'items' => SaleDetailResource::itemsOf($this->resource),
+            'payments' => SaleDetailResource::paymentsOf($this->resource),
         ];
     }
 }

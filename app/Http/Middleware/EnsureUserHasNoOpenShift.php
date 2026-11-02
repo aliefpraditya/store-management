@@ -7,7 +7,9 @@ use App\Models\Store;
 use App\Models\User;
 use App\Services\ShiftService;
 use Closure;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -49,6 +51,8 @@ class EnsureUserHasNoOpenShift
 
     /**
      * The first remembered store that still has the user's shift open; remembered stores that no longer do are forgotten.
+     * A store whose database cannot be reached stays remembered but does not lock the user, so sign-out never fails
+     * because of one broken store.
      */
     private function storeWithOpenShift(Request $request, User $user): ?Store
     {
@@ -57,7 +61,17 @@ class EnsureUserHasNoOpenShift
         $firstOpenStore = null;
 
         foreach (Store::query()->whereIn('code', $rememberedCodes)->get() as $store) {
-            if ($store->run(fn (): bool => $this->shifts->openShiftOf($user) !== null)) {
+            try {
+                $hasOpenShift = $store->run(fn (): bool => $this->shifts->openShiftOf($user) !== null);
+            } catch (QueryException $exception) {
+                tenancy()->end();
+                Log::error('Open shift check skipped: store database unreachable.', ['store_code' => $store->code, 'exception' => $exception]);
+                $stillOpenCodes[] = $store->code;
+
+                continue;
+            }
+
+            if ($hasOpenShift) {
                 $stillOpenCodes[] = $store->code;
                 $firstOpenStore ??= $store;
             }

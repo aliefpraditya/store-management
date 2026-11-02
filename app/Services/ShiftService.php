@@ -15,6 +15,7 @@ use App\Models\SalePayment;
 use App\Models\SaleReturn;
 use App\Models\User;
 use Brick\Math\BigDecimal;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -22,10 +23,12 @@ use Illuminate\Support\Str;
  * Opens and closes a cashier's shift. A register has one open shift at a time; the opening cash is the register's
  * fixed amount, and closing compares the counted cash with what the receipts say should be in the drawer.
  *
- * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
+ * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, drawer_expenses: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
  */
 class ShiftService
 {
+    public function __construct(private readonly ExpenseService $expenseService) {}
+
     public function openShiftOf(User $user): ?CashShift
     {
         return CashShift::query()
@@ -57,29 +60,36 @@ class ShiftService
                 throw ShiftException::registerInUse($register->name, $busyShift->cashier_name);
             }
 
-            return CashShift::query()->create([
-                'client_uuid' => (string) Str::uuid(),
-                'register_id' => $register->id,
-                'business_date' => today(),
-                'cashier_id' => $user->id,
-                'cashier_name' => $user->name,
-                'opened_at' => now(),
-                'opening_cash' => $register->fixed_opening_cash,
-                'status' => CashShiftStatus::Open,
-                'difference_status' => ShiftDifferenceStatus::None,
-            ]);
+            try {
+                return CashShift::query()->create([
+                    'client_uuid' => (string) Str::uuid(),
+                    'register_id' => $register->id,
+                    'business_date' => today(),
+                    'cashier_id' => $user->id,
+                    'cashier_name' => $user->name,
+                    'opened_at' => now(),
+                    'opening_cash' => $register->fixed_opening_cash,
+                    'status' => CashShiftStatus::Open,
+                    'difference_status' => ShiftDifferenceStatus::None,
+                ]);
+            } catch (UniqueConstraintViolationException) {
+                // The checks above only hold one register at a time; the database is what stops the same cashier
+                // opening shifts on two registers at once.
+                throw ShiftException::alreadyOpen();
+            }
         });
     }
 
     /**
      * What happened in the shift so far. Cash is what stayed in the drawer: received minus the change given and the
-     * refunds paid out in cash. A return still waiting for approval has paid nothing yet.
+     * refunds paid out in cash. A return still waiting for approval has paid nothing yet. Expenses taken from the
+     * drawer lower the cash that should be in it, but not the cash of the sales.
      *
      * @return ShiftSummary
      */
     public function summarize(CashShift $shift): array
     {
-        $completedSales = Sale::query()->where('cash_shift_id', $shift->id)->where('status', SaleStatus::Completed);
+        $completedSalesQuery = Sale::query()->where('cash_shift_id', $shift->id)->where('status', SaleStatus::Completed);
 
         $receivedByMethod = SalePayment::query()
             ->join('sales', 'sales.id', '=', 'sale_payments.sale_id')
@@ -95,21 +105,24 @@ class ShiftService
             $payments[$method->value] = (string) BigDecimal::of((string) ($receivedByMethod[$method->value] ?? 0))->toScale(2);
         }
 
-        $completedReturns = SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Completed);
-        $cashRefunds = BigDecimal::of((string) (clone $completedReturns)->where('refund_method', PaymentMethod::Cash)->sum('refund_amount'));
+        $completedReturnsQuery = SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Completed);
+        $cashRefunds = BigDecimal::of((string) (clone $completedReturnsQuery)->where('refund_method', PaymentMethod::Cash)->sum('refund_amount'));
 
-        $changeGiven = BigDecimal::of((string) (clone $completedSales)->sum('change_amount'));
+        $changeGiven = BigDecimal::of((string) (clone $completedSalesQuery)->sum('change_amount'));
         $cashInDrawer = BigDecimal::of($payments[PaymentMethod::Cash->value])->minus($changeGiven)->minus($cashRefunds);
         $payments[PaymentMethod::Cash->value] = (string) $cashInDrawer->toScale(2);
 
+        $drawerExpenses = BigDecimal::of($this->expenseService->drawerTotalOf($shift));
+
         return [
-            'sale_count' => (clone $completedSales)->count(),
-            'total_sales' => (string) BigDecimal::of((string) (clone $completedSales)->sum('total'))->toScale(2),
-            'returns_total' => (string) BigDecimal::of((string) (clone $completedReturns)->sum('credit_amount'))->toScale(2),
+            'sale_count' => (clone $completedSalesQuery)->count(),
+            'total_sales' => (string) BigDecimal::of((string) (clone $completedSalesQuery)->sum('total'))->toScale(2),
+            'returns_total' => (string) BigDecimal::of((string) (clone $completedReturnsQuery)->sum('credit_amount'))->toScale(2),
             'cash_refunds' => (string) $cashRefunds->toScale(2),
+            'drawer_expenses' => (string) $drawerExpenses->toScale(2),
             'payments' => $payments,
             'opening_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->toScale(2),
-            'expected_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->plus($cashInDrawer)->toScale(2),
+            'expected_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->plus($cashInDrawer)->minus($drawerExpenses)->toScale(2),
         ];
     }
 
@@ -148,7 +161,7 @@ class ShiftService
                 'expected_cash' => (string) $expectedCash->toScale(2),
                 'counted_cash' => (string) $counted->toScale(2),
                 'cash_difference' => (string) $difference->toScale(2),
-                'deposit_amount' => (string) $counted->minus($shift->register->fixed_opening_cash)->toScale(2),
+                'deposit_amount' => (string) $counted->minus($shift->opening_cash)->toScale(2),
                 'difference_status' => $difference->isZero() ? ShiftDifferenceStatus::None : ShiftDifferenceStatus::PendingApproval,
                 'closing_note' => filled($note) ? trim($note) : null,
             ])->save();

@@ -2,14 +2,14 @@
 
 namespace App\Http\Resources;
 
-use App\Enums\DeliveryNoteStatus;
 use App\Models\DeliveryNote;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * One delivery note in full, with what may be done to it next. No prices: the paper goes to the customer without
- * them. Expects `items` and `sale`.
+ * them. Expects `items` and `sale`. There is no address for the sheet: the print step answers a signed one for the
+ * exact print it counted.
  *
  * @mixin DeliveryNote
  */
@@ -51,8 +51,8 @@ class DeliveryNoteResource extends JsonResource
                 'quantity_delivered' => $item->quantity_delivered,
                 'quantity_returned' => $item->quantity_returned,
             ])->values()->all(),
-            'can_ship' => $this->status === DeliveryNoteStatus::Draft,
-            'can_complete' => $this->status === DeliveryNoteStatus::Shipped,
+            'can_ship' => $this->status->canBeShipped(),
+            'can_complete' => $this->status->canBeCompleted(),
             'can_cancel' => $this->status->canBeCancelled(),
             'urls' => [
                 'index' => route('tenant.delivery-notes.index', ['tenant' => tenant('code')]),
@@ -60,7 +60,6 @@ class DeliveryNoteResource extends JsonResource
                 'complete' => $actionUrl('complete'),
                 'cancel' => $actionUrl('cancel'),
                 'print' => $actionUrl('print'),
-                'sheet' => $actionUrl('sheet'),
             ],
         ];
     }

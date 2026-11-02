@@ -15,18 +15,18 @@ use Inertia\Response;
 
 class UserController extends Controller
 {
-    public function __construct(private readonly UserService $users) {}
+    public function __construct(private readonly UserService $userService) {}
 
     public function index(): Response
     {
-        $users = User::query()
+        $userAccounts = User::query()
             ->with('stores')
             ->orderByDesc('is_super_admin')
             ->orderBy('name')
             ->get();
 
         return Inertia::render('Central/Users/Index', [
-            'users' => UserResource::collection($users)->resolve(),
+            'users' => UserResource::collection($userAccounts)->resolve(),
             'create_url' => route('central.users.create'),
         ]);
     }
@@ -42,7 +42,7 @@ class UserController extends Controller
 
     public function store(SaveUserRequest $request): RedirectResponse
     {
-        $this->users->create($this->userData($request));
+        $this->userService->create($this->userAttributes($request));
 
         return redirect()->route('central.users.index')->with('success', 'User ditambahkan.');
     }
@@ -58,7 +58,7 @@ class UserController extends Controller
 
     public function update(SaveUserRequest $request, User $user): RedirectResponse
     {
-        $this->users->update($user, $this->userData($request));
+        $this->userService->update($user, $this->userAttributes($request));
 
         return redirect()->route('central.users.index')->with('success', 'User disimpan.');
     }
@@ -77,7 +77,7 @@ class UserController extends Controller
     /**
      * @return array{name: string, username: string, password: string|null, role: UserRole, store_id: int|null, is_active: bool}
      */
-    private function userData(SaveUserRequest $request): array
+    private function userAttributes(SaveUserRequest $request): array
     {
         return [
             'name' => $request->string('name')->toString(),

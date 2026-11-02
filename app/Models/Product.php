@@ -24,6 +24,13 @@ class Product extends Model implements AuditableContract
     use Auditable, HasFactory, SoftDeletes;
 
     /**
+     * The save counter is bookkeeping for the edit form, not a change someone made.
+     *
+     * @var list<string>
+     */
+    protected array $auditExclude = ['version'];
+
+    /**
      * @return array<string, mixed>
      */
     protected function casts(): array
@@ -32,6 +39,7 @@ class Product extends Model implements AuditableContract
             'cost_price' => 'decimal:2',
             'min_stock' => 'decimal:3',
             'is_active' => 'boolean',
+            'version' => 'integer',
         ];
     }
 
@@ -103,7 +111,16 @@ class Product extends Model implements AuditableContract
     }
 
     /**
-     * Adds `sellable_stock` and `dead_stock`: the product's total in the warehouses of each type.
+     * The product has a minimum and its stock in the sellable warehouses (the `?`) is under it. Products without a
+     * minimum are never low. The one definition of "below minimum", used by the list flag and the dashboard count.
+     */
+    private const BELOW_MINIMUM_SQL = '(products.min_stock > 0 and (select coalesce(sum(stocks.quantity), 0) from stocks
+        join warehouses on warehouses.id = stocks.warehouse_id
+        where stocks.product_id = products.id and warehouses.type = ?) < products.min_stock)';
+
+    /**
+     * Adds `sellable_stock` and `dead_stock`: the product's total in the warehouses of each type, and
+     * `is_below_minimum`, see {@see self::BELOW_MINIMUM_SQL}.
      *
      * @param  Builder<Product>  $query
      */
@@ -118,7 +135,7 @@ class Product extends Model implements AuditableContract
             'products.*',
             'sellable_stock' => $totalIn(WarehouseType::Sellable),
             'dead_stock' => $totalIn(WarehouseType::DeadStock),
-        ]);
+        ])->selectRaw(self::BELOW_MINIMUM_SQL.' as is_below_minimum', [WarehouseType::Sellable->value]);
     }
 
     /**
@@ -134,10 +151,13 @@ class Product extends Model implements AuditableContract
             return;
         }
 
-        $query->where(function (Builder $query) use ($term): void {
-            $query->where('products.name', 'like', "%{$term}%")
-                ->orWhere('products.sku', 'like', "%{$term}%")
-                ->orWhereHas('productUnits', fn (Builder $units) => $units->where('barcode', 'like', "%{$term}%"));
+        // A typed % or _ is part of the name, not a wildcard.
+        $contains = '%'.addcslashes($term, '%_\\').'%';
+
+        $query->where(function (Builder $query) use ($contains): void {
+            $query->where('products.name', 'like', $contains)
+                ->orWhere('products.sku', 'like', $contains)
+                ->orWhereHas('productUnits', fn (Builder $units) => $units->where('barcode', 'like', $contains));
         });
     }
 
@@ -149,13 +169,6 @@ class Product extends Model implements AuditableContract
      */
     public function scopeBelowMinimumStock(Builder $query): void
     {
-        $query->where('is_active', true)
-            ->where('min_stock', '>', 0)
-            ->whereRaw(
-                '(select coalesce(sum(stocks.quantity), 0) from stocks
-                    join warehouses on warehouses.id = stocks.warehouse_id
-                    where stocks.product_id = products.id and warehouses.type = ?) < products.min_stock',
-                [WarehouseType::Sellable->value],
-            );
+        $query->where('is_active', true)->whereRaw(self::BELOW_MINIMUM_SQL, [WarehouseType::Sellable->value]);
     }
 }

@@ -29,6 +29,9 @@ class Store extends BaseTenant implements AuditableContract, TenantWithDatabase
     /** @var list<string> */
     protected array $auditExclude = ['db_password', 'data'];
 
+    /** @var list<string> keeps the decrypted store database password out of any serialized store (props, logs) */
+    protected $hidden = ['db_password'];
+
     /**
      * Internal tenancy keys are plain `db_name`, `db_username`, `db_password`, `db_host` columns.
      */

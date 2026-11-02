@@ -5,6 +5,7 @@ namespace Tests\Feature\Tenancy;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\PreparesStoreDatabase;
 use Tests\TestCase;
 
@@ -30,7 +31,7 @@ class StoreAccessTest extends TestCase
     {
         $this->store();
 
-        $this->getJson('/t/test_access/ping')->assertUnauthorized();
+        $this->getJson('/t/test_access/cashier')->assertUnauthorized();
     }
 
     public function test_user_attached_to_the_store_may_enter(): void
@@ -40,9 +41,9 @@ class StoreAccessTest extends TestCase
         $store->users()->attach($user->id, ['role' => 'cashier']);
 
         $this->actingAs($user)
-            ->getJson('/t/test_access/ping')
+            ->get('/t/test_access/cashier')
             ->assertOk()
-            ->assertJson(['store' => 'test_access', 'database' => self::STORE_DATABASE]);
+            ->assertInertia(fn (Assert $page) => $page->where('store.code', 'test_access'));
     }
 
     public function test_super_admin_may_enter_any_store(): void
@@ -50,7 +51,7 @@ class StoreAccessTest extends TestCase
         $this->store();
 
         $this->actingAs(User::factory()->create(['is_super_admin' => true]))
-            ->getJson('/t/test_access/ping')
+            ->get('/t/test_access/cashier')
             ->assertOk();
     }
 
@@ -59,7 +60,7 @@ class StoreAccessTest extends TestCase
         $this->store();
 
         $this->actingAs(User::factory()->create())
-            ->getJson('/t/test_access/ping')
+            ->get('/t/test_access/cashier')
             ->assertForbidden();
     }
 
@@ -70,7 +71,7 @@ class StoreAccessTest extends TestCase
         $store->users()->attach($user->id, ['role' => 'admin']);
 
         $this->actingAs($user)
-            ->getJson('/t/test_access/ping')
+            ->get('/t/test_access/cashier')
             ->assertForbidden();
     }
 
@@ -81,7 +82,7 @@ class StoreAccessTest extends TestCase
         $store->users()->attach($user->id, ['role' => 'admin']);
 
         $this->actingAs($user)
-            ->getJson('/t/test_access/ping')
+            ->get('/t/test_access/cashier')
             ->assertForbidden();
     }
 
@@ -90,7 +91,7 @@ class StoreAccessTest extends TestCase
         $this->store();
 
         $this->actingAs(User::factory()->create(['is_super_admin' => true]))
-            ->getJson('/api/t/test_access/ping')
+            ->getJson('/api/t/test_access/cashier')
             ->assertNotFound();
     }
 }

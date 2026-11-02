@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
+import { newUuid } from '../../../Composables/useCart';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
@@ -12,7 +13,9 @@ const props = defineProps({
 
 const SEARCH_DELAY_MS = 250;
 
+/** One uuid per opened form: a second tap or a retry of the same save gives back the first note, not another. */
 const form = useForm({
+    client_uuid: newUuid(),
     sale_id: null,
     recipient_name: '',
     recipient_phone: '',

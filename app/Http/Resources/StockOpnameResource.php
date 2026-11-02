@@ -34,7 +34,7 @@ class StockOpnameResource extends JsonResource
             'category' => $this->category?->name,
             'brand' => $this->brand?->name,
             'reason_label' => $this->reason_code?->label(),
-            'counts_arrivals' => (bool) $this->reason_code?->countsArrivals(),
+            'is_counting_arrivals' => (bool) $this->reason_code?->isArrivalCount(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
             'snapshot_at' => $this->snapshot_at?->toIso8601String(),

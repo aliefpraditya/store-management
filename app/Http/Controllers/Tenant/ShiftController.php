@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Tenant;
 
-use App\Enums\UserRole;
 use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\CloseShiftRequest;
@@ -16,12 +15,12 @@ use Symfony\Component\HttpFoundation\Response;
 
 class ShiftController extends Controller
 {
-    public function __construct(private readonly ShiftService $shifts) {}
+    public function __construct(private readonly ShiftService $shiftService) {}
 
     public function store(OpenShiftRequest $request): RedirectResponse
     {
         try {
-            $this->shifts->open($request->user(), Register::query()->findOrFail($request->validated('register_id')));
+            $this->shiftService->open($request->user(), Register::query()->findOrFail($request->validated('register_id')));
         } catch (ShiftException $exception) {
             return back()->with('error', $exception->getMessage());
         }
@@ -37,12 +36,10 @@ class ShiftController extends Controller
         /** @var Store $store */
         $store = tenant();
         $user = $request->user();
-        $isAdmin = in_array($user->roleIn($store), [UserRole::SuperAdmin, UserRole::StoreAdmin], true);
-
-        abort_unless($isAdmin || $shift->cashier_id === $user->id, Response::HTTP_FORBIDDEN);
+        abort_unless($user->isAdminIn($store) || $shift->cashier_id === $user->id, Response::HTTP_FORBIDDEN);
 
         try {
-            $closedShift = $this->shifts->close($shift, (string) $request->validated('counted_cash'), $request->validated('closing_note'));
+            $closedShift = $this->shiftService->close($shift, (string) $request->validated('counted_cash'), $request->validated('closing_note'));
         } catch (ShiftException $exception) {
             return back()->with('error', $exception->getMessage());
         }

@@ -9,7 +9,7 @@ const page = usePage();
 const form = useForm({
     username: '',
     password: '',
-    remember: false,
+    should_remember: false,
 });
 
 const isPasswordVisible = ref(false);
@@ -67,7 +67,7 @@ function submit() {
                             </template>
                         </q-input>
 
-                        <q-checkbox v-model="form.remember" label="Ingat saya" dense class="login__remember" />
+                        <q-checkbox v-model="form.should_remember" label="Ingat saya" dense class="login__remember" />
 
                         <q-btn
                             type="submit"

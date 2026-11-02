@@ -13,19 +13,18 @@ use Illuminate\Support\Facades\DB;
 class PrintCounter
 {
     /**
-     * Notes one more print of the document, atomically so two registers printing at once both count.
-     *
-     * @return bool true when this print is a copy, that is the document was printed before
+     * Notes one more print of the document, atomically so two registers printing at once both count, and answers
+     * which print this was (1 for the original). A sheet opened for that exact print can then say SALINAN or not by
+     * itself, instead of looking at a count that later prints have moved on.
      */
-    public function record(Sale|DeliveryNote $document): bool
+    public function recordPrint(Sale|DeliveryNote $document): int
     {
-        return DB::transaction(function () use ($document): bool {
-            $locked = $document::query()->lockForUpdate()->findOrFail($document->id);
-            $isCopy = $locked->print_count > 0;
+        return DB::transaction(function () use ($document): int {
+            $lockedDocument = $document::query()->lockForUpdate()->findOrFail($document->id);
 
-            $locked->increment('print_count');
+            $lockedDocument->increment('print_count');
 
-            return $isCopy;
+            return $lockedDocument->print_count;
         });
     }
 }

@@ -6,6 +6,7 @@ use App\Enums\CashShiftStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\ShiftDifferenceStatus;
 use App\Models\CashShift;
+use App\Models\Expense;
 use App\Models\SaleReturn;
 use App\Models\User;
 use App\Services\ShiftService;
@@ -13,9 +14,9 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * One shift in full for the admin's recap: how it ended, what happened in it, and the returns made in it. Expects
- * `register`, and the `summary` and `returns` that the controller works out and hands in. The cashier screen has its
- * own, smaller {@see CashShiftResource}.
+ * One shift in full for the admin's recap: how it ended, what happened in it, the returns made in it and the money
+ * taken from its drawer. Expects `register`, and the `summary`, `returns` and `expenses` that the controller works out
+ * and hands in (the expenses with their `category`). The cashier screen has its own, smaller {@see CashShiftResource}.
  *
  * @mixin CashShift
  */
@@ -24,8 +25,9 @@ class ShiftRecapResource extends JsonResource
     /**
      * @param  array<string, mixed>  $summary  {@see ShiftService::summarize()}
      * @param  iterable<SaleReturn>  $returns
+     * @param  iterable<Expense>  $expenses
      */
-    public function __construct(CashShift $resource, private readonly array $summary, private readonly iterable $returns)
+    public function __construct(CashShift $resource, private readonly array $summary, private readonly iterable $returns, private readonly iterable $expenses)
     {
         parent::__construct($resource);
     }
@@ -58,14 +60,16 @@ class ShiftRecapResource extends JsonResource
             'decided_by_name' => $this->difference_approved_by === null ? null : User::query()->find($this->difference_approved_by)?->name,
             'decided_at' => $this->difference_approved_at?->toIso8601String(),
             'approval_note' => $this->approval_note,
-            'can_decide' => $this->difference_status === ShiftDifferenceStatus::PendingApproval,
-            'needs_follow_up' => $this->needsFollowUp(),
+            'is_own_shift' => $this->cashier_id === $request->user()->id,
+            'can_decide' => $this->difference_status === ShiftDifferenceStatus::PendingApproval && $this->cashier_id !== $request->user()->id,
+            'is_awaiting_follow_up' => $this->isAwaitingFollowUp(),
             'followed_up_by_name' => $this->followed_up_by === null ? null : User::query()->find($this->followed_up_by)?->name,
             'followed_up_at' => $this->followed_up_at?->toIso8601String(),
             'sale_count' => $this->summary['sale_count'],
             'total_sales' => $this->summary['total_sales'],
             'returns_total' => $this->summary['returns_total'],
             'cash_refunds' => $this->summary['cash_refunds'],
+            'drawer_expenses' => $this->summary['drawer_expenses'],
             'payments' => collect($this->summary['payments'])
                 ->map(fn (string $amount, string $method): array => ['method' => PaymentMethod::from($method)->label(), 'amount' => $amount])
                 ->values()
@@ -77,6 +81,14 @@ class ShiftRecapResource extends JsonResource
                 'refund_amount' => $saleReturn->refund_amount,
                 'refund_method_label' => $saleReturn->refund_method->label(),
                 'show_url' => route('tenant.returns.show', ['tenant' => tenant('code'), 'sale_return' => $saleReturn->id]),
+            ])->values()->all(),
+            'expenses' => collect($this->expenses)->map(fn (Expense $expense): array => [
+                'number' => $expense->number,
+                'description' => $expense->description,
+                'category_name' => $expense->category->name,
+                'amount' => $expense->amount,
+                'status' => $expense->status->value,
+                'status_label' => $expense->status->label(),
             ])->values()->all(),
         ];
     }

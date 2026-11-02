@@ -15,6 +15,7 @@ use App\Services\SaleReturnService;
 use App\Services\SaleService;
 use App\Services\ShiftService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsCashierFixtures;
@@ -72,6 +73,7 @@ class SaleReturnExchangeTest extends TestCase
     private function exchange(Sale $sale, int $returned, string $unitCode, int $quantity, array $payments = [], array $overrides = []): array
     {
         return [
+            'client_uuid' => (string) Str::uuid(),
             'sale_id' => $sale->id,
             'resolution' => 'exchange',
             'refund_method' => 'cash',
@@ -125,7 +127,7 @@ class SaleReturnExchangeTest extends TestCase
 
         $saleReturn = $this->saleReturn();
         $exchangeSale = $this->exchangeSaleOf($saleReturn);
-        $this->assertSame(['exchange', 'completed', '20000.00', '0.00'], [$saleReturn->resolution, $saleReturn->status->value, $saleReturn->credit_amount, $saleReturn->refund_amount]);
+        $this->assertSame(['exchange', 'completed', '20000.00', '0.00'], [$saleReturn->resolution->value, $saleReturn->status->value, $saleReturn->credit_amount, $saleReturn->refund_amount]);
         $this->assertSame(['110000.00', '110000.00', $this->admin->id, $this->adminShift->id], [$exchangeSale->total, $exchangeSale->paid_total, $exchangeSale->cashier_id, $exchangeSale->cash_shift_id]);
         $this->assertSame(['return_credit' => '20000.00', 'cash' => '90000.00'], $this->paymentsOf($exchangeSale));
         $this->assertSame('85.000', $this->stockInPieces($this->brush));
@@ -195,7 +197,7 @@ class SaleReturnExchangeTest extends TestCase
         $sale = $this->sellBrushes($this->admin, $this->adminShift, 5);
 
         $this->actingAs($this->admin)->post($this->url('store'), $this->exchange($sale, 2, 'DUS', 1, [['method' => 'cash', 'amount' => 50000]]))
-            ->assertSessionHas('error', 'Pembayaran kurang dari total belanja.');
+            ->assertSessionHas('error', 'Pembayaran kurang dari total belanja Rp 110.000. Harga di layar mungkin sudah berubah: cari ulang barangnya, lalu coba lagi.');
 
         $this->assertSame(0, $this->store->run(fn () => SaleReturn::query()->count()));
         $this->assertSame(1, $this->store->run(fn () => Sale::query()->count()));
@@ -268,10 +270,54 @@ class SaleReturnExchangeTest extends TestCase
         $saleReturn = $this->store->run(fn (): SaleReturn => app(SaleReturnService::class)->create($sale, $cashierShift, $cashier, $this->exchange($sale, 2, 'DUS', 1, [['method' => 'cash', 'amount' => 90000]])));
         $this->store->run(fn () => ProductUnit::query()->whereKey($this->unitOf($this->brush, 'DUS')->id)->update(['selling_price' => 120000]));
 
-        $this->actingAs($this->admin)->post($this->url('approve', ['sale_return' => $saleReturn->id]))->assertSessionHas('error', 'Pembayaran kurang dari total belanja.');
+        $this->actingAs($this->admin)->post($this->url('approve', ['sale_return' => $saleReturn->id]))->assertSessionHas('error', 'Pembayaran kurang dari total belanja Rp 120.000. Harga di layar mungkin sudah berubah: cari ulang barangnya, lalu coba lagi.');
 
         $this->assertSame('pending', $this->saleReturn()->status->value);
         $this->assertSame('95.000', $this->stockInPieces($this->brush));
+    }
+
+    public function test_approving_stops_when_prices_fell_and_money_is_now_owed_to_a_method_with_no_account(): void
+    {
+        [$cashier, $cashierShift] = $this->cashierOnSecondRegister();
+        $sale = $this->sellBrushes($cashier, $cashierShift, 5);
+        $saleReturn = $this->store->run(fn (): SaleReturn => app(SaleReturnService::class)->create($sale, $cashierShift, $cashier, $this->exchange($sale, 2, 'PCS', 2, [], ['refund_method' => 'transfer'])));
+        $this->assertSame('0.00', $saleReturn->refund_amount);
+        $this->store->run(fn () => ProductUnit::query()->whereKey($this->unitOf($this->brush, 'PCS')->id)->update(['selling_price' => 5000]));
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['sale_return' => $saleReturn->id]))
+            ->assertSessionHas('error', 'Harga barang pengganti berubah sehingga ada uang yang harus dikembalikan, tetapi rekening penerima belum diisi. Tolak retur ini, lalu minta kasir mengajukannya lagi.');
+
+        $this->assertSame('pending', $this->saleReturn()->status->value);
+        $this->assertSame('95.000', $this->stockInPieces($this->brush));
+        $this->assertSame(1, $this->store->run(fn () => Sale::query()->count()));
+    }
+
+    public function test_approving_stops_when_prices_fell_and_the_customers_extra_payment_is_no_longer_needed(): void
+    {
+        [$cashier, $cashierShift] = $this->cashierOnSecondRegister();
+        $sale = $this->sellBrushes($cashier, $cashierShift, 5);
+        $saleReturn = $this->store->run(fn (): SaleReturn => app(SaleReturnService::class)->create($sale, $cashierShift, $cashier, $this->exchange($sale, 2, 'DUS', 1, [['method' => 'cash', 'amount' => 90000]])));
+        $this->store->run(fn () => ProductUnit::query()->whereKey($this->unitOf($this->brush, 'DUS')->id)->update(['selling_price' => 15000]));
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['sale_return' => $saleReturn->id]))
+            ->assertSessionHas('error', 'Harga barang pengganti berubah sehingga pembayaran tambahan pelanggan tidak diperlukan lagi. Tolak retur ini, lalu minta kasir mengajukannya lagi.');
+
+        $this->assertSame('pending', $this->saleReturn()->status->value);
+        $this->assertSame(1, $this->store->run(fn () => Sale::query()->count()));
+    }
+
+    public function test_approving_when_prices_fell_refunds_the_difference_to_the_account_that_was_given(): void
+    {
+        [$cashier, $cashierShift] = $this->cashierOnSecondRegister();
+        $sale = $this->sellBrushes($cashier, $cashierShift, 5);
+        $saleReturn = $this->store->run(fn (): SaleReturn => app(SaleReturnService::class)->create($sale, $cashierShift, $cashier, $this->exchange($sale, 2, 'PCS', 2, [], ['refund_method' => 'transfer', 'refund_account' => 'BCA 123 a.n. Budi'])));
+        $this->store->run(fn () => ProductUnit::query()->whereKey($this->unitOf($this->brush, 'PCS')->id)->update(['selling_price' => 5000]));
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['sale_return' => $saleReturn->id]));
+
+        $this->assertNull(session('error'));
+        $approved = $this->saleReturn();
+        $this->assertSame(['completed', '10000.00', 'BCA 123 a.n. Budi'], [$approved->status->value, $approved->refund_amount, $approved->refund_account]);
     }
 
     public function test_the_return_page_and_slip_show_the_replacement_and_how_it_was_settled(): void
@@ -291,7 +337,7 @@ class SaleReturnExchangeTest extends TestCase
             ->where('saleReturn.exchange.payments.0', ['method' => 'Tunai', 'amount' => '90000.00'])
             ->where('saleReturn.exchange.sale_number', $exchangeSale->number)
             ->where('saleReturn.exchange.print_url', route('tenant.cashier.receipts.print', ['tenant' => $this->store->code, 'sale' => $exchangeSale->id]))
-            ->where('saleReturn.exchange.sheet_url', route('tenant.cashier.receipts.sheet', ['tenant' => $this->store->code, 'sale' => $exchangeSale->id]));
+            ->missing('saleReturn.exchange.sheet_url');
 
         $this->actingAs($this->admin)->get($this->url('show', ['sale_return' => $saleReturn->id]))->assertInertia($expected);
         $this->actingAs($this->admin)->get($this->url('sheet', ['sale_return' => $saleReturn->id]))->assertInertia($expected);
@@ -307,15 +353,14 @@ class SaleReturnExchangeTest extends TestCase
         $saleReturn = $this->store->run(fn (): SaleReturn => app(SaleReturnService::class)->create($sale, $cashierShift, $cashier, $this->exchange($sale, 2, 'PCS', 2)));
 
         $this->actingAs($this->admin)->get($this->url('show', ['sale_return' => $saleReturn->id]))
-            ->assertInertia(fn (Assert $page) => $page->where('saleReturn.exchange.print_url', null)->where('saleReturn.exchange.sheet_url', null));
+            ->assertInertia(fn (Assert $page) => $page->where('saleReturn.exchange.print_url', null));
 
         $this->actingAs($this->admin)->post($this->url('approve', ['sale_return' => $saleReturn->id]));
         $exchangeSale = $this->exchangeSaleOf($this->saleReturn());
         $print = route('tenant.cashier.receipts.print', ['tenant' => $this->store->code, 'sale' => $exchangeSale->id]);
-        $sheet = route('tenant.cashier.receipts.sheet', ['tenant' => $this->store->code, 'sale' => $exchangeSale->id]);
 
         $this->actingAs($this->admin)->postJson($print)->assertOk()->assertJsonPath('data.print_count', 1);
-        $this->actingAs($cashier)->postJson($print)->assertOk()->assertJsonPath('data.is_copy', true);
+        $sheet = $this->actingAs($cashier)->postJson($print)->assertOk()->assertJsonPath('data.is_copy', true)->json('data.sheet_url');
         $this->actingAs($cashier)->get($sheet)->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Tenant/Print/Receipt')
             ->where('receipt.number', $exchangeSale->number)
@@ -331,7 +376,7 @@ class SaleReturnExchangeTest extends TestCase
         $body = $this->exchange($sale, 2, 'DUS', 1, [['method' => 'cash', 'amount' => 90000]]);
         unset($body['sale_id']);
 
-        $this->actingAs($cashier)->postJson(route('tenant.cashier.receipts.returns.store', ['tenant' => $this->store->code, 'sale' => $sale->id]), $body)
+        $this->actingAs($cashier)->postJson(URL::temporarySignedRoute('tenant.cashier.receipts.returns.store', now()->addHour(), ['tenant' => $this->store->code, 'sale' => $sale->id]), $body)
             ->assertCreated()
             ->assertJsonPath('data.status', 'pending')
             ->assertJsonPath('data.resolution', 'exchange')

@@ -34,6 +34,21 @@ class SaleReturnException extends Exception
         return new self('Isi rekening penerima untuk pengembalian uang non tunai.');
     }
 
+    public static function refundAccountMissingAfterRepricing(): self
+    {
+        return new self('Harga barang pengganti berubah sehingga ada uang yang harus dikembalikan, tetapi rekening penerima belum diisi. Tolak retur ini, lalu minta kasir mengajukannya lagi.');
+    }
+
+    public static function exchangePaymentsNoLongerNeeded(): self
+    {
+        return new self('Harga barang pengganti berubah sehingga pembayaran tambahan pelanggan tidak diperlukan lagi. Tolak retur ini, lalu minta kasir mengajukannya lagi.');
+    }
+
+    public static function returnIdInUse(): self
+    {
+        return new self('Pengajuan retur ini sudah tercatat untuk orang atau nota lain. Muat ulang layar lalu coba lagi.');
+    }
+
     public static function shiftNotOpen(): self
     {
         return new self('Buka shift dulu untuk membuat retur.');

@@ -68,7 +68,7 @@ class StoreRouteAccessTest extends TestCase
     {
         $cashierRoutes = array_filter($this->storeRoutes(), fn (RoutingRoute $route): bool => $this->isOpenToCashiers($route));
 
-        $this->assertCount(16, $cashierRoutes);
+        $this->assertCount(18, $cashierRoutes);
 
         foreach ($cashierRoutes as $route) {
             $middleware = app('router')->gatherRouteMiddleware($route);
@@ -88,14 +88,13 @@ class StoreRouteAccessTest extends TestCase
     }
 
     /**
-     * Only the dashboard (which sends cashiers to their screen), the cashier screen and the ping check are open to
-     * cashiers.
+     * Only the dashboard (which sends cashiers to their screen) and the cashier screen are open to cashiers.
      */
     public function test_every_other_store_route_is_for_store_admins_only(): void
     {
         $adminRoutes = array_filter(
             $this->storeRoutes(),
-            fn (RoutingRoute $route): bool => ! in_array($route->getName(), ['tenant.dashboard', 'tenant.ping'], true) && ! $this->isOpenToCashiers($route),
+            fn (RoutingRoute $route): bool => $route->getName() !== 'tenant.dashboard' && ! $this->isOpenToCashiers($route),
         );
 
         $names = array_map(fn (RoutingRoute $route): string => (string) $route->getName(), $adminRoutes);
@@ -108,7 +107,8 @@ class StoreRouteAccessTest extends TestCase
         $this->assertCount(10, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.delivery-notes.')));
         $this->assertCount(8, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.returns.')));
         $this->assertCount(5, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.shifts.')));
-        $this->assertCount(50, $adminRoutes);
+        $this->assertCount(5, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.expenses.')));
+        $this->assertCount(55, $adminRoutes);
 
         foreach ($adminRoutes as $route) {
             $this->assertContains(

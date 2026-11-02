@@ -22,6 +22,7 @@ use App\Models\Warehouse;
 use App\Services\StockOpnameReport;
 use Brick\Math\BigDecimal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\PreparesStoreDatabase;
@@ -697,7 +698,7 @@ class StockOpnameTest extends TestCase
         $this->addItem($opname, $untouched, '0', '10');
 
         $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertInertia(fn (Assert $page) => $page
-            ->where('opname.counts_arrivals', true)
+            ->where('opname.is_counting_arrivals', true)
             ->where('summary.variance_count', 1)
             ->where('summary.variance_value', '10000.00')
             ->where('items.data.0.product.name', 'Cat')
@@ -711,16 +712,16 @@ class StockOpnameTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->has('items.data', 1)->where('items.data.0.product.name', 'Cat'));
     }
 
-    public function test_only_the_stock_increase_reason_counts_arrivals(): void
+    public function test_only_the_stock_increase_reason_is_counting_arrivals(): void
     {
         foreach (StockOpnameReason::cases() as $reason) {
-            $this->assertSame($reason === StockOpnameReason::StockIncrease, $reason->countsArrivals(), $reason->value);
+            $this->assertSame($reason === StockOpnameReason::StockIncrease, $reason->isArrivalCount(), $reason->value);
         }
 
         $opname = $this->opname(['reason_code' => StockOpnameReason::Routine]);
 
         $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))
-            ->assertInertia(fn (Assert $page) => $page->where('opname.counts_arrivals', false));
+            ->assertInertia(fn (Assert $page) => $page->where('opname.is_counting_arrivals', false));
     }
 
     public function test_counting_cannot_be_finished_before_anything_is_counted(): void
@@ -1074,5 +1075,132 @@ class StockOpnameTest extends TestCase
         $this->actingAs($this->userWithRole(UserRole::Cashier))
             ->getJson(route('tenant.products.search', ['tenant' => $this->store->code, 'q' => 'x']))
             ->assertForbidden();
+    }
+
+    /**
+     * The SQL (lower case) that runs while the action does.
+     *
+     * @return list<string>
+     */
+    private function statementsDuring(callable $action): array
+    {
+        $statements = [];
+        DB::listen(function ($query) use (&$statements): void {
+            $statements[] = strtolower($query->sql);
+        });
+
+        $action();
+
+        return $statements;
+    }
+
+    /**
+     * @param  list<string>  $statements
+     * @param  list<string>  $needles  every one must be in the statement
+     */
+    private function firstStatementWith(array $statements, array $needles): ?int
+    {
+        foreach ($statements as $index => $statement) {
+            if (collect($needles)->every(fn (string $needle): bool => str_contains($statement, $needle))) {
+                return $index;
+            }
+        }
+
+        return null;
+    }
+
+    public function test_adding_a_product_locks_the_warehouse_before_checking_whether_another_opname_holds_it(): void
+    {
+        $opname = $this->opnameInStatus(StockOpnameStatus::Draft);
+        $paint = $this->makeProduct('Cat');
+
+        $statements = $this->statementsDuring(fn () => $this->actingAs($this->admin)->post($this->url('items.store', ['stock_opname' => $opname->id]), ['product_id' => $paint->id])->assertSessionHas('success'));
+
+        $lockAt = $this->firstStatementWith($statements, ['from `warehouses`', 'for update']);
+        $busyCheckAt = $this->firstStatementWith($statements, ['from `stock_opname_items`', 'join `stock_opnames`']);
+
+        $this->assertNotNull($lockAt);
+        $this->assertNotNull($busyCheckAt);
+        $this->assertLessThan($busyCheckAt, $lockAt);
+    }
+
+    public function test_starting_a_category_opname_locks_the_warehouse_before_choosing_its_products(): void
+    {
+        $opname = $this->opnameInStatus(StockOpnameStatus::Draft, StockOpnameScope::Category);
+        $this->makeProduct('Cat');
+
+        $statements = $this->statementsDuring(fn () => $this->action('start', $opname)->assertSessionHas('success'));
+
+        $lockAt = $this->firstStatementWith($statements, ['from `warehouses`', 'for update']);
+        $busyCheckAt = $this->firstStatementWith($statements, ['from `stock_opname_items`', 'join `stock_opnames`']);
+
+        $this->assertNotNull($lockAt);
+        $this->assertNotNull($busyCheckAt);
+        $this->assertLessThan($busyCheckAt, $lockAt);
+    }
+
+    public function test_posting_locks_the_stock_rows_once_however_many_items_there_are(): void
+    {
+        $opname = $this->opnameInStatus(StockOpnameStatus::Review);
+        $products = collect(range(1, 6))->map(fn (int $number): Product => $this->makeProduct("Cat {$number}", '10'));
+        $products->each(fn (Product $product) => $this->addItem($opname, $product, '12'));
+
+        $statements = $this->statementsDuring(fn () => $this->action('post', $opname)->assertSessionHas('success'));
+
+        $this->assertSame(1, count(array_filter($statements, fn (string $statement): bool => str_contains($statement, 'from `stocks`') && str_contains($statement, 'for update'))));
+        $products->each(fn (Product $product) => $this->assertSame('12.000', $this->stockOf($product)));
+    }
+
+    public function test_posting_creates_the_stock_row_of_a_product_that_has_none(): void
+    {
+        $opname = $this->opnameInStatus(StockOpnameStatus::Review);
+        $withoutStock = $this->makeProduct('Cat Baru');
+        $this->inStore(fn () => Stock::query()->where('product_id', $withoutStock->id)->delete());
+        $this->addItem($opname, $withoutStock, '7');
+
+        $this->action('post', $opname)->assertSessionHas('success');
+
+        $this->assertSame('7.000', $this->stockOf($withoutStock));
+        $this->assertSame('0.000', $this->item($opname, $withoutStock)->system_quantity_at_posting);
+    }
+
+    public function test_a_count_too_big_for_the_stock_column_is_refused_with_a_message(): void
+    {
+        $opname = $this->opnameInStatus(StockOpnameStatus::Counting);
+        $paint = $this->makeProduct('Cat');
+        $pallet = $this->inStore(fn () => Unit::query()->firstOrCreate(['code' => 'PALET'], ['name' => 'Palet']));
+        $this->inStore(fn () => ProductUnit::factory()->create(['product_id' => $paint->id, 'unit_code' => $pallet->code, 'conversion_factor' => 5000000, 'is_base' => false, 'is_default_sale' => false, 'sort_order' => 2]));
+        $item = $this->addItem($opname, $paint);
+
+        $this->saveCount($opname, $item, [['unit_code' => 'PALET', 'quantity' => '999999999']])
+            ->assertSessionHas('error', 'Cat: jumlah yang dihitung terlalu besar setelah diubah ke satuan terkecil. Periksa angkanya.');
+
+        $this->assertNull($this->item($opname, $paint)->counted_quantity);
+    }
+
+    public function test_the_value_of_a_posted_opname_does_not_move_when_the_cost_price_is_edited_later(): void
+    {
+        $opname = $this->opnameInStatus(StockOpnameStatus::Review);
+        $paint = $this->makeProduct('Cat', '10', cost: '1000');
+        $this->addItem($opname, $paint, '12');
+        $this->action('post', $opname)->assertSessionHas('success');
+
+        $this->inStore(fn () => $paint->forceFill(['cost_price' => 5000])->save());
+
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('summary.variance_value', '2000.00')
+            ->where('items.data.0.variance_value', '2000.00'));
+        $this->assertSame('1000.00', $this->item($opname, $paint)->cost_price_at_posting);
+    }
+
+    public function test_the_value_of_an_opname_still_being_counted_follows_the_current_cost_price(): void
+    {
+        $opname = $this->opnameInStatus(StockOpnameStatus::Review);
+        $paint = $this->makeProduct('Cat', '10', cost: '1000');
+        $this->addItem($opname, $paint, '12');
+
+        $this->inStore(fn () => $paint->forceFill(['cost_price' => 5000])->save());
+
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertInertia(fn (Assert $page) => $page->where('summary.variance_value', '10000.00'));
     }
 }

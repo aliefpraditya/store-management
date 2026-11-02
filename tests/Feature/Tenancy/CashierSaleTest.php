@@ -160,7 +160,7 @@ class CashierSaleTest extends TestCase
     {
         $unit = $this->unitOf($this->sellableProduct(), 'PCS');
 
-        $this->sell([[$unit, 2]], [['cash', 19999]])->assertSessionHas('error', 'Pembayaran kurang dari total belanja.');
+        $this->sell([[$unit, 2]], [['cash', 19999]])->assertSessionHas('error', 'Pembayaran kurang dari total belanja Rp 20.000. Harga di layar mungkin sudah berubah: cari ulang barangnya, lalu coba lagi.');
         $this->assertSame(0, $this->salesCount());
     }
 

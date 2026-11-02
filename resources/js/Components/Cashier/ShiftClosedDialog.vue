@@ -4,7 +4,7 @@ import { formatRupiah } from '../../Composables/useMoneyFormat';
 defineProps({
     modelValue: { type: Boolean, required: true },
     /** @type {{expected_cash: string, counted_cash: string, cash_difference: string, deposit_amount: string}|null} */
-    result: { type: Object, default: null },
+    shiftTotals: { type: Object, default: null },
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -12,20 +12,20 @@ const emit = defineEmits(['update:modelValue']);
 
 <template>
     <q-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)">
-        <q-card v-if="result" class="closed">
+        <q-card v-if="shiftTotals" class="closed">
             <q-card-section>
                 <div class="closed__title">Shift ditutup</div>
 
                 <dl class="closed__rows">
-                    <div><dt>Tunai seharusnya</dt><dd>{{ formatRupiah(result.expected_cash) }}</dd></div>
-                    <div><dt>Tunai dihitung</dt><dd>{{ formatRupiah(result.counted_cash) }}</dd></div>
-                    <div :class="{ 'closed__bad': Number(result.cash_difference) !== 0 }">
+                    <div><dt>Tunai seharusnya</dt><dd>{{ formatRupiah(shiftTotals.expected_cash) }}</dd></div>
+                    <div><dt>Tunai dihitung</dt><dd>{{ formatRupiah(shiftTotals.counted_cash) }}</dd></div>
+                    <div :class="{ 'closed__bad': Number(shiftTotals.cash_difference) !== 0 }">
                         <dt>Selisih</dt>
-                        <dd>{{ formatRupiah(result.cash_difference) }}</dd>
+                        <dd>{{ formatRupiah(shiftTotals.cash_difference) }}</dd>
                     </div>
-                    <div class="closed__deposit"><dt>Setoran</dt><dd>{{ formatRupiah(result.deposit_amount) }}</dd></div>
+                    <div class="closed__deposit"><dt>Setoran</dt><dd>{{ formatRupiah(shiftTotals.deposit_amount) }}</dd></div>
                 </dl>
-                <p v-if="Number(result.cash_difference) !== 0" class="closed__note">Selisih menunggu persetujuan Admin.</p>
+                <p v-if="Number(shiftTotals.cash_difference) !== 0" class="closed__note">Selisih menunggu persetujuan Admin.</p>
             </q-card-section>
 
             <q-card-actions align="right">

@@ -7,7 +7,7 @@ const props = defineProps({
     modelValue: { type: Boolean, required: true },
     total: { type: Number, required: true },
     /** @type {{value: string, label: string}[]} */
-    methods: { type: Array, required: true },
+    paymentMethods: { type: Array, required: true },
     isProcessing: { type: Boolean, default: false },
 });
 
@@ -85,7 +85,7 @@ function confirm() {
                 <div v-for="(line, index) in lines" :key="index" class="payment__line">
                     <q-btn-toggle
                         v-model="line.method"
-                        :options="methods.map((method) => ({ label: method.label, value: method.value }))"
+                        :options="paymentMethods.map((method) => ({ label: method.label, value: method.value }))"
                         no-caps
                         unelevated
                         dense

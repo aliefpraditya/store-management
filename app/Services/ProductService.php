@@ -2,12 +2,18 @@
 
 namespace App\Services;
 
+use App\Enums\ProductStatusFilter;
 use App\Exceptions\ProductHasTransactionsException;
+use App\Exceptions\ProductSaveException;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\Unit;
+use Brick\Math\BigDecimal;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -15,81 +21,242 @@ use Illuminate\Support\Facades\DB;
  * price is also kept on the product as `cost_price`, the price per base unit.
  * Category and brand are either picked by `id` or typed by `name` and created on the way; units must already exist.
  *
+ * Saving is guarded in two ways, both under the product's row lock so a sale or another save cannot slip in between
+ * the check and the write: the form carries the `version` it was opened with (a save from an older version is
+ * refused), and once a product has stock or history its units and conversions are locked.
+ *
  * @phpstan-type NamedOrExisting array{id?: int|string|null, name?: string|null}
  * @phpstan-type UnitRow array{id?: int|null, unit: array{code: string, name?: string|null}, conversion_factor: numeric-string|float|int, barcode?: string|null, is_sellable: bool, cost_price: numeric-string|float|int, selling_price: numeric-string|float|int, is_default_sale: bool}
- * @phpstan-type ProductData array{name: string, sku: string, category: NamedOrExisting, brand?: NamedOrExisting|null, min_stock: numeric-string|float|int, is_active: bool, units: list<UnitRow>}
+ * @phpstan-type ProductInput array{name: string, sku: string, category: NamedOrExisting, brand?: NamedOrExisting|null, min_stock: numeric-string|float|int, is_active: bool, version?: int|null, units: list<UnitRow>}
+ * @phpstan-type UnitProblem array{field: string, message: string}
  */
 class ProductService
 {
+    private const PICKER_LIMIT = 15;
+
     /**
-     * @param  ProductData  $data
+     * The item list: stock totals and flags per row, narrowed by a search, a category and an active/inactive choice.
+     *
+     * @return LengthAwarePaginator<int, Product>
      */
-    public function create(array $data): Product
+    public function paginateProducts(string $search, ?int $categoryId, ?ProductStatusFilter $status, int $perPage): LengthAwarePaginator
     {
-        return DB::transaction(fn (): Product => $this->save(new Product, $data));
+        return Product::query()
+            ->withStockTotals()
+            ->withTransactionFlag()
+            ->with(['category', 'brand', 'productUnits'])
+            ->search($search)
+            ->when($categoryId, fn (Builder $query, int $categoryId) => $query->where('products.category_id', $categoryId))
+            ->when($status, fn (Builder $query, ProductStatusFilter $status) => $query->where('products.is_active', $status->isActive()))
+            ->orderBy('products.name')
+            ->paginate($perPage)
+            ->withQueryString();
     }
 
     /**
-     * @param  ProductData  $data
+     * The few best matches for a product picker (opname, stock history).
+     *
+     * @return Collection<int, Product>
      */
-    public function update(Product $product, array $data): Product
+    public function searchForPicker(string $term): Collection
     {
-        return DB::transaction(fn (): Product => $this->save($product, $data));
+        return Product::query()
+            ->with('baseUnit')
+            ->search($term)
+            ->orderBy('name')
+            ->limit(self::PICKER_LIMIT)
+            ->get();
+    }
+
+    /**
+     * @param  ProductInput  $productInput
+     */
+    public function create(array $productInput): Product
+    {
+        return DB::transaction(fn (): Product => $this->save(new Product, $productInput));
+    }
+
+    /**
+     * @param  ProductInput  $productInput
+     *
+     * @throws ProductSaveException
+     */
+    public function update(Product $product, array $productInput): Product
+    {
+        return DB::transaction(function () use ($product, $productInput): Product {
+            $lockedProduct = Product::query()->lockForUpdate()->findOrFail($product->id);
+
+            if ($lockedProduct->version !== (int) ($productInput['version'] ?? 0)) {
+                throw ProductSaveException::changedByAnother();
+            }
+
+            $problems = $this->unitProblems($lockedProduct, $productInput['units']);
+
+            if ($problems !== []) {
+                throw ProductSaveException::unitsLocked($problems[0]['message']);
+            }
+
+            return $this->save($lockedProduct, $productInput);
+        });
     }
 
     /**
      * Removes a product that never had stock or history. The deletion is permanent so its SKU and
      * barcodes can be reused; the audit trail keeps what it looked like. Its empty stock rows go with it.
+     * Locking the product row first holds off a sale that is just being rung up for it.
      *
      * @throws ProductHasTransactionsException
      */
     public function delete(Product $product): void
     {
         DB::transaction(function () use ($product): void {
-            if ($product->hasTransactions()) {
-                throw ProductHasTransactionsException::forProduct($product->name);
+            $lockedProduct = Product::query()->lockForUpdate()->findOrFail($product->id);
+
+            if ($lockedProduct->hasTransactions()) {
+                throw ProductHasTransactionsException::forProduct($lockedProduct->name);
             }
 
-            $product->stocks()->delete();
-            $product->forceDelete();
+            $lockedProduct->stocks()->delete();
+            $lockedProduct->productUnits()->get()->each->delete();
+            $lockedProduct->forceDelete();
         });
     }
 
     /**
-     * @param  ProductData  $data
+     * What is wrong with saving these unit rows onto this product, as the form field and the message to show. Read
+     * by the form request for its field errors, and again by {@see self::update()} under the product's lock.
+     *
+     * @param  list<array<string, mixed>>  $unitRows
+     * @return list<UnitProblem>
      */
-    private function save(Product $product, array $data): Product
+    public function unitProblems(Product $product, array $unitRows): array
     {
-        $units = array_map(fn (array $row): array => [...$row, 'resolved_unit' => $this->resolveUnit($row['unit'])], array_values($data['units']));
+        $unitRows = array_values($unitRows);
+        $existingUnitsById = $product->productUnits()->get()->keyBy('id');
+        $problems = [];
+
+        foreach ($unitRows as $index => $row) {
+            if (filled($row['id'] ?? null) && ! $existingUnitsById->has($row['id'])) {
+                $problems[] = ['field' => "units.{$index}.id", 'message' => 'Satuan tidak dikenal.'];
+            }
+        }
+
+        $problems = [...$problems, ...$this->unitSwapProblems($existingUnitsById, $unitRows)];
+
+        if (! $product->hasTransactions()) {
+            return $problems;
+        }
+
+        return [...$problems, ...$this->lockedUnitProblems($existingUnitsById, $unitRows)];
+    }
+
+    /**
+     * A product has one row per unit code. Moving a unit code to a row while the row that holds it is also being
+     * changed (two rows swapping units) cannot be saved row by row without a clash, so it is asked to be done in steps.
+     *
+     * @param  Collection<int, ProductUnit>  $existingUnitsById
+     * @param  list<array<string, mixed>>  $unitRows
+     * @return list<UnitProblem>
+     */
+    private function unitSwapProblems(Collection $existingUnitsById, array $unitRows): array
+    {
+        $keptIds = collect($unitRows)->pluck('id')->filter()->map(fn ($id): int => (int) $id);
+        $problems = [];
+
+        foreach ($unitRows as $index => $row) {
+            $currentUnit = $existingUnitsById->get($row['id'] ?? null);
+
+            if ($currentUnit === null || $this->unitKey($row) === Unit::normalizeCode($currentUnit->unit_code)) {
+                continue;
+            }
+
+            $holder = $existingUnitsById->first(fn (ProductUnit $other): bool => $other->id !== $currentUnit->id
+                && $keptIds->contains($other->id)
+                && Unit::normalizeCode($other->unit_code) === $this->unitKey($row));
+
+            if ($holder !== null) {
+                $problems[] = ['field' => "units.{$index}.unit.code", 'message' => 'Satuan ini masih dipakai baris lain yang ikut diganti. Ubah satu baris dulu, simpan, lalu ubah yang lain.'];
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * After stock or transactions exist, existing units keep their identity and conversion and cannot be
+     * removed; the base unit stays first. New units can still be added.
+     *
+     * @param  Collection<int, ProductUnit>  $existingUnitsById
+     * @param  list<array<string, mixed>>  $unitRows
+     * @return list<UnitProblem>
+     */
+    private function lockedUnitProblems(Collection $existingUnitsById, array $unitRows): array
+    {
+        $problems = [];
+        $submittedIds = collect($unitRows)->pluck('id')->filter()->map(fn ($id): int => (int) $id);
+
+        if ($existingUnitsById->keys()->diff($submittedIds)->isNotEmpty()) {
+            $problems[] = ['field' => 'units', 'message' => 'Satuan yang sudah dipakai tidak bisa dihapus.'];
+        }
+
+        if ((int) ($unitRows[0]['id'] ?? 0) !== (int) $existingUnitsById->firstWhere('is_base', true)?->id) {
+            $problems[] = ['field' => 'units.0.unit.code', 'message' => 'Satuan dasar tidak bisa diganti setelah ada stok atau transaksi.'];
+        }
+
+        foreach ($unitRows as $index => $row) {
+            $currentUnit = $existingUnitsById->get($row['id'] ?? null);
+
+            if ($currentUnit === null) {
+                continue;
+            }
+
+            $isUnitChanged = $this->unitKey($row) !== Unit::normalizeCode($currentUnit->unit_code);
+            $isConversionChanged = BigDecimal::of((string) $row['conversion_factor'])->compareTo($currentUnit->conversion_factor) !== 0;
+
+            if ($isUnitChanged || $isConversionChanged) {
+                $problems[] = ['field' => "units.{$index}.conversion_factor", 'message' => 'Satuan dan konversi terkunci setelah ada stok atau transaksi.'];
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * @param  ProductInput  $productInput
+     */
+    private function save(Product $product, array $productInput): Product
+    {
+        $unitRows = array_map(fn (array $row): array => [...$row, 'resolved_unit' => $this->resolveUnit($row['unit'])], array_values($productInput['units']));
 
         $product->fill([
-            'sku' => trim($data['sku']),
-            'name' => trim($data['name']),
-            'category_id' => $this->resolveCategory($data['category'])->id,
-            'brand_id' => $this->resolveBrand($data['brand'] ?? null)?->id,
-            'base_unit_code' => $units[0]['resolved_unit']->code,
-            'cost_price' => $units[0]['cost_price'],
-            'min_stock' => $data['min_stock'],
-            'is_active' => $data['is_active'],
-        ])->save();
+            'sku' => trim($productInput['sku']),
+            'name' => trim($productInput['name']),
+            'category_id' => $this->resolveCategory($productInput['category'])->id,
+            'brand_id' => $this->resolveBrand($productInput['brand'] ?? null)?->id,
+            'base_unit_code' => $unitRows[0]['resolved_unit']->code,
+            'cost_price' => $unitRows[0]['cost_price'],
+            'min_stock' => $productInput['min_stock'],
+            'is_active' => $productInput['is_active'],
+        ])->forceFill(['version' => $product->exists ? $product->version + 1 : 1])->save();
 
-        $this->syncUnits($product, $units);
+        $this->syncUnits($product, $unitRows);
 
         return $product;
     }
 
     /**
-     * Units left out of the list are removed; the order of the list becomes the display order.
+     * Units left out of the list are removed; the order of the list becomes the display order. Removed one by one, so
+     * the audit trail keeps what each unit's last prices were.
      *
-     * @param  list<array<string, mixed>>  $units
+     * @param  list<array<string, mixed>>  $unitRows
      */
-    private function syncUnits(Product $product, array $units): void
+    private function syncUnits(Product $product, array $unitRows): void
     {
-        $keptIds = collect($units)->pluck('id')->filter()->all();
+        $keptIds = collect($unitRows)->pluck('id')->filter()->all();
 
-        $product->productUnits()->whereNotIn('id', $keptIds)->delete();
+        $product->productUnits()->whereNotIn('id', $keptIds)->get()->each->delete();
 
-        foreach ($units as $index => $row) {
+        foreach ($unitRows as $index => $row) {
             $productUnit = filled($row['id'] ?? null)
                 ? $product->productUnits()->findOrFail($row['id'])
                 : new ProductUnit(['product_id' => $product->id]);
@@ -140,5 +307,13 @@ class ProductService
     private function resolveUnit(array $unit): Unit
     {
         return Unit::query()->findOrFail(Unit::normalizeCode($unit['code']));
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function unitKey(array $row): string
+    {
+        return Unit::normalizeCode((string) data_get($row, 'unit.code'));
     }
 }

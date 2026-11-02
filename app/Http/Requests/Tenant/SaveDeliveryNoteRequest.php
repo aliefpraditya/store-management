@@ -24,6 +24,7 @@ class SaveDeliveryNoteRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'client_uuid' => ['required', 'uuid'],
             'sale_id' => ['required', 'integer', Rule::exists('sales', 'id')],
             'recipient_name' => ['required', 'string', 'max:255'],
             'recipient_phone' => ['nullable', 'string', 'max:255'],
@@ -43,6 +44,8 @@ class SaveDeliveryNoteRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'client_uuid.required' => 'Pengajuan surat jalan tidak punya penanda. Muat ulang layar lalu coba lagi.',
+            'client_uuid.uuid' => 'Penanda pengajuan surat jalan tidak valid. Muat ulang layar lalu coba lagi.',
             'sale_id.required' => 'Pilih nota.',
             'sale_id.exists' => 'Nota tidak ditemukan.',
             'recipient_name.required' => 'Nama penerima wajib diisi.',

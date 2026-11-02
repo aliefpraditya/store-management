@@ -6,6 +6,7 @@ import { postJson } from '../../../Composables/postJson';
 import { printInNewWindow } from '../../../Composables/printInNewWindow';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
+import { returnStatusChipClass } from '../../../Composables/useReturnStatus';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -16,14 +17,12 @@ const $q = useQuasar();
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 
-const statusChipClass = { pending: 'chip--warn', completed: 'chip--ok', rejected: 'chip--bad' };
-
 const isPrinting = ref(false);
 
 function approve() {
     $q.dialog({
         title: 'Setujui retur?',
-        message: 'Barang kembali ke stok dan uang dikembalikan ke pelanggan. Ini tidak bisa dibatalkan.',
+        message: 'Barang masuk ke gudang tujuannya, dan uang dikembalikan atau barang pengganti dijual. Ini tidak bisa dibatalkan. Kalau persetujuan gagal, retur tetap menunggu: Anda bisa menolaknya lalu meminta kasir mengajukan ulang.',
         cancel: { label: 'Kembali', flat: true, noCaps: true },
         ok: { label: 'Setujui', color: 'primary', unelevated: true, noCaps: true },
         persistent: true,
@@ -47,11 +46,7 @@ async function printReplacement() {
     isPrintingReplacement.value = true;
 
     try {
-        await printInNewWindow(async () => {
-            await postJson(props.saleReturn.exchange.print_url);
-
-            return props.saleReturn.exchange.sheet_url;
-        });
+        await printInNewWindow(async () => (await postJson(props.saleReturn.exchange.print_url)).sheet_url);
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
     } finally {
@@ -81,7 +76,7 @@ async function print() {
 
         <template #actions>
             <q-btn outline no-caps dense color="primary" icon="print" label="Cetak Bukti Retur" :loading="isPrinting" class="q-mr-sm" @click="print" />
-            <q-btn v-if="saleReturn.exchange?.sheet_url" outline no-caps dense color="primary" icon="receipt_long" label="Cetak Nota Pengganti" :loading="isPrintingReplacement" class="q-mr-sm" @click="printReplacement" />
+            <q-btn v-if="saleReturn.exchange?.print_url" outline no-caps dense color="primary" icon="receipt_long" label="Cetak Nota Pengganti" :loading="isPrintingReplacement" class="q-mr-sm" @click="printReplacement" />
             <template v-if="saleReturn.is_pending">
                 <q-btn flat no-caps dense color="negative" label="Tolak" class="q-mr-sm" @click="reject" />
                 <q-btn color="primary" unelevated no-caps dense label="Setujui" @click="approve" />
@@ -95,7 +90,7 @@ async function print() {
                     <small>{{ dateTimeFormat.format(new Date(saleReturn.returned_at)) }} · kasir {{ saleReturn.cashier_name }}</small>
                     <small>Nota <a :href="saleReturn.urls.sale" @click.prevent="router.visit(saleReturn.urls.sale)">{{ saleReturn.sale.number }}</a><template v-if="saleReturn.sale.customer_name"> · {{ saleReturn.sale.customer_name }}</template></small>
                 </div>
-                <span class="chip" :class="statusChipClass[saleReturn.status]">{{ saleReturn.status_label }}</span>
+                <span class="chip" :class="returnStatusChipClass[saleReturn.status]">{{ saleReturn.status_label }}</span>
             </header>
 
             <dl class="ret__facts">

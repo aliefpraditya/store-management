@@ -23,7 +23,7 @@ class CompleteDeliveryNoteRequest extends FormRequest
     {
         return [
             'results' => ['required', 'array', 'min:1'],
-            'results.*.item_id' => ['required', 'integer'],
+            'results.*.item_id' => ['required', 'integer', 'distinct'],
             'results.*.quantity_delivered' => ['required', 'numeric', 'min:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'],
             'results.*.quantity_returned' => ['required', 'numeric', 'min:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'],
         ];

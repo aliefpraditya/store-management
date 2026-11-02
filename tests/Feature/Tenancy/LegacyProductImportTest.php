@@ -284,13 +284,27 @@ class LegacyProductImportTest extends TestCase
 
     public function test_the_seeder_writes_what_needs_review_to_a_csv_file(): void
     {
-        $path = storage_path('app/legacy-products-review.csv');
-        @unlink($path);
+        $path = tempnam(sys_get_temp_dir(), 'legacy-review-');
+        $seeder = app(LegacyProductSeeder::class);
+        $seeder->reviewFilePath = $path;
 
-        $this->store->run(fn () => app()->call([app(LegacyProductSeeder::class), 'run']));
+        $this->store->run(fn () => app()->call([$seeder, 'run']));
 
         $this->assertFileExists($path);
         $this->assertStringContainsString('MU0002,"PAKU 5CM","Satuan SAK",590000', (string) file_get_contents($path));
         @unlink($path);
+    }
+
+    public function test_the_seeder_leaves_the_real_review_file_alone_when_given_another_path(): void
+    {
+        $realFile = storage_path('app/legacy-products-review.csv');
+        $before = file_exists($realFile) ? filemtime($realFile) : null;
+        $seeder = app(LegacyProductSeeder::class);
+        $seeder->reviewFilePath = tempnam(sys_get_temp_dir(), 'legacy-review-');
+
+        $this->store->run(fn () => app()->call([$seeder, 'run']));
+
+        $this->assertSame($before, file_exists($realFile) ? filemtime($realFile) : null);
+        @unlink($seeder->reviewFilePath);
     }
 }

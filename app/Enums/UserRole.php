@@ -27,12 +27,12 @@ enum UserRole: string
     }
 
     /**
-     * @return list<array{value: string, label: string}>
+     * @return list<array{value: string, label: string, is_store_role: bool}>
      */
     public static function options(): array
     {
         return array_map(
-            fn (self $role): array => ['value' => $role->value, 'label' => $role->label()],
+            fn (self $role): array => ['value' => $role->value, 'label' => $role->label(), 'is_store_role' => $role->isStoreRole()],
             self::cases(),
         );
     }

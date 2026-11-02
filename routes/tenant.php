@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\CashierController;
 use App\Http\Controllers\Tenant\CashierDeliveryNoteController;
+use App\Http\Controllers\Tenant\CashierExpenseController;
 use App\Http\Controllers\Tenant\CashierProductController;
 use App\Http\Controllers\Tenant\CashierSaleReturnController;
 use App\Http\Controllers\Tenant\DashboardController as TenantDashboardController;
 use App\Http\Controllers\Tenant\DeliveryNoteController;
+use App\Http\Controllers\Tenant\ExpenseCategoryController;
+use App\Http\Controllers\Tenant\ExpenseController;
 use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\ProductSearchController;
 use App\Http\Controllers\Tenant\SaleController;
@@ -19,7 +22,6 @@ use App\Http\Controllers\Tenant\ShiftReceiptController;
 use App\Http\Controllers\Tenant\StockHistoryController;
 use App\Http\Controllers\Tenant\StockOpnameController;
 use App\Http\Controllers\Tenant\UnitController;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\InitializeTenancyByPath;
 
@@ -29,7 +31,7 @@ use Stancl\Tenancy\Middleware\InitializeTenancyByPath;
 |--------------------------------------------------------------------------
 |
 | Every store has its own database. The store is identified by the snake_case
-| store code in the URL: /t/{tenant}/... (e.g. /t/mitra_utama/ping).
+| store code in the URL: /t/{tenant}/... (e.g. /t/mitra_utama/cashier).
 | These are web routes (session login, Inertia pages): the user must be logged
 | in and allowed into that store.
 |
@@ -48,15 +50,17 @@ Route::prefix('t/{tenant}')
             Route::post('sales', [SaleController::class, 'store'])->name('sales.store');
             Route::get('receipts', [ShiftReceiptController::class, 'index'])->name('receipts');
             Route::post('receipts/{sale}/print', [ShiftReceiptController::class, 'print'])->name('receipts.print');
-            Route::get('receipts/{sale}/sheet', [ShiftReceiptController::class, 'sheet'])->name('receipts.sheet');
+            Route::get('receipts/{sale}/sheet', [ShiftReceiptController::class, 'sheet'])->middleware('signed')->name('receipts.sheet');
             Route::get('receipts/{sale}/delivery', [CashierDeliveryNoteController::class, 'show'])->name('receipts.delivery');
             Route::post('receipts/{sale}/delivery-notes', [CashierDeliveryNoteController::class, 'store'])->name('receipts.delivery-notes.store');
             Route::post('delivery-notes/{delivery_note}/print', [CashierDeliveryNoteController::class, 'print'])->name('delivery-notes.print');
-            Route::get('delivery-notes/{delivery_note}/sheet', [CashierDeliveryNoteController::class, 'sheet'])->name('delivery-notes.sheet');
-            Route::get('returns/lookup', [CashierSaleReturnController::class, 'lookup'])->name('returns.lookup');
-            Route::get('receipts/{sale}/return', [CashierSaleReturnController::class, 'show'])->name('receipts.return');
-            Route::post('receipts/{sale}/returns', [CashierSaleReturnController::class, 'store'])->name('receipts.returns.store');
+            Route::get('delivery-notes/{delivery_note}/sheet', [CashierDeliveryNoteController::class, 'sheet'])->middleware('signed')->name('delivery-notes.sheet');
+            Route::get('returns/lookup', [CashierSaleReturnController::class, 'lookup'])->middleware('throttle:30,1')->name('returns.lookup');
+            Route::get('receipts/{sale}/return', [CashierSaleReturnController::class, 'show'])->middleware('signed')->name('receipts.return');
+            Route::post('receipts/{sale}/returns', [CashierSaleReturnController::class, 'store'])->middleware('signed')->name('receipts.returns.store');
             Route::get('returns/{sale_return}/sheet', [CashierSaleReturnController::class, 'sheet'])->name('returns.sheet');
+            Route::get('expenses', [CashierExpenseController::class, 'index'])->name('expenses.index');
+            Route::post('expenses', [CashierExpenseController::class, 'store'])->name('expenses.store');
         });
 
         Route::middleware('store.admin')->group(function () {
@@ -70,7 +74,7 @@ Route::prefix('t/{tenant}')
                 Route::post('{delivery_note}/complete', [DeliveryNoteController::class, 'complete'])->name('complete');
                 Route::post('{delivery_note}/cancel', [DeliveryNoteController::class, 'cancel'])->name('cancel');
                 Route::post('{delivery_note}/print', [DeliveryNoteController::class, 'print'])->name('print');
-                Route::get('{delivery_note}/sheet', [DeliveryNoteController::class, 'sheet'])->name('sheet');
+                Route::get('{delivery_note}/sheet', [DeliveryNoteController::class, 'sheet'])->middleware('signed')->name('sheet');
             });
 
             Route::prefix('shifts')->name('tenant.shifts.')->group(function () {
@@ -90,6 +94,14 @@ Route::prefix('t/{tenant}')
                 Route::post('{sale_return}/approve', [SaleReturnController::class, 'approve'])->name('approve');
                 Route::post('{sale_return}/reject', [SaleReturnController::class, 'reject'])->name('reject');
                 Route::get('{sale_return}/sheet', [SaleReturnController::class, 'sheet'])->name('sheet');
+            });
+
+            Route::prefix('expenses')->name('tenant.expenses.')->group(function () {
+                Route::get('/', [ExpenseController::class, 'index'])->name('index');
+                Route::post('/', [ExpenseController::class, 'store'])->name('store');
+                Route::post('categories', [ExpenseCategoryController::class, 'store'])->name('categories.store');
+                Route::put('categories/{category}', [ExpenseCategoryController::class, 'update'])->name('categories.update');
+                Route::post('{expense}/voids', [ExpenseController::class, 'void'])->name('void');
             });
 
             Route::get('sales', [SaleHistoryController::class, 'index'])->name('tenant.sales.index');
@@ -117,11 +129,4 @@ Route::prefix('t/{tenant}')
 
             Route::get('stock-history', [StockHistoryController::class, 'index'])->name('tenant.stock-history.index');
         });
-
-        Route::get('ping', function () {
-            return response()->json([
-                'store' => tenant('code'),
-                'database' => DB::connection()->getDatabaseName(),
-            ]);
-        })->name('tenant.ping');
     });

@@ -6,11 +6,13 @@ use App\Enums\CashShiftStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Tenant\DateRangeRequest;
 use App\Http\Requests\Tenant\DecideShiftDifferenceRequest;
 use App\Http\Resources\CashShiftListResource;
 use App\Http\Resources\ShiftRecapResource;
 use App\Models\CashShift;
 use App\Models\SaleReturn;
+use App\Services\ExpenseService;
 use App\Services\ShiftRecapService;
 use App\Services\ShiftService;
 use Illuminate\Http\RedirectResponse;
@@ -26,22 +28,23 @@ class ShiftRecapController extends Controller
     private const PER_PAGE = 25;
 
     public function __construct(
-        private readonly ShiftRecapService $recap,
-        private readonly ShiftService $shifts,
+        private readonly ShiftRecapService $shiftRecapService,
+        private readonly ShiftService $shiftService,
+        private readonly ExpenseService $expenseService,
     ) {}
 
-    public function index(Request $request): Response
+    public function index(DateRangeRequest $request): Response
     {
         $filters = [
-            'from' => $request->date('from')?->toDateString(),
-            'to' => $request->date('to')?->toDateString(),
+            'from' => $request->fromDate()?->toDateString(),
+            'to' => $request->toDate()?->toDateString(),
             'status' => $request->string('status')->toString() ?: null,
             'difference' => $request->string('difference')->toString() ?: null,
             'search' => $request->string('search')->trim()->toString() ?: null,
         ];
 
         return Inertia::render('Tenant/Shifts/Index', [
-            'shifts' => $this->recap->paginate($filters, self::PER_PAGE)
+            'shifts' => $this->shiftRecapService->paginate($filters, self::PER_PAGE)
                 ->through(fn (CashShift $shift): array => CashShiftListResource::make($shift)->resolve()),
             'filters' => $filters,
             'statuses' => collect(CashShiftStatus::cases())->map(fn (CashShiftStatus $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
@@ -49,8 +52,8 @@ class ShiftRecapController extends Controller
                 ...collect(ShiftDifferenceStatus::cases())->map(fn (ShiftDifferenceStatus $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
                 ['value' => ShiftRecapService::AWAITING_FOLLOW_UP, 'label' => 'Ditolak, perlu tindak lanjut'],
             ],
-            'pending_difference_count' => $this->recap->pendingDifferenceCount(),
-            'follow_up_count' => $this->recap->followUpCount(),
+            'pending_difference_count' => $this->shiftRecapService->pendingDifferenceCount(),
+            'follow_up_count' => $this->shiftRecapService->followUpCount(),
         ]);
     }
 
@@ -62,7 +65,7 @@ class ShiftRecapController extends Controller
 
         return Inertia::render('Tenant/Shifts/Show', [
             'shift' => [
-                ...ShiftRecapResource::make($shift, $this->shifts->summarize($shift), $returns)->resolve(),
+                ...ShiftRecapResource::make($shift, $this->shiftService->summarize($shift), $returns, $this->expenseService->drawerExpensesOf($shift))->resolve(),
                 'urls' => [
                     'index' => route('tenant.shifts.index', ['tenant' => tenant('code')]),
                     'approve' => route('tenant.shifts.approve', ['tenant' => tenant('code'), 'shift' => $shift->id]),
@@ -86,7 +89,7 @@ class ShiftRecapController extends Controller
     public function followUp(Request $request, CashShift $shift): RedirectResponse
     {
         try {
-            $this->recap->markFollowedUp($shift, $request->user());
+            $this->shiftRecapService->markFollowedUp($shift, $request->user());
         } catch (ShiftException $exception) {
             return back()->with('error', $exception->getMessage());
         }
@@ -97,7 +100,7 @@ class ShiftRecapController extends Controller
     private function decide(DecideShiftDifferenceRequest $request, CashShift $shift, bool $isApproved, string $successMessage): RedirectResponse
     {
         try {
-            $this->recap->decideDifference($shift, $request->user(), $isApproved, $request->validated('note'));
+            $this->shiftRecapService->decideDifference($shift, $request->user(), $isApproved, $request->validated('note'));
         } catch (ShiftException $exception) {
             return back()->with('error', $exception->getMessage());
         }

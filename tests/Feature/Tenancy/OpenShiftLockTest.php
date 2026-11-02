@@ -172,6 +172,18 @@ class OpenShiftLockTest extends TestCase
             ->assertSessionMissing(EnsureUserHasNoOpenShift::SESSION_KEY);
     }
 
+    public function test_logging_out_still_works_when_a_remembered_store_database_cannot_be_reached(): void
+    {
+        $brokenStore = Store::factory()->create(['code' => 'test_broken_store', 'db_name' => 'store_test_does_not_exist']);
+
+        $this->actingAs($this->admin)
+            ->withSession([EnsureUserHasNoOpenShift::SESSION_KEY => [$brokenStore->code]])
+            ->post(route('logout'))
+            ->assertRedirect(route('login'));
+
+        $this->assertGuest();
+    }
+
     public function test_a_cashier_without_a_shift_may_log_out(): void
     {
         $this->actingAs($this->storeUser())->post(route('logout'))->assertRedirect();

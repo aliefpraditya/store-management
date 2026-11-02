@@ -3,19 +3,23 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Enums\UserRole;
+use App\Exceptions\ProductSaveException;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductUnit;
+use App\Models\SaleItem;
 use App\Models\Stock;
 use App\Models\Store;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\ProductService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
+use OwenIt\Auditing\Models\Audit;
 use Tests\Concerns\PreparesStoreDatabase;
 use Tests\TestCase;
 
@@ -83,8 +87,16 @@ class ProductManagementTest extends TestCase
     }
 
     /**
+     * The form of an existing item as the browser sends it back: the save counter it was opened with comes along.
+     *
+     * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
+    private function editPayload(Product $product, array $overrides = []): array
+    {
+        return $this->payload(['version' => $this->inStore(fn () => Product::query()->whereKey($product->id)->value('version')), ...$overrides]);
+    }
+
     private function unitRow(string $code, float|int|string $conversion, string $price, ?string $barcode = null, bool $isDefault = false, bool $isSellable = true, ?int $id = null, string $cost = '1000'): array
     {
         return [
@@ -245,7 +257,7 @@ class ProductManagementTest extends TestCase
         $product = $this->savedProduct();
 
         $this->actingAs($this->admin)
-            ->put($this->url('update', ['product' => $product->id]), $this->payload([
+            ->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, [
                 'units' => [
                     $this->unitRow('PAIL', 1, '116600', barcode: '8991234567890', isDefault: true, id: $product->productUnits[0]->id),
                     $this->unitRow('DUS', 4, '437250', barcode: '18991234567897', id: $product->productUnits[1]->id),
@@ -429,7 +441,7 @@ class ProductManagementTest extends TestCase
         [$base, $box] = $product->productUnits->all();
         $this->ensureUnitsExist(['units' => [['unit' => ['code' => 'LUSIN']]]]);
 
-        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->payload([
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, [
             'name' => 'Cat Tembok Putih 25kg',
             'brand' => null,
             'is_active' => false,
@@ -457,7 +469,7 @@ class ProductManagementTest extends TestCase
         $product = $this->savedProduct();
 
         $this->actingAs($this->admin)
-            ->put($this->url('update', ['product' => $product->id]), $this->payload([
+            ->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, [
                 'units' => [$this->unitRow('PAIL', 1, '1000', isDefault: true, id: $other->id)],
             ]))
             ->assertSessionHasErrors('units.0.id');
@@ -493,7 +505,7 @@ class ProductManagementTest extends TestCase
         [$product, $base, $box] = $this->itemWithStock();
 
         $update = fn (array $units) => $this->actingAs($this->admin)
-            ->put($this->url('update', ['product' => $product->id]), $this->payload(['units' => $units]));
+            ->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, ['units' => $units]));
 
         $unchanged = fn (string $barcode = '18991234567897') => [
             $this->unitRow('PAIL', 1, '116600', barcode: '8991234567890', isDefault: true, id: $base->id),
@@ -524,7 +536,7 @@ class ProductManagementTest extends TestCase
         [$product, $base, $box] = $this->itemWithStock();
         $this->ensureUnitsExist(['units' => [['unit' => ['code' => 'LUSIN']]]]);
 
-        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->payload([
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, [
             'units' => [
                 $this->unitRow('PAIL', 1, '130000', barcode: '8991234567890', isDefault: true, id: $base->id),
                 $this->unitRow('DUS', 4, '437250', barcode: '999', isSellable: false, id: $box->id),
@@ -667,7 +679,7 @@ class ProductManagementTest extends TestCase
         ];
 
         $this->actingAs($this->admin)
-            ->put($this->url('update', ['product' => $product->id]), $this->payload(['units' => $units('72875', '275000')]))
+            ->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, ['units' => $units('72875', '275000')]))
             ->assertSessionHasNoErrors();
 
         $updated = $this->savedProduct();
@@ -676,7 +688,7 @@ class ProductManagementTest extends TestCase
         $this->assertSame(['72875.00', '275000.00'], $updated->productUnits->pluck('cost_price')->all());
 
         $this->actingAs($this->admin)
-            ->put($this->url('update', ['product' => $product->id]), $this->payload(['units' => $units('80000', '275000')]))
+            ->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, ['units' => $units('80000', '275000')]))
             ->assertSessionHasNoErrors();
 
         $updated = $this->savedProduct();
@@ -689,7 +701,7 @@ class ProductManagementTest extends TestCase
     {
         [$product, $base, $box] = $this->itemWithStock();
 
-        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->payload([
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, [
             'units' => [
                 $this->unitRow('PAIL', 1, '116600', barcode: '8991234567890', isDefault: true, id: $base->id, cost: '75000'),
                 $this->unitRow('DUS', 4, '437250', barcode: '18991234567897', id: $box->id, cost: '290000'),
@@ -817,5 +829,140 @@ class ProductManagementTest extends TestCase
             ->where('product.is_locked', false)
             ->where('product.delete_url', $this->url('destroy', ['product' => $free->id]))
         );
+    }
+
+    /**
+     * The two units of the default payload with their ids, as the form sends them back unchanged.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function unchangedUnits(Product $product): array
+    {
+        [$base, $box] = $product->productUnits->all();
+
+        return [
+            $this->unitRow('PAIL', 1, '116600', barcode: '8991234567890', isDefault: true, id: $base->id, cost: '72875'),
+            $this->unitRow('DUS', 4, '437250', barcode: '18991234567897', id: $box->id, cost: '280000'),
+        ];
+    }
+
+    public function test_every_save_counts_up_the_version_even_when_only_a_price_changed(): void
+    {
+        $this->create();
+        $product = $this->savedProduct();
+        $this->assertSame(1, $product->version);
+        $units = $this->unchangedUnits($product);
+        $units[1]['selling_price'] = '999999';
+
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, ['units' => $units]))->assertSessionHasNoErrors();
+
+        $this->assertSame(2, $this->savedProduct()->version);
+    }
+
+    public function test_a_save_from_an_older_version_is_refused_instead_of_overwriting_the_newer_one(): void
+    {
+        $this->create();
+        $product = $this->savedProduct();
+        $openedByBoth = $this->editPayload($product, ['units' => $this->unchangedUnits($product)]);
+
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), [...$openedByBoth, 'name' => 'Nama pertama'])->assertSessionHasNoErrors();
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), [...$openedByBoth, 'name' => 'Nama kedua'])
+            ->assertSessionHas('error', 'Barang ini diubah orang lain sejak halaman dibuka. Muat ulang halaman, lalu isi lagi perubahan Anda.');
+
+        $this->assertSame('Nama pertama', $this->savedProduct()->name);
+    }
+
+    public function test_an_edit_needs_the_version_it_was_opened_with(): void
+    {
+        $this->create();
+        $product = $this->savedProduct();
+
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->payload(['units' => $this->unchangedUnits($product)]))
+            ->assertSessionHasErrors('version');
+    }
+
+    public function test_the_edit_form_carries_the_version(): void
+    {
+        $this->create();
+        $product = $this->savedProduct();
+
+        $this->actingAs($this->admin)->get($this->url('edit', ['product' => $product->id]))->assertInertia(fn (Assert $page) => $page->where('product.version', 1));
+    }
+
+    public function test_the_locked_unit_rules_are_checked_again_when_saving(): void
+    {
+        [$product] = $this->itemWithStock();
+        $unitsWithoutTheBox = [$this->unchangedUnits($product)[0]];
+
+        $this->expectException(ProductSaveException::class);
+
+        $this->inStore(fn () => app(ProductService::class)->update($product, [...$this->payload(['units' => $unitsWithoutTheBox]), 'version' => $product->version]));
+    }
+
+    public function test_two_rows_swapping_their_units_are_asked_to_be_changed_one_at_a_time(): void
+    {
+        $this->create();
+        $product = $this->savedProduct();
+        $units = $this->unchangedUnits($product);
+        $swapped = [
+            [...$units[0], 'unit' => ['code' => 'DUS']],
+            [...$units[1], 'unit' => ['code' => 'PAIL']],
+        ];
+
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, ['units' => $swapped]))
+            ->assertSessionHasErrors(['units.0.unit.code' => 'Satuan ini masih dipakai baris lain yang ikut diganti. Ubah satu baris dulu, simpan, lalu ubah yang lain.']);
+
+        $this->assertSame(['PAIL', 'DUS'], $this->savedProduct()->productUnits->pluck('unit_code')->all());
+    }
+
+    public function test_removing_a_unit_keeps_an_audit_record_of_its_last_prices(): void
+    {
+        config(['audit.console' => true]);
+        $this->create();
+        $product = $this->savedProduct();
+        $box = $product->productUnits[1];
+
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, ['units' => [$this->unchangedUnits($product)[0]]]))->assertSessionHasNoErrors();
+
+        $audit = $this->inStore(fn () => Audit::query()->where('auditable_type', ProductUnit::class)->where('auditable_id', $box->id)->where('event', 'deleted')->sole());
+        $this->assertEquals([437250, 280000], [$audit->old_values['selling_price'], $audit->old_values['cost_price']]);
+    }
+
+    public function test_an_item_that_was_sold_cannot_be_deleted_or_have_its_units_changed(): void
+    {
+        $this->create();
+        $product = $this->savedProduct();
+        $this->inStore(fn () => SaleItem::factory()->create(['product_id' => $product->id]));
+
+        $this->deleteItem($product)->assertSessionHas('error');
+        $this->assertItemStillExists($product);
+
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, ['units' => [$this->unchangedUnits($product)[0]]]))
+            ->assertSessionHasErrors(['units' => 'Satuan yang sudah dipakai tidak bisa dihapus.']);
+        $this->assertCount(2, $this->savedProduct()->productUnits);
+    }
+
+    public function test_a_percent_or_underscore_in_the_search_is_not_a_wildcard(): void
+    {
+        $this->seedItems([
+            ['name' => 'Diskon 50% Cat', 'sku' => 'A1'],
+            ['name' => 'Cat 500 gram', 'sku' => 'A2'],
+            ['name' => 'Cat_Putih', 'sku' => 'A3'],
+            ['name' => 'Cat Hitam', 'sku' => 'A4'],
+        ]);
+
+        $this->actingAs($this->admin)->get($this->url('index', ['search' => '50%']))->assertInertia(fn (Assert $page) => $page->has('products.data', 1)->where('products.data.0.sku', 'A1'));
+        $this->actingAs($this->admin)->get($this->url('index', ['search' => 't_p']))->assertInertia(fn (Assert $page) => $page->has('products.data', 1)->where('products.data.0.sku', 'A3'));
+    }
+
+    public function test_the_list_filters_by_status_and_ignores_a_status_it_does_not_know(): void
+    {
+        $this->seedItems([['name' => 'Paku', 'sku' => 'A1'], ['name' => 'Lampu', 'sku' => 'A2', 'active' => false]]);
+
+        $this->actingAs($this->admin)->get($this->url('index', ['status' => 'inactive']))->assertInertia(fn (Assert $page) => $page
+            ->has('statuses', 2)
+            ->has('products.data', 1)
+            ->where('products.data.0.sku', 'A2'));
+        $this->actingAs($this->admin)->get($this->url('index', ['status' => 'bukan-status']))->assertInertia(fn (Assert $page) => $page->has('products.data', 2));
     }
 }

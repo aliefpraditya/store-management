@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\ApprovalKind;
 use App\Enums\CashShiftStatus;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\SaleReturnStatus;
@@ -99,7 +100,7 @@ class StoreDashboardService
             ->limit(self::APPROVAL_LIMIT)
             ->get()
             ->map(fn (SaleReturn $return): array => [
-                'kind' => 'return',
+                'kind' => ApprovalKind::SaleReturn->value,
                 'reference' => $return->number,
                 'amount' => $return->credit_amount,
             ])
@@ -117,7 +118,7 @@ class StoreDashboardService
             ->limit(self::APPROVAL_LIMIT)
             ->get()
             ->map(fn (CashShift $shift): array => [
-                'kind' => 'cash_difference',
+                'kind' => ApprovalKind::CashDifference->value,
                 'reference' => $shift->label(),
                 'amount' => $shift->cash_difference,
             ])

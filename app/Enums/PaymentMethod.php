@@ -30,4 +30,12 @@ enum PaymentMethod: string
     {
         return [self::Cash, self::Transfer, self::Qris, self::Edc];
     }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    public static function cashierOptions(): array
+    {
+        return array_map(fn (self $method): array => ['value' => $method->value, 'label' => $method->label()], self::forCashier());
+    }
 }

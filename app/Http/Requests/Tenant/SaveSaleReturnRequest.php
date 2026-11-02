@@ -4,6 +4,7 @@ namespace App\Http\Requests\Tenant;
 
 use App\Enums\PaymentMethod;
 use App\Enums\ReturnDisposition;
+use App\Enums\ReturnResolution;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -26,8 +27,9 @@ class SaveSaleReturnRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'client_uuid' => ['required', 'uuid'],
             'sale_id' => ['required', 'integer', Rule::exists('sales', 'id')],
-            'resolution' => ['nullable', Rule::in(['refund', 'exchange'])],
+            'resolution' => ['nullable', Rule::enum(ReturnResolution::class)],
             'refund_method' => ['required', Rule::in($this->paymentMethodValues())],
             'refund_account' => ['nullable', 'string', 'max:255'],
             'reason' => ['nullable', 'string', 'max:255'],
@@ -35,7 +37,7 @@ class SaveSaleReturnRequest extends FormRequest
             'items.*.sale_item_id' => ['required', 'integer', 'distinct', Rule::exists('sale_items', 'id')],
             'items.*.quantity' => ['required', 'numeric', 'min:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'],
             'items.*.disposition' => ['required', Rule::enum(ReturnDisposition::class)],
-            'exchange_items' => [Rule::requiredIf(fn (): bool => $this->input('resolution') === 'exchange'), 'array'],
+            'exchange_items' => [Rule::requiredIf(fn (): bool => $this->input('resolution') === ReturnResolution::Exchange->value), 'array'],
             'exchange_items.*.product_unit_id' => ['required', 'integer', Rule::exists('product_units', 'id')],
             'exchange_items.*.quantity' => ['required', 'numeric', 'gt:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'],
             'exchange_payments' => ['nullable', 'array'],
@@ -61,6 +63,8 @@ class SaveSaleReturnRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'client_uuid.required' => 'Pengajuan retur tidak punya penanda. Muat ulang layar lalu coba lagi.',
+            'client_uuid.uuid' => 'Penanda pengajuan retur tidak valid. Muat ulang layar lalu coba lagi.',
             'sale_id.required' => 'Pilih nota.',
             'sale_id.exists' => 'Nota tidak ditemukan.',
             'refund_method.required' => 'Pilih cara pengembalian uang.',

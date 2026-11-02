@@ -8,6 +8,10 @@ namespace App\Enums;
  */
 enum ApiErrorCode: int
 {
+    case ReceiptNotYours = 4031;
+    case ReceiptNotFound = 4041;
     case ShiftNotOpen = 4091;
+    case ReturnRefused = 4221;
+    case ExpenseRefused = 4222;
     case ShiftIsOpen = 4231;
 }

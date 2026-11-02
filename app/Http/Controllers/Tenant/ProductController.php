@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\ProductStatusFilter;
 use App\Exceptions\ProductHasTransactionsException;
+use App\Exceptions\ProductSaveException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\SaveProductRequest;
 use App\Http\Resources\ProductFormResource;
@@ -21,30 +23,22 @@ class ProductController extends Controller
 {
     private const PER_PAGE = 25;
 
-    public function __construct(private readonly ProductService $products) {}
+    public function __construct(private readonly ProductService $productService) {}
 
     public function index(Request $request): Response
     {
         $search = $request->string('search')->toString();
         $categoryId = $request->integer('category') ?: null;
-        $status = $request->string('status')->toString();
+        $statusFilter = $request->string('status')->toString();
 
-        $products = Product::query()
-            ->withStockTotals()
-            ->withTransactionFlag()
-            ->with(['category', 'brand', 'baseUnit', 'productUnits.unit'])
-            ->search($search)
-            ->when($categoryId, fn ($query) => $query->where('products.category_id', $categoryId))
-            ->when($status === 'active', fn ($query) => $query->where('products.is_active', true))
-            ->when($status === 'inactive', fn ($query) => $query->where('products.is_active', false))
-            ->orderBy('products.name')
-            ->paginate(self::PER_PAGE)
-            ->withQueryString()
+        $products = $this->productService
+            ->paginateProducts($search, $categoryId, ProductStatusFilter::tryFrom($statusFilter), self::PER_PAGE)
             ->through(fn (Product $product): array => ProductListResource::make($product)->resolve());
 
         return Inertia::render('Tenant/Products/Index', [
             'products' => $products,
-            'filters' => ['search' => $search, 'category' => $categoryId, 'status' => $status],
+            'filters' => ['search' => $search, 'category' => $categoryId, 'status' => $statusFilter],
+            'statuses' => ProductStatusFilter::options(),
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
             'create_url' => route('tenant.products.create', ['tenant' => tenant('code')]),
         ]);
@@ -61,7 +55,7 @@ class ProductController extends Controller
 
     public function store(SaveProductRequest $request): RedirectResponse
     {
-        $this->products->create($request->validated());
+        $this->productService->create($request->validated());
 
         return redirect()->route('tenant.products.index', ['tenant' => tenant('code')])->with('success', 'Barang ditambahkan.');
     }
@@ -77,7 +71,11 @@ class ProductController extends Controller
 
     public function update(SaveProductRequest $request, Product $product): RedirectResponse
     {
-        $this->products->update($product, $request->validated());
+        try {
+            $this->productService->update($product, $request->validated());
+        } catch (ProductSaveException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
 
         return redirect()->route('tenant.products.index', ['tenant' => tenant('code')])->with('success', 'Barang disimpan.');
     }
@@ -85,7 +83,7 @@ class ProductController extends Controller
     public function destroy(Product $product): RedirectResponse
     {
         try {
-            $this->products->delete($product);
+            $this->productService->delete($product);
         } catch (ProductHasTransactionsException $exception) {
             return redirect()->route('tenant.products.index', ['tenant' => tenant('code')])->with('error', $exception->getMessage());
         }

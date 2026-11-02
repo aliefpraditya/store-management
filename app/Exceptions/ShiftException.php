@@ -44,6 +44,11 @@ class ShiftException extends Exception
         return new self("Selisih kas shift ini berstatus {$statusLabel}, jadi tidak bisa diputuskan lagi.");
     }
 
+    public static function cannotDecideOwnShift(): self
+    {
+        return new self('Selisih kas shift Anda sendiri harus diputuskan Admin lain atau Super Admin.');
+    }
+
     public static function notAwaitingFollowUp(): self
     {
         return new self('Hanya selisih kas yang ditolak dan belum ditindaklanjuti yang bisa ditandai.');

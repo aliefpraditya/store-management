@@ -45,7 +45,7 @@ class SaveStoreRequest extends FormRequest
             $rules['code'] = ['required', 'string', 'min:3', 'max:40', 'regex:/^[a-z][a-z0-9_]*$/', Rule::unique('stores', 'code')];
         }
 
-        if ($editedStore === null || $editedStore->status->needsProvisioning()) {
+        if ($editedStore === null || $editedStore->status->isAwaitingProvisioning()) {
             $rules += [
                 'db_name' => [
                     'required', 'string', 'max:64', 'regex:/^[A-Za-z0-9_]+$/',

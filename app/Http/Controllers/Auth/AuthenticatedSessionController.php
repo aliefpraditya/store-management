@@ -5,15 +5,17 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Services\LandingRouteResolver;
+use App\Services\SessionTerminator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class AuthenticatedSessionController extends Controller
 {
+    public function __construct(private readonly SessionTerminator $sessionTerminator) {}
+
     public function create(): Response
     {
         return Inertia::render('Auth/Login');
@@ -22,16 +24,16 @@ class AuthenticatedSessionController extends Controller
     /**
      * @throws ValidationException
      */
-    public function store(LoginRequest $request, LandingRouteResolver $landing): RedirectResponse
+    public function store(LoginRequest $request, LandingRouteResolver $landingRouteResolver): RedirectResponse
     {
         $request->authenticate();
 
-        $landingUrl = $landing->urlFor($request->user());
+        $landingUrl = $landingRouteResolver->urlFor($request->user());
 
         if ($landingUrl === null) {
-            $this->endSession($request);
+            $this->sessionTerminator->end($request);
 
-            throw ValidationException::withMessages(['username' => 'Akun ini belum punya akses ke toko mana pun.']);
+            throw ValidationException::withMessages(['username' => LandingRouteResolver::NO_ACCESS_MESSAGE]);
         }
 
         $request->session()->regenerate();
@@ -41,16 +43,8 @@ class AuthenticatedSessionController extends Controller
 
     public function destroy(Request $request): RedirectResponse
     {
-        $this->endSession($request);
+        $this->sessionTerminator->end($request);
 
         return redirect()->route('login');
-    }
-
-    private function endSession(Request $request): void
-    {
-        Auth::guard('web')->logout();
-
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
     }
 }

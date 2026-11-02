@@ -26,6 +26,8 @@ const SEARCH_DELAY_MS = 250;
 const query = ref('');
 const receipts = ref([]);
 const isLoading = ref(false);
+/** Why the list could not be loaded (a closed shift, a server error, no connection); empty when it loaded. */
+const loadError = ref('');
 const expandedId = ref(null);
 const printingId = ref(null);
 let latestLoadId = 0;
@@ -80,9 +82,10 @@ async function print(receipt) {
 
     try {
         await printInNewWindow(async () => {
-            receipt.print_count = (await postJson(receipt.print_url)).print_count;
+            const { print_count: printCount, sheet_url: sheetUrl } = await postJson(receipt.print_url);
+            receipt.print_count = printCount;
 
-            return receipt.sheet_url;
+            return sheetUrl;
         });
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
@@ -104,7 +107,8 @@ async function print(receipt) {
 
             <q-card-section class="history__list">
                 <q-inner-loading :showing="isLoading" />
-                <p v-if="!isLoading && receipts.length === 0" class="history__empty">Belum ada nota di shift ini.</p>
+                <p v-if="loadError" class="history__empty history__empty--error">{{ loadError }}</p>
+                <p v-else-if="!isLoading && receipts.length === 0" class="history__empty">Belum ada nota di shift ini.</p>
 
                 <div v-for="receipt in receipts" :key="receipt.id" class="receipt" :class="{ 'receipt--open': expandedId === receipt.id }">
                     <button type="button" class="receipt__row" @click="toggle(receipt)">
@@ -176,6 +180,10 @@ async function print(receipt) {
     padding: 24px 0;
     color: var(--app-mute);
     text-align: center;
+}
+
+.history__empty--error {
+    color: var(--q-negative);
 }
 
 .receipt {

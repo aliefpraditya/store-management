@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Lives in the store database. One product of an opname, all quantities in the base unit.
  * `counted_quantity` is null until counted: blank is not the same as zero.
  */
-#[Fillable(['stock_opname_id', 'product_id', 'snapshot_quantity', 'counted_quantity', 'system_quantity_at_posting', 'variance', 'reason'])]
+#[Fillable(['stock_opname_id', 'product_id', 'snapshot_quantity', 'counted_quantity', 'system_quantity_at_posting', 'cost_price_at_posting', 'variance', 'reason'])]
 class StockOpnameItem extends Model
 {
     /** @use HasFactory<StockOpnameItemFactory> */
@@ -27,6 +27,7 @@ class StockOpnameItem extends Model
             'snapshot_quantity' => 'decimal:3',
             'counted_quantity' => 'decimal:3',
             'system_quantity_at_posting' => 'decimal:3',
+            'cost_price_at_posting' => 'decimal:2',
             'variance' => 'decimal:3',
         ];
     }

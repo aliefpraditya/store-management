@@ -3,13 +3,12 @@
 namespace App\Http\Resources;
 
 use App\Models\Product;
-use Brick\Math\BigDecimal;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * One row of the item list. Expects `category`, `brand`, `baseUnit` and `productUnits.unit` to be loaded,
- * the `sellable_stock` / `dead_stock` totals from {@see Product::scopeWithStockTotals()} and the
+ * One row of the item list. Expects `category`, `brand` and `productUnits` to be loaded, the `sellable_stock` /
+ * `dead_stock` totals and the `is_below_minimum` flag from {@see Product::scopeWithStockTotals()} and the
  * `has_transactions` flag from {@see Product::scopeWithTransactionFlag()}.
  *
  * @mixin Product
@@ -33,16 +32,15 @@ class ProductListResource extends JsonResource
             'min_stock' => $this->min_stock,
             'sellable_stock' => $this->getAttribute('sellable_stock'),
             'dead_stock' => $this->getAttribute('dead_stock'),
-            'is_below_minimum' => BigDecimal::of($this->min_stock)->isGreaterThan(0)
-                && BigDecimal::of($this->getAttribute('sellable_stock'))->isLessThan($this->min_stock),
+            'is_below_minimum' => (bool) $this->getAttribute('is_below_minimum'),
             'cost_price' => $this->cost_price,
-            'base_unit' => $this->baseUnit->code,
+            'base_unit' => $this->base_unit_code,
             'units' => $this->productUnits->map(fn ($productUnit): array => [
-                'code' => $productUnit->unit->code,
+                'code' => $productUnit->unit_code,
                 'conversion_factor' => $productUnit->conversion_factor,
             ])->values()->all(),
             'default_sale' => $defaultSaleUnit === null ? null : [
-                'unit' => $defaultSaleUnit->unit->code,
+                'unit' => $defaultSaleUnit->unit_code,
                 'price' => $defaultSaleUnit->selling_price,
             ],
             'can_delete' => ! (bool) $this->getAttribute('has_transactions'),

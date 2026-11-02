@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
@@ -9,6 +9,7 @@ const props = defineProps({
     products: { type: Object, required: true },
     filters: { type: Object, required: true },
     categories: { type: Array, required: true },
+    statuses: { type: Array, required: true },
     create_url: { type: String, required: true },
 });
 
@@ -19,11 +20,7 @@ const search = ref(props.filters.search);
 const category = ref(props.filters.category);
 const status = ref(props.filters.status);
 
-const statusOptions = [
-    { label: 'Semua status', value: '' },
-    { label: 'Aktif', value: 'active' },
-    { label: 'Nonaktif', value: 'inactive' },
-];
+const statusOptions = computed(() => [{ label: 'Semua status', value: '' }, ...props.statuses]);
 
 const priceFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
 
@@ -34,10 +31,10 @@ function confirmDelete(product) {
     });
 }
 
-function applyFilters(extra = {}) {
+function applyFilters(extraParams = {}) {
     router.get(
         page.url.split('?')[0],
-        { search: search.value || undefined, category: category.value || undefined, status: status.value || undefined, ...extra },
+        { search: search.value || undefined, category: category.value || undefined, status: status.value || undefined, ...extraParams },
         { preserveState: true, replace: true, preserveScroll: true },
     );
 }
@@ -50,6 +47,9 @@ watch(search, () => {
 });
 
 watch([category, status], () => applyFilters());
+
+/** A search typed just before leaving the page must not pull the admin back to it. */
+onBeforeUnmount(() => clearTimeout(searchTimer));
 </script>
 
 <template>

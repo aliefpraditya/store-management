@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureUserCanAccessStore;
 use App\Models\Store;
 use App\Services\StoreDashboardService;
 use Illuminate\Http\RedirectResponse;
@@ -21,7 +22,7 @@ class DashboardController extends Controller
         /** @var Store $store */
         $store = tenant();
 
-        if ($request->user()->roleIn($store) === UserRole::Cashier) {
+        if ($request->attributes->get(EnsureUserCanAccessStore::ROLE_ATTRIBUTE) === UserRole::Cashier) {
             return redirect()->route('tenant.cashier.index', ['tenant' => $store->code]);
         }
 

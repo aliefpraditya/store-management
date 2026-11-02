@@ -31,7 +31,17 @@ class DeliveryNoteException extends Exception
 
     public static function wrongStatus(string $action, string $statusLabel): self
     {
-        return new self("Surat jalan berstatus {$statusLabel}, jadi tidak bisa {$action}.");
+        return new self("Surat jalan tidak bisa {$action} karena berstatus {$statusLabel}. Muat ulang halaman untuk melihat status terbarunya.");
+    }
+
+    public static function noteIdInUse(): self
+    {
+        return new self('Pengajuan surat jalan ini sudah tercatat untuk orang atau nota lain. Muat ulang layar lalu coba lagi.');
+    }
+
+    public static function resultNotOnNote(): self
+    {
+        return new self('Ada hasil untuk barang yang tidak ada di surat jalan ini, atau barang yang sama diisi dua kali.');
     }
 
     public static function resultDoesNotAddUp(string $productName): self

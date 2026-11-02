@@ -1,8 +1,3 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
-
-Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware('auth:sanctum');
+// No public API on purpose: every page authenticates with the session login, not tokens (see docs/analisis-sistem.md, "Tanpa API").

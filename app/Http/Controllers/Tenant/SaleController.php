@@ -13,20 +13,20 @@ use Illuminate\Http\RedirectResponse;
 class SaleController extends Controller
 {
     public function __construct(
-        private readonly SaleService $sales,
-        private readonly ShiftService $shifts,
+        private readonly SaleService $saleService,
+        private readonly ShiftService $shiftService,
     ) {}
 
     public function store(StoreSaleRequest $request): RedirectResponse
     {
-        $shift = $this->shifts->openShiftOf($request->user());
+        $shift = $this->shiftService->openShiftOf($request->user());
 
         if ($shift === null) {
             return back()->with('error', SaleException::shiftNotOpen()->getMessage());
         }
 
         try {
-            $sale = $this->sales->create($shift, $request->user(), $request->validated());
+            $sale = $this->saleService->create($shift, $request->user(), $request->validated());
         } catch (SaleException $exception) {
             return back()->with('error', $exception->getMessage());
         }

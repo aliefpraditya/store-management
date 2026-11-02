@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue';
+import { useQuasar } from 'quasar';
 
 const props = defineProps({
     /** The chosen product ({ id, sku, name, base_unit }) or null. */
@@ -13,8 +14,24 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue']);
 
+const $q = useQuasar();
+
 const options = ref([]);
 let latestSearchId = 0;
+let isFailureShown = false;
+
+/**
+ * One notice for a failing lookup, however many searches fail in a row while the user keeps typing, so a lost
+ * session or a server error is not mistaken for "no such product".
+ */
+function notifyLookupFailed() {
+    if (isFailureShown) {
+        return;
+    }
+
+    isFailureShown = true;
+    $q.notify({ type: 'negative', position: 'top', message: 'Pencarian barang gagal. Periksa koneksi atau masuk ulang, lalu coba lagi.', onDismiss: () => (isFailureShown = false) });
+}
 
 /**
  * Looks products up on the server as the user types; an answer that arrives after a newer search was
@@ -32,8 +49,18 @@ function searchProducts(typed, update, abort) {
     const searchId = ++latestSearchId;
 
     fetch(`${props.searchUrl}?q=${encodeURIComponent(term)}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
-        .then((response) => (response.ok ? response.json() : { data: [] }))
-        .catch(() => ({ data: [] }))
+        .then((response) => {
+            if (!response.ok) {
+                throw new Error('Lookup failed');
+            }
+
+            return response.json();
+        })
+        .catch(() => {
+            notifyLookupFailed();
+
+            return { data: [] };
+        })
         .then(({ data }) => {
             if (searchId === latestSearchId) {
                 update(() => {

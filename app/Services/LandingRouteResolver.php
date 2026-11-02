@@ -12,6 +12,8 @@ use App\Models\User;
  */
 class LandingRouteResolver
 {
+    public const NO_ACCESS_MESSAGE = 'Akun ini belum punya akses ke toko mana pun.';
+
     /**
      * @return string|null null when the user has nowhere to go (inactive, or no active store)
      */

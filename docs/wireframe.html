@@ -306,7 +306,7 @@
     </div>
   </div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Bar atas: Riwayat Nota (nota shift ini, cetak ulang, surat jalan, retur), Retur (cari nota lewat nomor lengkap), dan Tutup Shift. Admin juga punya tombol Dashboard. Pengeluaran menyusul.</li><li>Enter pada barcode memasukkan satuan default; barcode satuan langsung memilih satuannya.</li><li>Stok kurang → diblokir. Hanya satuan "dijual" yang tampil.</li><li>Batal sebelum bayar langsung, dicatat. Tanpa kredit atau hutang.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Bar atas: Riwayat Nota (nota shift ini, cetak ulang, surat jalan, retur), Retur (cari nota lewat nomor lengkap), dan Tutup Shift. Admin juga punya tombol Dashboard. Pengeluaran mencatat uang yang diambil dari laci shift ini.</li><li>Enter pada barcode memasukkan satuan default; barcode satuan langsung memilih satuannya.</li><li>Stok kurang → diblokir. Hanya satuan "dijual" yang tampil.</li><li>Batal sebelum bayar langsung, dicatat. Tanpa kredit atau hutang.</li></ul></details>
 </section>
 
 <!-- 13 PEMBAYARAN -->
@@ -608,23 +608,37 @@
 <section class="scr" id="pengeluaran" data-group="Kas & Harian" data-nav="Pengeluaran" data-title="Pengeluaran" data-sub="Uang keluar dari laci kasir atau sumber lain." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/expenses">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Pengeluaran" data-who="Andi|Admin Toko"></aside>
-  <div class="mn"><div class="tb"><h3>Pengeluaran</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Pengeluaran</span></div>
+  <div class="mn"><div class="tb"><h3>Pengeluaran</h3><span class="b">Kategori</span><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Pengeluaran</span></div>
   <div class="pg">
-    <div class="g3"><div class="card kpi"><small>Dari laci</small><b>120.000</b></div><div class="card kpi"><small>Sumber lain</small><b>1.250.000</b></div><div class="card kpi"><small>Total 24 Okt</small><b>1.370.000</b></div></div>
-    <div class="cols mt">
-      <div class="tbl"><table class="t"><tr><th>Keterangan</th><th>Kategori</th><th>Sumber</th><th class="r">Nominal</th></tr>
-        <tr><td><b>Beli galon</b><small>25 Okt · Toko Air</small></td><td>Operasional</td><td><span class="c ok">Laci</span></td><td class="r">50.000</td></tr>
-        <tr><td><b>Upah bongkar</b><small>24 Okt · Pak Eko</small></td><td>Upah</td><td><span class="c ok">Laci</span></td><td class="r">70.000</td></tr>
-        <tr><td><b>Listrik Oktober</b><small>24 Okt · PLN</small></td><td>Listrik/Air</td><td><span class="c">Lainnya</span></td><td class="r">1.250.000</td></tr></table></div>
-      <div class="card"><h4>Pengeluaran baru</h4>
-        <div class="g2"><div class="f"><span>Kategori</span><div class="in sel">Operasional</div></div><div class="f"><span>Nominal</span><div class="in">Rp 50.000</div></div></div>
-        <div class="f"><span>Keterangan</span><div class="in">Beli galon air minum</div></div>
-        <div class="f"><span>Sumber</span><div class="seg"><span class="on">Laci kasir</span><span>Lainnya</span></div></div>
-        <div class="b p w">Simpan</div></div>
-    </div>
+    <div class="g3"><div class="card kpi"><small>Dari laci</small><b>120.000</b></div><div class="card kpi"><small>Sumber lain</small><b>1.250.000</b></div><div class="card kpi"><small>Total</small><b>1.370.000</b></div></div>
+    <div class="row mt" style="gap:10px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cari nomor, keterangan, atau penerima</div><div class="in sel grow">Semua kategori</div><div class="in sel grow">Semua sumber</div><div class="in sel grow">Semua status</div></div>
+    <div class="tbl mt"><table class="t"><tr><th>Keterangan</th><th>Kategori</th><th>Sumber</th><th class="r">Nominal</th><th>Status</th><th></th></tr>
+      <tr><td><b>Beli galon</b><small>PGL/MU/2610/0003 · 25 Okt · Toko Air</small></td><td>Operasional</td><td>Laci kasir<small>K1 · Sari</small></td><td class="r">50.000</td><td><span class="c ok">Tercatat</span></td><td class="r"><span class="b s bad">Batalkan</span></td></tr>
+      <tr><td><b>Upah bongkar</b><small>PGL/MU/2610/0002 · 24 Okt · Pak Eko</small></td><td>Upah/Gaji</td><td>Laci kasir<small>K2 · Joko</small></td><td class="r">70.000</td><td><span class="c ok">Tercatat</span></td><td></td></tr>
+      <tr><td><b>Listrik Oktober</b><small>PGL/MU/2610/0001 · 24 Okt · PLN</small></td><td>Listrik/Air</td><td>Lainnya</td><td class="r">1.250.000</td><td><span class="c ok">Tercatat</span></td><td class="r"><span class="b s bad">Batalkan</span></td></tr>
+      <tr><td><b>Beli kertas</b><small>PGL/MU/2610/0004 · 25 Okt</small><small style="color:var(--bad)">Dibatalkan oleh Andi: salah input</small></td><td>ATK/Perlengkapan</td><td>Lainnya</td><td class="r"><s>35.000</s></td><td><span class="c">Dibatalkan</span></td><td></td></tr></table></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Sumber laci mengurangi tunai seharusnya shift yang berjalan.</li><li>Hari yang sudah ditutup terkunci.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Sumber laci mengurangi tunai seharusnya shift itu; Admin memilih laci dari shift yang sedang berjalan. Sumber lain punya tanggalnya sendiri dan tidak memengaruhi kas.</li><li>Tidak ada hapus: Batalkan meminta alasan dan baris tetap tampil. Pengeluaran laci dari shift yang sudah ditutup tidak bisa dibatalkan.</li><li>Kategori dikelola lewat tombol Kategori (tambah, ubah nama, nonaktifkan).</li></ul></details>
+</section>
+
+<!-- 18b PENGELUARAN DI KASIR -->
+<section class="scr" id="pengeluarankasir" data-group="Kas & Harian" data-nav="Pengeluaran di Kasir" data-title="Pengeluaran di Kasir" data-sub="Kasir mengambil uang dari laci shift sendiri dan mencatatnya di sini." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal" style="max-width:460px">
+    <h3>Pengeluaran dari laci</h3>
+    <p class="mute" style="margin:0 0 10px;font-size:12.5px">Uang yang diambil dari laci shift ini mengurangi tunai yang seharusnya ada saat tutup shift.</p>
+    <div class="f"><span>Kategori</span><div class="in sel">Operasional</div></div>
+    <div class="f"><span>Nominal</span><div class="in">Rp 50.000</div></div>
+    <div class="f"><span>Keterangan</span><div class="in">Beli galon air minum</div></div>
+    <div class="f"><span>Dibayar ke (opsional)</span><div class="in">Toko Air</div></div>
+    <h4 style="margin:14px 0 6px">Sudah diambil di shift ini</h4>
+    <div class="list"><div><span class="t">Beli es batu<small>Operasional · 10:15</small></span><b>15.000</b></div></div>
+    <div class="row mt2" style="justify-content:space-between"><span class="ink2">Total diambil</span><b>Rp 15.000</b></div>
+    <div class="row mt2"><span class="sp"></span><span class="b">Tutup</span><span class="b p">Catat Pengeluaran</span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Kasir hanya mencatat dari laci shift sendiri. Membatalkan yang salah dilakukan Admin di halaman Pengeluaran.</li></ul></details>
 </section>
 
 <!-- 19 TUTUP SHIFT -->
@@ -632,8 +646,8 @@
 <div class="bd full" style="background:var(--bg)">
   <div class="scrim"><div class="modal" style="max-width:520px">
     <h3>Tutup shift</h3>
-    <div class="sum mt2"><div><span>Jumlah nota</span><span>14</span></div><div><span>Total penjualan</span><span>4.850.000</span></div><div><span>Tunai (sudah dikurangi kembalian dan retur tunai)</span><span>3.100.000</span></div><div><span>Transfer</span><span>900.000</span></div><div><span>QRIS</span><span>700.000</span></div><div><span>EDC</span><span>0</span></div><div><span>Retur disetujui</span><span>450.000</span></div><div><span>Retur tunai</span><span>150.000</span></div><div><span>Modal kas awal</span><span>500.000</span></div><div class="t"><span>Tunai seharusnya di laci</span><span>3.600.000</span></div></div>
-    <div class="g2 mt"><div class="f"><span>Tunai yang dihitung</span><div class="in big">3.590.000</div></div><div class="f"><span>Selisih</span><div class="in big" style="color:var(--bad)">−10.000</div></div></div>
+    <div class="sum mt2"><div><span>Jumlah nota</span><span>14</span></div><div><span>Total penjualan</span><span>4.850.000</span></div><div><span>Tunai (sudah dikurangi kembalian dan retur tunai)</span><span>3.100.000</span></div><div><span>Transfer</span><span>900.000</span></div><div><span>QRIS</span><span>700.000</span></div><div><span>EDC</span><span>0</span></div><div><span>Retur disetujui</span><span>450.000</span></div><div><span>Retur tunai</span><span>150.000</span></div><div><span>Pengeluaran dari laci (sudah mengurangi tunai)</span><span>120.000</span></div><div><span>Modal kas awal</span><span>500.000</span></div><div class="t"><span>Tunai seharusnya di laci</span><span>3.480.000</span></div></div>
+    <div class="g2 mt"><div class="f"><span>Tunai yang dihitung</span><div class="in big">3.470.000</div></div><div class="f"><span>Selisih</span><div class="in big" style="color:var(--bad)">−10.000</div></div></div>
     <div class="f"><span>Catatan selisih (wajib)</span><div class="in">Kembalian kurang Rp 10.000</div></div>
     <div class="tip"><svg class="ic s"><use href="#i-wallet"/></svg><span>Modal 500.000 tinggal di laci · <b>setoran Rp 3.090.000</b></span></div>
     <div class="row mt"><span class="sp"></span><span class="b">Batal</span><span class="b bad">Tutup Shift</span></div>
@@ -671,7 +685,7 @@
     <h4 style="margin:16px 0 6px">Penjualan</h4>
     <div class="sum"><div><span>Jumlah nota</span><span>9</span></div><div><span>Total penjualan</span><span>2.770.000</span></div><div><span>Tunai</span><span>1.870.000</span></div><div><span>Transfer · QRIS · EDC</span><span>900.000</span></div></div>
     <h4 style="margin:16px 0 6px">Kas</h4>
-    <div class="sum"><div><span>Modal kas awal</span><span>500.000</span></div><div><span>Tunai seharusnya di laci</span><span>2.380.000</span></div><div><span>Tunai dihitung</span><span>2.370.000</span></div><div class="t"><span>Selisih</span><span style="color:var(--bad)">−10.000</span></div></div>
+    <div class="sum"><div><span>Modal kas awal</span><span>500.000</span></div><div><span>Pengeluaran dari laci</span><span>70.000</span></div><div><span>Tunai seharusnya di laci</span><span>2.310.000</span></div><div><span>Tunai dihitung</span><span>2.300.000</span></div><div class="t"><span>Selisih</span><span style="color:var(--bad)">−10.000</span></div></div>
     <div class="mute mt2" style="font-size:12.5px">Catatan kasir: kembalian kurang Rp 10.000</div>
     <h4 style="margin:16px 0 6px">Retur di shift ini</h4>
     <div class="list"><div><b>RET/MU/2610/0002</b><span class="c ok">Selesai</span><span style="margin-left:auto">Rp 120.000 <small class="mute">Tukar barang</small></span></div></div>

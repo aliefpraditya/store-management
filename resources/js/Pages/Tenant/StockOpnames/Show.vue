@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import ProductSearchSelect from '../../../Components/ProductSearchSelect.vue';
@@ -48,15 +48,15 @@ const filterOptions = [
  * What the admin is typing, per item id: one quantity per unit counted (5 DUS and 3 PAIL are two parts) and the reason.
  * @type {import('vue').Ref<Record<number, {parts: {unit_code: string, quantity: string}[], reason: string}>>}
  */
-const rows = ref({});
+const typedCounts = ref({});
 
-/** The rows as they were last loaded from the server, to tell which ones were edited. */
-const loadedRows = ref({});
+/** The typed counts as they were last loaded from the server, to tell which ones were edited. */
+const loadedCounts = ref({});
 
 /**
  * A saved count comes back as one base-unit quantity, so it is shown as a single part in the base unit.
  */
-function rowFromItem(item) {
+function typedCountOf(item) {
     return {
         parts: [{ unit_code: item.base_unit, quantity: item.counted_quantity === null ? '' : String(Number(item.counted_quantity)) }],
         reason: item.reason ?? '',
@@ -66,13 +66,13 @@ function rowFromItem(item) {
 watch(
     () => props.items.data,
     (items) => {
-        rows.value = Object.fromEntries(items.map((item) => [item.id, rowFromItem(item)]));
-        loadedRows.value = Object.fromEntries(items.map((item) => [item.id, JSON.stringify(rowFromItem(item))]));
+        typedCounts.value = Object.fromEntries(items.map((item) => [item.id, typedCountOf(item)]));
+        loadedCounts.value = Object.fromEntries(items.map((item) => [item.id, JSON.stringify(typedCountOf(item))]));
     },
     { immediate: true },
 );
 
-const dirtyItems = computed(() => props.items.data.filter((item) => JSON.stringify(rows.value[item.id]) !== loadedRows.value[item.id]));
+const dirtyItems = computed(() => props.items.data.filter((item) => JSON.stringify(typedCounts.value[item.id]) !== loadedCounts.value[item.id]));
 
 const isDirty = computed(() => dirtyItems.value.length > 0);
 
@@ -82,7 +82,7 @@ const uncountedCount = computed(() => props.summary.items_count - props.summary.
  * @returns {number|null} the typed count in the base unit, or null while nothing is typed
  */
 function countedBase(item) {
-    const filledParts = rows.value[item.id].parts.filter((part) => part.quantity !== '' && part.quantity !== null);
+    const filledParts = typedCounts.value[item.id].parts.filter((part) => part.quantity !== '' && part.quantity !== null);
 
     if (filledParts.length === 0) {
         return null;
@@ -110,7 +110,7 @@ function varianceOf(item) {
         return null;
     }
 
-    return props.opname.counts_arrivals ? counted : Math.round((counted - Number(item.system_quantity)) * 1000) / 1000;
+    return props.opname.is_counting_arrivals ? counted : Math.round((counted - Number(item.system_quantity)) * 1000) / 1000;
 }
 
 /**
@@ -123,7 +123,7 @@ function stockAfter(item) {
 }
 
 function varianceClass(variance) {
-    if (variance === 0 || (props.opname.counts_arrivals && variance > 0)) {
+    if (variance === 0 || (props.opname.is_counting_arrivals && variance > 0)) {
         return 'chip--ok';
     }
 
@@ -141,14 +141,14 @@ function formatMoney(value) {
 }
 
 function addPart(item) {
-    const row = rows.value[item.id];
+    const row = typedCounts.value[item.id];
     const unusedUnit = item.units.find((unit) => !row.parts.some((part) => part.unit_code === unit.code));
 
     row.parts.push({ unit_code: (unusedUnit ?? item.units[0]).code, quantity: '' });
 }
 
 function removePart(item, partIndex) {
-    rows.value[item.id].parts.splice(partIndex, 1);
+    typedCounts.value[item.id].parts.splice(partIndex, 1);
 }
 
 /**
@@ -157,8 +157,8 @@ function removePart(item, partIndex) {
 function saveCounts(afterSaved) {
     const counts = dirtyItems.value.map((item) => ({
         item_id: item.id,
-        parts: rows.value[item.id].parts.map((part) => ({ unit_code: part.unit_code, quantity: part.quantity === '' ? null : part.quantity })),
-        reason: rows.value[item.id].reason || null,
+        parts: typedCounts.value[item.id].parts.map((part) => ({ unit_code: part.unit_code, quantity: part.quantity === '' ? null : part.quantity })),
+        reason: typedCounts.value[item.id].reason || null,
     }));
 
     router.put(
@@ -174,21 +174,21 @@ function saveCounts(afterSaved) {
 
 /**
  * Runs the next step only after unsaved counts are stored, so moving on never throws typed counts away.
- * @param {() => void} next
+ * @param {() => void} runNext
  */
-function afterSavingCounts(next) {
+function afterSavingCounts(runNext) {
     if (isDirty.value) {
-        saveCounts(next);
+        saveCounts(runNext);
     } else {
-        next();
+        runNext();
     }
 }
 
-function postTo(url, data = {}) {
-    router.post(url, data, { preserveScroll: true });
+function postAction(url, payload = {}) {
+    router.post(url, payload, { preserveScroll: true });
 }
 
-function confirm({ title, message, okLabel, okColor = 'primary' }, onOk) {
+function confirmDialog({ title, message, okLabel, okColor = 'primary' }, onOk) {
     $q.dialog({
         title,
         message,
@@ -201,43 +201,43 @@ function confirm({ title, message, okLabel, okColor = 'primary' }, onOk) {
 function finishCounting() {
     afterSavingCounts(() => {
         if (uncountedCount.value === 0) {
-            postTo(props.opname.urls.finish);
+            postAction(props.opname.urls.finish);
 
             return;
         }
 
-        confirm(
+        confirmDialog(
             {
                 title: 'Selesai menghitung?',
                 message: `${uncountedCount.value} barang belum dihitung. Stoknya tidak berubah saat diposting.`,
                 okLabel: 'Selesai hitung',
             },
-            () => postTo(props.opname.urls.finish),
+            () => postAction(props.opname.urls.finish),
         );
     });
 }
 
 function postOpname() {
-    confirm(
+    confirmDialog(
         {
             title: 'Posting opname?',
-            message: props.opname.counts_arrivals
-                ? `Stok ${props.summary.variance_count} barang akan bertambah, dengan nilai ${formatMoney(props.summary.variance_value)}. Setelah diposting, opname tidak bisa diubah.`
-                : `Stok ${props.summary.variance_count} barang akan diperbarui, dengan nilai selisih ${formatMoney(props.summary.variance_value)}. Setelah diposting, opname tidak bisa diubah.`,
+            message: props.opname.is_counting_arrivals
+                ? `Stok sekitar ${props.summary.variance_count} barang akan bertambah, dengan nilai sekitar ${formatMoney(props.summary.variance_value)}. Angka ini dari tampilan terakhir; penjualan yang masuk sebelum posting ikut menggeser hasilnya. Setelah diposting, opname tidak bisa diubah.`
+                : `Stok sekitar ${props.summary.variance_count} barang akan diperbarui, dengan nilai selisih sekitar ${formatMoney(props.summary.variance_value)}. Angka ini dari tampilan terakhir; penjualan yang masuk sebelum posting ikut menggeser selisihnya. Setelah diposting, opname tidak bisa diubah.`,
             okLabel: 'Posting',
             okColor: 'positive',
         },
-        () => postTo(props.opname.urls.post),
+        () => postAction(props.opname.urls.post),
     );
 }
 
 /** A draft is erased for good; a started opname is cancelled and hidden from the list but kept. */
 function cancelOpname() {
-    confirm(
+    confirmDialog(
         props.opname.is_erased_on_cancel
             ? { title: 'Hapus draft opname?', message: 'Draft ini dihapus dan tidak disimpan.', okLabel: 'Hapus draft', okColor: 'negative' }
             : { title: 'Batalkan opname?', message: 'Stok tidak berubah. Opname disembunyikan dari daftar dan hanya bisa dilihat lewat filter status Dibatalkan.', okLabel: 'Batalkan opname', okColor: 'negative' },
-        () => postTo(props.opname.urls.cancel),
+        () => postAction(props.opname.urls.cancel),
     );
 }
 
@@ -282,16 +282,19 @@ watch(search, () => {
 });
 
 watch(filter, () => applyFilters());
+
+/** A search typed just before leaving the page must not pull the admin back to it. */
+onBeforeUnmount(() => clearTimeout(searchTimer));
 </script>
 
 <template>
     <StoreLayout :title="opname.number">
         <template #actions>
             <q-btn v-if="opname.can_cancel" flat no-caps color="negative" :label="opname.is_erased_on_cancel ? 'Hapus Draft' : 'Batalkan'" class="q-mr-sm" @click="cancelOpname" />
-            <q-btn v-if="opname.can_start" color="primary" unelevated no-caps label="Mulai Hitung" @click="postTo(opname.urls.start)" />
+            <q-btn v-if="opname.can_start" color="primary" unelevated no-caps label="Mulai Hitung" @click="postAction(opname.urls.start)" />
             <q-btn v-if="opname.can_count" outline no-caps color="primary" label="Simpan" :disable="!isDirty" class="q-mr-sm" @click="saveCounts()" />
             <q-btn v-if="opname.can_count" color="primary" unelevated no-caps label="Selesai Hitung" @click="finishCounting" />
-            <q-btn v-if="opname.can_reopen" flat no-caps label="Hitung Ulang" class="q-mr-sm" @click="postTo(opname.urls.reopen)" />
+            <q-btn v-if="opname.can_reopen" flat no-caps label="Hitung Ulang" class="q-mr-sm" @click="postAction(opname.urls.reopen)" />
             <q-btn v-if="opname.can_post" color="positive" unelevated no-caps label="Posting" @click="postOpname" />
         </template>
 
@@ -314,10 +317,10 @@ watch(filter, () => applyFilters());
         </section>
 
         <section v-if="summary.items_count > 0" class="kpis">
-            <div class="kpi"><small>{{ opname.counts_arrivals ? 'Diisi' : 'Dihitung' }}</small><b>{{ summary.counted_count }} / {{ summary.items_count }}</b></div>
-            <div class="kpi"><small>{{ opname.counts_arrivals ? 'Barang bertambah' : 'Barang ada selisih' }}</small><b>{{ summary.variance_count }}</b></div>
+            <div class="kpi"><small>{{ opname.is_counting_arrivals ? 'Diisi' : 'Dihitung' }}</small><b>{{ summary.counted_count }} / {{ summary.items_count }}</b></div>
+            <div class="kpi"><small>{{ opname.is_counting_arrivals ? 'Barang bertambah' : 'Barang ada selisih' }}</small><b>{{ summary.variance_count }}</b></div>
             <div class="kpi">
-                <small>{{ opname.counts_arrivals ? 'Nilai penambahan (estimasi)' : 'Nilai selisih (estimasi)' }}</small>
+                <small>{{ opname.is_counting_arrivals ? 'Nilai penambahan (estimasi)' : 'Nilai selisih (estimasi)' }}</small>
                 <b :class="{ 'kpi--bad': Number(summary.variance_value) < 0 }">{{ formatMoney(summary.variance_value) }}</b>
             </div>
         </section>
@@ -329,12 +332,12 @@ watch(filter, () => applyFilters());
             </q-input>
             <q-select v-model="filter" :options="filterOptions" option-value="value" option-label="label" emit-value map-options outlined dense class="filters__select" />
             <q-btn
-                v-if="opname.can_count && !opname.counts_arrivals && uncountedCount > 0"
+                v-if="opname.can_count && !opname.is_counting_arrivals && uncountedCount > 0"
                 flat
                 no-caps
                 color="grey-8"
                 label="Tandai yang belum dihitung = 0"
-                @click="afterSavingCounts(() => postTo(opname.urls.zero_uncounted))"
+                @click="afterSavingCounts(() => postAction(opname.urls.zero_uncounted))"
             />
         </div>
 
@@ -344,9 +347,9 @@ watch(filter, () => applyFilters());
                     <tr>
                         <th>Barang</th>
                         <th class="lines__right">Stok sistem</th>
-                        <th>{{ opname.counts_arrivals ? 'Jumlah datang' : 'Hitung fisik' }}</th>
-                        <th class="lines__right">{{ opname.counts_arrivals ? 'Bertambah' : 'Selisih' }}</th>
-                        <th v-if="opname.counts_arrivals" class="lines__right">Stok setelah</th>
+                        <th>{{ opname.is_counting_arrivals ? 'Jumlah datang' : 'Hitung fisik' }}</th>
+                        <th class="lines__right">{{ opname.is_counting_arrivals ? 'Bertambah' : 'Selisih' }}</th>
+                        <th v-if="opname.is_counting_arrivals" class="lines__right">Stok setelah</th>
                         <th>Alasan</th>
                         <th v-if="opname.can_manage_products"></th>
                     </tr>
@@ -367,7 +370,7 @@ watch(filter, () => applyFilters());
                         <td class="lines__right">{{ formatStock(item.system_quantity, item.units, item.base_unit) }}</td>
                         <td>
                             <div v-if="opname.can_count" class="parts">
-                                <div v-for="(part, partIndex) in rows[item.id].parts" :key="partIndex" class="parts__row">
+                                <div v-for="(part, partIndex) in typedCounts[item.id].parts" :key="partIndex" class="parts__row">
                                     <q-input
                                         v-model="part.quantity"
                                         type="number"
@@ -376,7 +379,7 @@ watch(filter, () => applyFilters());
                                         outlined
                                         dense
                                         hide-bottom-space
-                                        :placeholder="opname.counts_arrivals ? 'jumlah datang' : 'isi hitungan'"
+                                        :placeholder="opname.is_counting_arrivals ? 'jumlah datang' : 'isi hitungan'"
                                         class="parts__quantity"
                                         :aria-label="`Jumlah ${item.product.name}`"
                                     />
@@ -425,14 +428,14 @@ watch(filter, () => applyFilters());
                             </template>
                             <span v-else class="lines__muted">—</span>
                         </td>
-                        <td v-if="opname.counts_arrivals" class="lines__right">
+                        <td v-if="opname.is_counting_arrivals" class="lines__right">
                             <b v-if="stockAfter(item) !== null">{{ stockAfter(item) }}</b>
                             <span v-else class="lines__muted">—</span>
                         </td>
                         <td>
                             <q-input
                                 v-if="opname.can_count"
-                                v-model="rows[item.id].reason"
+                                v-model="typedCounts[item.id].reason"
                                 outlined
                                 dense
                                 hide-bottom-space

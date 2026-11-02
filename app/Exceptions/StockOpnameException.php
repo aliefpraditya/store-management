@@ -19,6 +19,11 @@ class StockOpnameException extends Exception
         return new self("{$productName} sedang dihitung di opname lain untuk gudang ini.");
     }
 
+    public static function quantityTooLarge(string $productName): self
+    {
+        return new self("{$productName}: jumlah yang dihitung terlalu besar setelah diubah ke satuan terkecil. Periksa angkanya.");
+    }
+
     public static function noProducts(): self
     {
         return new self('Pilih minimal satu barang sebelum mulai menghitung.');

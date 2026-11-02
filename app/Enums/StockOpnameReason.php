@@ -15,7 +15,7 @@ enum StockOpnameReason: string
     /**
      * With this reason the admin types what arrived, not the total on the shelf, and that quantity is added to the stock.
      */
-    public function countsArrivals(): bool
+    public function isArrivalCount(): bool
     {
         return $this === self::StockIncrease;
     }

@@ -2,7 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Enums\StoreStatus;
+use App\Enums\UserRole;
+use App\Models\Store;
 use App\Models\User;
+use App\Services\LandingRouteResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -22,10 +26,34 @@ class HomeRedirectTest extends TestCase
             ->assertRedirect(route('central.dashboard'));
     }
 
-    public function test_user_without_a_store_is_sent_back_to_the_login_page(): void
+    public function test_user_without_a_store_is_signed_out_and_sent_to_the_login_page(): void
     {
         $this->actingAs(User::factory()->create())
             ->get(route('home'))
-            ->assertRedirect(route('login'));
+            ->assertRedirect(route('login'))
+            ->assertSessionHasErrors(['username' => LandingRouteResolver::NO_ACCESS_MESSAGE]);
+
+        $this->assertGuest();
+    }
+
+    public function test_user_whose_account_was_deactivated_mid_session_can_reach_the_login_page(): void
+    {
+        $deactivatedAdmin = User::factory()->create(['is_super_admin' => true, 'is_active' => false]);
+
+        $this->actingAs($deactivatedAdmin)->get(route('home'))->assertRedirect(route('login'));
+
+        $this->assertGuest();
+        $this->get(route('login'))->assertOk();
+    }
+
+    public function test_user_whose_only_store_was_deactivated_mid_session_is_signed_out(): void
+    {
+        $store = Store::factory()->create(['status' => StoreStatus::Inactive]);
+        $cashier = User::factory()->create();
+        $store->users()->attach($cashier->id, ['role' => UserRole::Cashier->value]);
+
+        $this->actingAs($cashier)->get(route('home'))->assertRedirect(route('login'));
+
+        $this->assertGuest();
     }
 }

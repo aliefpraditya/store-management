@@ -45,9 +45,9 @@ export function useCart(shiftId) {
 
     watch(
         lines,
-        (value) => {
+        (cartLines) => {
             try {
-                window.localStorage.setItem(storageKey.value, JSON.stringify(value));
+                window.localStorage.setItem(storageKey.value, JSON.stringify(cartLines));
             } catch {
                 // Storage can be blocked; the cart then only lives until the page reloads.
             }
@@ -90,15 +90,54 @@ export function useCart(shiftId) {
      * @param {number} unitId
      */
     function add(product, unitId) {
-        const existing = lines.value.find((line) => line.product.id === product.id && line.unitId === unitId);
+        const existingLine = lines.value.find((line) => line.product.id === product.id && line.unitId === unitId);
 
-        if (existing) {
-            existing.quantity = quantityOf(existing) + 1;
+        if (existingLine) {
+            existingLine.quantity = quantityOf(existingLine) + 1;
 
             return;
         }
 
         lines.value.push({ key: newUuid(), product, unitId, quantity: 1 });
+    }
+
+    /**
+     * Brings the cart up to date with the server after it was kept across a refresh: prices, units and stock are taken
+     * from fresh items, and a line whose item is gone (inactive, or that unit is no longer sold) is dropped.
+     *
+     * @param {(unitIds: number[]) => Promise<object[]>} fetchItemsFor the lookup of the units' current items
+     * @returns {Promise<{changed: object[], removed: object[]}>} the lines whose price moved, and the lines dropped
+     */
+    async function refresh(fetchItemsFor) {
+        if (lines.value.length === 0) {
+            return { changed: [], removed: [] };
+        }
+
+        const freshItems = await fetchItemsFor(lines.value.map((line) => line.unitId));
+        const freshItemById = new Map(freshItems.map((item) => [item.id, item]));
+        const changed = [];
+        const removed = [];
+
+        lines.value = lines.value.filter((line) => {
+            const freshItem = freshItemById.get(line.product.id);
+
+            if (!freshItem || !freshItem.units.some((unit) => unit.id === line.unitId)) {
+                removed.push(line);
+
+                return false;
+            }
+
+            const priceBefore = priceOf(line);
+            line.product = freshItem;
+
+            if (priceOf(line) !== priceBefore) {
+                changed.push({ line, priceBefore });
+            }
+
+            return true;
+        });
+
+        return { changed, removed };
     }
 
     function remove(line) {
@@ -112,5 +151,5 @@ export function useCart(shiftId) {
     /** The lines as the sale request wants them. */
     const saleItemsPayload = computed(() => lines.value.map((line) => ({ product_unit_id: line.unitId, quantity: quantityOf(line) })));
 
-    return { lines, total, isEmpty, hasOverStock, saleItemsPayload, unitOf, quantityOf, priceOf, subtotalOf, isOverStock, add, remove, clear };
+    return { lines, total, isEmpty, hasOverStock, saleItemsPayload, unitOf, quantityOf, priceOf, subtotalOf, isOverStock, add, refresh, remove, clear };
 }

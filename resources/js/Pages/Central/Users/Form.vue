@@ -25,12 +25,12 @@ const form = useForm({
 });
 
 const isPasswordVisible = ref(false);
-const isStoreNeeded = computed(() => form.role !== 'super_admin');
+const isStoreNeeded = computed(() => props.roles.find((role) => role.value === form.role)?.is_store_role ?? true);
 
 const roleOptions = computed(() => props.roles.map((role) => ({ label: role.label, value: role.value })));
 
 function submit() {
-    form.transform((data) => ({ ...data, store_id: isStoreNeeded.value ? data.store_id : null }))[props.form_action.method](
+    form.transform((formValues) => ({ ...formValues, store_id: isStoreNeeded.value ? formValues.store_id : null }))[props.form_action.method](
         props.form_action.url,
     );
 }

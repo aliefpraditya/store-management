@@ -99,6 +99,7 @@ function markFollowedUp() {
             <h2>Kas</h2>
             <dl class="rows">
                 <div><dt>Modal kas awal</dt><dd>{{ formatRupiah(shift.opening_cash) }}</dd></div>
+                <div v-if="Number(shift.drawer_expenses) > 0"><dt>Pengeluaran dari laci</dt><dd>{{ formatRupiah(shift.drawer_expenses) }}</dd></div>
                 <div><dt>Tunai seharusnya di laci</dt><dd>{{ formatRupiah(shift.expected_cash) }}</dd></div>
                 <template v-if="shift.status === 'closed'">
                     <div><dt>Tunai dihitung</dt><dd>{{ formatRupiah(shift.counted_cash) }}</dd></div>
@@ -121,13 +122,25 @@ function markFollowedUp() {
                 </ul>
             </template>
 
+            <template v-if="shift.expenses.length > 0">
+                <h2>Pengeluaran dari laci</h2>
+                <ul class="returns returns--static">
+                    <li v-for="expense in shift.expenses" :key="expense.number" :class="{ 'returns__voided': expense.status === 'voided' }">
+                        <b>{{ expense.description }}</b>
+                        <span class="chip" :class="expense.status === 'voided' ? 'chip--off' : 'chip--ok'">{{ expense.status_label }}</span>
+                        <span class="returns__amount">{{ formatRupiah(expense.amount) }} <small>{{ expense.category_name }}</small></span>
+                    </li>
+                </ul>
+            </template>
+
             <template v-if="shift.status === 'closed' && shift.difference_status !== 'none'">
                 <h2>
                     Keputusan selisih
                     <span class="chip" :class="differenceChipClass[shift.difference_status]">{{ shift.difference_status_label }}</span>
                 </h2>
 
-                <div v-if="shift.can_decide" class="decide">
+                <p v-if="shift.is_own_shift && shift.difference_status === 'pending_approval'" class="decide__own">Selisih ini dari shift Anda sendiri, jadi diputuskan Admin lain atau Super Admin.</p>
+                <div v-else-if="shift.can_decide" class="decide">
                     <p>Selisih {{ formatRupiah(shift.cash_difference) }}. Isi catatan, lalu setujui atau tolak. Keputusan ini tidak menghalangi shift berikutnya.</p>
                     <q-input v-model="note" type="textarea" autogrow outlined label="Catatan keputusan" :error="errorMessage !== ''" :error-message="errorMessage" @update:model-value="errorMessage = ''" />
                     <div class="decide__actions">
@@ -144,8 +157,8 @@ function markFollowedUp() {
                     </p>
                     <p v-if="shift.approval_note" class="shift__note"><small>Catatan</small>{{ shift.approval_note }}</p>
 
-                    <div v-if="shift.difference_status === 'rejected'" class="follow" :class="{ 'follow--open': shift.needs_follow_up }">
-                        <template v-if="shift.needs_follow_up">
+                    <div v-if="shift.difference_status === 'rejected'" class="follow" :class="{ 'follow--open': shift.is_awaiting_follow_up }">
+                        <template v-if="shift.is_awaiting_follow_up">
                             <span>Selisih ini ditolak dan <b>belum ditindaklanjuti</b>. Tetap ada di daftar Perlu tindakan sampai Anda menandainya.</span>
                             <q-btn unelevated no-caps color="primary" label="Tandai sudah ditindaklanjuti" @click="markFollowedUp" />
                         </template>
@@ -262,6 +275,19 @@ function markFollowedUp() {
     background: #fafafb;
 }
 
+.returns--static li {
+    cursor: default;
+}
+
+.returns--static li:hover {
+    background: none;
+}
+
+.returns__voided {
+    color: var(--app-mute);
+    text-decoration: line-through;
+}
+
 .returns__amount {
     margin-left: auto;
 }
@@ -290,6 +316,12 @@ function markFollowedUp() {
     border: 1px solid #fcd9a8;
     background: #fff7ec;
     color: #9a5b00;
+}
+
+.decide__own {
+    margin: 0;
+    color: var(--app-mute);
+    font-size: 13px;
 }
 
 .decide__actions {

@@ -12,6 +12,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Services\SaleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsCashierFixtures;
@@ -47,6 +48,14 @@ class CashierSaleReturnTest extends TestCase
         return route("tenant.cashier.{$name}", ['tenant' => $this->store->code, ...$parameters]);
     }
 
+    /**
+     * An address the way the till gets it from the server: signed, so it works only for that receipt.
+     */
+    private function signedUrl(string $name, array $parameters = []): string
+    {
+        return URL::temporarySignedRoute("tenant.cashier.{$name}", now()->addHour(), ['tenant' => $this->store->code, ...$parameters]);
+    }
+
     private function sellBrushes(User $cashier, CashShift $shift, int $pieces): Sale
     {
         $pcs = $this->unitOf($this->brush, 'PCS');
@@ -64,6 +73,7 @@ class CashierSaleReturnTest extends TestCase
     private function body(Sale $sale, int|string $quantity, string $disposition = 'resellable'): array
     {
         return [
+            'client_uuid' => (string) Str::uuid(),
             'refund_method' => 'cash',
             'reason' => 'Rusak',
             'items' => [['sale_item_id' => $sale->items[0]->id, 'quantity' => $quantity, 'disposition' => $disposition]],
@@ -78,9 +88,9 @@ class CashierSaleReturnTest extends TestCase
     public function test_the_dialog_gets_the_lines_the_choices_and_the_returns_already_asked_for(): void
     {
         $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
-        $this->actingAs($this->cashier)->postJson($this->url('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 2))->assertCreated();
+        $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 2))->assertCreated();
 
-        $this->actingAs($this->cashier)->getJson($this->url('receipts.return', ['sale' => $sale->id]))->assertOk()
+        $this->actingAs($this->cashier)->getJson($this->signedUrl('receipts.return', ['sale' => $sale->id]))->assertOk()
             ->assertJsonPath('data.number', $sale->number)
             ->assertJsonPath('data.default_refund_method', 'cash')
             ->assertJsonPath('data.is_approved_at_once', false)
@@ -99,7 +109,7 @@ class CashierSaleReturnTest extends TestCase
     {
         $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
 
-        $response = $this->actingAs($this->cashier)->postJson($this->url('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 2, 'dead_stock'))
+        $response = $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 2, 'dead_stock'))
             ->assertCreated()
             ->assertJsonPath('data.status', 'pending')
             ->assertJsonPath('data.status_label', 'Menunggu persetujuan')
@@ -120,8 +130,8 @@ class CashierSaleReturnTest extends TestCase
         $adminShift = $this->openShiftFor($admin, $register);
         $sale = $this->sellBrushes($admin, $adminShift, 5);
 
-        $this->actingAs($admin)->getJson($this->url('receipts.return', ['sale' => $sale->id]))->assertJsonPath('data.is_approved_at_once', true);
-        $this->actingAs($admin)->postJson($this->url('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 2))
+        $this->actingAs($admin)->getJson($this->signedUrl('receipts.return', ['sale' => $sale->id]))->assertJsonPath('data.is_approved_at_once', true);
+        $this->actingAs($admin)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 2))
             ->assertCreated()
             ->assertJsonPath('data.status', 'completed');
 
@@ -133,7 +143,7 @@ class CashierSaleReturnTest extends TestCase
         $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
         $this->store->run(fn () => $this->shift->forceFill(['status' => 'closed'])->save());
 
-        $this->actingAs($this->cashier)->postJson($this->url('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 1))
+        $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 1))
             ->assertStatus(409)
             ->assertJsonPath('message', 'Buka shift dulu untuk membuat retur.');
 
@@ -143,7 +153,7 @@ class CashierSaleReturnTest extends TestCase
     public function test_the_input_and_the_returnable_quantity_are_enforced(): void
     {
         $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
-        $store = $this->url('receipts.returns.store', ['sale' => $sale->id]);
+        $store = $this->signedUrl('receipts.returns.store', ['sale' => $sale->id]);
 
         $this->actingAs($this->cashier)->postJson($store, [...$this->body($sale, 1), 'refund_method' => 'return_credit'])->assertUnprocessable()->assertJsonValidationErrors('refund_method');
         $this->actingAs($this->cashier)->postJson($store, $this->body($sale, 1, 'lost'))->assertUnprocessable()->assertJsonValidationErrors('items.0.disposition');
@@ -161,8 +171,8 @@ class CashierSaleReturnTest extends TestCase
         $register = $this->store->run(fn () => Register::factory()->create(['code' => 'K2', 'name' => 'Kasir 2', 'warehouse_id' => $this->mainWarehouse()->id]));
         $theirs = $this->sellBrushes($other, $this->openShiftFor($other, $register), 5);
 
-        $this->actingAs($this->cashier)->getJson($this->url('receipts.return', ['sale' => $theirs->id]))->assertOk()->assertJsonPath('data.number', $theirs->number);
-        $this->actingAs($this->cashier)->postJson($this->url('receipts.returns.store', ['sale' => $theirs->id]), $this->body($theirs, 1))
+        $this->actingAs($this->cashier)->getJson($this->signedUrl('receipts.return', ['sale' => $theirs->id]))->assertOk()->assertJsonPath('data.number', $theirs->number);
+        $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $theirs->id]), $this->body($theirs, 1))
             ->assertCreated()
             ->assertJsonPath('data.status', 'pending');
 
@@ -175,10 +185,12 @@ class CashierSaleReturnTest extends TestCase
     {
         $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
 
-        $this->actingAs($this->cashier)->getJson($this->url('returns.lookup', ['number' => $sale->number]))->assertOk()
-            ->assertJsonPath('data.number', $sale->number)
-            ->assertJsonPath('data.return_url', $this->url('receipts.return', ['sale' => $sale->id]))
-            ->assertJsonPath('data.return_store_url', $this->url('receipts.returns.store', ['sale' => $sale->id]));
+        $found = $this->actingAs($this->cashier)->getJson($this->url('returns.lookup', ['number' => $sale->number]))->assertOk()
+            ->assertJsonPath('data.number', $sale->number);
+
+        $this->assertSignedAddressOf($this->url('receipts.return', ['sale' => $sale->id]), $found->json('data.return_url'));
+        $this->assertSignedAddressOf($this->url('receipts.returns.store', ['sale' => $sale->id]), $found->json('data.return_store_url'));
+        $this->actingAs($this->cashier)->getJson($found->json('data.return_url'))->assertOk()->assertJsonPath('data.number', $sale->number);
 
         $this->actingAs($this->cashier)->getJson($this->url('returns.lookup', ['number' => substr($sale->number, 0, -2)]))->assertNotFound()
             ->assertJsonPath('message', 'Nota tidak ditemukan. Ketik nomor nota selengkapnya.');
@@ -186,13 +198,98 @@ class CashierSaleReturnTest extends TestCase
         $this->actingAs($this->cashier)->getJson($this->url('returns.lookup'))->assertNotFound();
     }
 
-    public function test_a_refund_by_transfer_keeps_the_account_of_the_customer(): void
+    public function test_a_refund_by_transfer_keeps_the_account_of_the_customer_off_the_till_screen(): void
     {
         $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
 
-        $this->actingAs($this->cashier)->postJson($this->url('receipts.returns.store', ['sale' => $sale->id]), [...$this->body($sale, 1), 'refund_method' => 'transfer', 'refund_account' => 'BCA 123'])
+        $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), [...$this->body($sale, 1), 'refund_method' => 'transfer', 'refund_account' => 'BCA 123'])
             ->assertCreated()
-            ->assertJsonPath('data.refund_account', 'BCA 123');
+            ->assertJsonMissingPath('data.refund_account');
+
+        $this->actingAs($this->storeUser())->getJson($this->signedUrl('receipts.return', ['sale' => $sale->id]))
+            ->assertOk()
+            ->assertJsonCount(1, 'data.returns')
+            ->assertJsonMissingPath('data.returns.0.refund_account');
+
+        $saleReturn = $this->store->run(fn () => SaleReturn::query()->sole());
+        $this->assertSame('BCA 123', $saleReturn->refund_account);
+        $this->actingAs($this->cashier)->get($this->url('returns.sheet', ['sale_return' => $saleReturn->id]))
+            ->assertInertia(fn (Assert $page) => $page->where('saleReturn.refund_account', 'BCA 123'));
+    }
+
+    public function test_a_receipt_cannot_be_reached_by_guessing_its_id(): void
+    {
+        $mine = $this->sellBrushes($this->cashier, $this->shift, 5);
+        $other = $this->sellBrushes($this->cashier, $this->shift, 5);
+
+        $this->actingAs($this->cashier)->getJson($this->url('receipts.return', ['sale' => $mine->id]))->assertForbidden();
+        $this->actingAs($this->cashier)->postJson($this->url('receipts.returns.store', ['sale' => $mine->id]), $this->body($mine, 1))->assertForbidden();
+
+        $signedForMine = $this->signedUrl('receipts.return', ['sale' => $mine->id]);
+        $this->actingAs($this->cashier)->getJson(str_replace("/receipts/{$mine->id}/", "/receipts/{$other->id}/", $signedForMine))->assertForbidden();
+
+        $this->assertSame(0, $this->returnCount());
+    }
+
+    public function test_the_dialog_refuses_a_receipt_that_is_not_completed(): void
+    {
+        $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
+        $this->store->run(fn () => Sale::query()->whereKey($sale->id)->update(['status' => 'voided']));
+
+        $this->actingAs($this->cashier)->getJson($this->signedUrl('receipts.return', ['sale' => $sale->id]))
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 4221)
+            ->assertJsonPath('message', 'Retur hanya bisa dibuat dari nota yang selesai, bukan nota void.');
+    }
+
+    public function test_sending_the_same_return_twice_gives_back_the_first_one(): void
+    {
+        $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
+        $body = $this->body($sale, 2);
+        $store = $this->signedUrl('receipts.returns.store', ['sale' => $sale->id]);
+
+        $first = $this->actingAs($this->cashier)->postJson($store, $body)->assertCreated();
+        $second = $this->actingAs($this->cashier)->postJson($store, $body)->assertCreated();
+
+        $this->assertSame($first->json('data.number'), $second->json('data.number'));
+        $this->assertSame(1, $this->returnCount());
+        $this->actingAs($this->cashier)->getJson($this->signedUrl('receipts.return', ['sale' => $sale->id]))->assertJsonPath('data.lines.0.returned', '2.000');
+    }
+
+    public function test_a_return_uuid_that_belongs_to_someone_else_is_refused(): void
+    {
+        $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
+        $body = $this->body($sale, 2);
+        $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), $body)->assertCreated();
+
+        $otherCashier = $this->storeUser();
+        $register = $this->store->run(fn () => Register::factory()->create(['code' => 'K2', 'name' => 'Kasir 2', 'warehouse_id' => $this->mainWarehouse()->id]));
+        $this->openShiftFor($otherCashier, $register);
+
+        $this->actingAs($otherCashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), $body)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Pengajuan retur ini sudah tercatat untuk orang atau nota lain. Muat ulang layar lalu coba lagi.');
+
+        $this->assertSame(1, $this->returnCount());
+    }
+
+    public function test_a_return_needs_its_uuid(): void
+    {
+        $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
+
+        $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), [...$this->body($sale, 1), 'client_uuid' => 'bukan-uuid'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('client_uuid');
+    }
+
+    /**
+     * The address is the plain one plus an expiry and a signature.
+     */
+    private function assertSignedAddressOf(string $plainAddress, string $givenAddress): void
+    {
+        $this->assertStringStartsWith("{$plainAddress}?", $givenAddress);
+        $this->assertStringContainsString('expires=', $givenAddress);
+        $this->assertStringContainsString('signature=', $givenAddress);
     }
 
     public function test_a_voided_receipt_is_not_found_for_a_return(): void
@@ -220,7 +317,7 @@ class CashierSaleReturnTest extends TestCase
     public function test_the_slip_can_be_printed_by_who_asked_and_by_admins(): void
     {
         $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
-        $slipUrl = $this->actingAs($this->cashier)->postJson($this->url('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 2))->json('data.sheet_url');
+        $slipUrl = $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 2))->json('data.sheet_url');
 
         $this->actingAs($this->cashier)->get($slipUrl)->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Tenant/Print/SaleReturn')
@@ -237,8 +334,9 @@ class CashierSaleReturnTest extends TestCase
     {
         $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
 
-        $this->actingAs($this->cashier)->getJson($this->url('receipts'))
-            ->assertJsonPath('data.0.return_url', $this->url('receipts.return', ['sale' => $sale->id]))
-            ->assertJsonPath('data.0.return_store_url', $this->url('receipts.returns.store', ['sale' => $sale->id]));
+        $receipts = $this->actingAs($this->cashier)->getJson($this->url('receipts'));
+
+        $this->assertSignedAddressOf($this->url('receipts.return', ['sale' => $sale->id]), $receipts->json('data.0.return_url'));
+        $this->assertSignedAddressOf($this->url('receipts.returns.store', ['sale' => $sale->id]), $receipts->json('data.0.return_store_url'));
     }
 }

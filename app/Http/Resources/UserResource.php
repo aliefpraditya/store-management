@@ -25,7 +25,7 @@ class UserResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'username' => $this->username,
-            'role' => $role === null ? null : ['value' => $role->value, 'label' => $role->label()],
+            'role' => $role === null ? null : ['value' => $role->value, 'label' => $role->label(), 'is_store_role' => $role->isStoreRole()],
             'store' => $store === null ? null : ['id' => $store->id, 'name' => $store->name],
             'is_active' => $this->is_active,
             'is_self' => $this->is($request->user()),

@@ -30,7 +30,7 @@ const isPasswordVisible = ref(false);
 /**
  * Suggested values stop following the name as soon as the person edits that field by hand.
  */
-const editedByHand = { code: false, receipt_prefix: false, db_name: false };
+const wasEditedByHand = { code: false, receipt_prefix: false, db_name: false };
 
 /**
  * "Cabang Pasar Baru" becomes "cabang_pasar_baru": lowercase, punctuation dropped, spaces to underscores.
@@ -66,10 +66,10 @@ if (!isEditing) {
     watch(
         () => form.name,
         (name) => {
-            if (!editedByHand.code) {
+            if (!wasEditedByHand.code) {
                 form.code = suggestCode(name);
             }
-            if (!editedByHand.receipt_prefix) {
+            if (!wasEditedByHand.receipt_prefix) {
                 form.receipt_prefix = suggestReceiptPrefix(name);
             }
         },
@@ -78,7 +78,7 @@ if (!isEditing) {
     watch(
         () => form.code,
         (code) => {
-            if (!editedByHand.db_name) {
+            if (!wasEditedByHand.db_name) {
                 form.db_name = code ? `store_${code}` : '';
             }
         },
@@ -106,7 +106,7 @@ function submit() {
                         :disable="isEditing"
                         :error="!!form.errors.code"
                         :error-message="form.errors.code"
-                        @update:model-value="editedByHand.code = true"
+                        @update:model-value="wasEditedByHand.code = true"
                     />
                 </div>
 
@@ -118,7 +118,7 @@ function submit() {
                         outlined
                         :error="!!form.errors.receipt_prefix"
                         :error-message="form.errors.receipt_prefix"
-                        @update:model-value="editedByHand.receipt_prefix = true"
+                        @update:model-value="wasEditedByHand.receipt_prefix = true"
                     />
                     <q-input v-model="form.phone" label="Telepon" outlined :error="!!form.errors.phone" :error-message="form.errors.phone" />
                 </div>
@@ -144,7 +144,7 @@ function submit() {
                             outlined
                             :error="!!form.errors.db_name"
                             :error-message="form.errors.db_name"
-                            @update:model-value="editedByHand.db_name = true"
+                            @update:model-value="wasEditedByHand.db_name = true"
                         />
                         <q-input v-model="form.db_host" label="Host database" hint="Kosongkan untuk server bawaan" outlined :error="!!form.errors.db_host" :error-message="form.errors.db_host" />
                     </div>

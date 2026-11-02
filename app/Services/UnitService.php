@@ -10,30 +10,30 @@ use App\Models\Unit;
  * Manages the units of one store. A unit is identified by its code, which is stored in upper case; a blank
  * name falls back to the code.
  *
- * @phpstan-type UnitData array{code: string, name?: string|null}
+ * @phpstan-type UnitInput array{code: string, name?: string|null}
  */
 class UnitService
 {
     /**
-     * @param  UnitData  $data
+     * @param  UnitInput  $unitInput
      */
-    public function create(array $data): Unit
+    public function create(array $unitInput): Unit
     {
-        $code = Unit::normalizeCode($data['code']);
+        $code = Unit::normalizeCode($unitInput['code']);
 
-        return Unit::query()->create(['code' => $code, 'name' => $this->nameOrCode($data, $code)]);
+        return Unit::query()->create(['code' => $code, 'name' => $this->nameOrCode($unitInput, $code)]);
     }
 
     /**
      * Changing the code is safe even while products use the unit: the references follow it.
      *
-     * @param  UnitData  $data
+     * @param  UnitInput  $unitInput
      */
-    public function update(Unit $unit, array $data): Unit
+    public function update(Unit $unit, array $unitInput): Unit
     {
-        $code = Unit::normalizeCode($data['code']);
+        $code = Unit::normalizeCode($unitInput['code']);
 
-        $unit->forceFill(['code' => $code, 'name' => $this->nameOrCode($data, $code)])->save();
+        $unit->forceFill(['code' => $code, 'name' => $this->nameOrCode($unitInput, $code)])->save();
 
         return $unit;
     }
@@ -57,10 +57,10 @@ class UnitService
     }
 
     /**
-     * @param  UnitData  $data
+     * @param  UnitInput  $unitInput
      */
-    private function nameOrCode(array $data, string $code): string
+    private function nameOrCode(array $unitInput, string $code): string
     {
-        return filled($data['name'] ?? null) ? trim($data['name']) : $code;
+        return filled($unitInput['name'] ?? null) ? trim($unitInput['name']) : $code;
     }
 }

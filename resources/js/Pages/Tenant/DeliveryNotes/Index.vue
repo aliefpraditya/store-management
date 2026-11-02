@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
+import { deliveryNoteStatusChipClass } from '../../../Composables/useDeliveryNoteStatus';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -17,15 +18,6 @@ const status = ref(props.filters.status);
 const search = ref(props.filters.search);
 const from = ref(props.filters.from ?? '');
 const to = ref(props.filters.to ?? '');
-
-const statusChipClass = {
-    draft: 'chip--off',
-    shipped: 'chip--warn',
-    delivered: 'chip--ok',
-    partially_delivered: 'chip--warn',
-    returned: 'chip--bad',
-    cancelled: 'chip--bad',
-};
 
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' });
 
@@ -84,7 +76,7 @@ watch([status, from, to], () => applyFilters());
                         <td>{{ note.recipient_name }}</td>
                         <td>{{ note.sale_number }}</td>
                         <td class="notes__right">{{ note.items_count }}</td>
-                        <td><span class="chip" :class="statusChipClass[note.status]">{{ note.status_label }}</span></td>
+                        <td><span class="chip" :class="deliveryNoteStatusChipClass[note.status]">{{ note.status_label }}</span></td>
                     </tr>
                 </tbody>
             </table>

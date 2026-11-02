@@ -2,6 +2,8 @@
 
 namespace App\Exceptions;
 
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Exception;
 
 /**
@@ -39,9 +41,15 @@ class SaleException extends Exception
         return new self("Stok {$productName} tidak cukup, tersisa {$availableText}.");
     }
 
-    public static function paymentTooLow(): self
+    /**
+     * The total is the one the server worked out, which can differ from the screen's when a price changed after the
+     * item went into the cart, so it is named: the cashier can see why an exact payment was refused.
+     */
+    public static function paymentTooLow(BigDecimal $total): self
     {
-        return new self('Pembayaran kurang dari total belanja.');
+        $shownTotal = number_format((float) (string) $total, $total->isEqualTo($total->toScale(0, RoundingMode::Down)) ? 0 : 2, ',', '.');
+
+        return new self("Pembayaran kurang dari total belanja Rp {$shownTotal}. Harga di layar mungkin sudah berubah: cari ulang barangnya, lalu coba lagi.");
     }
 
     public static function changeExceedsCash(): self

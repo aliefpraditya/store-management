@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Models\CashShift;
 use App\Models\Stock;
 use App\Models\Store;
 use App\Models\User;
@@ -123,5 +124,40 @@ class CashierProductLookupTest extends TestCase
             ->assertStatus(409)
             ->assertJsonStructure(['code', 'message', 'more_info'])
             ->assertJsonPath('message', 'Buka shift dulu sebelum mencari barang.');
+    }
+
+    public function test_the_current_state_of_units_already_in_the_cart_is_found_by_their_ids(): void
+    {
+        $brush = $this->sellableProduct('Kuas Cat', '40');
+        $pcs = $this->unitOf($brush, 'PCS');
+        $dozen = $this->unitOf($brush, 'DUS');
+        $this->store->run(fn () => $pcs->update(['selling_price' => 12500]));
+
+        $this->actingAs($this->cashier)->getJson(route('tenant.cashier.products', ['tenant' => $this->store->code, 'units' => [$pcs->id, $dozen->id]]))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $brush->id)
+            ->assertJsonPath('data.0.stock', '40.000')
+            ->assertJsonPath('data.0.units.0.price', '12500.00');
+    }
+
+    public function test_units_that_can_no_longer_be_sold_are_missing_from_the_cart_lookup(): void
+    {
+        $gone = $this->sellableProduct('Kuas Lama', '10');
+        $stillSold = $this->sellableProduct('Kuas Baru', '10');
+        $notSold = $this->unitOf($stillSold, 'DUS');
+        $this->store->run(fn () => $gone->update(['is_active' => false]));
+        $this->store->run(fn () => $notSold->update(['is_sellable' => false]));
+
+        $this->actingAs($this->cashier)->getJson(route('tenant.cashier.products', ['tenant' => $this->store->code, 'units' => [$this->unitOf($gone, 'PCS')->id, $notSold->id]]))
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
+    public function test_the_cart_lookup_needs_an_open_shift(): void
+    {
+        $this->store->run(fn () => CashShift::query()->update(['status' => 'closed']));
+
+        $this->actingAs($this->cashier)->getJson(route('tenant.cashier.products', ['tenant' => $this->store->code, 'units' => [1]]))->assertStatus(409);
     }
 }

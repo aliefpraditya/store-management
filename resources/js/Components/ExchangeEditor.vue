@@ -24,7 +24,7 @@ const SEARCH_DELAY_MS = 250;
 
 /** @type {import('vue').Ref<{key: number, unitId: number, productId: number, name: string, units: object[], stock: string, baseUnit: string, quantity: number}[]>} */
 const lines = ref([]);
-const options = ref([]);
+const productOptions = ref([]);
 const paymentMethod = ref(props.defaultMethod);
 const typedAmount = ref(null);
 const refundMethod = ref(props.defaultMethod);
@@ -49,7 +49,7 @@ function searchItems(typed, update, abort) {
     fetch(`${props.productsUrl}?q=${encodeURIComponent(term)}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' })
         .then((response) => (response.ok ? response.json() : { data: [] }))
         .catch(() => ({ data: [] }))
-        .then(({ data }) => (searchId === latestSearchId ? update(() => (options.value = data)) : abort()));
+        .then(({ data }) => (searchId === latestSearchId ? update(() => (productOptions.value = data)) : abort()));
 }
 
 /** Adds the item in the unit that was scanned or, failing that, its first unit; the same unit twice adds up. */
@@ -109,7 +109,7 @@ watch(
     <div class="exchange">
         <q-select
             :model-value="null"
-            :options="options"
+            :options="productOptions"
             option-label="name"
             option-value="id"
             label="Cari barang pengganti"

@@ -19,12 +19,17 @@ class LegacyProductSeeder extends Seeder
 
     public function run(LegacyProductImporter $importer): void
     {
-        $result = $importer->import();
+        $importSummary = $importer->import();
 
-        $this->writeReviewFile($result['review']);
+        $this->writeReviewFile($importSummary['review']);
 
-        $this->command?->info("Satuan baru: {$result['new_units']}. Barang baru: {$result['created']} (satuan tambahan: {$result['extra_units']}), sudah ada: {$result['existing']}.");
-        $this->command?->info('Perlu ditinjau: '.count($result['review']).' baris, lihat '.storage_path(self::REVIEW_FILE));
+        $this->command?->info("Satuan baru: {$importSummary['new_units']}. Barang baru: {$importSummary['created']} (satuan tambahan: {$importSummary['extra_units']}), sudah ada: {$importSummary['existing']}.");
+        $this->command?->info('Perlu ditinjau: '.count($importSummary['review']).' baris, lihat '.$this->reviewFile());
+    }
+
+    private function reviewFile(): string
+    {
+        return $this->reviewFilePath ?? storage_path(self::REVIEW_FILE);
     }
 
     /**
@@ -32,7 +37,7 @@ class LegacyProductSeeder extends Seeder
      */
     private function writeReviewFile(array $rows): void
     {
-        $file = fopen(storage_path(self::REVIEW_FILE), 'w');
+        $file = fopen($this->reviewFile(), 'w');
 
         fputcsv($file, ['SKU', 'Nama', 'Yang ditinjau', 'Nilai lama', 'Alasan'], escape: '');
 

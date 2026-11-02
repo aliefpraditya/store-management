@@ -26,7 +26,7 @@ class SaleReturnListResource extends JsonResource
             'status_label' => $this->status->label(),
             'sale_number' => $this->sale->number,
             'cashier_name' => $this->cashShift->cashier_name,
-            'resolution_label' => $this->isExchange() ? 'Tukar barang' : 'Refund '.$this->refund_method->label(),
+            'resolution_label' => $this->isExchange() ? $this->resolution->label() : $this->resolution->label().' '.$this->refund_method->label(),
             'credit_amount' => $this->credit_amount,
             'refund_amount' => $this->refund_amount,
             'show_url' => route('tenant.returns.show', ['tenant' => tenant('code'), 'sale_return' => $this->id]),

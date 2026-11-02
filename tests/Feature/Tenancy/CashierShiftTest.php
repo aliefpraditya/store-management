@@ -10,6 +10,7 @@ use App\Models\Register;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\ShiftService;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -232,5 +233,44 @@ class CashierShiftTest extends TestCase
     {
         $this->actingAs($this->storeUser(UserRole::StoreAdmin))->get($this->url('index'))
             ->assertInertia(fn (Assert $page) => $page->where('can_leave_to_dashboard', true)->where('urls.dashboard', route('tenant.dashboard', ['tenant' => $this->store->code])));
+    }
+
+    public function test_the_deposit_follows_the_cash_the_shift_opened_with_even_if_the_register_was_changed_since(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+        $this->store->run(fn () => Register::query()->where('code', 'K1')->update(['fixed_opening_cash' => 700000]));
+
+        $this->closeShift($cashier, $this->shiftOf($cashier), '500000');
+
+        $closed = $this->shiftOf($cashier);
+        $this->assertSame(['500000.00', '0.00'], [$closed->expected_cash, $closed->deposit_amount]);
+    }
+
+    public function test_the_database_refuses_a_second_open_shift_of_the_same_cashier_or_register(): void
+    {
+        $cashier = $this->storeUser();
+        $other = $this->storeUser();
+        $secondRegister = $this->store->run(fn () => Register::factory()->create(['code' => 'K2', 'name' => 'Kasir 2', 'warehouse_id' => $this->mainWarehouse()->id]));
+        $this->openShift($cashier);
+
+        $openShiftOn = fn (User $user, Register $register) => $this->store->run(fn () => CashShift::factory()->create([
+            'cashier_id' => $user->id, 'cashier_name' => $user->name, 'register_id' => $register->id, 'status' => 'open',
+        ]));
+
+        $this->assertThrows(fn () => $openShiftOn($cashier, $secondRegister), UniqueConstraintViolationException::class);
+        $this->assertThrows(fn () => $openShiftOn($other, $this->register()), UniqueConstraintViolationException::class);
+    }
+
+    public function test_closed_shifts_never_clash_with_each_other_or_with_an_open_one(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+        $this->closeShift($cashier, $this->shiftOf($cashier), '500000');
+        $this->openShift($cashier);
+        $this->closeShift($cashier, $this->shiftOf($cashier), '500000');
+        $this->openShift($cashier)->assertSessionHas('success');
+
+        $this->assertSame(3, $this->store->run(fn () => CashShift::query()->where('cashier_id', $cashier->id)->count()));
     }
 }

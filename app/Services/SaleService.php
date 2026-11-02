@@ -275,7 +275,7 @@ class SaleService
         }
 
         if ($paidTotal->isLessThan($total)) {
-            throw SaleException::paymentTooLow();
+            throw SaleException::paymentTooLow($total);
         }
 
         $change = $paidTotal->minus($total);

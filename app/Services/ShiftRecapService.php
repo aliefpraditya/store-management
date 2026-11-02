@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * The admin's view of the shifts: looking them up, and deciding on the cash difference a closed shift ended with.
- * The decision never blocks the next shift; it only settles whether the difference is accepted.
+ * The decision never blocks the next shift; it only settles whether the difference is accepted. Nobody decides the
+ * difference of a shift they worked themselves: it is for another admin or the Super Admin.
  *
  * @phpstan-type RecapFilters array{from: string|null, to: string|null, status: string|null, difference: string|null, search: string|null}
  */
@@ -35,8 +36,8 @@ class ShiftRecapService
             ->with('register')
             ->withCount(['sales as sale_count' => fn (Builder $sales) => $sales->where('status', SaleStatus::Completed)])
             ->withSum(['sales as sales_total' => fn (Builder $sales) => $sales->where('status', SaleStatus::Completed)], 'total')
-            ->when($filters['from'], fn (Builder $query, string $from) => $query->whereDate('business_date', '>=', $from))
-            ->when($filters['to'], fn (Builder $query, string $to) => $query->whereDate('business_date', '<=', $to))
+            ->when($filters['from'], fn (Builder $query, string $from) => $query->where('business_date', '>=', $from))
+            ->when($filters['to'], fn (Builder $query, string $to) => $query->where('business_date', '<=', $to))
             ->when(CashShiftStatus::tryFrom((string) $filters['status']), fn (Builder $query, CashShiftStatus $status) => $query->where('status', $status))
             ->when($filters['difference'] === self::AWAITING_FOLLOW_UP, fn (Builder $query) => $query->awaitingFollowUp())
             ->when(ShiftDifferenceStatus::tryFrom((string) $filters['difference']), fn (Builder $query, ShiftDifferenceStatus $difference) => $query->where('difference_status', $difference))
@@ -66,7 +67,7 @@ class ShiftRecapService
         return DB::transaction(function () use ($shift, $admin): CashShift {
             $shift = CashShift::query()->lockForUpdate()->findOrFail($shift->id);
 
-            if (! $shift->needsFollowUp()) {
+            if (! $shift->isAwaitingFollowUp()) {
                 throw ShiftException::notAwaitingFollowUp();
             }
 
@@ -88,6 +89,10 @@ class ShiftRecapService
 
             if ($shift->difference_status !== ShiftDifferenceStatus::PendingApproval) {
                 throw ShiftException::differenceNotPending($shift->difference_status->label());
+            }
+
+            if ($shift->cashier_id === $admin->id) {
+                throw ShiftException::cannotDecideOwnShift();
             }
 
             $shift->forceFill([

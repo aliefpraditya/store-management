@@ -75,6 +75,7 @@ class SaleReturnTest extends TestCase
     private function payload(Sale $sale, int|string $quantity, string $disposition = 'resellable', array $overrides = []): array
     {
         return [
+            'client_uuid' => (string) Str::uuid(),
             'sale_id' => $sale->id,
             'refund_method' => 'cash',
             'reason' => 'Rusak',
@@ -116,7 +117,7 @@ class SaleReturnTest extends TestCase
 
     private function returnStatusOf(Sale $sale): string
     {
-        return $this->store->run(fn (): string => (string) Sale::query()->whereKey($sale->id)->value('return_status'));
+        return $this->store->run(fn (): string => Sale::query()->findOrFail($sale->id)->return_status->value);
     }
 
     public function test_only_admins_may_use_the_return_pages(): void
@@ -428,5 +429,67 @@ class SaleReturnTest extends TestCase
             ->where('saleReturn.store.address', 'Jl. Uji 1')
             ->where('saleReturn.refund_amount', '20000.00')
             ->where('saleReturn.items.0.name', 'Kuas'));
+    }
+
+    public function test_sending_the_same_admin_return_twice_returns_the_goods_once(): void
+    {
+        $sale = $this->sellBrushes($this->admin, $this->adminShift, 5);
+        $payload = $this->payload($sale, 2);
+
+        $this->actingAs($this->admin)->post($this->url('store'), $payload)->assertSessionHas('success');
+        $this->actingAs($this->admin)->post($this->url('store'), $payload)->assertSessionHas('success');
+
+        $this->assertSame(1, $this->store->run(fn () => SaleReturn::query()->count()));
+        $this->assertSame('97.000', $this->stockInPieces($this->brush));
+        $this->assertSame('partial', $this->returnStatusOf($sale));
+    }
+
+    public function test_a_line_of_another_receipt_cannot_be_returned(): void
+    {
+        $sale = $this->sellBrushes($this->admin, $this->adminShift, 5);
+        $otherSale = $this->sellBrushes($this->admin, $this->adminShift, 5);
+
+        $this->actingAs($this->admin)
+            ->post($this->url('store'), $this->payload($sale, 1, 'resellable', ['items' => [['sale_item_id' => $otherSale->items[0]->id, 'quantity' => 1, 'disposition' => 'resellable']]]))
+            ->assertSessionHas('error', 'Ada barang yang tidak ada di nota ini.');
+
+        $this->assertSame(0, $this->store->run(fn () => SaleReturn::query()->count()));
+        $this->assertSame('90.000', $this->stockInPieces($this->brush));
+    }
+
+    public function test_dead_stock_needs_a_dead_stock_warehouse_in_the_store(): void
+    {
+        $sale = $this->sellBrushes($this->admin, $this->adminShift, 5);
+        $this->store->run(fn () => Warehouse::query()->where('type', WarehouseType::DeadStock)->update(['is_active' => false]));
+
+        $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 1, 'dead_stock'))
+            ->assertSessionHas('error', 'Gudang untuk "Dead stock" belum ada di toko ini.');
+
+        $this->assertSame(0, $this->store->run(fn () => SaleReturn::query()->count()));
+    }
+
+    public function test_receipts_that_are_used_up_do_not_crowd_the_search_for_ones_that_can_still_be_returned(): void
+    {
+        $returnable = $this->sellBrushes($this->admin, $this->adminShift, 5);
+        $this->store->run(fn () => Sale::query()->whereKey($returnable->id)->update(['sold_at' => now()->subDays(3)]));
+
+        foreach (range(1, 11) as $ignored) {
+            $usedUp = $this->sellBrushes($this->admin, $this->adminShift, 1);
+            $this->actingAs($this->admin)->post($this->url('store'), $this->payload($usedUp, 1))->assertSessionHas('success');
+        }
+
+        $this->actingAs($this->admin)->getJson($this->url('sales'))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.number', $returnable->number);
+    }
+
+    public function test_receipts_whose_goods_are_all_waiting_for_approval_are_not_offered_again(): void
+    {
+        [$cashier, $cashierShift] = $this->cashierOnSecondRegister();
+        $sale = $this->sellBrushes($cashier, $cashierShift, 5);
+        $this->pendingReturn($sale, $cashierShift, $cashier, 5);
+
+        $this->actingAs($this->admin)->getJson($this->url('sales'))->assertOk()->assertJsonCount(0, 'data');
     }
 }

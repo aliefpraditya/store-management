@@ -13,12 +13,10 @@ use Illuminate\Http\RedirectResponse;
  */
 class StoreProvisionController extends Controller
 {
-    public function __invoke(Store $store, StoreProvisioner $provisioner): RedirectResponse
+    public function __invoke(Store $store, StoreProvisioner $storeProvisioner): RedirectResponse
     {
-        abort_unless($store->status->needsProvisioning(), 403, 'Database toko ini sudah siap.');
-
         try {
-            $provisioner->provision($store);
+            $storeProvisioner->provision($store);
         } catch (StoreProvisioningException $exception) {
             return back()->with('error', $exception->getMessage());
         }

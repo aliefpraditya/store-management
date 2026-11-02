@@ -16,7 +16,7 @@ const user = computed(() => page.props.auth.user);
 const brand = computed(() => ({ initial: store.value.receipt_prefix, name: store.value.name, sub: 'Toko' }));
 
 /**
- * Sidebar of a store. Only the dashboard, items, stock, the cashier and units exist so far; the other entries are the planned R1 screens.
+ * Sidebar of a store. Entries without a `href` are planned R1 screens that are not built yet.
  */
 const menuGroups = computed(() => {
     const groups = [
@@ -45,7 +45,7 @@ const menuGroups = computed(() => {
             label: 'Kas & Harian',
             items: [
                 { label: 'Rekap Shift', icon: 'schedule', href: store.value.shifts_url },
-                { label: 'Pengeluaran', icon: 'remove_circle_outline' },
+                { label: 'Pengeluaran', icon: 'remove_circle_outline', href: store.value.expenses_url },
                 { label: 'Tutup Hari', icon: 'lock' },
                 { label: 'Laporan', icon: 'bar_chart' },
             ],

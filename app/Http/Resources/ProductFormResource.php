@@ -26,6 +26,7 @@ class ProductFormResource extends JsonResource
             'brand' => $this->brand === null ? null : ['id' => $this->brand->id, 'name' => $this->brand->name],
             'min_stock' => $this->min_stock,
             'is_active' => $this->is_active,
+            'version' => $this->version,
             'is_locked' => $this->hasTransactions(),
             'delete_url' => route('tenant.products.destroy', ['tenant' => tenant('code'), 'product' => $this->id]),
             'units' => $this->productUnits->map(fn ($productUnit): array => [

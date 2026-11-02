@@ -3,13 +3,14 @@
 namespace App\Services;
 
 use App\Enums\StoreStatus;
+use App\Exceptions\StoreStatusException;
 use App\Models\Store;
 use Illuminate\Support\Arr;
 
 /**
  * Creates and changes store records. Preparing the store database is {@see StoreProvisioner}'s job.
  *
- * @phpstan-type StoreData array{name: string, address?: string|null, phone?: string|null, receipt_prefix: string, code?: string, db_name?: string, db_username?: string, db_password?: string|null, db_host?: string|null}
+ * @phpstan-type StoreAttributes array{name: string, address?: string|null, phone?: string|null, receipt_prefix: string, code?: string, db_name?: string, db_username?: string, db_password?: string|null, db_host?: string|null}
  */
 class StoreService
 {
@@ -20,13 +21,13 @@ class StoreService
     /**
      * The store waits in `provisioning` until its database is prepared.
      *
-     * @param  StoreData  $data
+     * @param  StoreAttributes  $storeAttributes
      */
-    public function create(array $data): Store
+    public function create(array $storeAttributes): Store
     {
         return Store::query()->create([
-            ...Arr::only($data, ['code', ...self::INFO_FIELDS, ...self::DATABASE_FIELDS]),
-            'db_password' => $data['db_password'] ?? null,
+            ...Arr::only($storeAttributes, ['code', ...self::INFO_FIELDS, ...self::DATABASE_FIELDS]),
+            'db_password' => $storeAttributes['db_password'] ?? null,
             'status' => StoreStatus::Provisioning,
         ]);
     }
@@ -35,17 +36,17 @@ class StoreService
      * The code never changes. Database credentials only change while setup has not succeeded, and a
      * blank password keeps the current one.
      *
-     * @param  StoreData  $data
+     * @param  StoreAttributes  $storeAttributes
      */
-    public function update(Store $store, array $data): Store
+    public function update(Store $store, array $storeAttributes): Store
     {
-        $attributes = Arr::only($data, self::INFO_FIELDS);
+        $attributes = Arr::only($storeAttributes, self::INFO_FIELDS);
 
-        if ($store->status->needsProvisioning()) {
-            $attributes += Arr::only($data, self::DATABASE_FIELDS);
+        if ($store->status->isAwaitingProvisioning()) {
+            $attributes += Arr::only($storeAttributes, self::DATABASE_FIELDS);
 
-            if (filled($data['db_password'] ?? null)) {
-                $attributes['db_password'] = $data['db_password'];
+            if (filled($storeAttributes['db_password'] ?? null)) {
+                $attributes['db_password'] = $storeAttributes['db_password'];
             }
         }
 
@@ -54,8 +55,15 @@ class StoreService
         return $store;
     }
 
+    /**
+     * @throws StoreStatusException when the store has not finished setup
+     */
     public function setActive(Store $store, bool $isActive): void
     {
+        if (! $store->status->canBeToggled()) {
+            throw StoreStatusException::notReadyToToggle();
+        }
+
         $store->forceFill(['status' => $isActive ? StoreStatus::Active : StoreStatus::Inactive])->save();
     }
 }

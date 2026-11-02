@@ -10,6 +10,7 @@ use App\Models\SaleItem;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsCashierFixtures;
 use Tests\Concerns\PreparesStoreDatabase;
@@ -57,7 +58,7 @@ class CashierDeliveryNoteTest extends TestCase
      */
     private function body(SaleItem $item, int|float $quantity, array $overrides = []): array
     {
-        return ['recipient_name' => 'Pak Budi', 'recipient_phone' => '0812', 'recipient_address' => 'Jl. Mawar 5', 'driver_name' => 'Joko', 'vehicle_number' => 'B 1', 'items' => [['sale_item_id' => $item->id, 'quantity' => $quantity]], ...$overrides];
+        return ['client_uuid' => (string) Str::uuid(), 'recipient_name' => 'Pak Budi', 'recipient_phone' => '0812', 'recipient_address' => 'Jl. Mawar 5', 'driver_name' => 'Joko', 'vehicle_number' => 'B 1', 'items' => [['sale_item_id' => $item->id, 'quantity' => $quantity]], ...$overrides];
     }
 
     private function noteCount(): int
@@ -149,10 +150,10 @@ class CashierDeliveryNoteTest extends TestCase
     {
         [$sale, $item] = $this->makeSale($this->cashier, ['number' => 'INV/1']);
         $created = $this->actingAs($this->cashier)->postJson($this->url('receipts.delivery-notes.store', ['sale' => $sale->id]), $this->body($item, 6))->json('data');
-        $this->assertSame($this->url('delivery-notes.sheet', ['delivery_note' => $created['id']]), $created['sheet_url']);
+        $this->assertArrayNotHasKey('sheet_url', $created);
 
-        $this->actingAs($this->cashier)->postJson($created['print_url']);
-        $this->actingAs($this->cashier)->get($created['sheet_url'])->assertOk()->assertInertia(fn (Assert $page) => $page
+        $firstSheetUrl = $this->actingAs($this->cashier)->postJson($created['print_url'])->json('data.sheet_url');
+        $this->actingAs($this->cashier)->get($firstSheetUrl)->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Tenant/Print/DeliveryNote')
             ->where('note.number', $created['number'])
             ->where('note.is_copy', false)
@@ -163,8 +164,44 @@ class CashierDeliveryNoteTest extends TestCase
             ->where('note.items.0.name', 'Cat Tembok')
             ->missing('note.items.0.unit_price'));
 
-        $this->actingAs($this->cashier)->postJson($created['print_url']);
-        $this->actingAs($this->cashier)->get($created['sheet_url'])->assertInertia(fn (Assert $page) => $page->where('note.is_copy', true));
+        $secondSheetUrl = $this->actingAs($this->cashier)->postJson($created['print_url'])->json('data.sheet_url');
+        $this->actingAs($this->cashier)->get($secondSheetUrl)->assertInertia(fn (Assert $page) => $page->where('note.is_copy', true));
+        $this->actingAs($this->cashier)->get($firstSheetUrl)->assertInertia(fn (Assert $page) => $page->where('note.is_copy', false));
+        $this->actingAs($this->cashier)->get($this->url('delivery-notes.sheet', ['delivery_note' => $created['id']]))->assertForbidden();
+    }
+
+    public function test_sending_the_same_note_twice_from_the_till_gives_back_the_first_one(): void
+    {
+        [$sale, $item] = $this->makeSale($this->cashier);
+        $body = $this->body($item, 6);
+        $store = $this->url('receipts.delivery-notes.store', ['sale' => $sale->id]);
+
+        $first = $this->actingAs($this->cashier)->postJson($store, $body)->assertCreated();
+        $second = $this->actingAs($this->cashier)->postJson($store, $body)->assertCreated();
+
+        $this->assertSame($first->json('data.number'), $second->json('data.number'));
+        $this->assertSame(1, $this->noteCount());
+        $this->actingAs($this->cashier)->getJson($this->url('receipts.delivery', ['sale' => $sale->id]))->assertJsonPath('data.lines.0.remaining', '4.000');
+    }
+
+    public function test_a_note_uuid_that_belongs_to_someone_else_is_refused_at_the_till(): void
+    {
+        [$sale, $item] = $this->makeSale($this->cashier);
+        $body = $this->body($item, 6);
+        $this->actingAs($this->cashier)->postJson($this->url('receipts.delivery-notes.store', ['sale' => $sale->id]), $body)->assertCreated();
+
+        $this->actingAs($this->storeUser(UserRole::StoreAdmin))->postJson($this->url('receipts.delivery-notes.store', ['sale' => $sale->id]), $body)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Pengajuan surat jalan ini sudah tercatat untuk orang atau nota lain. Muat ulang layar lalu coba lagi.');
+
+        $this->assertSame(1, $this->noteCount());
+    }
+
+    public function test_someone_elses_receipt_is_refused_before_the_body_is_looked_at(): void
+    {
+        [$sale] = $this->makeSale($this->storeUser());
+
+        $this->actingAs($this->cashier)->postJson($this->url('receipts.delivery-notes.store', ['sale' => $sale->id]), [])->assertForbidden();
     }
 
     public function test_the_receipt_lists_carry_the_links_the_till_needs_for_a_note(): void

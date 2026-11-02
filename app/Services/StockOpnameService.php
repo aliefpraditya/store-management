@@ -10,6 +10,7 @@ use App\Exceptions\StockOpnameException;
 use App\Models\Product;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
+use App\Models\Warehouse;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,6 +30,9 @@ class StockOpnameService
     private const NUMBER_TYPE = 'OPN';
 
     private const INSERT_CHUNK_SIZE = 500;
+
+    /** The most a decimal(15,3) quantity column holds. */
+    private const MAX_BASE_QUANTITY = '999999999999.999';
 
     public function __construct(
         private readonly StockService $stockLedger,
@@ -68,6 +72,7 @@ class StockOpnameService
         DB::transaction(function () use ($opname, $product): void {
             $opname = $this->lockedInStatus($opname, 'menambah barang', StockOpnameStatus::Draft, StockOpnameStatus::Counting);
             $this->requireSelectedScope($opname);
+            $this->lockWarehouseClaims($opname);
 
             if ($opname->items()->where('product_id', $product->id)->exists()) {
                 return;
@@ -110,9 +115,14 @@ class StockOpnameService
         return DB::transaction(function () use ($opname): int {
             $opname = $this->lockedInStatus($opname, 'dimulai', StockOpnameStatus::Draft);
 
-            $skippedCount = $opname->scope === StockOpnameScope::Selected
-                ? $this->refreshSelectedSnapshots($opname)
-                : $this->createSnapshotItems($opname);
+            $this->lockWarehouseClaims($opname);
+
+            if ($opname->scope === StockOpnameScope::Selected) {
+                $this->refreshSelectedSnapshots($opname);
+                $skippedCount = 0;
+            } else {
+                $skippedCount = $this->createSnapshotItems($opname);
+            }
 
             $opname->forceFill(['status' => StockOpnameStatus::Counting, 'snapshot_at' => now()])->save();
 
@@ -196,8 +206,10 @@ class StockOpnameService
      * Writes the variances to the stock ledger. Items that were never counted are left alone. The system
      * quantity is the live stock under a row lock, so a sale that lands during posting is not overwritten.
      * For an opname that counts arrivals the typed quantity is the variance itself: it is added to the stock.
-     * Items go in product order, the same order a sale locks stock rows in, so the two do not deadlock on existing
-     * stock rows. A product's first stock row can still be created by both at once, so a deadlock is retried.
+     * The stock rows of all counted items are locked in one query, in product order (the order a sale locks them in, so
+     * the two do not deadlock on existing rows) and are handed to the ledger, which does not read them again. A product's
+     * first stock row can still be created by both at once, so a deadlock is retried. The cost price is kept on each item,
+     * so the value of the variance does not move when a cost price is edited later.
      *
      * @throws StockOpnameException
      */
@@ -209,11 +221,18 @@ class StockOpnameService
                 ? StockMovementType::OpeningBalance
                 : StockMovementType::OpnameAdjustment;
 
-            foreach ($opname->items()->whereNotNull('counted_quantity')->orderBy('product_id')->get() as $item) {
-                $systemQuantity = $this->stockLedger->lockedQuantity($item->product_id, $opname->warehouse_id);
+            $countedItems = $opname->items()->with('product:id,cost_price')->whereNotNull('counted_quantity')->orderBy('product_id')->get();
+            $systemQuantities = $this->stockLedger->lockedQuantities($countedItems->pluck('product_id')->all(), $opname->warehouse_id);
+
+            foreach ($countedItems as $item) {
+                $systemQuantity = $systemQuantities[$item->product_id];
                 $variance = $opname->varianceOf($item->counted_quantity, $systemQuantity);
 
-                $item->forceFill(['system_quantity_at_posting' => $systemQuantity, 'variance' => (string) $variance])->save();
+                $item->forceFill([
+                    'system_quantity_at_posting' => $systemQuantity,
+                    'cost_price_at_posting' => $item->product->cost_price,
+                    'variance' => (string) $variance,
+                ])->save();
 
                 if (! $variance->isZero()) {
                     $this->stockLedger->record(
@@ -224,6 +243,7 @@ class StockOpnameService
                         $opname,
                         $userId,
                         $item->reason ?? $opname->reason_code?->label(),
+                        $systemQuantity,
                     );
                 }
             }
@@ -261,6 +281,8 @@ class StockOpnameService
 
     /**
      * @param  list<CountPart>  $parts
+     *
+     * @throws StockOpnameException
      */
     private function toBaseQuantity(Product $product, array $parts): ?string
     {
@@ -277,6 +299,10 @@ class StockOpnameService
             $total = $total->plus(BigDecimal::of($part['quantity'])->multipliedBy($factors[$part['unit_code']]));
         }
 
+        if ($total->isGreaterThan(self::MAX_BASE_QUANTITY)) {
+            throw StockOpnameException::quantityTooLarge($product->name);
+        }
+
         return (string) $total->toScale(3, RoundingMode::HalfUp);
     }
 
@@ -285,15 +311,25 @@ class StockOpnameService
      *
      * @throws StockOpnameException
      */
-    private function lockedInStatus(StockOpname $opname, string $action, StockOpnameStatus ...$allowed): StockOpname
+    private function lockedInStatus(StockOpname $opname, string $attemptedAction, StockOpnameStatus ...$allowed): StockOpname
     {
-        $locked = StockOpname::query()->lockForUpdate()->findOrFail($opname->id);
+        $lockedOpname = StockOpname::query()->lockForUpdate()->findOrFail($opname->id);
 
-        if (! in_array($locked->status, $allowed, true)) {
-            throw StockOpnameException::wrongStatus($action, $locked->status->label());
+        if (! in_array($lockedOpname->status, $allowed, true)) {
+            throw StockOpnameException::wrongStatus($attemptedAction, $lockedOpname->status->label());
         }
 
-        return $locked;
+        return $lockedOpname;
+    }
+
+    /**
+     * "A product is in one active opname per warehouse" is checked by reading the other opnames, which two requests
+     * can do at the same time and both pass. Taking the warehouse row first makes those checks queue up, so the second
+     * one sees the first one's products. Called right after the opname is locked, before anything is read.
+     */
+    private function lockWarehouseClaims(StockOpname $opname): void
+    {
+        Warehouse::query()->lockForUpdate()->findOrFail($opname->warehouse_id);
     }
 
     private function requireSelectedScope(StockOpname $opname): void
@@ -306,7 +342,7 @@ class StockOpnameService
     /**
      * @throws StockOpnameException
      */
-    private function refreshSelectedSnapshots(StockOpname $opname): int
+    private function refreshSelectedSnapshots(StockOpname $opname): void
     {
         $productIds = $opname->items()->pluck('product_id')->all();
 
@@ -319,8 +355,6 @@ class StockOpnameService
         foreach ($opname->items()->get() as $item) {
             $item->forceFill(['snapshot_quantity' => $quantities[$item->product_id] ?? '0'])->save();
         }
-
-        return 0;
     }
 
     /**
@@ -370,7 +404,7 @@ class StockOpnameService
         $busyIds = [];
 
         foreach (array_chunk($productIds, self::INSERT_CHUNK_SIZE) as $chunk) {
-            $busy = StockOpnameItem::query()
+            $busyInChunk = StockOpnameItem::query()
                 ->join('stock_opnames', 'stock_opnames.id', '=', 'stock_opname_items.stock_opname_id')
                 ->where('stock_opnames.warehouse_id', $opname->warehouse_id)
                 ->whereIn('stock_opnames.status', StockOpnameStatus::activeValues())
@@ -379,7 +413,7 @@ class StockOpnameService
                 ->pluck('stock_opname_items.product_id')
                 ->all();
 
-            $busyIds = [...$busyIds, ...$busy];
+            $busyIds = [...$busyIds, ...$busyInChunk];
         }
 
         return array_map('intval', $busyIds);

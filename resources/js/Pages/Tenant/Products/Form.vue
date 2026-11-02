@@ -58,7 +58,9 @@ const toNumericRow = (row, index, rows) => ({
     selling_price: Number(row.selling_price),
 });
 
+/** ersion is the save counter the form was opened with: a save from an older one is refused, so edits are never silently overwritten. */
 const form = useForm({
+    version: props.product?.version ?? null,
     name: props.product?.name ?? '',
     sku: props.product?.sku ?? '',
     category: props.product?.category ?? null,
@@ -130,10 +132,10 @@ function ensureDefaultIsSellable() {
         return;
     }
 
-    const replacement = form.units.findIndex((row) => row.is_sellable);
+    const replacementIndex = form.units.findIndex((row) => row.is_sellable);
 
-    if (replacement !== -1) {
-        makeDefault(replacement);
+    if (replacementIndex !== -1) {
+        makeDefault(replacementIndex);
     }
 }
 
@@ -162,9 +164,9 @@ function confirmDelete() {
 }
 
 function send() {
-    form.transform((data) => ({
-        ...data,
-        units: data.units.map(({ cost_is_manual, ...row }) => row),
+    form.transform((submittedForm) => ({
+        ...submittedForm,
+        units: submittedForm.units.map(({ cost_is_manual, ...row }) => row),
     }))[props.form_action.method](props.form_action.url);
 }
 
@@ -172,9 +174,9 @@ function send() {
  * Selling under cost is allowed, but only after the person confirms it.
  */
 function submit() {
-    const belowCost = form.units.filter(isBelowCost).map((row) => row.unit?.code ?? 'satuan');
+    const belowCostUnitCodes = form.units.filter(isBelowCost).map((row) => row.unit?.code ?? 'satuan');
 
-    if (belowCost.length === 0) {
+    if (belowCostUnitCodes.length === 0) {
         send();
 
         return;
@@ -182,7 +184,7 @@ function submit() {
 
     $q.dialog({
         title: 'Harga jual di bawah modal',
-        message: `Harga jual ${belowCost.join(', ')} lebih rendah dari modalnya. Tetap simpan?`,
+        message: `Harga jual ${belowCostUnitCodes.join(', ')} lebih rendah dari modalnya. Tetap simpan?`,
         cancel: { label: 'Periksa lagi', flat: true, noCaps: true },
         ok: { label: 'Tetap simpan', color: 'primary', unelevated: true, noCaps: true },
         persistent: true,
@@ -212,10 +214,11 @@ function submit() {
                         v-model="form.category"
                         :options="categories"
                         label="Kategori"
+                        record-name="kategori"
                         hint="Ketik untuk menambah baru"
                         :error="form.errors.category || form.errors['category.name']"
                     />
-                    <PickOrCreateSelect v-model="form.brand" :options="brands" label="Merek (opsional)" clearable :error="form.errors['brand.name']" />
+                    <PickOrCreateSelect v-model="form.brand" :options="brands" label="Merek (opsional)" record-name="merek" clearable :error="form.errors['brand.name']" />
                     <q-input
                         v-model.number="form.min_stock"
                         type="number"

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\SaleReturnProgress;
 use App\Enums\SaleStatus;
 use Database\Factories\SaleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -41,6 +42,7 @@ class Sale extends Model implements AuditableContract
             'legacy_unpaid_amount' => 'decimal:2',
             'is_price_estimated' => 'boolean',
             'status' => SaleStatus::class,
+            'return_status' => SaleReturnProgress::class,
         ];
     }
 

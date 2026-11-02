@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import ExchangeEditor from '../../../Components/ExchangeEditor.vue';
+import { newUuid } from '../../../Composables/useCart';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -11,10 +12,13 @@ const props = defineProps({
     sale: { type: Object, default: null },
     refund_methods: { type: Array, required: true },
     dispositions: { type: Array, required: true },
+    resolutions: { type: Array, required: true },
     urls: { type: Object, required: true },
 });
 
+/** One uuid per opened form: a second tap or a retry of the same save gives back the first return, not another. */
 const form = useForm({
+    client_uuid: newUuid(),
     sale_id: null,
     resolution: 'exchange',
     refund_method: 'cash',
@@ -25,18 +29,13 @@ const form = useForm({
     exchange_payments: [],
 });
 
-const resolutions = [
-    { value: 'exchange', label: 'Tukar barang' },
-    { value: 'refund', label: 'Refund' },
-];
-
 const isExchange = computed(() => form.resolution === 'exchange');
 
 /** What the replacement editor last reported: its lines, extra payment and whether it is complete. */
-const exchange = ref(null);
+const exchangeDraft = ref(null);
 
 function onExchangeChange(payload) {
-    exchange.value = payload;
+    exchangeDraft.value = payload;
     form.exchange_items = payload.items;
     form.exchange_payments = payload.payments;
     form.refund_method = payload.refund_method;
@@ -55,7 +54,7 @@ watch(
             form.refund_account = '';
             form.exchange_items = [];
             form.exchange_payments = [];
-            exchange.value = null;
+            exchangeDraft.value = null;
         }
     },
 );
@@ -112,7 +111,7 @@ function submit() {
     <StoreLayout title="Retur Baru">
         <template #actions>
             <q-btn flat no-caps label="Batal" class="q-mr-sm" @click="router.visit(urls.index)" />
-            <q-btn color="primary" unelevated no-caps label="Simpan Retur" :loading="form.processing" :disable="!chosenSale || !hasAnythingToReturn || isAccountMissing || (isExchange && !exchange?.is_ready)" @click="submit" />
+            <q-btn color="primary" unelevated no-caps label="Simpan Retur" :loading="form.processing" :disable="!chosenSale || !hasAnythingToReturn || isAccountMissing || (isExchange && !exchangeDraft?.is_ready)" @click="submit" />
         </template>
 
         <q-form class="return-form" @submit.prevent="submit">
@@ -209,7 +208,7 @@ function submit() {
 
                 <section class="card">
                     <h2>Penyelesaian</h2>
-                    <q-btn-toggle v-model="form.resolution" :options="resolutions" no-caps unelevated toggle-color="primary" color="grey-3" text-color="grey-8" class="return-form__toggle" />
+                    <q-btn-toggle v-model="form.resolution" :options="props.resolutions" no-caps unelevated toggle-color="primary" color="grey-3" text-color="grey-8" class="return-form__toggle" />
 
                     <div v-if="!isExchange" class="refund">
                         <q-select

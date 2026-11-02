@@ -47,7 +47,7 @@ class CashShift extends Model implements AuditableContract
     /**
      * A refused cash difference stays open until an admin marks it followed up.
      */
-    public function needsFollowUp(): bool
+    public function isAwaitingFollowUp(): bool
     {
         return $this->difference_status === ShiftDifferenceStatus::Rejected && $this->followed_up_at === null;
     }

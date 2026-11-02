@@ -108,7 +108,7 @@ watch([status, difference, from, to], () => applyFilters());
                         </td>
                         <td>
                             <span v-if="shift.status === 'closed'" class="chip" :class="differenceChipClass[shift.difference_status]">{{ shift.difference_status_label }}</span>
-                            <small v-if="shift.needs_follow_up" class="shifts__follow">perlu tindak lanjut</small>
+                            <small v-if="shift.is_awaiting_follow_up" class="shifts__follow">perlu tindak lanjut</small>
                         </td>
                     </tr>
                 </tbody>

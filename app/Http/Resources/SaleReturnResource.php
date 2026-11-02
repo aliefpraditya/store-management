@@ -27,8 +27,8 @@ class SaleReturnResource extends JsonResource
             'returned_at' => $this->returned_at->toIso8601String(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
-            'resolution' => $this->resolution,
-            'resolution_label' => $this->isExchange() ? 'Tukar barang' : 'Refund',
+            'resolution' => $this->resolution->value,
+            'resolution_label' => $this->resolution->label(),
             'refund_method' => $this->refund_method->value,
             'refund_method_label' => $this->refund_method->label(),
             'refund_account' => $this->refund_account,
@@ -55,10 +55,10 @@ class SaleReturnResource extends JsonResource
     /**
      * The replacement goods as the customer chose them, what the customer paid on top, and the receipt once approved.
      *
-     * The addresses to count a print of that receipt and to show it are the till's receipt ones, which both an admin
-     * and the cashier whose receipt it is may use.
+     * The address to count a print of that receipt is the till's receipt one, which both an admin and the cashier whose
+     * receipt it is may use; counting answers the signed address of the sheet.
      *
-     * @return array{items: list<array<string, string>>, total: string, payments: list<array{method: string, amount: string}>, sale_number: string|null, print_url: string|null, sheet_url: string|null}
+     * @return array{items: list<array<string, string>>, total: string, payments: list<array{method: string, amount: string}>, sale_number: string|null, print_url: string|null}
      */
     private function exchangeOf(): array
     {
@@ -72,7 +72,6 @@ class SaleReturnResource extends JsonResource
             'payments' => array_map(fn (array $payment): array => ['method' => PaymentMethod::from($payment['method'])->label(), 'amount' => $payment['amount']], $exchange['payments']),
             'sale_number' => $this->exchangeSale?->number,
             'print_url' => $receiptUrl('print'),
-            'sheet_url' => $receiptUrl('sheet'),
         ];
     }
 }

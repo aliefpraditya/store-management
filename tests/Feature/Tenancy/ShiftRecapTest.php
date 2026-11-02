@@ -4,11 +4,13 @@ namespace Tests\Feature\Tenancy;
 
 use App\Enums\UserRole;
 use App\Models\CashShift;
+use App\Models\ExpenseCategory;
 use App\Models\Product;
 use App\Models\Register;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\ExpenseService;
 use App\Services\SaleReturnService;
 use App\Services\SaleService;
 use App\Services\ShiftService;
@@ -151,6 +153,7 @@ class ShiftRecapTest extends TestCase
         $shift = $this->openShiftFor($this->cashier);
         $sale = $this->sellBrushes($shift, 5);
         $this->store->run(fn () => app(SaleReturnService::class)->createApproved($sale, $shift, $this->admin, [
+            'client_uuid' => (string) Str::uuid(),
             'refund_method' => 'cash',
             'items' => [['sale_item_id' => $sale->items[0]->id, 'quantity' => 2, 'disposition' => 'resellable']],
         ]));
@@ -163,6 +166,25 @@ class ShiftRecapTest extends TestCase
             ->has('shift.returns', 1)
             ->where('shift.returns.0.status_label', 'Selesai')
             ->where('shift.returns.0.refund_amount', '20000.00'));
+    }
+
+    public function test_the_shift_page_lists_the_expenses_taken_from_its_drawer(): void
+    {
+        $shift = $this->openShiftFor($this->cashier);
+        $this->sellBrushes($shift, 5);
+        $this->store->run(function () use ($shift): void {
+            $category = ExpenseCategory::query()->where('name', 'Operasional')->firstOrFail();
+            app(ExpenseService::class)->recordFromDrawer($this->cashier, $shift, ['client_uuid' => (string) Str::uuid(), 'expense_category_id' => $category->id, 'description' => 'Beli galon', 'amount' => 15000]);
+        });
+
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.drawer_expenses', '15000.00')
+            ->where('shift.expected_cash', '35000.00')
+            ->has('shift.expenses', 1)
+            ->where('shift.expenses.0.description', 'Beli galon')
+            ->where('shift.expenses.0.category_name', 'Operasional')
+            ->where('shift.expenses.0.amount', '15000.00')
+            ->where('shift.expenses.0.status_label', 'Tercatat'));
     }
 
     public function test_an_admin_can_approve_the_difference_with_a_note(): void
@@ -211,11 +233,11 @@ class ShiftRecapTest extends TestCase
 
         $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
             ->where('follow_up_count', 1)
-            ->where('shifts.data.0.needs_follow_up', true)
+            ->where('shifts.data.0.is_awaiting_follow_up', true)
             ->has('differences', 5));
         $this->actingAs($this->admin)->get($this->url('index', ['difference' => 'awaiting_follow_up']))->assertInertia(fn (Assert $page) => $page->has('shifts.data', 1));
         $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
-            ->where('shift.needs_follow_up', true)
+            ->where('shift.is_awaiting_follow_up', true)
             ->where('shift.urls.follow_up', $this->url('follow-up', ['shift' => $shift->id])));
 
         $this->actingAs($this->admin)->post($this->url('follow-up', ['shift' => $shift->id]))->assertSessionHas('success', 'Selisih kas ditandai sudah ditindaklanjuti.');
@@ -223,9 +245,9 @@ class ShiftRecapTest extends TestCase
         $followedUp = $this->shift($shift->id);
         $this->assertSame($this->admin->id, $followedUp->followed_up_by);
         $this->assertNotNull($followedUp->followed_up_at);
-        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('follow_up_count', 0)->where('shifts.data.0.needs_follow_up', false));
+        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('follow_up_count', 0)->where('shifts.data.0.is_awaiting_follow_up', false));
         $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
-            ->where('shift.needs_follow_up', false)
+            ->where('shift.is_awaiting_follow_up', false)
             ->where('shift.followed_up_by_name', $this->admin->name));
     }
 
@@ -259,5 +281,31 @@ class ShiftRecapTest extends TestCase
     {
         $this->actingAs($this->admin)->get(route('tenant.dashboard', ['tenant' => $this->store->code]))
             ->assertInertia(fn (Assert $page) => $page->where('store.shifts_url', $this->url('index')));
+    }
+
+    public function test_an_admin_cannot_decide_the_difference_of_a_shift_they_worked_themselves(): void
+    {
+        $shift = $this->openShiftFor($this->admin);
+        $closed = $this->store->run(fn (): CashShift => app(ShiftService::class)->close($shift, '5000', 'Uang lebih'));
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['shift' => $closed->id]), ['note' => 'Saya cek sendiri'])
+            ->assertSessionHas('error', 'Selisih kas shift Anda sendiri harus diputuskan Admin lain atau Super Admin.');
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $closed->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.is_own_shift', true)
+            ->where('shift.can_decide', false));
+        $this->assertSame('pending_approval', $this->shift($closed->id)->difference_status->value);
+
+        $otherAdmin = $this->storeUser(UserRole::StoreAdmin);
+        $this->actingAs($otherAdmin)->post($this->url('approve', ['shift' => $closed->id]), ['note' => 'Sudah dicek'])->assertSessionHas('success');
+        $this->assertSame('approved', $this->shift($closed->id)->difference_status->value);
+    }
+
+    public function test_the_date_filters_leave_out_a_date_that_is_not_one_and_cut_at_the_day(): void
+    {
+        $this->shiftClosedWithShortage();
+
+        $this->actingAs($this->admin)->get($this->url('index', ['from' => 'abc']))->assertOk()->assertInertia(fn (Assert $page) => $page->has('shifts.data', 1)->where('filters.from', null));
+        $this->actingAs($this->admin)->get($this->url('index', ['to' => today()->subDay()->toDateString()]))->assertInertia(fn (Assert $page) => $page->has('shifts.data', 0));
+        $this->actingAs($this->admin)->get($this->url('index', ['to' => today()->toDateString()]))->assertInertia(fn (Assert $page) => $page->has('shifts.data', 1));
     }
 }

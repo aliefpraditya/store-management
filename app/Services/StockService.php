@@ -48,6 +48,49 @@ class StockService
         return (string) $lockedQuantity;
     }
 
+    /**
+     * {@see self::lockedQuantity()} for many products of one warehouse at once: one locking query for the rows that
+     * exist, one insert for those that do not, and a second lock for the new ones. The rows are locked in product
+     * order, the same order a sale locks them in, so the two do not deadlock on existing rows.
+     *
+     * @param  list<int>  $productIds
+     * @return array<int, string> locked quantity by product id
+     */
+    public function lockedQuantities(array $productIds, int $warehouseId): array
+    {
+        $lockedQuantities = $this->lockStockRows($productIds, $warehouseId);
+        $missingProductIds = array_values(array_diff($productIds, array_keys($lockedQuantities)));
+
+        if ($missingProductIds !== []) {
+            Stock::query()->insertOrIgnore(array_map(fn (int $productId): array => [
+                'product_id' => $productId,
+                'warehouse_id' => $warehouseId,
+                'quantity' => 0,
+                'updated_at' => now(),
+            ], $missingProductIds));
+
+            $lockedQuantities += $this->lockStockRows($missingProductIds, $warehouseId);
+        }
+
+        return $lockedQuantities;
+    }
+
+    /**
+     * @param  list<int>  $productIds
+     * @return array<int, string>
+     */
+    private function lockStockRows(array $productIds, int $warehouseId): array
+    {
+        return Stock::query()
+            ->where('warehouse_id', $warehouseId)
+            ->whereIn('product_id', $productIds)
+            ->orderBy('product_id')
+            ->lockForUpdate()
+            ->pluck('quantity', 'product_id')
+            ->map(fn ($quantity): string => (string) $quantity)
+            ->all();
+    }
+
     private function lockStockRow(int $productId, int $warehouseId): mixed
     {
         return Stock::query()
@@ -61,6 +104,8 @@ class StockService
      * Adds a signed quantity to the stock and writes the ledger row with the balance after it.
      *
      * @param  string  $quantity  signed, positive adds stock
+     * @param  string|null  $lockedQuantity  the quantity when the caller already holds the row lock (see
+     *                                       {@see self::lockedQuantities()}), so it is not locked and read again
      */
     public function record(
         int $productId,
@@ -70,8 +115,9 @@ class StockService
         ?Model $reference = null,
         ?int $userId = null,
         ?string $note = null,
+        ?string $lockedQuantity = null,
     ): StockMovement {
-        $balanceAfter = BigDecimal::of($this->lockedQuantity($productId, $warehouseId))->plus($quantity);
+        $balanceAfter = BigDecimal::of($lockedQuantity ?? $this->lockedQuantity($productId, $warehouseId))->plus($quantity);
 
         Stock::query()
             ->where('product_id', $productId)

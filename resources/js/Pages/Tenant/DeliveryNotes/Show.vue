@@ -4,6 +4,7 @@ import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../../Composables/postJson';
 import { printInNewWindow } from '../../../Composables/printInNewWindow';
+import { deliveryNoteStatusChipClass } from '../../../Composables/useDeliveryNoteStatus';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
@@ -15,15 +16,6 @@ const $q = useQuasar();
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' });
-
-const statusChipClass = {
-    draft: 'chip--off',
-    shipped: 'chip--warn',
-    delivered: 'chip--ok',
-    partially_delivered: 'chip--warn',
-    returned: 'chip--bad',
-    cancelled: 'chip--bad',
-};
 
 const isCompleteOpen = ref(false);
 const isCompleting = ref(false);
@@ -83,11 +75,7 @@ async function print() {
     isPrinting.value = true;
 
     try {
-        await printInNewWindow(async () => {
-            await postJson(props.note.urls.print);
-
-            return props.note.urls.sheet;
-        });
+        await printInNewWindow(async () => (await postJson(props.note.urls.print)).sheet_url);
         router.reload({ only: ['note'] });
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
@@ -118,7 +106,7 @@ async function print() {
                     <small>{{ dateFormat.format(new Date(note.business_date)) }} · dibuat {{ note.created_by_name }}</small>
                     <small>Nota <a :href="note.sale.show_url" @click.prevent="router.visit(note.sale.show_url)">{{ note.sale.number }}</a></small>
                 </div>
-                <span class="chip" :class="statusChipClass[note.status]">{{ note.status_label }}</span>
+                <span class="chip" :class="deliveryNoteStatusChipClass[note.status]">{{ note.status_label }}</span>
             </header>
 
             <dl class="note__facts">

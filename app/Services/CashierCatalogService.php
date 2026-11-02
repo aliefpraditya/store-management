@@ -38,7 +38,7 @@ class CashierCatalogService
 
         $products = Product::query()
             ->where('is_active', true)
-            ->with(['baseUnit', 'productUnits' => fn ($units) => $units->where('is_sellable', true)])
+            ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)])
             ->when(
                 $scannedUnit,
                 fn ($query, ProductUnit $unit) => $query->whereKey($unit->product_id),
@@ -50,6 +50,38 @@ class CashierCatalogService
             ->get()
             ->filter(fn (Product $product): bool => $product->productUnits->isNotEmpty());
 
+        return $this->catalogItems($products, $warehouseId, $scannedUnit);
+    }
+
+    /**
+     * The same items as {@see self::search()} gives, found by the ids of units already chosen. The cart is kept in the
+     * browser, so after a refresh its prices and stock can be a while old; this brings them up to date. Items that
+     * are no longer active, or whose unit is no longer sold, are simply absent.
+     *
+     * @param  list<int>  $productUnitIds
+     * @return list<CatalogItem>
+     */
+    public function forUnits(int $warehouseId, array $productUnitIds): array
+    {
+        $productIds = ProductUnit::query()->whereIn('id', $productUnitIds)->where('is_sellable', true)->pluck('product_id')->unique();
+
+        $products = Product::query()
+            ->where('is_active', true)
+            ->whereKey($productIds)
+            ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)])
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (Product $product): bool => $product->productUnits->isNotEmpty());
+
+        return $this->catalogItems($products, $warehouseId, null);
+    }
+
+    /**
+     * @param  Collection<int, Product>  $products
+     * @return list<CatalogItem>
+     */
+    private function catalogItems(Collection $products, int $warehouseId, ?ProductUnit $scannedUnit): array
+    {
         $stocks = $this->stockOf($products, $warehouseId);
 
         return $products->map(fn (Product $product): array => [

@@ -22,6 +22,9 @@ class StockOpnameReport
 
     public const ITEM_FILTER_VARIANCE = 'variance';
 
+    /** The cost price an item's variance is valued at: today's until the opname is posted, then the one it was posted with. */
+    private const COST_PRICE_SQL = 'coalesce(stock_opname_items.cost_price_at_posting, products.cost_price)';
+
     /** Live stock until the opname is posted, then the quantity it was posted against. */
     private const SYSTEM_QUANTITY_SQL = 'coalesce(stock_opname_items.system_quantity_at_posting, stocks.quantity, 0)';
 
@@ -52,7 +55,7 @@ class StockOpnameReport
 
         return $this->itemsQuery($opname)
             ->with('product.baseUnit', 'product.productUnits')
-            ->select('stock_opname_items.*', 'products.cost_price as product_cost_price')
+            ->selectRaw('stock_opname_items.*, '.self::COST_PRICE_SQL.' as product_cost_price')
             ->selectRaw(self::SYSTEM_QUANTITY_SQL.' as system_quantity')
             ->selectRaw("{$variance} as variance_quantity")
             ->when($term !== '', fn (Builder $query) => $query->where(fn (Builder $query) => $query
@@ -80,7 +83,7 @@ class StockOpnameReport
             "count(*) as items_count,
             count(stock_opname_items.counted_quantity) as counted_count,
             coalesce(sum(stock_opname_items.counted_quantity is not null and {$variance} != 0), 0) as variance_count,
-            coalesce(sum({$variance} * products.cost_price), 0) as variance_value",
+            coalesce(sum({$variance} * ".self::COST_PRICE_SQL.'), 0) as variance_value',
         )->first();
 
         return [
@@ -96,7 +99,7 @@ class StockOpnameReport
      */
     private function varianceSql(StockOpname $opname): string
     {
-        return $opname->reason_code?->countsArrivals()
+        return $opname->reason_code?->isArrivalCount()
             ? 'stock_opname_items.counted_quantity'
             : '(stock_opname_items.counted_quantity - '.self::SYSTEM_QUANTITY_SQL.')';
     }

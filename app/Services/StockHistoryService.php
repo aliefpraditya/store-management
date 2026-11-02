@@ -33,11 +33,11 @@ class StockHistoryService
             ->paginate($perPage)
             ->withQueryString();
 
-        $numbers = $this->documentNumbers($movements->getCollection());
+        $documentNumbers = $this->documentNumbers($movements->getCollection());
 
         $movements->getCollection()->each(fn (StockMovement $movement) => $movement->setAttribute(
             'document_number',
-            $numbers[$movement->reference_type.':'.$movement->reference_id] ?? null,
+            $documentNumbers[$movement->reference_type.':'.$movement->reference_id] ?? null,
         ));
 
         return $movements;
@@ -49,7 +49,7 @@ class StockHistoryService
      */
     private function documentNumbers(Collection $movements): array
     {
-        $numbers = [];
+        $documentNumbers = [];
 
         foreach ($movements->whereNotNull('reference_type')->groupBy('reference_type') as $referenceType => $group) {
             $type = StockReferenceType::tryFrom($referenceType);
@@ -59,10 +59,10 @@ class StockHistoryService
             }
 
             foreach ($type->modelClass()::query()->whereKey($group->pluck('reference_id'))->pluck('number', 'id') as $id => $number) {
-                $numbers["{$referenceType}:{$id}"] = $number;
+                $documentNumbers["{$referenceType}:{$id}"] = $number;
             }
         }
 
-        return $numbers;
+        return $documentNumbers;
     }
 }

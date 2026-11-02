@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ApiErrorCode;
+use App\Http\Controllers\Concerns\AnswersPrints;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\SaleDetailResource;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Services\PrintCounter;
 use App\Services\SaleHistoryService;
+use App\Services\SaleReturnService;
 use App\Services\ShiftService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,17 +23,20 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class ShiftReceiptController extends Controller
 {
+    use AnswersPrints;
+
     private const RESULT_LIMIT = 50;
 
     public function __construct(
-        private readonly ShiftService $shifts,
-        private readonly SaleHistoryService $history,
-        private readonly PrintCounter $prints,
+        private readonly ShiftService $shiftService,
+        private readonly SaleHistoryService $saleHistoryService,
+        private readonly PrintCounter $printCounter,
+        private readonly SaleReturnService $returnService,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
-        $shift = $this->shifts->openShiftOf($request->user());
+        $shift = $this->shiftService->openShiftOf($request->user());
 
         if ($shift === null) {
             return response()->json([
@@ -44,22 +49,26 @@ class ShiftReceiptController extends Controller
         /** @var Store $store */
         $store = tenant();
         $isAdmin = $request->user()->isAdminIn($store);
-        $sales = $this->history->ofShift($shift, $request->string('q')->toString(), self::RESULT_LIMIT);
+        $sales = $this->saleHistoryService->ofShift($shift, $request->string('q')->toString(), self::RESULT_LIMIT);
 
         return response()->json(['data' => $sales->map(fn (Sale $sale): array => $this->withLinks(SaleDetailResource::make($sale)->resolve(), $sale, $isAdmin))->all()]);
     }
 
     /**
-     * Notes one more print. A cashier may print their own receipts, an admin any. The browser then opens the sheet
-     * in a new window, which shows the receipt as printed.
+     * Notes one more print and answers the sheet to open in a new window. A cashier may print their own receipts, an
+     * admin any.
      */
     public function print(Request $request, Sale $sale): JsonResponse
     {
-        $this->authorizeFor($request, $sale);
+        if (! $this->canHandle($request, $sale)) {
+            return response()->json([
+                'code' => ApiErrorCode::ReceiptNotYours->value,
+                'message' => 'Nota ini bukan nota Anda, jadi tidak bisa dicetak ulang.',
+                'more_info' => 'Kasir hanya bisa mencetak nota yang dibuatnya sendiri. Minta Admin kalau perlu mencetak nota orang lain.',
+            ], Response::HTTP_FORBIDDEN);
+        }
 
-        $isCopy = $this->prints->record($sale);
-
-        return response()->json(['data' => ['is_copy' => $isCopy, 'print_count' => $sale->refresh()->print_count]]);
+        return $this->recordPrintAnswer($this->printCounter, $sale, 'tenant.cashier.receipts.sheet', 'sale');
     }
 
     /**
@@ -67,7 +76,7 @@ class ShiftReceiptController extends Controller
      */
     public function sheet(Request $request, Sale $sale): InertiaResponse
     {
-        $this->authorizeFor($request, $sale);
+        abort_unless($this->canHandle($request, $sale), Response::HTTP_FORBIDDEN);
 
         /** @var Store $store */
         $store = tenant();
@@ -75,22 +84,23 @@ class ShiftReceiptController extends Controller
         return Inertia::render('Tenant/Print/Receipt', [
             'receipt' => [
                 ...SaleDetailResource::make($sale->load(['items', 'payments', 'register']))->resolve(),
-                'is_copy' => $sale->print_count > 1,
+                'is_copy' => $this->printNumberOf($request) > 1,
                 'store' => ['name' => $store->name, 'address' => $store->address, 'phone' => $store->phone],
             ],
         ]);
     }
 
-    private function authorizeFor(Request $request, Sale $sale): void
+    private function canHandle(Request $request, Sale $sale): bool
     {
         /** @var Store $store */
         $store = tenant();
 
-        abort_unless($request->user()->isAdminIn($store) || $sale->cashier_id === $request->user()->id, 403);
+        return $request->user()->canHandleReceipt($sale, $store);
     }
 
     /**
-     * The full receipt page is for admins only, so a cashier gets no link to it.
+     * The full receipt page is for admins only, so a cashier gets no link to it. There is no address for the sheet: the
+     * print step answers a signed one for the exact print it counted.
      *
      * @param  array<string, mixed>  $receipt
      * @return array<string, mixed>
@@ -103,9 +113,7 @@ class ShiftReceiptController extends Controller
             'delivery_url' => route('tenant.cashier.receipts.delivery', ['tenant' => tenant('code'), 'sale' => $sale->id]),
             'delivery_note_store_url' => route('tenant.cashier.receipts.delivery-notes.store', ['tenant' => tenant('code'), 'sale' => $sale->id]),
             'print_url' => route('tenant.cashier.receipts.print', ['tenant' => tenant('code'), 'sale' => $sale->id]),
-            'sheet_url' => route('tenant.cashier.receipts.sheet', ['tenant' => tenant('code'), 'sale' => $sale->id]),
-            'return_url' => route('tenant.cashier.receipts.return', ['tenant' => tenant('code'), 'sale' => $sale->id]),
-            'return_store_url' => route('tenant.cashier.receipts.returns.store', ['tenant' => tenant('code'), 'sale' => $sale->id]),
+            ...$this->returnService->signedLinksFor($sale),
         ];
     }
 }

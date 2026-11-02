@@ -23,6 +23,16 @@ enum DeliveryNoteStatus: string
         };
     }
 
+    public function canBeShipped(): bool
+    {
+        return $this === self::Draft;
+    }
+
+    public function canBeCompleted(): bool
+    {
+        return $this === self::Shipped;
+    }
+
     /**
      * Can still be cancelled: nothing has been confirmed yet.
      */

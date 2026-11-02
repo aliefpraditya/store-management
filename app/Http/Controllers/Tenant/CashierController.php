@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\CashShiftStatus;
 use App\Enums\PaymentMethod;
-use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CashShiftResource;
 use App\Models\CashShift;
@@ -20,23 +19,23 @@ use Inertia\Response;
  */
 class CashierController extends Controller
 {
-    public function __construct(private readonly ShiftService $shifts) {}
+    public function __construct(private readonly ShiftService $shiftService) {}
 
     public function index(Request $request): Response
     {
         /** @var Store $store */
         $store = tenant();
         $code = $store->code;
-        $shift = $this->shifts->openShiftOf($request->user());
+        $shift = $this->shiftService->openShiftOf($request->user());
 
         return Inertia::render('Tenant/Cashier/Index', [
             'shift' => $shift === null ? null : CashShiftResource::make($shift)->resolve(),
-            'summary' => $shift === null ? null : $this->shifts->summarize($shift),
+            'summary' => $shift === null ? null : $this->shiftService->summarize($shift),
             'registers' => $shift === null ? $this->registersToOpen() : [],
             'payment_methods' => array_map(fn (PaymentMethod $method): array => ['value' => $method->value, 'label' => $method->label()], PaymentMethod::forCashier()),
             'last_sale' => $request->session()->pull('last_sale'),
             'closed_shift' => $request->session()->pull('closed_shift'),
-            'can_leave_to_dashboard' => in_array($request->user()->roleIn($store), [UserRole::SuperAdmin, UserRole::StoreAdmin], true),
+            'can_leave_to_dashboard' => $request->user()->isAdminIn($store),
             'urls' => [
                 'open_shift' => route('tenant.cashier.shifts.store', ['tenant' => $code]),
                 'products' => route('tenant.cashier.products', ['tenant' => $code]),
@@ -45,6 +44,8 @@ class CashierController extends Controller
                 'sales_history' => route('tenant.sales.index', ['tenant' => $code]),
                 'receipts' => route('tenant.cashier.receipts', ['tenant' => $code]),
                 'return_lookup' => route('tenant.cashier.returns.lookup', ['tenant' => $code]),
+                'expenses' => route('tenant.cashier.expenses.index', ['tenant' => $code]),
+                'expenses_store' => route('tenant.cashier.expenses.store', ['tenant' => $code]),
             ],
         ]);
     }
