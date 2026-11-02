@@ -16,7 +16,7 @@ const props = defineProps({
 
 const form = useForm({
     sale_id: null,
-    resolution: 'refund',
+    resolution: 'exchange',
     refund_method: 'cash',
     refund_account: '',
     reason: '',
@@ -26,8 +26,8 @@ const form = useForm({
 });
 
 const resolutions = [
-    { value: 'refund', label: 'Refund' },
     { value: 'exchange', label: 'Tukar barang' },
+    { value: 'refund', label: 'Refund' },
 ];
 
 const isExchange = computed(() => form.resolution === 'exchange');

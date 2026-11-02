@@ -32,11 +32,11 @@ const refundMethod = ref('cash');
 const refundAccount = ref('');
 const reason = ref('');
 const shouldPrint = ref(true);
-const resolution = ref('refund');
+const resolution = ref('exchange');
 
 const resolutions = [
-    { value: 'refund', label: 'Refund' },
     { value: 'exchange', label: 'Tukar barang' },
+    { value: 'refund', label: 'Refund' },
 ];
 
 const isExchange = computed(() => resolution.value === 'exchange');
@@ -93,7 +93,7 @@ watch(
 
         reason.value = '';
         refundAccount.value = '';
-        resolution.value = 'refund';
+        resolution.value = 'exchange';
         exchange.value = null;
         data.value = { lines: [], returns: [], refund_methods: [], dispositions: [], is_approved_at_once: false };
         load();
@@ -145,7 +145,7 @@ async function save() {
             message: saleReturn.status === 'pending' ? `Retur ${saleReturn.number} diajukan, menunggu persetujuan Admin.` : `Retur ${saleReturn.number} selesai.`,
         });
         emit('saved');
-        resolution.value = 'refund';
+        resolution.value = 'exchange';
         refundAccount.value = '';
         exchange.value = null;
         await load();
