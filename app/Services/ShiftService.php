@@ -91,9 +91,10 @@ class ShiftService
     }
 
     /**
-     * What happened in the shift so far. Cash is what stayed in the drawer: received minus the change given and the
-     * refunds paid out in cash. A return still waiting for approval has paid nothing yet. Expenses taken from the
-     * drawer lower the cash that should be in it, but not the cash of the sales.
+     * What happened in the shift so far. The cash of the sales is what was received minus the change given; what
+     * goes back out of the drawer (cash refunds, void refunds, drawer expenses) is reported apart, not taken off it, so
+     * the report shows each figure on its own and the expected cash is opening + sales cash − those. A return still
+     * waiting for approval has paid nothing yet.
      *
      * The money a voided receipt took in (a deposit) still came in, so it is counted here; the deposit goes back out
      * as a void refund in the shift that voided it. COD is not money in the drawer: it is shown apart, split by whether
@@ -125,8 +126,8 @@ class ShiftService
 
         $voidCashRefunds = BigDecimal::of((string) Sale::query()->where('void_cash_shift_id', $shift->id)->sum('void_cash_refund'));
         $changeGiven = BigDecimal::of((string) Sale::query()->where('cash_shift_id', $shift->id)->whereIn('status', $moneyTakenInStatuses)->sum('change_amount'));
-        $cashInDrawer = BigDecimal::of($payments[PaymentMethod::Cash->value])->minus($changeGiven)->minus($cashRefunds)->minus($voidCashRefunds);
-        $payments[PaymentMethod::Cash->value] = (string) $cashInDrawer->toScale(2);
+        $cashFromSales = BigDecimal::of($payments[PaymentMethod::Cash->value])->minus($changeGiven);
+        $payments[PaymentMethod::Cash->value] = (string) $cashFromSales->toScale(2);
 
         $drawerExpenses = BigDecimal::of($this->expenseService->drawerTotalOf($shift));
 
@@ -140,7 +141,7 @@ class ShiftService
             'drawer_expenses' => (string) $drawerExpenses->toScale(2),
             'payments' => $payments,
             'opening_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->toScale(2),
-            'expected_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->plus($cashInDrawer)->minus($drawerExpenses)->toScale(2),
+            'expected_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->plus($cashFromSales)->minus($cashRefunds)->minus($voidCashRefunds)->minus($drawerExpenses)->toScale(2),
         ];
     }
 

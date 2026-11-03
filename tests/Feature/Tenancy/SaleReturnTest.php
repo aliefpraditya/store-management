@@ -310,7 +310,7 @@ class SaleReturnTest extends TestCase
         $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 1, 'resellable', ['refund_method' => 'transfer', 'refund_account' => 'BCA 123 a.n. Budi']));
 
         $summary = $summarize();
-        $this->assertSame(['30000.00', '20000.00', '30000.00', '30000.00'], [$summary['expected_cash'], $summary['cash_refunds'], $summary['payments']['cash'], $summary['returns_total']]);
+        $this->assertSame(['30000.00', '20000.00', '50000.00', '30000.00'], [$summary['expected_cash'], $summary['cash_refunds'], $summary['payments']['cash'], $summary['returns_total']]);
     }
 
     public function test_a_shift_cannot_be_closed_while_it_has_a_return_waiting(): void

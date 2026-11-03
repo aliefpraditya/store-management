@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
-import { formatRupiah } from '../../../Composables/useMoneyFormat';
+import { formatDeduction, formatRupiah } from '../../../Composables/useMoneyFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -90,7 +90,7 @@ function markFollowedUp() {
                 <div><dt>Jumlah nota</dt><dd>{{ shift.sale_count }}</dd></div>
                 <div><dt>Total penjualan</dt><dd>{{ formatRupiah(shift.total_sales) }}</dd></div>
                 <div v-for="payment in shift.payments" :key="payment.method">
-                    <dt>{{ payment.method }}<small v-if="payment.method === 'Tunai'"> (sudah dikurangi kembalian dan retur tunai)</small></dt>
+                    <dt>{{ payment.method }}<small v-if="payment.method === 'Tunai'"> (setelah kembalian)</small></dt>
                     <dd>{{ formatRupiah(payment.amount) }}</dd>
                 </div>
                 <div v-if="Number(shift.returns_total) > 0"><dt>Retur disetujui</dt><dd>{{ formatRupiah(shift.returns_total) }}</dd></div>
@@ -103,8 +103,9 @@ function markFollowedUp() {
             <h2>Kas</h2>
             <dl class="rows">
                 <div><dt>Modal kas awal</dt><dd>{{ formatRupiah(shift.opening_cash) }}</dd></div>
-                <div v-if="Number(shift.void_cash_refunds) > 0"><dt>DP void dikembalikan tunai</dt><dd>{{ formatRupiah(shift.void_cash_refunds) }}</dd></div>
-                <div v-if="Number(shift.drawer_expenses) > 0"><dt>Pengeluaran dari laci</dt><dd>{{ formatRupiah(shift.drawer_expenses) }}</dd></div>
+                <div v-if="Number(shift.cash_refunds) > 0"><dt>Retur tunai</dt><dd class="rows__minus">{{ formatDeduction(shift.cash_refunds) }}</dd></div>
+                <div v-if="Number(shift.void_cash_refunds) > 0"><dt>DP void dikembalikan tunai</dt><dd class="rows__minus">{{ formatDeduction(shift.void_cash_refunds) }}</dd></div>
+                <div v-if="Number(shift.drawer_expenses) > 0"><dt>Pengeluaran dari laci</dt><dd class="rows__minus">{{ formatDeduction(shift.drawer_expenses) }}</dd></div>
                 <div><dt>Tunai seharusnya di laci</dt><dd>{{ formatRupiah(shift.expected_cash) }}</dd></div>
                 <template v-if="shift.status === 'closed'">
                     <div><dt>Tunai dihitung</dt><dd>{{ formatRupiah(shift.counted_cash) }}</dd></div>
