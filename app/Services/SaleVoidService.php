@@ -1,0 +1,155 @@
+<?php
+
+namespace App\Services;
+
+use App\Enums\CashShiftStatus;
+use App\Enums\PaymentMethod;
+use App\Enums\SaleReturnStatus;
+use App\Enums\SaleStatus;
+use App\Enums\StockMovementType;
+use App\Exceptions\CodSaleException;
+use App\Models\CashShift;
+use App\Models\DailyClosing;
+use App\Models\DeliveryNote;
+use App\Models\Sale;
+use App\Models\SaleItem;
+use App\Models\SaleReturn;
+use App\Models\User;
+use Brick\Math\BigDecimal;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * Voiding a COD sale: the customer did not take the goods (or would not pay when they came), so the receipt is
+ * cancelled and the goods go back on the shelf. Only COD sales can be voided, and only while none of the goods were
+ * delivered; later returns go through Retur. A cashier or an admin may do it, always with a reason, and on any day:
+ * the sale may have been made yesterday and delivered today. The void is booked on the day it is done.
+ *
+ * A deposit paid in advance goes back to the customer. A cash deposit comes out of the drawer of the voider's running
+ * shift (so it lowers the cash that should be there); a deposit by transfer, QRIS or EDC goes back to the account given.
+ */
+class SaleVoidService
+{
+    public function __construct(
+        private readonly StockService $stockLedger,
+        private readonly DeliveryNoteService $deliveryNotes,
+        private readonly ShiftService $shifts,
+    ) {}
+
+    /**
+     * @throws CodSaleException
+     */
+    public function void(Sale $sale, User $voider, string $reason, ?string $refundAccount): Sale
+    {
+        return DB::transaction(function () use ($sale, $voider, $reason, $refundAccount): Sale {
+            DailyClosing::lockAgainstClosing();
+
+            $lockedSale = Sale::query()->with(['items', 'payments', 'deliveryNotes'])->lockForUpdate()->findOrFail($sale->id);
+
+            $this->requireVoidable($lockedSale);
+
+            $cashDeposit = $this->depositPaidBy($lockedSale, [PaymentMethod::Cash]);
+            $nonCashDeposit = $this->depositPaidBy($lockedSale, [PaymentMethod::Transfer, PaymentMethod::Qris, PaymentMethod::Edc]);
+
+            $refundShift = $cashDeposit->isPositive() ? $this->runningShiftOf($voider) : null;
+
+            if ($nonCashDeposit->isPositive() && blank($refundAccount)) {
+                throw CodSaleException::refundAccountNeeded();
+            }
+
+            $this->putGoodsBack($lockedSale, $voider);
+
+            foreach ($lockedSale->deliveryNotes->filter(fn (DeliveryNote $note): bool => $note->status->canBeCancelled()) as $note) {
+                $this->deliveryNotes->cancel($note);
+            }
+
+            $lockedSale->forceFill([
+                'status' => SaleStatus::Voided,
+                'void_reason' => trim($reason),
+                'voided_by' => $voider->id,
+                'voided_by_name' => $voider->name,
+                'voided_at' => now(),
+                'void_cash_shift_id' => $refundShift?->id,
+                'void_cash_refund' => (string) $cashDeposit->toScale(2),
+                'void_refund_account' => $nonCashDeposit->isPositive() ? trim((string) $refundAccount) : null,
+            ])->save();
+
+            return $lockedSale;
+        }, StockService::DEADLOCK_ATTEMPTS);
+    }
+
+    /**
+     * Why the sale cannot be voided now, or null when it can. The one place this rule lives, for the button on the
+     * receipt page and for the voiding itself. Needs `payments` and `deliveryNotes` loaded.
+     */
+    public function voidBlocker(Sale $sale): ?CodSaleException
+    {
+        return match (true) {
+            $sale->status !== SaleStatus::Completed => CodSaleException::notCompleted($sale->status->label()),
+            ! $sale->isCod() => CodSaleException::notCod(),
+            DailyClosing::isClosedOn(today()) => CodSaleException::dayClosed(today()->format('d/m/Y')),
+            $sale->payments->contains('method', PaymentMethod::ReturnCredit) => CodSaleException::paidByReturnCredit(),
+            $this->hasReturns($sale) => CodSaleException::hasReturns(),
+            $sale->deliveryNotes->contains(fn (DeliveryNote $note): bool => $note->status->hasDeliveredGoods()) => CodSaleException::alreadyDelivered(),
+            default => null,
+        };
+    }
+
+    /**
+     * @throws CodSaleException
+     */
+    private function requireVoidable(Sale $sale): void
+    {
+        $voidBlocker = $this->voidBlocker($sale);
+
+        if ($voidBlocker !== null) {
+            throw $voidBlocker;
+        }
+    }
+
+    private function hasReturns(Sale $sale): bool
+    {
+        return SaleReturn::query()->where('sale_id', $sale->id)->whereIn('status', [SaleReturnStatus::Pending, SaleReturnStatus::Completed])->exists();
+    }
+
+    /**
+     * @param  list<PaymentMethod>  $methods
+     */
+    private function depositPaidBy(Sale $sale, array $methods): BigDecimal
+    {
+        return BigDecimal::of((string) $sale->payments->whereIn('method', $methods)->sum('amount'))->minus((string) ($methods === [PaymentMethod::Cash] ? $sale->change_amount : 0));
+    }
+
+    /**
+     * The shift whose drawer the cash deposit comes out of. It is locked, so the shift cannot be closed while the
+     * refund is being booked on it.
+     *
+     * @throws CodSaleException
+     */
+    private function runningShiftOf(User $voider): CashShift
+    {
+        $openShift = $this->shifts->openShiftOf($voider);
+
+        if ($openShift === null) {
+            throw CodSaleException::shiftNeededForRefund();
+        }
+
+        $lockedShift = CashShift::query()->lockForUpdate()->findOrFail($openShift->id);
+
+        if ($lockedShift->status !== CashShiftStatus::Open) {
+            throw CodSaleException::shiftNeededForRefund();
+        }
+
+        return $lockedShift;
+    }
+
+    /**
+     * Every line goes back into the warehouse it was sold from, in product order like a sale takes it out.
+     */
+    private function putGoodsBack(Sale $sale, User $voider): void
+    {
+        foreach ($sale->items->sortBy('product_id') as $item) {
+            /** @var SaleItem $item */
+            $this->stockLedger->record($item->product_id, $sale->warehouse_id, StockMovementType::SaleVoid, '+'.$item->base_quantity, $sale, $voider->id);
+        }
+    }
+}

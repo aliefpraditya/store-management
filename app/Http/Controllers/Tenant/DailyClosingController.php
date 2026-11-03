@@ -45,6 +45,7 @@ class DailyClosingController extends Controller
             'closing' => $savedClosing,
             'checklist' => $this->closingService->checklist($day),
             'figures' => $isClosed ? $savedClosing['figures'] : $this->closingService->summarize($day),
+            'voids' => $this->closingService->voidsOf($day),
             'history' => DailyClosingResource::collection($this->closingService->recent())->resolve(),
             'can_reopen' => (bool) $request->user()->is_super_admin,
             'urls' => [
@@ -95,6 +96,7 @@ class DailyClosingController extends Controller
                 ...DailyClosingResource::make($closing)->resolve(),
                 'store' => ['name' => $store->name, 'address' => $store->address, 'phone' => $store->phone],
                 'shifts' => $this->shiftRowsOf($closing),
+                'voids' => $this->closingService->voidsOf($closing->business_date),
             ],
         ]);
     }

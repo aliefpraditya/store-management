@@ -13,6 +13,8 @@ const props = defineProps({
     checklist: { type: Object, required: true },
     /** The saved figures of a closed day, otherwise the figures as they stand now. */
     figures: { type: Object, required: true },
+    /** The receipts voided on this day, whatever day they were sold. */
+    voids: { type: Array, required: true },
     history: { type: Array, required: true },
     canReopen: { type: Boolean, required: true },
     urls: { type: Object, required: true },
@@ -46,12 +48,14 @@ const salesRows = computed(() => [
     { label: 'Transfer', value: formatRupiah(props.figures.sales_transfer) },
     { label: 'QRIS', value: formatRupiah(props.figures.sales_qris) },
     { label: 'EDC', value: formatRupiah(props.figures.sales_edc) },
+    { label: 'COD (ditagih saat diantar, tidak masuk laci)', value: formatRupiah(props.figures.sales_cod) },
     { label: 'Total penjualan', value: formatRupiah(props.figures.total_sales), isTotal: true },
 ]);
 
 const otherRows = computed(() => [
     { label: 'Retur disetujui', value: formatRupiah(props.figures.total_returns) },
-    { label: 'Refund tunai', value: formatRupiah(props.figures.refunds_cash) },
+    { label: `Void (${props.figures.voids_count} nota)`, value: formatRupiah(props.figures.total_voids) },
+    { label: 'Pengembalian tunai (retur dan DP void)', value: formatRupiah(props.figures.refunds_cash) },
     { label: 'Pengeluaran dari laci', value: formatRupiah(props.figures.expenses_drawer) },
     { label: 'Pengeluaran sumber lain', value: formatRupiah(props.figures.expenses_other) },
 ]);
@@ -182,6 +186,20 @@ const printReport = () => window.open(props.closing.sheet_url, '_blank');
                         <div v-for="row in cashRows" :key="row.label" :class="{ rows__total: row.isTotal, rows__minus: row.isTotal && Number(figures.total_cash_difference) < 0 }"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
                     </dl>
                     <small v-if="!isClosed" class="closed__hint">Angka ini disimpan sebagai snapshot saat hari ditutup.</small>
+                </section>
+
+                <section v-if="voids.length > 0" class="card">
+                    <h3>Void pada hari ini</h3>
+                    <ul class="voids">
+                        <li v-for="sale in voids" :key="sale.number">
+                            <a :href="sale.show_url" @click.prevent="router.visit(sale.show_url)">
+                                <b>{{ sale.number }}</b>
+                                <small>dijual {{ shortDateFormat.format(asLocalDate(sale.sold_on)) }}<template v-if="sale.customer_name"> · {{ sale.customer_name }}</template> · {{ sale.voided_by_name }}</small>
+                                <small v-if="sale.reason">{{ sale.reason }}</small>
+                            </a>
+                            <b>{{ formatRupiah(sale.total) }}</b>
+                        </li>
+                    </ul>
                 </section>
 
                 <section v-if="history.length > 0" class="card">
@@ -342,6 +360,36 @@ const printReport = () => window.open(props.closing.sheet_url, '_blank');
 
 .rows .rows__minus dd {
     color: #be123c;
+}
+
+.voids {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.voids li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--app-line);
+}
+
+.voids a {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.voids b,
+.voids small {
+    display: block;
+}
+
+.voids small {
+    color: var(--app-mute);
+    font-size: 12px;
 }
 
 .history {

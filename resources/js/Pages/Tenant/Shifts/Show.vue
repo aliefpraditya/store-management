@@ -94,11 +94,16 @@ function markFollowedUp() {
                     <dd>{{ formatRupiah(payment.amount) }}</dd>
                 </div>
                 <div v-if="Number(shift.returns_total) > 0"><dt>Retur disetujui</dt><dd>{{ formatRupiah(shift.returns_total) }}</dd></div>
+                <template v-if="shift.cod.delivered.count + shift.cod.undelivered.count > 0">
+                    <div><dt>COD sudah diantar ({{ shift.cod.delivered.count }} nota)<small> (tidak masuk laci)</small></dt><dd>{{ formatRupiah(shift.cod.delivered.amount) }}</dd></div>
+                    <div><dt>COD belum diantar ({{ shift.cod.undelivered.count }} nota)<small> (tidak masuk laci)</small></dt><dd>{{ formatRupiah(shift.cod.undelivered.amount) }}</dd></div>
+                </template>
             </dl>
 
             <h2>Kas</h2>
             <dl class="rows">
                 <div><dt>Modal kas awal</dt><dd>{{ formatRupiah(shift.opening_cash) }}</dd></div>
+                <div v-if="Number(shift.void_cash_refunds) > 0"><dt>DP void dikembalikan tunai</dt><dd>{{ formatRupiah(shift.void_cash_refunds) }}</dd></div>
                 <div v-if="Number(shift.drawer_expenses) > 0"><dt>Pengeluaran dari laci</dt><dd>{{ formatRupiah(shift.drawer_expenses) }}</dd></div>
                 <div><dt>Tunai seharusnya di laci</dt><dd>{{ formatRupiah(shift.expected_cash) }}</dd></div>
                 <template v-if="shift.status === 'closed'">

@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Enums\PaymentMethod;
 use App\Enums\SaleReturnProgress;
 use App\Enums\SaleStatus;
+use Brick\Math\BigDecimal;
 use Database\Factories\SaleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -34,6 +36,7 @@ class Sale extends Model implements AuditableContract
             'sold_at' => 'datetime',
             'business_date' => 'date',
             'voided_at' => 'datetime',
+            'void_cash_refund' => 'decimal:2',
             'subtotal' => 'decimal:2',
             'discount_total' => 'decimal:2',
             'total' => 'decimal:2',
@@ -60,6 +63,27 @@ class Sale extends Model implements AuditableContract
     public function payments(): HasMany
     {
         return $this->hasMany(SalePayment::class);
+    }
+
+    /**
+     * @return HasMany<DeliveryNote, $this>
+     */
+    public function deliveryNotes(): HasMany
+    {
+        return $this->hasMany(DeliveryNote::class);
+    }
+
+    /**
+     * What is left to pay when the goods are delivered; zero for a sale that is not COD. Needs `payments` loaded.
+     */
+    public function codAmount(): string
+    {
+        return (string) BigDecimal::of((string) $this->payments->where('method', PaymentMethod::Cod)->sum('amount'))->toScale(2);
+    }
+
+    public function isCod(): bool
+    {
+        return $this->payments->contains('method', PaymentMethod::Cod);
     }
 
     /**

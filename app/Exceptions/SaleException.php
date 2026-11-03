@@ -52,6 +52,25 @@ class SaleException extends Exception
         return new self("Pembayaran kurang dari total belanja Rp {$shownTotal}. Harga di layar mungkin sudah berubah: cari ulang barangnya, lalu coba lagi.");
     }
 
+    public static function deliveryNoteRequired(): self
+    {
+        return new self('Nota COD harus punya surat jalan. Isi penerima dan alamat pengantaran.');
+    }
+
+    public static function codMoreThanOnce(): self
+    {
+        return new self('COD hanya boleh satu baris pembayaran.');
+    }
+
+    /**
+     * COD is what is left to pay on delivery, so the other payments and the COD add up to the total exactly: nothing
+     * to give change on.
+     */
+    public static function codMustBeTheRest(): self
+    {
+        return new self('Jumlah COD harus sisa tagihan setelah pembayaran lain, tidak lebih dan tidak kurang.');
+    }
+
     public static function changeExceedsCash(): self
     {
         return new self('Kembalian hanya bisa diberikan dari pembayaran tunai.');

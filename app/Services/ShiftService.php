@@ -24,11 +24,16 @@ use Illuminate\Support\Str;
  * Opens and closes a cashier's shift. A register has one open shift at a time; the opening cash is the register's
  * fixed amount, and closing compares the counted cash with what the receipts say should be in the drawer.
  *
- * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, drawer_expenses: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
+ * @phpstan-import-type CodTotals from CodSaleService
+ *
+ * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, void_cash_refunds: string, cod: CodTotals, drawer_expenses: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
  */
 class ShiftService
 {
-    public function __construct(private readonly ExpenseService $expenseService) {}
+    public function __construct(
+        private readonly ExpenseService $expenseService,
+        private readonly CodSaleService $codSales,
+    ) {}
 
     public function openShiftOf(User $user): ?CashShift
     {
@@ -90,16 +95,21 @@ class ShiftService
      * refunds paid out in cash. A return still waiting for approval has paid nothing yet. Expenses taken from the
      * drawer lower the cash that should be in it, but not the cash of the sales.
      *
+     * The money a voided receipt took in (a deposit) still came in, so it is counted here; the deposit goes back out
+     * as a void refund in the shift that voided it. COD is not money in the drawer: it is shown apart, split by whether
+     * the goods were delivered yet.
+     *
      * @return ShiftSummary
      */
     public function summarize(CashShift $shift): array
     {
         $completedSalesQuery = Sale::query()->where('cash_shift_id', $shift->id)->where('status', SaleStatus::Completed);
+        $moneyTakenInStatuses = [SaleStatus::Completed, SaleStatus::Voided];
 
         $receivedByMethod = SalePayment::query()
             ->join('sales', 'sales.id', '=', 'sale_payments.sale_id')
             ->where('sales.cash_shift_id', $shift->id)
-            ->where('sales.status', SaleStatus::Completed)
+            ->whereIn('sales.status', $moneyTakenInStatuses)
             ->groupBy('sale_payments.method')
             ->selectRaw('sale_payments.method as method, sum(sale_payments.amount) as amount')
             ->pluck('amount', 'method');
@@ -113,8 +123,9 @@ class ShiftService
         $completedReturnsQuery = SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Completed);
         $cashRefunds = BigDecimal::of((string) (clone $completedReturnsQuery)->where('refund_method', PaymentMethod::Cash)->sum('refund_amount'));
 
-        $changeGiven = BigDecimal::of((string) (clone $completedSalesQuery)->sum('change_amount'));
-        $cashInDrawer = BigDecimal::of($payments[PaymentMethod::Cash->value])->minus($changeGiven)->minus($cashRefunds);
+        $voidCashRefunds = BigDecimal::of((string) Sale::query()->where('void_cash_shift_id', $shift->id)->sum('void_cash_refund'));
+        $changeGiven = BigDecimal::of((string) Sale::query()->where('cash_shift_id', $shift->id)->whereIn('status', $moneyTakenInStatuses)->sum('change_amount'));
+        $cashInDrawer = BigDecimal::of($payments[PaymentMethod::Cash->value])->minus($changeGiven)->minus($cashRefunds)->minus($voidCashRefunds);
         $payments[PaymentMethod::Cash->value] = (string) $cashInDrawer->toScale(2);
 
         $drawerExpenses = BigDecimal::of($this->expenseService->drawerTotalOf($shift));
@@ -124,6 +135,8 @@ class ShiftService
             'total_sales' => (string) BigDecimal::of((string) (clone $completedSalesQuery)->sum('total'))->toScale(2),
             'returns_total' => (string) BigDecimal::of((string) (clone $completedReturnsQuery)->sum('credit_amount'))->toScale(2),
             'cash_refunds' => (string) $cashRefunds->toScale(2),
+            'void_cash_refunds' => (string) $voidCashRefunds->toScale(2),
+            'cod' => $this->codSales->totalsOfShift($shift),
             'drawer_expenses' => (string) $drawerExpenses->toScale(2),
             'payments' => $payments,
             'opening_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->toScale(2),

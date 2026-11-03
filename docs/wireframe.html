@@ -281,7 +281,7 @@
 <section class="scr" id="kasir" data-group="Penjualan" data-nav="Kasir" data-title="Kasir" data-sub="Satu layar penuh, tanpa menu samping." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
 <div class="bd">
   <div class="tb" style="background:#fff"><div class="av">S</div><div><b>Sari</b><div class="mute" style="font-size:12px">Mitra Utama · Kasir 1 · Shift #0425</div></div><span class="sp"></span>
-    <span class="b s g"><svg class="ic s"><use href="#i-receipt"/></svg>Riwayat Nota</span><span class="b s g"><svg class="ic s"><use href="#i-undo"/></svg>Retur</span><span class="b s g"><svg class="ic s"><use href="#i-minus"/></svg>Pengeluaran</span><span class="b s bad">Tutup Shift</span></div>
+    <span class="b s g"><svg class="ic s"><use href="#i-receipt"/></svg>Riwayat Nota</span><span class="b s g"><svg class="ic s"><use href="#i-undo"/></svg>Retur</span><span class="b s g"><svg class="ic s"><use href="#i-truck"/></svg>COD</span><span class="b s g"><svg class="ic s"><use href="#i-minus"/></svg>Pengeluaran</span><span class="b s bad">Tutup Shift</span></div>
   <div class="pos">
     <div class="pl">
       <div class="search"><svg class="ic"><use href="#i-search"/></svg>Scan barcode atau ketik nama / SKU<kbd>F2</kbd></div>
@@ -323,7 +323,45 @@
     <div class="row mt"><span class="b">Batal</span><span class="b ok l" style="flex:1">Bayar Rp 937.500</span></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Satu transaksi atomik: nota, item, pembayaran, dan stok. Stok kurang diblokir.</li><li>Kembalian hanya dari pembayaran tunai. Hanya tunai yang masuk hitungan kas shift.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Satu transaksi atomik: nota, item, pembayaran, dan stok. Stok kurang diblokir.</li><li>Kembalian hanya dari pembayaran tunai. Hanya tunai yang masuk hitungan kas shift.</li><li>Metode COD ada di baris metode (lihat Pembayaran COD).</li></ul></details>
+</section>
+
+<!-- 13a PEMBAYARAN COD -->
+<section class="scr" id="bayarcod" data-group="Penjualan" data-nav="Pembayaran COD" data-title="Pembayaran COD" data-sub="Sisa tagihan dibayar saat barang diantar. Surat jalan wajib dan dibuat bersama nota." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal" style="max-width:520px">
+    <div class="row"><h3 style="flex:1">Pembayaran</h3></div>
+    <div class="total" style="margin:6px 0 12px">Rp 937.500</div>
+    <div class="row" style="gap:8px;margin-bottom:8px"><div class="in sel" style="width:120px">Tunai</div><div class="in grow">Rp 300.000</div></div>
+    <div class="row" style="gap:8px;margin-bottom:12px"><div class="in sel" style="width:120px">COD</div><div class="in grow">Rp 637.500</div><span class="b s g"><svg class="ic s"><use href="#i-x"/></svg></span></div>
+    <div class="card flat" style="padding:12px 16px;margin-bottom:12px"><b style="font-size:13px">COD: surat jalan dibuat bersama nota ini</b>
+      <div class="f"><span>Nama penerima</span><div class="in">Pak Budi</div></div>
+      <div class="f"><span>Alamat pengantaran</span><div class="in">Jl. Mawar 5, Kota</div></div>
+      <div class="g2"><div class="f"><span>Telepon</span><div class="in">0812 3456 7890</div></div><div class="f"><span>No. kendaraan</span><div class="in">B 1234 XY</div></div></div></div>
+    <div class="row mt"><span class="b">Batal</span><span class="b ok l" style="flex:1">Simpan Nota COD</span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>COD boleh sebagian: DP dibayar sekarang, sisanya COD. COD hanya satu baris dan jumlahnya harus tepat sisa tagihan.</li><li>Nota COD tidak bisa disimpan tanpa penerima dan alamat. Setelah disimpan, dialog nota selesai menampilkan tombol Cetak Surat Jalan.</li><li>COD tidak masuk laci, jadi tidak memengaruhi tunai seharusnya.</li></ul></details>
+</section>
+
+<!-- 13c COD DI KASIR -->
+<section class="scr" id="codkasir" data-group="Penjualan" data-nav="COD di Kasir" data-title="COD di Kasir" data-sub="Nota COD yang belum diantar, dari semua hari. Tandai diantar atau void." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal" style="max-width:560px">
+    <h3>Nota COD yang belum diantar</h3>
+    <div class="list mt2">
+      <div><span class="t"><b>INV/MU/K1/2610/0125</b><small>25 Okt · Pak Budi · Dalam perjalanan · DP 300.000</small></span><b>637.500</b></div>
+      <div class="row" style="gap:6px;margin:4px 0 8px"><span class="b s p">Sudah diantar</span><span class="b s bad">Void</span></div>
+      <div><span class="t"><b>INV/MU/K1/2610/0121</b><small>24 Okt · Bu Rina · Kembali</small></span><b>210.000</b></div>
+      <div class="row" style="gap:6px;margin:4px 0 8px"><span class="b s bad">Void</span></div>
+    </div>
+    <div class="card flat mt" style="padding:12px 16px"><b style="font-size:13px">Void nota INV/MU/K1/2610/0121?</b>
+      <div class="f"><span>Alasan void</span><div class="in">Pelanggan tidak mau menerima</div></div>
+      <div class="mute" style="font-size:12.5px">Barang kembali ke stok. DP tunai dikembalikan dari laci shift Anda; DP non tunai butuh rekening penerima.</div></div>
+    <div class="row mt2"><span class="sp"></span><span class="b">Tutup</span><span class="b bad">Void Nota</span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Void hanya untuk nota COD yang barangnya belum diterima pelanggan, kapan pun nota dibuat. Alasan wajib; surat jalan yang masih berjalan ikut dibatalkan.</li><li>Kasir dan Admin bisa memvoid. Admin juga dari halaman nota. Void dicatat di hari void dan muncul di Tutup Hari.</li><li>Barang yang sudah diantar dan diterima tidak bisa di-void: pakai Retur.</li></ul></details>
 </section>
 
 <!-- 13b NOTA SELESAI -->
@@ -646,7 +684,7 @@
 <div class="bd full" style="background:var(--bg)">
   <div class="scrim"><div class="modal" style="max-width:520px">
     <h3>Tutup shift</h3>
-    <div class="sum mt2"><div><span>Jumlah nota</span><span>14</span></div><div><span>Total penjualan</span><span>4.850.000</span></div><div><span>Tunai (sudah dikurangi kembalian dan retur tunai)</span><span>3.100.000</span></div><div><span>Transfer</span><span>900.000</span></div><div><span>QRIS</span><span>700.000</span></div><div><span>EDC</span><span>0</span></div><div><span>Retur disetujui</span><span>450.000</span></div><div><span>Retur tunai</span><span>150.000</span></div><div><span>Pengeluaran dari laci (sudah mengurangi tunai)</span><span>120.000</span></div><div><span>Modal kas awal</span><span>500.000</span></div><div class="t"><span>Tunai seharusnya di laci</span><span>3.480.000</span></div></div>
+    <div class="sum mt2"><div><span>Jumlah nota</span><span>14</span></div><div><span>Total penjualan</span><span>4.850.000</span></div><div><span>Tunai (sudah dikurangi kembalian dan retur tunai)</span><span>3.100.000</span></div><div><span>Transfer</span><span>900.000</span></div><div><span>QRIS</span><span>700.000</span></div><div><span>EDC</span><span>0</span></div><div><span>Retur disetujui</span><span>450.000</span></div><div><span>Retur tunai</span><span>150.000</span></div><div><span>COD sudah diantar (3 nota)</span><span>1.450.000</span></div><div><span>COD belum diantar (2 nota)</span><span>847.500</span></div><div><span>Pengeluaran dari laci (sudah mengurangi tunai)</span><span>120.000</span></div><div><span>Modal kas awal</span><span>500.000</span></div><div class="t"><span>Tunai seharusnya di laci</span><span>3.480.000</span></div></div>
     <div class="g2 mt"><div class="f"><span>Tunai yang dihitung</span><div class="in big">3.470.000</div></div><div class="f"><span>Selisih</span><div class="in big" style="color:var(--bad)">−10.000</div></div></div>
     <div class="f"><span>Catatan selisih (wajib)</span><div class="in">Kembalian kurang Rp 10.000</div></div>
     <div class="tip"><svg class="ic s"><use href="#i-wallet"/></svg><span>Modal 500.000 tinggal di laci · <b>setoran Rp 3.090.000</b></span></div>
@@ -714,7 +752,7 @@
       <div class="b bad w l"><svg class="ic"><use href="#i-lock"/></svg>Tutup Hari &amp; Kunci Transaksi</div>
     </div>
     <div>
-      <div class="card"><h4>Ringkasan</h4><div class="sum"><div><span>Nota</span><span>61</span></div><div><span>Tunai</span><span>4.300.000</span></div><div><span>Transfer</span><span>1.650.000</span></div><div><span>QRIS</span><span>720.000</span></div><div><span>Retur &amp; refund</span><span>−250.000</span></div><div><span>Pengeluaran laci</span><span>−120.000</span></div><div class="t"><span>Total penjualan</span><span>6.670.000</span></div></div></div>
+      <div class="card"><h4>Ringkasan</h4><div class="sum"><div><span>Nota</span><span>61</span></div><div><span>Tunai</span><span>4.300.000</span></div><div><span>Transfer</span><span>1.650.000</span></div><div><span>QRIS</span><span>720.000</span></div><div><span>Retur &amp; refund</span><span>−250.000</span></div><div><span>COD (ditagih saat diantar)</span><span>847.500</span></div><div><span>Void hari ini (1 nota)</span><span>−210.000</span></div><div><span>Pengeluaran laci</span><span>−120.000</span></div><div class="t"><span>Total penjualan</span><span>6.670.000</span></div></div></div>
       <div class="card flat mt"><div class="mute" style="font-size:12.5px;margin-bottom:6px">Riwayat</div><div class="row" style="gap:6px"><span class="c ok">23 Okt · Ditutup</span><span class="c ok">22 Okt · Ditutup</span><span class="c warn">21 Okt · Dibuka kembali</span></div>
         <div class="row mt2" style="gap:6px"><span class="b s p"><svg class="ic s"><use href="#i-printer"/></svg>Cetak Laporan Harian</span><span class="b s bad">Buka Kembali</span><span class="mute" style="font-size:12px">setelah ditutup</span></div></div>
     </div>

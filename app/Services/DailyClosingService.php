@@ -34,7 +34,7 @@ use Illuminate\Support\Facades\DB;
  * What a day holds follows the shifts opened on it: the receipts and expenses carry the shift's business date, and a
  * return belongs to the day of the shift it was made in (a return of an old receipt is booked on the day it is made).
  *
- * @phpstan-type Figures array{shifts_count: int, sales_count: int, total_sales: string, sales_cash: string, sales_transfer: string, sales_qris: string, sales_edc: string, total_returns: string, refunds_cash: string, expenses_drawer: string, expenses_other: string, total_expected_cash: string, total_counted_cash: string, total_cash_difference: string, total_deposit: string}
+ * @phpstan-type Figures array{shifts_count: int, sales_count: int, total_sales: string, sales_cash: string, sales_transfer: string, sales_qris: string, sales_edc: string, sales_cod: string, total_returns: string, refunds_cash: string, voids_count: int, total_voids: string, expenses_drawer: string, expenses_other: string, total_expected_cash: string, total_counted_cash: string, total_cash_difference: string, total_deposit: string}
  * @phpstan-type Checklist array{can_close: bool, open_shifts: list<array{label: string, cashier_name: string, show_url: string}>, pending_differences: list<array{label: string, amount: string, show_url: string}>, pending_return_count: int, unfinished_delivery_note_count: int}
  */
 class DailyClosingService
@@ -110,6 +110,7 @@ class DailyClosingService
             'shifts_count' => CashShift::query()->where('business_date', $dateText)->count(),
             ...$this->salesFigures($dateText),
             ...$this->returnFigures($date),
+            ...$this->voidFigures($dateText),
             ...$this->expenseFigures($dateText),
             ...$this->cashFigures($dateText),
         ];
@@ -196,43 +197,99 @@ class DailyClosingService
     }
 
     /**
-     * @return array{sales_count: int, total_sales: string, sales_cash: string, sales_transfer: string, sales_qris: string, sales_edc: string}
+     * Sales are counted by their total, but what came in per method also holds the deposits of receipts that were
+     * voided since (the money did come in, and goes back out as a refund below). COD is not money in: it is what
+     * customers still owe on delivery.
+     *
+     * @return array{sales_count: int, total_sales: string, sales_cash: string, sales_transfer: string, sales_qris: string, sales_edc: string, sales_cod: string}
      */
     private function salesFigures(string $dateText): array
     {
         $completedSalesQuery = Sale::query()->where('business_date', $dateText)->where('status', SaleStatus::Completed);
+        $moneyTakenInQuery = Sale::query()->where('business_date', $dateText)->whereIn('status', [SaleStatus::Completed, SaleStatus::Voided]);
 
         $receivedByMethod = SalePayment::query()
             ->join('sales', 'sales.id', '=', 'sale_payments.sale_id')
             ->where('sales.business_date', $dateText)
-            ->where('sales.status', SaleStatus::Completed)
+            ->whereIn('sales.status', [SaleStatus::Completed, SaleStatus::Voided])
             ->groupBy('sale_payments.method')
             ->selectRaw('sale_payments.method as method, sum(sale_payments.amount) as amount')
             ->pluck('amount', 'method');
 
         $receivedAmountOf = fn (PaymentMethod $method): BigDecimal => BigDecimal::of((string) ($receivedByMethod[$method->value] ?? 0));
 
+        $codOfCompletedSales = SalePayment::query()
+            ->join('sales', 'sales.id', '=', 'sale_payments.sale_id')
+            ->where('sales.business_date', $dateText)
+            ->where('sales.status', SaleStatus::Completed)
+            ->where('sale_payments.method', PaymentMethod::Cod)
+            ->sum('sale_payments.amount');
+
         return [
             'sales_count' => (clone $completedSalesQuery)->count(),
             'total_sales' => $this->money((clone $completedSalesQuery)->sum('total')),
-            'sales_cash' => $this->money($receivedAmountOf(PaymentMethod::Cash)->minus((string) (clone $completedSalesQuery)->sum('change_amount'))),
+            'sales_cash' => $this->money($receivedAmountOf(PaymentMethod::Cash)->minus((string) $moneyTakenInQuery->sum('change_amount'))),
             'sales_transfer' => $this->money($receivedAmountOf(PaymentMethod::Transfer)),
             'sales_qris' => $this->money($receivedAmountOf(PaymentMethod::Qris)),
             'sales_edc' => $this->money($receivedAmountOf(PaymentMethod::Edc)),
+            'sales_cod' => $this->money($codOfCompletedSales),
         ];
     }
 
     /**
+     * Cash refunds are the cash returns of the day's shifts plus the cash deposits given back for voided receipts.
+     *
      * @return array{total_returns: string, refunds_cash: string}
      */
     private function returnFigures(CarbonInterface $date): array
     {
         $completedReturnsQuery = SaleReturn::query()->whereIn('cash_shift_id', $this->shiftIdsOf($date))->where('status', SaleReturnStatus::Completed);
+        $voidCashRefunds = Sale::query()->whereIn('void_cash_shift_id', $this->shiftIdsOf($date))->sum('void_cash_refund');
 
         return [
             'total_returns' => $this->money((clone $completedReturnsQuery)->sum('credit_amount')),
-            'refunds_cash' => $this->money((clone $completedReturnsQuery)->where('refund_method', PaymentMethod::Cash)->sum('refund_amount')),
+            'refunds_cash' => $this->money(BigDecimal::of((string) (clone $completedReturnsQuery)->where('refund_method', PaymentMethod::Cash)->sum('refund_amount'))->plus((string) $voidCashRefunds)),
         ];
+    }
+
+    /**
+     * The receipts voided on the day, whatever day they were sold: a COD sale made yesterday and refused at the door
+     * today is a void of today. The sales figures of the day it was sold no longer hold it.
+     *
+     * @return array{voids_count: int, total_voids: string}
+     */
+    private function voidFigures(string $dateText): array
+    {
+        $voidedOnDayQuery = Sale::query()->where('status', SaleStatus::Voided)->whereDate('voided_at', $dateText);
+
+        return [
+            'voids_count' => (clone $voidedOnDayQuery)->count(),
+            'total_voids' => $this->money((clone $voidedOnDayQuery)->sum('total')),
+        ];
+    }
+
+    /**
+     * The receipts voided on the day, for the day's page and report.
+     *
+     * @return list<array{number: string, sold_on: string, customer_name: string|null, total: string, reason: string|null, voided_by_name: string|null, show_url: string}>
+     */
+    public function voidsOf(CarbonInterface $date): array
+    {
+        return Sale::query()
+            ->where('status', SaleStatus::Voided)
+            ->whereDate('voided_at', $date->toDateString())
+            ->orderBy('voided_at')
+            ->get()
+            ->map(fn (Sale $sale): array => [
+                'number' => $sale->number,
+                'sold_on' => $sale->business_date->toDateString(),
+                'customer_name' => $sale->customer_name,
+                'total' => $sale->total,
+                'reason' => $sale->void_reason,
+                'voided_by_name' => $sale->voided_by_name,
+                'show_url' => route('tenant.sales.show', ['tenant' => tenant('code'), 'sale' => $sale->id]),
+            ])
+            ->all();
     }
 
     /**

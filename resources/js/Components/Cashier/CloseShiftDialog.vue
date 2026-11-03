@@ -5,7 +5,7 @@ import { formatRupiah } from '../../Composables/useMoneyFormat';
 
 const props = defineProps({
     modelValue: { type: Boolean, required: true },
-    /** @type {{sale_count: number, total_sales: string, returns_total: string, cash_refunds: string, drawer_expenses: string, payments: Record<string, string>, opening_cash: string, expected_cash: string}} */
+    /** @type {{sale_count: number, total_sales: string, returns_total: string, cash_refunds: string, void_cash_refunds: string, cod: {delivered: {count: number, amount: string}, undelivered: {count: number, amount: string}}, drawer_expenses: string, payments: Record<string, string>, opening_cash: string, expected_cash: string}} */
     summary: { type: Object, required: true },
     paymentMethods: { type: Array, required: true },
     isProcessing: { type: Boolean, default: false },
@@ -54,6 +54,12 @@ function confirm() {
                     </div>
                     <div v-if="Number(summary.returns_total) > 0"><dt>Retur disetujui</dt><dd>{{ formatRupiah(summary.returns_total) }}</dd></div>
                     <div v-if="Number(summary.cash_refunds) > 0"><dt>Retur tunai (sudah mengurangi tunai)</dt><dd>{{ formatRupiah(summary.cash_refunds) }}</dd></div>
+                    <div v-if="Number(summary.void_cash_refunds) > 0"><dt>DP void dikembalikan tunai (sudah mengurangi tunai)</dt><dd>{{ formatRupiah(summary.void_cash_refunds) }}</dd></div>
+                    <template v-if="summary.cod.delivered.count + summary.cod.undelivered.count > 0">
+                        <div class="close__cod"><dt>COD sudah diantar ({{ summary.cod.delivered.count }} nota)</dt><dd>{{ formatRupiah(summary.cod.delivered.amount) }}</dd></div>
+                        <div class="close__cod close__cod--open"><dt>COD belum diantar ({{ summary.cod.undelivered.count }} nota)</dt><dd>{{ formatRupiah(summary.cod.undelivered.amount) }}</dd></div>
+                        <small class="close__cod-note">COD tidak masuk laci, jadi tidak memengaruhi tunai seharusnya.</small>
+                    </template>
                     <div v-if="Number(summary.drawer_expenses) > 0"><dt>Pengeluaran dari laci (sudah mengurangi tunai)</dt><dd>{{ formatRupiah(summary.drawer_expenses) }}</dd></div>
                     <div><dt>Modal kas awal</dt><dd>{{ formatRupiah(summary.opening_cash) }}</dd></div>
                     <div class="close__expected"><dt>Tunai seharusnya di laci</dt><dd>{{ formatRupiah(summary.expected_cash) }}</dd></div>
@@ -115,6 +121,22 @@ function confirm() {
     border-top: 1px solid var(--app-line);
     color: var(--app-ink);
     font-weight: 700;
+}
+
+.close__summary .close__cod {
+    margin-top: 2px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: #f1f5ff;
+}
+
+.close__summary .close__cod--open {
+    background: #fff4e0;
+}
+
+.close__cod-note {
+    color: var(--app-mute);
+    font-size: 12px;
 }
 
 .close__form {

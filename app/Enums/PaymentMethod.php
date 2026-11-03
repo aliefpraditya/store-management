@@ -9,6 +9,7 @@ enum PaymentMethod: string
     case Qris = 'qris';
     case Edc = 'edc';
     case ReturnCredit = 'return_credit';
+    case Cod = 'cod';
 
     public function label(): string
     {
@@ -18,17 +19,38 @@ enum PaymentMethod: string
             self::Qris => 'QRIS',
             self::Edc => 'EDC',
             self::ReturnCredit => 'Kredit retur',
+            self::Cod => 'COD',
         };
     }
 
     /**
-     * Methods a cashier picks at the payment screen; return credit only comes from an exchange.
+     * Methods money can come in or go back by: what a refund, an exchange payment or the drawer summary works with.
+     * Return credit only comes from an exchange, and COD is not money received yet.
      *
      * @return list<self>
      */
     public static function forCashier(): array
     {
         return [self::Cash, self::Transfer, self::Qris, self::Edc];
+    }
+
+    /**
+     * Methods a cashier can pick for a sale at the payment screen: the money methods and COD, which is paid when the
+     * goods are delivered.
+     *
+     * @return list<self>
+     */
+    public static function forSale(): array
+    {
+        return [...self::forCashier(), self::Cod];
+    }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    public static function saleOptions(): array
+    {
+        return array_map(fn (self $method): array => ['value' => $method->value, 'label' => $method->label()], self::forSale());
     }
 
     /**

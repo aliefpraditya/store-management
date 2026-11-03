@@ -30,7 +30,20 @@ class SaleDetailResource extends JsonResource
             'status_label' => $this->status->label(),
             'print_count' => $this->print_count,
             'void_reason' => $this->void_reason,
+            'voided_by_name' => $this->voided_by_name,
             'voided_at' => $this->voided_at?->toIso8601String(),
+            'void_cash_refund' => $this->void_cash_refund,
+            'void_refund_account' => $this->void_refund_account,
+            'is_cod' => $this->isCod(),
+            'cod_amount' => $this->codAmount(),
+            'delivery_notes' => $this->relationLoaded('deliveryNotes')
+                ? $this->deliveryNotes->map(fn ($note): array => [
+                    'number' => $note->number,
+                    'status' => $note->status->value,
+                    'status_label' => $note->status->label(),
+                    'show_url' => route('tenant.delivery-notes.show', ['tenant' => tenant('code'), 'delivery_note' => $note->id]),
+                ])->values()->all()
+                : [],
             'subtotal' => $this->subtotal,
             'discount_total' => $this->discount_total,
             'total' => $this->total,

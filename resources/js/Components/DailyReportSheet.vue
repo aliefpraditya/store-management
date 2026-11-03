@@ -32,6 +32,7 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
                 <tr><td>Transfer</td><td>{{ formatRupiah(report.figures.sales_transfer) }}</td></tr>
                 <tr><td>QRIS</td><td>{{ formatRupiah(report.figures.sales_qris) }}</td></tr>
                 <tr><td>EDC</td><td>{{ formatRupiah(report.figures.sales_edc) }}</td></tr>
+                <tr><td>COD (ditagih saat diantar)</td><td>{{ formatRupiah(report.figures.sales_cod) }}</td></tr>
                 <tr class="daily-print__total"><td>Total penjualan</td><td>{{ formatRupiah(report.figures.total_sales) }}</td></tr>
             </tbody>
         </table>
@@ -40,7 +41,8 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
         <table class="daily-print__rows">
             <tbody>
                 <tr><td>Retur disetujui</td><td>{{ formatRupiah(report.figures.total_returns) }}</td></tr>
-                <tr><td>Refund tunai</td><td>{{ formatRupiah(report.figures.refunds_cash) }}</td></tr>
+                <tr><td>Void ({{ report.figures.voids_count }} nota)</td><td>{{ formatRupiah(report.figures.total_voids) }}</td></tr>
+                <tr><td>Pengembalian tunai (retur dan DP void)</td><td>{{ formatRupiah(report.figures.refunds_cash) }}</td></tr>
                 <tr><td>Pengeluaran dari laci</td><td>{{ formatRupiah(report.figures.expenses_drawer) }}</td></tr>
                 <tr><td>Pengeluaran sumber lain</td><td>{{ formatRupiah(report.figures.expenses_other) }}</td></tr>
             </tbody>
@@ -72,6 +74,18 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
                 </tr>
             </tfoot>
         </table>
+
+        <template v-if="report.voids.length > 0">
+            <h2>Nota void pada hari ini</h2>
+            <table class="daily-print__rows">
+                <tbody>
+                    <tr v-for="sale in report.voids" :key="sale.number">
+                        <td>{{ sale.number }} · dijual {{ sale.sold_on }}<template v-if="sale.reason"> · {{ sale.reason }}</template></td>
+                        <td>{{ formatRupiah(sale.total) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </template>
 
         <p v-if="report.notes" class="daily-print__notes">Catatan penutupan: {{ report.notes }}</p>
         <p class="daily-print__closed">Ditutup oleh {{ report.closed_by_name }} · {{ dateTimeFormat.format(new Date(report.closed_at)) }}</p>

@@ -3,13 +3,17 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\SaleStatus;
+use App\Exceptions\CodSaleException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\DateRangeRequest;
+use App\Http\Requests\Tenant\VoidSaleRequest;
 use App\Http\Resources\SaleDetailResource;
 use App\Http\Resources\SaleHistoryRowResource;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Services\SaleHistoryService;
+use App\Services\SaleVoidService;
+use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -21,7 +25,10 @@ class SaleHistoryController extends Controller
 {
     private const PER_PAGE = 25;
 
-    public function __construct(private readonly SaleHistoryService $saleHistoryService) {}
+    public function __construct(
+        private readonly SaleHistoryService $saleHistoryService,
+        private readonly SaleVoidService $saleVoids,
+    ) {}
 
     public function index(DateRangeRequest $request): Response
     {
@@ -48,13 +55,31 @@ class SaleHistoryController extends Controller
         /** @var Store $store */
         $store = tenant();
 
+        $sale->load(['items', 'payments', 'register', 'deliveryNotes']);
+
         return Inertia::render('Tenant/Sales/Show', [
-            'sale' => SaleDetailResource::make($sale->load(['items', 'payments', 'register']))->resolve(),
+            'sale' => SaleDetailResource::make($sale)->resolve(),
+            'void_blocker' => $sale->isCod() ? $this->saleVoids->voidBlocker($sale)?->getMessage() : null,
             'urls' => [
                 'index' => route('tenant.sales.index', ['tenant' => $store->code]),
                 'new_delivery_note' => route('tenant.delivery-notes.create', ['tenant' => $store->code, 'sale' => $sale->id]),
                 'new_return' => route('tenant.returns.create', ['tenant' => $store->code, 'sale' => $sale->id]),
+                'void' => route('tenant.sales.void', ['tenant' => $store->code, 'sale' => $sale->id]),
             ],
         ]);
+    }
+
+    /**
+     * Voids a COD sale, whichever day it was made.
+     */
+    public function void(VoidSaleRequest $request, Sale $sale): RedirectResponse
+    {
+        try {
+            $this->saleVoids->void($sale, $request->user(), $request->validated('reason'), $request->validated('refund_account'));
+        } catch (CodSaleException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return back()->with('success', 'Nota di-void. Barangnya kembali ke stok.');
     }
 }

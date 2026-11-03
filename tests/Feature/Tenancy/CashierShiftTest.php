@@ -80,8 +80,9 @@ class CashierShiftTest extends TestCase
             ->where('registers.0.code', 'K1')
             ->where('registers.0.fixed_opening_cash', '500000.00')
             ->where('registers.0.busy_with', null)
-            ->has('payment_methods', 4)
+            ->has('payment_methods', 5)
             ->where('payment_methods.0', ['value' => 'cash', 'label' => 'Tunai'])
+            ->where('payment_methods.4', ['value' => 'cod', 'label' => 'COD'])
             ->where('can_leave_to_dashboard', false));
     }
 

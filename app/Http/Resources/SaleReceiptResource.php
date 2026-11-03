@@ -31,6 +31,15 @@ class SaleReceiptResource extends JsonResource
             'change_amount' => $this->change_amount,
             'items' => SaleDetailResource::itemsOf($this->resource),
             'payments' => SaleDetailResource::paymentsOf($this->resource),
+            'is_cod' => $this->isCod(),
+            'cod_amount' => $this->codAmount(),
+            'delivery_notes' => $this->relationLoaded('deliveryNotes')
+                ? $this->deliveryNotes->map(fn ($note): array => [
+                    'id' => $note->id,
+                    'number' => $note->number,
+                    'print_url' => route('tenant.cashier.delivery-notes.print', ['tenant' => tenant('code'), 'delivery_note' => $note->id]),
+                ])->values()->all()
+                : [],
         ];
     }
 }

@@ -10,6 +10,7 @@ import ShiftClosedDialog from '../../../Components/Cashier/ShiftClosedDialog.vue
 import DeliveryNoteDialog from '../../../Components/Cashier/DeliveryNoteDialog.vue';
 import ReturnDialog from '../../../Components/Cashier/ReturnDialog.vue';
 import ReturnLookupDialog from '../../../Components/Cashier/ReturnLookupDialog.vue';
+import CodDialog from '../../../Components/Cashier/CodDialog.vue';
 import ExpenseDialog from '../../../Components/Cashier/ExpenseDialog.vue';
 import ReceiptHistoryDialog from '../../../Components/Cashier/ReceiptHistoryDialog.vue';
 import ShiftOpenPanel from '../../../Components/Cashier/ShiftOpenPanel.vue';
@@ -59,6 +60,7 @@ const isReturnLookupOpen = ref(false);
 const isReturnOpen = ref(false);
 const returnReceipt = ref(null);
 const isExpenseOpen = ref(false);
+const isCodOpen = ref(false);
 let saleUuid = newUuid();
 
 const timeFormat = new Intl.DateTimeFormat('id-ID', { timeStyle: 'short' });
@@ -212,10 +214,10 @@ function clearCart() {
     });
 }
 
-function submitSale({ customer_name, payments }) {
+function submitSale({ customer_name, payments, delivery_note }) {
     router.post(
         props.urls.sales,
-        { client_uuid: saleUuid, customer_name, items: cart.saleItemsPayload.value, payments },
+        { client_uuid: saleUuid, customer_name, items: cart.saleItemsPayload.value, payments, delivery_note },
         {
             preserveScroll: true,
             onStart: () => (isPaying.value = true),
@@ -309,7 +311,7 @@ function onKeydown(event) {
 
     const shortcuts = { F9: openPayment, F8: clearCart, F2: () => searchInput.value?.focus() };
 
-    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value && !isReturnLookupOpen.value && !isReturnOpen.value && !isExpenseOpen.value) {
+    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value && !isReturnLookupOpen.value && !isReturnOpen.value && !isExpenseOpen.value && !isCodOpen.value) {
         event.preventDefault();
         shortcuts[event.key]();
     }
@@ -378,6 +380,7 @@ onBeforeUnmount(() => {
                     <div class="till__bar-actions">
                         <q-btn v-if="shift" flat no-caps dense icon="receipt_long" label="Riwayat Nota" @click="isReceiptsOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense icon="undo" label="Retur" @click="isReturnLookupOpen = true" />
+                        <q-btn v-if="shift" flat no-caps dense icon="local_shipping" label="COD" @click="isCodOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense icon="remove_circle_outline" label="Pengeluaran" @click="isExpenseOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense color="negative" icon="lock_clock" label="Tutup Shift" @click="openClose">
                             <q-tooltip>Tutup shift dulu untuk keluar</q-tooltip>
@@ -487,13 +490,14 @@ onBeforeUnmount(() => {
         </q-page-container>
 
         <PaymentDialog v-model="isPaymentOpen" :total="cart.total.value" :payment-methods="payment_methods" :is-processing="isPaying" @confirm="submitSale" />
-        <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :payment-methods="payment_methods" :is-processing="isClosing" @confirm="closeShift" />
+        <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :payment-methods="payment_methods.filter((method) => method.value !== 'cod')" :is-processing="isClosing" @confirm="closeShift" />
         <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" @delivery="openDelivery" />
         <ShiftClosedDialog v-model="isShiftClosedOpen" :shift-totals="closed_shift" />
         <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" @return="openReturn" />
         <DeliveryNoteDialog v-model="isDeliveryOpen" :receipt="deliveryReceipt" />
         <ReturnLookupDialog v-if="shift" v-model="isReturnLookupOpen" :lookup-url="urls.return_lookup" @found="openReturn" />
         <ReturnDialog v-model="isReturnOpen" :receipt="returnReceipt" :products-url="urls.products" @saved="refreshShiftSummary" />
+        <CodDialog v-if="shift" v-model="isCodOpen" :list-url="urls.cod" @changed="refreshShiftSummary" />
         <ExpenseDialog v-if="shift" v-model="isExpenseOpen" :list-url="urls.expenses" :store-url="urls.expenses_store" :expected-cash="summary?.expected_cash ?? null" @saved="refreshShiftSummary" />
     </q-layout>
 </template>

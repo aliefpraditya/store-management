@@ -50,6 +50,23 @@ enum DeliveryNoteStatus: string
     }
 
     /**
+     * Some of the goods reached the customer, so a COD sale with such a note counts as delivered. A note that came
+     * back whole (Kembali) delivered nothing.
+     */
+    public function hasDeliveredGoods(): bool
+    {
+        return $this === self::Delivered || $this === self::PartiallyDelivered;
+    }
+
+    /**
+     * @return list<self>
+     */
+    public static function withDeliveredGoods(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $status): bool => $status->hasDeliveredGoods()));
+    }
+
+    /**
      * @return list<self>
      */
     public static function unfinished(): array

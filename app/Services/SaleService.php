@@ -6,15 +6,18 @@ use App\Enums\CashShiftStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
+use App\Exceptions\DeliveryNoteException;
 use App\Exceptions\SaleException;
 use App\Models\CashShift;
 use App\Models\ProductUnit;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\User;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Rings up a sale in one transaction: the receipt with its lines and payments, and the stock taken from the
@@ -23,7 +26,8 @@ use Illuminate\Support\Facades\DB;
  *
  * @phpstan-type SaleLine array{product_unit_id: int, quantity: numeric-string|float|int}
  * @phpstan-type SalePaymentInput array{method: string, amount: numeric-string|float|int, reference?: string|null}
- * @phpstan-type SaleData array{client_uuid: string, customer_name?: string|null, items: list<SaleLine>, payments: list<SalePaymentInput>}
+ * @phpstan-type DeliveryNoteInput array{recipient_name?: string|null, recipient_address?: string|null, recipient_phone?: string|null, driver_name?: string|null, vehicle_number?: string|null, notes?: string|null}
+ * @phpstan-type SaleData array{client_uuid: string, customer_name?: string|null, items: list<SaleLine>, payments: list<SalePaymentInput>, delivery_note?: DeliveryNoteInput|null}
  */
 class SaleService
 {
@@ -32,6 +36,7 @@ class SaleService
     public function __construct(
         private readonly StockService $stockLedger,
         private readonly DocumentNumberGenerator $documentNumbers,
+        private readonly DeliveryNoteService $deliveryNotes,
     ) {}
 
     /**
@@ -65,9 +70,43 @@ class SaleService
             $sale = $this->recordReceipt($shift, $cashier, $saleInput, $total, $paidTotal, $changeAmount);
             $this->recordLines($sale, $lines, $cashier);
             $this->recordPayments($sale, $saleInput['payments']);
+            $this->recordDeliveryNoteOfCod($sale->load('items'), $cashier, $saleInput);
 
-            return $sale->load(['items', 'payments']);
+            return $sale->load(['items', 'payments', 'deliveryNotes']);
         }, StockService::DEADLOCK_ATTEMPTS);
+    }
+
+    /**
+     * A COD sale cannot leave without its delivery note: it is made in the same transaction as the receipt, for
+     * everything on it, so a note cannot be forgotten and a note cannot exist without its receipt.
+     *
+     * @param  SaleData  $saleInput
+     *
+     * @throws SaleException
+     */
+    private function recordDeliveryNoteOfCod(Sale $sale, User $cashier, array $saleInput): void
+    {
+        $isCod = collect($saleInput['payments'])->contains(fn (array $payment): bool => $payment['method'] === PaymentMethod::Cod->value);
+
+        if (! $isCod) {
+            return;
+        }
+
+        $noteInput = $saleInput['delivery_note'] ?? [];
+
+        if (blank($noteInput['recipient_name'] ?? null) || blank($noteInput['recipient_address'] ?? null)) {
+            throw SaleException::deliveryNoteRequired();
+        }
+
+        try {
+            $this->deliveryNotes->create($sale, $cashier, [
+                ...$noteInput,
+                'client_uuid' => (string) Str::uuid(),
+                'items' => $sale->items->map(fn (SaleItem $saleItem): array => ['sale_item_id' => $saleItem->id, 'quantity' => $saleItem->quantity])->all(),
+            ]);
+        } catch (DeliveryNoteException $exception) {
+            throw new SaleException($exception->getMessage(), previous: $exception);
+        }
     }
 
     /**
@@ -253,7 +292,9 @@ class SaleService
     }
 
     /**
-     * Checks the payments cover the total and that any change can come out of the cash received.
+     * Checks the payments cover the total and that any change can come out of the cash received. A COD payment counts
+     * as covering its part (it is paid on delivery), so it must be the one row that makes the payments add up to the
+     * total exactly.
      *
      * @param  list<SalePaymentInput>  $payments
      * @return array{0: BigDecimal, 1: BigDecimal} paid total and change
@@ -264,6 +305,7 @@ class SaleService
     {
         $paidTotal = BigDecimal::zero();
         $cashReceived = BigDecimal::zero();
+        $codPaymentCount = 0;
 
         foreach ($payments as $payment) {
             $amount = BigDecimal::of((string) $payment['amount']);
@@ -272,10 +314,22 @@ class SaleService
             if ($payment['method'] === PaymentMethod::Cash->value) {
                 $cashReceived = $cashReceived->plus($amount);
             }
+
+            if ($payment['method'] === PaymentMethod::Cod->value) {
+                $codPaymentCount++;
+            }
+        }
+
+        if ($codPaymentCount > 1) {
+            throw SaleException::codMoreThanOnce();
         }
 
         if ($paidTotal->isLessThan($total)) {
-            throw SaleException::paymentTooLow($total);
+            throw $codPaymentCount === 1 ? SaleException::codMustBeTheRest() : SaleException::paymentTooLow($total);
+        }
+
+        if ($codPaymentCount === 1 && ! $paidTotal->isEqualTo($total)) {
+            throw SaleException::codMustBeTheRest();
         }
 
         $change = $paidTotal->minus($total);

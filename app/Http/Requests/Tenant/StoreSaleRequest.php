@@ -33,10 +33,25 @@ class StoreSaleRequest extends FormRequest
             'items.*.product_unit_id' => ['required', 'integer', Rule::exists('product_units', 'id')],
             'items.*.quantity' => ['required', 'numeric', 'gt:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'],
             'payments' => ['required', 'array', 'min:1'],
-            'payments.*.method' => ['required', Rule::in(array_map(fn (PaymentMethod $method): string => $method->value, PaymentMethod::forCashier()))],
+            'payments.*.method' => ['required', Rule::in(array_map(fn (PaymentMethod $method): string => $method->value, PaymentMethod::forSale()))],
             'payments.*.amount' => ['required', 'numeric', 'gt:0', 'max:'.self::MAX_AMOUNT, 'decimal:0,2'],
             'payments.*.reference' => ['nullable', 'string', 'max:255'],
+            'delivery_note' => ['nullable', 'array'],
+            'delivery_note.recipient_name' => [Rule::requiredIf($this->isCod(...)), 'nullable', 'string', 'max:255'],
+            'delivery_note.recipient_address' => [Rule::requiredIf($this->isCod(...)), 'nullable', 'string', 'max:1000'],
+            'delivery_note.recipient_phone' => ['nullable', 'string', 'max:255'],
+            'delivery_note.driver_name' => ['nullable', 'string', 'max:255'],
+            'delivery_note.vehicle_number' => ['nullable', 'string', 'max:255'],
+            'delivery_note.notes' => ['nullable', 'string', 'max:1000'],
         ];
+    }
+
+    /**
+     * A COD sale goes out with a delivery note, so who and where to deliver are asked at the same time.
+     */
+    private function isCod(): bool
+    {
+        return collect($this->input('payments'))->contains(fn (mixed $payment): bool => is_array($payment) && ($payment['method'] ?? null) === PaymentMethod::Cod->value);
     }
 
     /**
@@ -54,6 +69,8 @@ class StoreSaleRequest extends FormRequest
             'payments.*.method.in' => 'Metode pembayaran tidak valid.',
             'payments.*.amount.gt' => 'Jumlah pembayaran harus lebih dari 0.',
             'payments.*.amount.decimal' => 'Jumlah pembayaran maksimal 2 angka desimal.',
+            'delivery_note.recipient_name.required' => 'Nama penerima wajib diisi untuk nota COD.',
+            'delivery_note.recipient_address.required' => 'Alamat pengantaran wajib diisi untuk nota COD.',
         ];
     }
 }

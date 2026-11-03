@@ -33,6 +33,7 @@ class DailyClosingResource extends JsonResource
             'figures' => [
                 'shifts_count' => $this->shifts_count,
                 'sales_count' => $this->sales_count,
+                'voids_count' => $this->voids_count,
                 ...collect(DailyClosing::MONEY_FIELDS)->mapWithKeys(fn (string $field): array => [$field => $this->{$field}])->all(),
             ],
             'show_url' => route('tenant.daily-closings.show', ['tenant' => tenant('code'), 'date' => $date]),

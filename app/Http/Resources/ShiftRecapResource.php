@@ -69,6 +69,8 @@ class ShiftRecapResource extends JsonResource
             'total_sales' => $this->summary['total_sales'],
             'returns_total' => $this->summary['returns_total'],
             'cash_refunds' => $this->summary['cash_refunds'],
+            'void_cash_refunds' => $this->summary['void_cash_refunds'],
+            'cod' => $this->summary['cod'],
             'drawer_expenses' => $this->summary['drawer_expenses'],
             'payments' => collect($this->summary['payments'])
                 ->map(fn (string $amount, string $method): array => ['method' => PaymentMethod::from($method)->label(), 'amount' => $amount])
