@@ -69,7 +69,7 @@ class OpenShiftLockTest extends TestCase
     {
         $this->openShiftThroughTheScreen($this->admin);
 
-        foreach (['tenant.dashboard', 'tenant.products.index', 'tenant.stock-opnames.index', 'tenant.stock-history.index', 'tenant.units.index'] as $route) {
+        foreach (['tenant.dashboard', 'tenant.products.index', 'tenant.stock-opnames.index', 'tenant.stock-history.index', 'tenant.settings.index'] as $route) {
             $this->actingAs($this->admin)->get($this->url($route))->assertOk();
         }
 

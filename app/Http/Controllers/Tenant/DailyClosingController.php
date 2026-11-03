@@ -10,8 +10,8 @@ use App\Http\Requests\Tenant\ReopenDailyClosingRequest;
 use App\Http\Resources\DailyClosingResource;
 use App\Models\CashShift;
 use App\Models\DailyClosing;
-use App\Models\Store;
 use App\Services\DailyClosingService;
+use App\Services\StoreSettingService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,7 +26,10 @@ class DailyClosingController extends Controller
 {
     private const DATE_FORMAT = 'Y-m-d';
 
-    public function __construct(private readonly DailyClosingService $closingService) {}
+    public function __construct(
+        private readonly DailyClosingService $closingService,
+        private readonly StoreSettingService $settings,
+    ) {}
 
     public function index(): RedirectResponse
     {
@@ -88,13 +91,11 @@ class DailyClosingController extends Controller
         $closing = $this->closingService->find($this->dayOf($date));
 
         abort_unless($closing?->status === DailyClosingStatus::Closed, 404);
-        /** @var Store $store */
-        $store = tenant();
 
         return Inertia::render('Tenant/Print/DailyReport', [
             'report' => [
                 ...DailyClosingResource::make($closing)->resolve(),
-                'store' => ['name' => $store->name, 'address' => $store->address, 'phone' => $store->phone],
+                'store' => $this->settings->letterhead(),
                 'shifts' => $this->shiftRowsOf($closing),
                 'voids' => $this->closingService->voidsOf($closing->business_date),
             ],

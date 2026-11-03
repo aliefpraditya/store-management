@@ -15,6 +15,7 @@ use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -37,6 +38,7 @@ class StockOpnameService
     public function __construct(
         private readonly StockService $stockLedger,
         private readonly DocumentNumberGenerator $documentNumbers,
+        private readonly StoreSettingService $settings,
     ) {}
 
     /**
@@ -221,8 +223,10 @@ class StockOpnameService
                 ? StockMovementType::OpeningBalance
                 : StockMovementType::OpnameAdjustment;
 
-            $countedItems = $opname->items()->with('product:id,cost_price')->whereNotNull('counted_quantity')->orderBy('product_id')->get();
+            $countedItems = $opname->items()->with('product:id,name,cost_price')->whereNotNull('counted_quantity')->orderBy('product_id')->get();
             $systemQuantities = $this->stockLedger->lockedQuantities($countedItems->pluck('product_id')->all(), $opname->warehouse_id);
+
+            $this->requireReasonsForLargeVariances($opname, $countedItems, $systemQuantities);
 
             foreach ($countedItems as $item) {
                 $systemQuantity = $systemQuantities[$item->product_id];
@@ -250,6 +254,35 @@ class StockOpnameService
 
             $opname->forceFill(['status' => StockOpnameStatus::Posted, 'approved_by' => $userId, 'posted_at' => now()])->save();
         }, StockService::DEADLOCK_ATTEMPTS);
+    }
+
+    /**
+     * A variance worth more than the store's limit (the variance times the last cost price) needs a reason on its row.
+     * Checked before anything is written, against the stock as it is locked now, so nothing is half posted.
+     *
+     * @param  Collection<int, StockOpnameItem>  $countedItems
+     * @param  array<int, string>  $systemQuantities  live quantity by product id
+     *
+     * @throws StockOpnameException
+     */
+    private function requireReasonsForLargeVariances(StockOpname $opname, Collection $countedItems, array $systemQuantities): void
+    {
+        $threshold = $this->settings->largeVarianceThreshold();
+
+        if ($threshold === null) {
+            return;
+        }
+
+        $namesWithoutReason = $countedItems
+            ->filter(fn (StockOpnameItem $item): bool => blank($item->reason)
+                && $opname->varianceOf($item->counted_quantity, $systemQuantities[$item->product_id])->abs()->multipliedBy($item->product->cost_price)->isGreaterThan($threshold))
+            ->map(fn (StockOpnameItem $item): string => $item->product->name)
+            ->values()
+            ->all();
+
+        if ($namesWithoutReason !== []) {
+            throw StockOpnameException::largeVarianceNeedsReason($namesWithoutReason, number_format((float) (string) $threshold, 0, ',', '.'));
+        }
     }
 
     /**

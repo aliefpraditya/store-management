@@ -16,7 +16,7 @@ const props = defineProps({
     /** The receipts voided on this day, whatever day they were sold. */
     voids: { type: Array, required: true },
     history: { type: Array, required: true },
-    canReopen: { type: Boolean, required: true },
+    can_reopen: { type: Boolean, required: true },
     urls: { type: Object, required: true },
 });
 
@@ -157,9 +157,9 @@ const printReport = () => window.open(props.closing.sheet_url, '_blank');
                     <p v-if="closing.notes" class="closed__notes"><small>Catatan penutupan</small>{{ closing.notes }}</p>
                     <div class="closed__actions">
                         <q-btn unelevated no-caps color="primary" icon="print" label="Cetak Laporan Harian" @click="printReport" />
-                        <q-btn v-if="canReopen" outline no-caps color="negative" icon="lock_open" label="Buka Kembali" @click="confirmReopen" />
+                        <q-btn v-if="can_reopen" outline no-caps color="negative" icon="lock_open" label="Buka Kembali" @click="confirmReopen" />
                     </div>
-                    <small v-if="!canReopen" class="closed__hint">Hanya Super Admin yang bisa membuka hari yang sudah ditutup.</small>
+                    <small v-if="!can_reopen" class="closed__hint">Hanya Super Admin yang bisa membuka hari yang sudah ditutup.</small>
                 </section>
 
                 <section v-else class="card">

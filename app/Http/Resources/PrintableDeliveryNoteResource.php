@@ -3,7 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\DeliveryNote;
-use App\Models\Store;
+use App\Services\StoreSettingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -25,14 +25,11 @@ class PrintableDeliveryNoteResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        /** @var Store $store */
-        $store = tenant();
-
         return [
             ...DeliveryNoteResource::make($this->resource)->resolve($request),
             'created_at' => $this->created_at->toIso8601String(),
             'is_copy' => $this->isCopy,
-            'store' => ['name' => $store->name, 'address' => $store->address, 'phone' => $store->phone],
+            'store' => app(StoreSettingService::class)->letterhead(),
         ];
     }
 }

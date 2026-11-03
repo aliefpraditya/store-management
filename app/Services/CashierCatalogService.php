@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\Stock;
+use App\Models\StockOpnameItem;
 use Illuminate\Support\Collection;
 
 /**
@@ -14,10 +15,12 @@ use Illuminate\Support\Collection;
  * that is exactly a unit's barcode finds that product alone and tells which unit was scanned.
  *
  * @phpstan-type CatalogUnit array{id: int, code: string, conversion_factor: string, price: string, barcode: string|null}
- * @phpstan-type CatalogItem array{id: int, sku: string, name: string, base_unit: string, stock: string, units: list<CatalogUnit>, matched_unit_id: int|null}
+ * @phpstan-type CatalogItem array{id: int, sku: string, name: string, base_unit: string, stock: string, units: list<CatalogUnit>, matched_unit_id: int|null, is_being_counted: bool}
  */
 class CashierCatalogService
 {
+    public function __construct(private readonly StoreSettingService $settings) {}
+
     private const RESULT_LIMIT = 20;
 
     /** Whether the product has stock in the warehouse (the `?`); items that are sold out come after the ones in stock. */
@@ -83,6 +86,7 @@ class CashierCatalogService
     private function catalogItems(Collection $products, int $warehouseId, ?ProductUnit $scannedUnit): array
     {
         $stocks = $this->stockOf($products, $warehouseId);
+        $countedProductIds = $this->settings->isSalesLockedDuringOpname() ? StockOpnameItem::productIdsBeingCounted($warehouseId, $products->modelKeys()) : [];
 
         return $products->map(fn (Product $product): array => [
             'id' => $product->id,
@@ -98,6 +102,7 @@ class CashierCatalogService
                 'barcode' => $unit->barcode,
             ])->values()->all(),
             'matched_unit_id' => $scannedUnit?->product_id === $product->id ? $scannedUnit->id : null,
+            'is_being_counted' => in_array($product->id, $countedProductIds, true),
         ])->values()->all();
     }
 

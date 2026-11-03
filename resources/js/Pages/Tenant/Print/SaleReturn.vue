@@ -11,7 +11,7 @@ defineProps({
 <template>
     <Head :title="`Retur ${saleReturn.number}`" />
 
-    <PrintPage paper-width="80mm">
+    <PrintPage :paper-width="`${saleReturn.paper_width}mm`">
         <SaleReturnSheet :sale-return="saleReturn" />
     </PrintPage>
 </template>

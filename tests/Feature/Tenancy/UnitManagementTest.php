@@ -40,8 +40,15 @@ class UnitManagementTest extends TestCase
         return $user;
     }
 
+    /**
+     * The unit routes; index is the store settings page, where the units are listed.
+     */
     private function url(string $route, array $parameters = []): string
     {
+        if ($route === 'index') {
+            return route('tenant.settings.index', ['tenant' => $this->store->code]);
+        }
+
         return route("tenant.units.{$route}", ['tenant' => $this->store->code, ...$parameters]);
     }
 
@@ -105,18 +112,106 @@ class UnitManagementTest extends TestCase
         $this->sellProductIn($dus);
 
         $this->actingAs($this->admin)->get($this->url('index'))->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->component('Tenant/Settings/Units/Index')
-            ->has('units', 2)
-            ->where('units.0.code', 'DUS')
-            ->where('units.0.products_count', 2)
-            ->where('units.0.can_delete', false)
-            ->where('units.0.update_url', $this->url('update', ['unit' => 'DUS']))
-            ->where('units.1.code', 'PCS')
-            ->where('units.1.name', 'Pieces')
-            ->where('units.1.products_count', 0)
-            ->where('units.1.can_delete', true)
-            ->where('create_url', $this->url('store'))
+            ->component('Tenant/Settings/Index')
+            ->has('units.data', 2)
+            ->where('units.data.0.code', 'DUS')
+            ->where('units.data.0.products_count', 2)
+            ->where('units.data.0.can_delete', false)
+            ->where('units.data.0.update_url', $this->url('update', ['unit' => 'DUS']))
+            ->where('units.data.1.code', 'PCS')
+            ->where('units.data.1.name', 'Pieces')
+            ->where('units.data.1.products_count', 0)
+            ->where('units.data.1.can_delete', true)
+            ->where('units.total', 2)
+            ->where('urls.unit_create', $this->url('store'))
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $query
+     */
+    private function listWith(array $query): TestResponse
+    {
+        return $this->actingAs($this->admin)->get($this->url('index').'?'.http_build_query($query));
+    }
+
+    private function makeUnits(int $count): void
+    {
+        foreach (range(1, $count) as $number) {
+            $this->makeUnit(sprintf('U%02d', $number), 'Satuan '.$number);
+        }
+    }
+
+    public function test_the_list_shows_ten_units_a_page_by_default_and_the_pages_follow_each_other(): void
+    {
+        $this->makeUnits(23);
+
+        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
+            ->has('units.data', 10)
+            ->where('units.total', 23)
+            ->where('units.last_page', 3)
+            ->where('units.data.0.code', 'U01')
+            ->where('unit_filters.per_page', 10));
+
+        $this->listWith(['unit_page' => 3])->assertInertia(fn (Assert $page) => $page
+            ->has('units.data', 3)
+            ->where('units.from', 21)
+            ->where('units.to', 23)
+            ->where('units.data.0.code', 'U21'));
+    }
+
+    public function test_the_page_size_can_be_chosen_from_the_offered_sizes(): void
+    {
+        $this->makeUnits(30);
+
+        $this->listWith(['unit_per_page' => 25])->assertInertia(fn (Assert $page) => $page->has('units.data', 25)->where('units.last_page', 2)->where('unit_filters.per_page', 25));
+        $this->listWith(['unit_per_page' => 7])->assertInertia(fn (Assert $page) => $page->has('units.data', 10)->where('unit_filters.per_page', 10));
+        $this->listWith(['unit_per_page' => 'banyak'])->assertInertia(fn (Assert $page) => $page->where('unit_filters.per_page', 10));
+    }
+
+    public function test_the_list_is_searched_by_code_or_name(): void
+    {
+        $this->makeUnit('PCS', 'Pieces');
+        $this->makeUnit('DUS', 'Karton besar');
+        $this->makeUnit('KG', 'Kilogram');
+
+        $this->listWith(['unit_search' => 'pcs'])->assertInertia(fn (Assert $page) => $page->has('units.data', 1)->where('units.data.0.code', 'PCS')->where('unit_filters.search', 'pcs'));
+        $this->listWith(['unit_search' => 'karton'])->assertInertia(fn (Assert $page) => $page->has('units.data', 1)->where('units.data.0.code', 'DUS'));
+        $this->listWith(['unit_search' => 'zzz'])->assertInertia(fn (Assert $page) => $page->has('units.data', 0)->where('units.total', 0));
+    }
+
+    public function test_the_list_is_sorted_by_code_name_or_how_many_products_use_the_unit(): void
+    {
+        $this->makeUnit('AAA', 'Zebra');
+        $busy = $this->makeUnit('MMM', 'Mango');
+        $this->makeUnit('ZZZ', 'Apel');
+        $this->sellProductIn($busy);
+        $this->sellProductIn($busy);
+
+        $codesOf = fn (array $query): array => array_column($this->listWith($query)->viewData('page')['props']['units']['data'], 'code');
+
+        $this->assertSame(['ZZZ', 'MMM', 'AAA'], $codesOf(['unit_sort' => 'code', 'unit_direction' => 'desc']));
+        $this->assertSame(['ZZZ', 'MMM', 'AAA'], $codesOf(['unit_sort' => 'name', 'unit_direction' => 'asc']));
+        $this->assertSame(['MMM', 'AAA', 'ZZZ'], $codesOf(['unit_sort' => 'products_count', 'unit_direction' => 'desc']));
+        $this->assertSame(['AAA', 'ZZZ', 'MMM'], $codesOf(['unit_sort' => 'products_count', 'unit_direction' => 'asc']));
+    }
+
+    public function test_a_sort_that_is_not_offered_falls_back_to_the_code(): void
+    {
+        $this->makeUnit('BBB', 'Satu');
+        $this->makeUnit('AAA', 'Dua');
+
+        $this->listWith(['unit_sort' => 'password', 'unit_direction' => 'sideways'])->assertInertia(fn (Assert $page) => $page
+            ->where('unit_filters.sort', 'code')
+            ->where('unit_filters.direction', 'asc')
+            ->where('units.data.0.code', 'AAA'));
+    }
+
+    public function test_a_page_past_the_last_one_goes_to_the_last_page(): void
+    {
+        $this->makeUnits(12);
+
+        $this->listWith(['unit_page' => 9])->assertRedirect($this->url('index').'?unit_page=2');
     }
 
     public function test_a_unit_is_added_with_an_upper_case_code_and_goes_back_to_where_the_request_came_from(): void

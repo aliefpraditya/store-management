@@ -762,34 +762,24 @@
 </section>
 
 <!-- 22 LAPORAN -->
-<section class="scr" id="laporan" data-group="Kas & Harian" data-nav="Laporan" data-title="Laporan" data-sub="Penjualan, stok, selisih opname, retur, dan pengeluaran." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/reports">
+<section class="scr" id="laporan" data-group="Kas & Harian" data-nav="Laporan" data-title="Laporan" data-sub="Penjualan bersih, laba kotor, metode bayar, kasir, dan barang." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/reports/sales">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Laporan" data-who="Andi|Admin Toko"></aside>
-  <div class="mn"><div class="tb"><h3>Laporan</h3><span class="b"><svg class="ic s"><use href="#i-down"/></svg>Excel</span></div>
+  <div class="mn"><div class="tb"><h3>Laporan Penjualan · 19–25 Okt 2026</h3><span class="b"><svg class="ic s"><use href="#i-printer"/></svg>Cetak</span></div>
   <div class="pg">
-    <div class="tabs"><span class="on">Penjualan</span><span>Stok</span><span>Selisih opname</span><span>Retur</span><span>Pengeluaran</span></div>
-    <div class="g3"><div class="card kpi"><small>Penjualan 19–25 Okt</small><b>Rp 31.250.000</b></div><div class="card kpi"><small>Nota</small><b>402</b></div><div class="card kpi"><small>Laba kotor (estimasi)</small><b>Rp 6.480.000</b></div></div>
-    <div class="card mt"><h4>Penjualan harian</h4><div class="bars">
+    <div class="g3"><div class="card kpi"><small>Penjualan bersih</small><b>Rp 30.790.000</b><small>31.250.000 − retur 460.000</small></div><div class="card kpi"><small>Nota</small><b>402</b></div><div class="card kpi"><small>Laba kotor (estimasi)</small><b>Rp 6.480.000</b></div></div>
+    <div class="card mt"><h4>Penjualan bersih per hari</h4><div class="bars">
       <div><i style="height:55%"></i>19</div><div><i style="height:62%"></i>20</div><div><i style="height:48%"></i>21</div><div><i style="height:70%"></i>22</div><div><i style="height:66%"></i>23</div><div><i style="height:92%"></i>24</div><div class="on"><i style="height:74%"></i>25</div></div></div>
+    <div class="g2 mt">
+      <div class="card"><h4>Per metode bayar</h4><div class="sum"><div><span>Tunai</span><span>18.400.000</span></div><div><span>Transfer</span><span>7.250.000</span></div><div><span>QRIS</span><span>4.100.000</span></div><div><span>EDC</span><span>600.000</span></div><div><span>COD (ditagih saat diantar)</span><span>900.000</span></div></div></div>
+      <div class="card"><h4>Per kasir</h4><div class="sum"><div><span>Sari · 230 nota</span><span>17.900.000</span></div><div><span>Joko · 172 nota</span><span>13.350.000</span></div></div></div>
+    </div>
+    <div class="card mt"><h4>Laba kotor per barang</h4><div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Terjual</th><th class="r">Penjualan</th><th class="r">Laba</th><th class="r">Margin</th></tr>
+      <tr><td>Cat Tembok Putih 5kg</td><td class="r">120 PAIL</td><td class="r">13.990.000</td><td class="r">2.480.000</td><td class="r">17,7%</td></tr>
+      </table></div></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Laba memakai modal = harga beli terakhir (estimasi) di R1.</li></ul></details>
-</section>
-
-<!-- 22b SATUAN -->
-<section class="scr" id="satuan" data-group="Pengaturan" data-nav="Satuan" data-title="Satuan" data-sub="Kode, nama, dan pemakaian tiap satuan barang." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/settings/units">
-<div class="bd shell">
-  <aside class="sb" data-side="store" data-on="Satuan" data-who="Andi|Admin Toko"></aside>
-  <div class="mn"><div class="tb"><h3>Satuan</h3><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Satuan</span></div>
-  <div class="pg">
-    <div class="tbl"><table class="t"><tr><th>Kode</th><th>Nama</th><th>Dipakai</th><th></th></tr>
-      <tr><td><b>DUS</b></td><td>Dus</td><td>12 barang</td><td class="r"><span class="b s">Edit</span></td></tr>
-      <tr><td><b>KALENG</b></td><td>Kaleng</td><td>8 barang</td><td class="r"><span class="b s">Edit</span></td></tr>
-      <tr><td><b>KG</b></td><td>Kilogram</td><td>5 barang</td><td class="r"><span class="b s">Edit</span></td></tr>
-      <tr><td><b>BOTOL</b></td><td>Botol</td><td class="mute">Belum dipakai</td><td class="r"><span class="b s">Edit</span> <span class="b s bad">Hapus</span></td></tr></table></div>
-  </div></div>
-</div>
-<details class="nt"><summary>Catatan</summary><ul><li>Kode (PCS, DUS, KG) adalah kunci satuan dan tampil di layar dan nota; nama (Pieces) hanya keterangan.</li><li>Mengganti kode ikut mengubahnya di semua barang. Hapus hanya untuk satuan yang belum dipakai.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Bersih = penjualan nota selesai dikurangi retur pada hari retur dibuat. Nota void tidak dihitung; COD dihitung saat nota dibuat.</li><li>Laba memakai modal = harga beli terakhir (estimasi) di R1. Cetak membuka lembar A4 di jendela baru. Laporan stok, selisih opname, retur, dan pengeluaran menyusul.</li></ul></details>
 </section>
 
 <!-- 22c TAMBAH SATUAN -->
@@ -816,18 +806,20 @@
 </section>
 
 <!-- 23 PENGATURAN -->
-<section class="scr" id="setelan" data-group="Pengaturan" data-nav="Pengaturan Toko" data-title="Pengaturan Toko" data-sub="Nota, register, dan kategori pengeluaran." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/settings">
+<section class="scr" id="setelan" data-group="Pengaturan" data-nav="Pengaturan Toko" data-title="Pengaturan Toko" data-sub="Nota dan cetakan, aturan opname, modal kas register, dan satuan barang." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/settings">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Pengaturan Toko" data-who="Andi|Admin Toko"></aside>
-  <div class="mn"><div class="tb"><h3>Pengaturan</h3><span class="b p">Simpan</span></div>
+  <div class="mn"><div class="tb"><h3>Pengaturan Toko</h3><span class="b p">Simpan</span></div>
   <div class="pg"><div class="g2">
-    <div class="card"><h4>Nota</h4><div class="f"><span>Nama di nota</span><div class="in">MITRA UTAMA</div></div><div class="f"><span>Alamat</span><div class="in">Jl. Merdeka 12, Kota</div></div><div class="g2"><div class="f"><span>Telepon</span><div class="in">021-555-0123</div></div><div class="f"><span>Kertas</span><div class="seg"><span>58</span><span class="on">80 mm</span></div></div></div><div class="f"><span>Footer</span><div class="in">Terima kasih</div></div></div>
+    <div class="card"><h4>Nota dan cetakan</h4><div class="f"><span>Nama di nota</span><div class="in">Toko Mitra Utama</div></div><div class="f"><span>Alamat</span><div class="in">Jl. Poros Kuprik</div></div><div class="f"><span>Telepon</span><div class="in">0813-5411-1168</div></div><div class="f"><span>Teks penutup nota</span><div class="in" style="min-height:64px">Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan kecuali ada perjanjian sebelumnya.<br>Terimakasih Telah Berbelanja</div></div><div class="f"><span>Lebar kertas nota</span><div class="seg"><span>58 mm</span><span class="on">80 mm</span></div></div></div>
     <div>
-      <div class="card"><h4>Register</h4><div class="list"><div><span class="t">Kasir 1 · K1<small>modal kas tetap</small></span><span class="in mini">500.000</span></div></div></div>
-      <div class="card mt"><h4>Kategori pengeluaran</h4><div class="row" style="gap:6px"><span class="c">Operasional</span><span class="c">Listrik/Air</span><span class="c">Transport</span><span class="c">Upah</span><span class="c">ATK</span><span class="c pri">+ Tambah</span></div></div>
+      <div class="card"><h4>Stok opname</h4><div class="f"><span>Ambang selisih besar (wajib alasan di atas ini)</span><div class="in">Rp 500.000</div></div><div class="row" style="gap:8px"><span class="sw on"></span><span>Kunci penjualan barang yang sedang dihitung opname</span></div></div>
+      <div class="card mt"><h4>Register</h4><div class="list"><div><span class="t">Kasir 1 · K1<small>modal kas tetap, berlaku untuk shift berikutnya</small></span><span class="in mini">500.000</span><span class="b s">Simpan</span></div></div></div>
+      <div class="card mt"><div class="row" style="justify-content:space-between"><h4>Satuan</h4><span class="b s p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Satuan</span></div><div class="in ph" style="margin-bottom:8px"><svg class="ic s"><use href="#i-search"/></svg>Cari kode atau nama satuan</div><div class="list"><div><span class="t"><b>DUS</b><small>Dus · 12 barang</small></span><span class="b s">Edit</span></div><div><span class="t"><b>BOTOL</b><small>Belum dipakai</small></span><span class="b s">Edit</span><span class="b s bad">Hapus</span></div></div><div class="row mt2" style="justify-content:space-between"><span class="mute" style="font-size:12.5px">1–10 dari 48 satuan</span><span class="in sel mini">10 per halaman</span></div></div>
     </div>
   </div></div></div>
 </div>
+<details class="nt"><summary>Catatan</summary><ul><li>Yang dikosongkan memakai data toko; teks penutup kosong kembali ke bawaan. Lebar kertas mengatur nota dan bukti retur.</li><li>Kategori pengeluaran dikelola dari halaman Pengeluaran (tombol Kategori).</li><li>Kode satuan (PCS, DUS, KG) adalah kunci dan tampil di layar dan nota; nama hanya keterangan. Mengganti kode ikut mengubahnya di semua barang; Hapus hanya untuk satuan yang belum dipakai.</li><li>Daftar satuan dicari lewat kotak cari, diurutkan dengan klik judul kolom (kode, nama, dipakai), dan dibagi per halaman: 10, 25, 50, atau 100 per halaman.</li></ul></details>
 </section>
 
 </main>

@@ -8,7 +8,7 @@ import StoreLayout from '../../../Layouts/StoreLayout.vue';
 const props = defineProps({
     sale: { type: Object, required: true },
     /** Why a COD sale cannot be voided now, or null when it can (also null for a sale that is not COD). */
-    voidBlocker: { type: String, default: null },
+    void_blocker: { type: String, default: null },
     urls: { type: Object, required: true },
 });
 
@@ -19,7 +19,7 @@ const voidReason = ref('');
 const refundAccount = ref('');
 const isVoiding = ref(false);
 
-const canVoid = computed(() => props.sale.status === 'completed' && props.sale.is_cod && props.voidBlocker === null);
+const canVoid = computed(() => props.sale.status === 'completed' && props.sale.is_cod && props.void_blocker === null);
 
 const hasNonCashDeposit = computed(() => props.sale.payments.some((payment) => ['Transfer', 'QRIS', 'EDC'].includes(payment.method)));
 
@@ -74,7 +74,7 @@ function submitVoid() {
             <section v-if="sale.is_cod" class="receipt__cod">
                 <b>COD: {{ formatRupiah(sale.cod_amount) }} ditagih saat diantar</b>
                 <a v-for="note in sale.delivery_notes" :key="note.number" :href="note.show_url" @click.prevent="router.visit(note.show_url)">{{ note.number }} · {{ note.status_label }}</a>
-                <small v-if="sale.status === 'completed' && voidBlocker" class="receipt__cod-blocked">Tidak bisa di-void: {{ voidBlocker }}</small>
+                <small v-if="sale.status === 'completed' && void_blocker" class="receipt__cod-blocked">Tidak bisa di-void: {{ void_blocker }}</small>
             </section>
 
             <table class="receipt__items">

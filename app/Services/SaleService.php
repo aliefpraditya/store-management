@@ -12,6 +12,7 @@ use App\Models\CashShift;
 use App\Models\ProductUnit;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Models\StockOpnameItem;
 use App\Models\User;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -37,6 +38,7 @@ class SaleService
         private readonly StockService $stockLedger,
         private readonly DocumentNumberGenerator $documentNumbers,
         private readonly DeliveryNoteService $deliveryNotes,
+        private readonly StoreSettingService $settings,
     ) {}
 
     /**
@@ -62,6 +64,7 @@ class SaleService
 
             $lines = $this->priceLines($saleInput['items']);
 
+            $this->requireNoOpnameLock($lines, $shift->register->warehouse_id);
             $this->requireStock($lines, $shift->register->warehouse_id);
 
             $total = $lines->reduce(fn (BigDecimal $sum, array $line): BigDecimal => $sum->plus($line['subtotal']), BigDecimal::zero());
@@ -267,6 +270,27 @@ class SaleService
                 ],
             ];
         });
+    }
+
+    /**
+     * When the store locks sales during opname, a product that an opname is counting cannot be sold.
+     *
+     * @param  Collection<int, array{product_id: int, product_name: string}>  $lines
+     *
+     * @throws SaleException
+     */
+    private function requireNoOpnameLock(Collection $lines, int $warehouseId): void
+    {
+        if (! $this->settings->isSalesLockedDuringOpname()) {
+            return;
+        }
+
+        $countedProductIds = StockOpnameItem::productIdsBeingCounted($warehouseId, $lines->pluck('product_id')->all());
+        $countedLine = $lines->first(fn (array $line): bool => in_array($line['product_id'], $countedProductIds, true));
+
+        if ($countedLine !== null) {
+            throw SaleException::productIsBeingCounted($countedLine['product_name']);
+        }
     }
 
     /**

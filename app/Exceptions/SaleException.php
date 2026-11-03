@@ -52,6 +52,11 @@ class SaleException extends Exception
         return new self("Pembayaran kurang dari total belanja Rp {$shownTotal}. Harga di layar mungkin sudah berubah: cari ulang barangnya, lalu coba lagi.");
     }
 
+    public static function productIsBeingCounted(string $productName): self
+    {
+        return new self("{$productName} sedang dihitung di stok opname dan belum bisa dijual. Hapus dari keranjang, atau tunggu opname selesai.");
+    }
+
     public static function deliveryNoteRequired(): self
     {
         return new self('Nota COD harus punya surat jalan. Isi penerima dan alamat pengantaran.');

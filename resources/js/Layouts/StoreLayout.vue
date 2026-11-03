@@ -47,14 +47,13 @@ const menuGroups = computed(() => {
                 { label: 'Rekap Shift', icon: 'schedule', href: store.value.shifts_url },
                 { label: 'Pengeluaran', icon: 'remove_circle_outline', href: store.value.expenses_url },
                 { label: 'Tutup Hari', icon: 'lock', href: store.value.daily_closings_url },
-                { label: 'Laporan', icon: 'bar_chart' },
+                { label: 'Laporan', icon: 'bar_chart', href: store.value.reports_url },
             ],
         },
         {
             label: 'Pengaturan',
             items: [
-                { label: 'Satuan', icon: 'straighten', href: store.value.units_url },
-                { label: 'Pengaturan Toko', icon: 'settings' },
+                { label: 'Pengaturan Toko', icon: 'settings', href: store.value.settings_url },
             ],
         },
     ];

@@ -1,8 +1,9 @@
 <script setup>
 import { formatQuantity } from '../Composables/useQuantityFormat';
+import ThermalPageSize from './ThermalPageSize.vue';
 
 defineProps({
-    /** @type {{number: string, sold_at: string, cashier_name: string, customer_name: string|null, status: string, is_copy: boolean, store: {name: string, address: string|null, phone: string|null}, items: object[], payments: object[], total: string, change_amount: string}} */
+    /** @type {{number: string, sold_at: string, cashier_name: string, customer_name: string|null, status: string, is_copy: boolean, store: {name: string, address: string|null, phone: string|null}, footer: string, paper_width: number, items: object[], payments: object[], total: string, change_amount: string}} */
     receipt: { type: Object, required: true },
 });
 
@@ -22,6 +23,7 @@ const paymentLabel = (payment) => (payment.method === 'COD' ? 'Kekurangan (COD)'
 
 <template>
     <div class="receipt-print">
+        <ThermalPageSize :width="receipt.paper_width" />
         <header>
             <b>{{ receipt.store.name }}</b>
             <span v-if="receipt.store.address">{{ receipt.store.address }}</span>
@@ -54,8 +56,8 @@ const paymentLabel = (payment) => (payment.method === 'COD' ? 'Kekurangan (COD)'
         </div>
 
         <footer>
-            <p>Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan kecuali ada perjanjian sebelumnya.</p>
-            <p>Terimakasih Telah Berbelanja<br />{{ receipt.number }}</p>
+            <p class="receipt-print__footer">{{ receipt.footer }}</p>
+            <p>{{ receipt.number }}</p>
         </footer>
     </div>
 </template>
@@ -97,6 +99,10 @@ const paymentLabel = (payment) => (payment.method === 'COD' ? 'Kekurangan (COD)'
 
 .receipt-print footer p {
     margin: 0 0 6px;
+}
+
+.receipt-print .receipt-print__footer {
+    white-space: pre-line;
 }
 
 .receipt-print__mark {

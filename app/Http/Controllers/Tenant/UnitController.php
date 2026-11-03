@@ -5,30 +5,17 @@ namespace App\Http\Controllers\Tenant;
 use App\Exceptions\UnitInUseException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\SaveUnitRequest;
-use App\Http\Resources\UnitResource;
 use App\Models\Unit;
 use App\Services\UnitService;
 use Illuminate\Http\RedirectResponse;
-use Inertia\Inertia;
-use Inertia\Response;
 
 /**
- * Units are managed from the settings page and from the "add unit" window of the item form, so saving
+ * Units are listed on the store settings page and added from the "add unit" window of the item form too, so saving
  * redirects back to wherever the request came from.
  */
 class UnitController extends Controller
 {
     public function __construct(private readonly UnitService $unitService) {}
-
-    public function index(): Response
-    {
-        $unitList = Unit::query()->withCount('productUnits')->orderBy('code')->get();
-
-        return Inertia::render('Tenant/Settings/Units/Index', [
-            'units' => UnitResource::collection($unitList)->resolve(),
-            'create_url' => route('tenant.units.store', ['tenant' => tenant('code')]),
-        ]);
-    }
 
     public function store(SaveUnitRequest $request): RedirectResponse
     {

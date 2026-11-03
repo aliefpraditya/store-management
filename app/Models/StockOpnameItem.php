@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\StockOpnameStatus;
 use Database\Factories\StockOpnameItemFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -30,6 +31,25 @@ class StockOpnameItem extends Model
             'cost_price_at_posting' => 'decimal:2',
             'variance' => 'decimal:3',
         ];
+    }
+
+    /**
+     * The given products that an opname of the warehouse is counting right now (status Menghitung or Review).
+     *
+     * @param  list<int>  $productIds
+     * @return list<int>
+     */
+    public static function productIdsBeingCounted(int $warehouseId, array $productIds): array
+    {
+        return array_map('intval', self::query()
+            ->join('stock_opnames', 'stock_opnames.id', '=', 'stock_opname_items.stock_opname_id')
+            ->where('stock_opnames.warehouse_id', $warehouseId)
+            ->whereIn('stock_opnames.status', StockOpnameStatus::countingValues())
+            ->whereNull('stock_opnames.deleted_at')
+            ->whereIn('stock_opname_items.product_id', $productIds)
+            ->distinct()
+            ->pluck('stock_opname_items.product_id')
+            ->all());
     }
 
     /**

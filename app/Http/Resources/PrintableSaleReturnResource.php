@@ -3,7 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\SaleReturn;
-use App\Models\Store;
+use App\Services\StoreSettingService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -20,12 +20,12 @@ class PrintableSaleReturnResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        /** @var Store $store */
-        $store = tenant();
+        $settings = app(StoreSettingService::class);
 
         return [
             ...SaleReturnResource::make($this->resource)->resolve($request),
-            'store' => ['name' => $store->name, 'address' => $store->address, 'phone' => $store->phone],
+            'store' => $settings->letterhead(),
+            'paper_width' => $settings->paperWidth(),
         ];
     }
 }

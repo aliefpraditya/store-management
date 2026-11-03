@@ -1,9 +1,10 @@
 <script setup>
 import { formatRupiah } from '../Composables/useMoneyFormat';
 import { formatQuantity } from '../Composables/useQuantityFormat';
+import ThermalPageSize from './ThermalPageSize.vue';
 
 defineProps({
-    /** @type {{number: string, returned_at: string, status: string, status_label: string, cashier_name: string, refund_method_label: string, credit_amount: string, refund_amount: string, exchange: {items: object[], total: string, payments: object[]}|null, reason: string|null, sale: {number: string, customer_name: string|null}, store: {name: string, address: string|null, phone: string|null}, items: object[]}} */
+    /** @type {{number: string, returned_at: string, status: string, status_label: string, cashier_name: string, refund_method_label: string, credit_amount: string, refund_amount: string, exchange: {items: object[], total: string, payments: object[]}|null, reason: string|null, sale: {number: string, customer_name: string|null}, store: {name: string, address: string|null, phone: string|null}, paper_width: number, items: object[]}} */
     saleReturn: { type: Object, required: true },
 });
 
@@ -12,6 +13,7 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
 
 <template>
     <div class="return-print">
+        <ThermalPageSize :width="saleReturn.paper_width" />
         <header>
             <b>{{ saleReturn.store.name }}</b>
             <span v-if="saleReturn.store.address">{{ saleReturn.store.address }}</span>
@@ -67,12 +69,9 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
 </template>
 
 <style>
-@page {
-    size: 80mm auto;
-    margin: 4mm;
-}
-
 .return-print {
+    box-sizing: border-box;
+    padding: 4mm;
     font-family: 'Courier New', monospace;
     font-size: 11px;
     line-height: 1.35;

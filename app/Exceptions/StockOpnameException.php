@@ -34,6 +34,16 @@ class StockOpnameException extends Exception
         return new self('Tidak ada barang untuk kategori dan merek itu.');
     }
 
+    /**
+     * @param  list<string>  $productNames
+     */
+    public static function largeVarianceNeedsReason(array $productNames, string $thresholdText): self
+    {
+        $names = implode(', ', $productNames);
+
+        return new self("Selisih {$names} bernilai di atas Rp {$thresholdText}, jadi wajib diberi alasan. Isi alasannya di baris barang itu, lalu posting lagi.");
+    }
+
     public static function nothingCounted(): self
     {
         return new self('Belum ada barang yang dihitung.');

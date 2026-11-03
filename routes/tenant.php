@@ -15,6 +15,7 @@ use App\Http\Controllers\Tenant\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\ExpenseController;
 use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\ProductSearchController;
+use App\Http\Controllers\Tenant\ReportController;
 use App\Http\Controllers\Tenant\SaleController;
 use App\Http\Controllers\Tenant\SaleHistoryController;
 use App\Http\Controllers\Tenant\SaleReturnController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\Tenant\ShiftRecapController;
 use App\Http\Controllers\Tenant\ShiftReceiptController;
 use App\Http\Controllers\Tenant\StockHistoryController;
 use App\Http\Controllers\Tenant\StockOpnameController;
+use App\Http\Controllers\Tenant\StoreSettingController;
 use App\Http\Controllers\Tenant\UnitController;
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\InitializeTenancyByPath;
@@ -101,6 +103,9 @@ Route::prefix('t/{tenant}')
                 Route::get('{sale_return}/sheet', [SaleReturnController::class, 'sheet'])->name('sheet');
             });
 
+            Route::get('reports/sales', [ReportController::class, 'sales'])->name('tenant.reports.sales');
+            Route::get('reports/sales/sheet', [ReportController::class, 'salesSheet'])->name('tenant.reports.sales.sheet');
+
             Route::prefix('daily-closings')->name('tenant.daily-closings.')->group(function () {
                 Route::get('/', [DailyClosingController::class, 'index'])->name('index');
                 Route::get('{date}', [DailyClosingController::class, 'show'])->where('date', '\d{4}-\d{2}-\d{2}')->name('show');
@@ -123,7 +128,10 @@ Route::prefix('t/{tenant}')
 
             Route::get('products/search', ProductSearchController::class)->name('tenant.products.search');
             Route::resource('products', ProductController::class)->except(['show'])->names('tenant.products');
-            Route::resource('settings/units', UnitController::class)->only(['index', 'store', 'update', 'destroy'])->names('tenant.units');
+            Route::get('settings', [StoreSettingController::class, 'index'])->name('tenant.settings.index');
+            Route::put('settings', [StoreSettingController::class, 'update'])->name('tenant.settings.update');
+            Route::put('settings/registers/{register}', [StoreSettingController::class, 'updateRegister'])->name('tenant.settings.registers.update');
+            Route::resource('settings/units', UnitController::class)->only(['store', 'update', 'destroy'])->names('tenant.units');
 
             Route::prefix('stock-opnames')->name('tenant.stock-opnames.')->scopeBindings()->group(function () {
                 Route::get('/', [StockOpnameController::class, 'index'])->name('index');

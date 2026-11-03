@@ -12,6 +12,7 @@ use App\Services\PrintCounter;
 use App\Services\SaleHistoryService;
 use App\Services\SaleReturnService;
 use App\Services\ShiftService;
+use App\Services\StoreSettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -32,6 +33,7 @@ class ShiftReceiptController extends Controller
         private readonly SaleHistoryService $saleHistoryService,
         private readonly PrintCounter $printCounter,
         private readonly SaleReturnService $returnService,
+        private readonly StoreSettingService $settings,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -78,14 +80,13 @@ class ShiftReceiptController extends Controller
     {
         abort_unless($this->canHandle($request, $sale), Response::HTTP_FORBIDDEN);
 
-        /** @var Store $store */
-        $store = tenant();
-
         return Inertia::render('Tenant/Print/Receipt', [
             'receipt' => [
                 ...SaleDetailResource::make($sale->load(['items', 'payments', 'register']))->resolve(),
                 'is_copy' => $this->printNumberOf($request) > 1,
-                'store' => ['name' => $store->name, 'address' => $store->address, 'phone' => $store->phone],
+                'store' => $this->settings->letterhead(),
+                'footer' => $this->settings->receiptFooter(),
+                'paper_width' => $this->settings->paperWidth(),
             ],
         ]);
     }

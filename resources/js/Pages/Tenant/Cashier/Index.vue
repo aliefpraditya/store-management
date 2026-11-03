@@ -413,7 +413,7 @@ onBeforeUnmount(() => {
                             <li v-for="item in searchResults" :key="item.id" class="item">
                                 <div class="item__info">
                                     <b>{{ item.name }}</b>
-                                    <small :class="{ item__empty: Number(item.stock) <= 0 }">{{ item.sku }} · {{ Number(item.stock) <= 0 ? 'stok habis' : `stok ${formatStock(item.stock, item.units, item.base_unit)}` }}</small>
+                                    <small :class="{ item__empty: Number(item.stock) <= 0 || item.is_being_counted }">{{ item.sku }} · {{ item.is_being_counted ? 'sedang opname, belum bisa dijual' : Number(item.stock) <= 0 ? 'stok habis' : `stok ${formatStock(item.stock, item.units, item.base_unit)}` }}</small>
                                 </div>
                                 <div class="item__units">
                                     <q-btn
@@ -424,7 +424,7 @@ onBeforeUnmount(() => {
                                         dense
                                         color="primary"
                                         class="item__unit"
-                                        :disable="Number(item.stock) <= 0"
+                                        :disable="Number(item.stock) <= 0 || item.is_being_counted"
                                         :aria-label="`Tambah ${item.name} ${unit.code}`"
                                         @click="addToCart(item, unit)"
                                     >
