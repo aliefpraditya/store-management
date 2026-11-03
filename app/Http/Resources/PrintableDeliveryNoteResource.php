@@ -30,6 +30,7 @@ class PrintableDeliveryNoteResource extends JsonResource
 
         return [
             ...DeliveryNoteResource::make($this->resource)->resolve($request),
+            'created_at' => $this->created_at->toIso8601String(),
             'is_copy' => $this->isCopy,
             'store' => ['name' => $store->name, 'address' => $store->address, 'phone' => $store->phone],
         ];

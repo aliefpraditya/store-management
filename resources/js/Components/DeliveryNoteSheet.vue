@@ -1,47 +1,58 @@
 <script setup>
+import { computed } from 'vue';
 import { formatQuantity } from '../Composables/useQuantityFormat';
 
-defineProps({
-    /** @type {{number: string, business_date: string, status: string, is_copy: boolean, recipient_name: string, recipient_phone: string|null, recipient_address: string|null, driver_name: string|null, vehicle_number: string|null, notes: string|null, sale: {number: string}, store: {name: string, address: string|null, phone: string|null}, items: object[]}} */
+const props = defineProps({
+    /** @type {{number: string, created_at: string, status: string, is_copy: boolean, recipient_name: string, recipient_phone: string|null, recipient_address: string|null, driver_name: string|null, vehicle_number: string|null, notes: string|null, sale: {number: string}, store: {name: string, address: string|null, phone: string|null}, items: object[]}} */
     note: { type: Object, required: true },
 });
 
-const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' });
+const SIGNERS = ['Pembuat', 'Penyiap', 'Pengantar', 'Penerima'];
+
+const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+
+/** The letterhead reads "TOKO ..."; a store whose name already starts that way is not given the word twice. */
+const storeTitle = computed(() => (/^toko\b/i.test(props.note.store.name) ? props.note.store.name : `TOKO ${props.note.store.name}`));
+
+const carrier = computed(() => [props.note.driver_name, props.note.vehicle_number].filter(Boolean).join(' · '));
 </script>
 
 <template>
     <div class="delivery-print">
         <header>
-            <div>
-                <b>{{ note.store.name }}</b>
-                <span v-if="note.store.address">{{ note.store.address }}</span>
-                <span v-if="note.store.phone">{{ note.store.phone }}</span>
+            <div class="delivery-print__store">
+                <b>{{ storeTitle }}</b>
+                <span v-if="note.store.phone">Tlp: {{ note.store.phone }}</span>
+                <span class="delivery-print__number">No DO: <b>{{ note.number }}</b></span>
+                <span>Tanggal : {{ dateTimeFormat.format(new Date(note.created_at)) }}</span>
+                <span>Nama Penerima: <b>{{ note.recipient_name }}</b></span>
+                <span v-if="note.recipient_phone">No tlp. : {{ note.recipient_phone }}</span>
             </div>
-            <div class="delivery-print__title">
-                <h1>SURAT JALAN</h1>
-                <b>{{ note.number }}</b>
+            <div class="delivery-print__address">
                 <span v-if="note.status === 'cancelled'" class="delivery-print__mark">BATAL</span>
                 <span v-else-if="note.is_copy" class="delivery-print__mark">SALINAN</span>
+                <b>Alamat Pengantaran:</b>
+                <span>{{ note.recipient_address }}</span>
+                <span class="delivery-print__reference">No Nota : {{ note.sale.number }}</span>
+                <span v-if="carrier">Pengantar : {{ carrier }}</span>
             </div>
         </header>
 
-        <dl class="delivery-print__meta">
-            <div><dt>Tanggal</dt><dd>{{ dateFormat.format(new Date(note.business_date)) }}</dd></div>
-            <div><dt>Nota</dt><dd>{{ note.sale.number }}</dd></div>
-            <div><dt>Penerima</dt><dd>{{ note.recipient_name }}<template v-if="note.recipient_phone"> · {{ note.recipient_phone }}</template></dd></div>
-            <div v-if="note.recipient_address"><dt>Alamat</dt><dd>{{ note.recipient_address }}</dd></div>
-            <div v-if="note.driver_name || note.vehicle_number"><dt>Pengirim</dt><dd>{{ [note.driver_name, note.vehicle_number].filter(Boolean).join(' · ') }}</dd></div>
-        </dl>
-
         <table class="delivery-print__items">
             <thead>
-                <tr><th>No</th><th>Barang</th><th class="delivery-print__right">Jumlah</th></tr>
+                <tr>
+                    <th>Nama Barang</th>
+                    <th class="delivery-print__check">Cek</th>
+                    <th class="delivery-print__quantity">Jumlah</th>
+                    <th class="delivery-print__unit">Satuan</th>
+                </tr>
             </thead>
             <tbody>
-                <tr v-for="(item, index) in note.items" :key="item.id">
-                    <td>{{ index + 1 }}</td>
+                <tr v-for="item in note.items" :key="item.id">
                     <td>{{ item.name }}</td>
-                    <td class="delivery-print__right">{{ formatQuantity(item.quantity) }} {{ item.unit }}</td>
+                    <td class="delivery-print__check"></td>
+                    <td class="delivery-print__quantity">{{ formatQuantity(item.quantity) }}</td>
+                    <td class="delivery-print__unit">{{ item.unit }}</td>
                 </tr>
             </tbody>
         </table>
@@ -49,22 +60,32 @@ const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' });
         <p v-if="note.notes" class="delivery-print__notes">Catatan: {{ note.notes }}</p>
 
         <div class="delivery-print__signs">
-            <div><span>Pengirim</span></div>
-            <div><span>Penerima</span></div>
+            <div v-for="signer in SIGNERS" :key="signer">
+                <b>{{ signer }}</b>
+                <span>Paraf</span>
+            </div>
         </div>
     </div>
 </template>
 
 <style>
+/*
+ * Printed on continuous-form paper by a dot matrix printer: 9.5 x 5.5 inch, one form per page. Dot matrix prints only
+ * black dots, so the sheet uses a monospace font, pure black, 1px lines and no shading. The paper margin is zero so
+ * the browser has no room for its own header and footer (date, address, page number); the space is padding instead.
+ */
 @page {
-    size: A5 landscape;
-    margin: 8mm;
+    size: 9.5in 5.5in;
+    margin: 0;
 }
 
 .delivery-print {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 12px;
-    line-height: 1.4;
+    box-sizing: border-box;
+    padding: 6mm 10mm;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11pt;
+    font-weight: 700;
+    line-height: 1.15;
     color: #000;
 }
 
@@ -72,48 +93,38 @@ const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' });
     display: flex;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #000;
+    margin-bottom: 6px;
 }
 
-.delivery-print header b,
-.delivery-print header span {
+.delivery-print header span,
+.delivery-print header b {
     display: block;
 }
 
-.delivery-print__title {
-    text-align: right;
+.delivery-print__store > b {
+    font-size: 13pt;
 }
 
-.delivery-print__title h1 {
-    margin: 0;
-    font-size: 18px;
-    letter-spacing: 0.1em;
+.delivery-print__number {
+    margin-top: 4px;
+}
+
+.delivery-print__address {
+    max-width: 45%;
+    text-align: left;
+}
+
+.delivery-print__address span:not(.delivery-print__mark) {
+    white-space: pre-line;
+}
+
+.delivery-print__address .delivery-print__reference {
+    margin-top: 4px;
 }
 
 .delivery-print__mark {
-    margin-top: 2px;
-    font-weight: 700;
+    margin-bottom: 2px;
     letter-spacing: 0.2em;
-}
-
-.delivery-print__meta {
-    margin: 0 0 10px;
-}
-
-.delivery-print__meta div {
-    display: flex;
-    gap: 8px;
-}
-
-.delivery-print__meta dt {
-    flex: 0 0 70px;
-    font-weight: 700;
-}
-
-.delivery-print__meta dd {
-    margin: 0;
 }
 
 .delivery-print__items {
@@ -121,36 +132,65 @@ const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' });
     border-collapse: collapse;
 }
 
-.delivery-print__items th,
-.delivery-print__items td {
-    padding: 4px 6px;
-    border: 1px solid #000;
+.delivery-print__items thead {
+    display: table-header-group;
+}
+
+.delivery-print__items tr {
+    break-inside: avoid;
+}
+
+.delivery-print__items th {
+    padding: 2px 4px;
+    border-top: 1px solid #000;
+    border-bottom: 1px solid #000;
     text-align: left;
 }
 
-.delivery-print__items .delivery-print__right {
-    text-align: right;
+.delivery-print__items td {
+    padding: 2px 4px;
+    border-bottom: 1px solid #000;
+}
+
+.delivery-print__items .delivery-print__check {
+    width: 14mm;
+    text-align: center;
+}
+
+.delivery-print__items .delivery-print__quantity {
+    width: 22mm;
+    text-align: center;
+}
+
+.delivery-print__items .delivery-print__unit {
+    width: 28mm;
 }
 
 .delivery-print__notes {
-    margin: 8px 0 0;
+    margin: 6px 0 0;
 }
 
 .delivery-print__signs {
     display: flex;
-    justify-content: space-around;
-    margin-top: 24px;
-    text-align: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+    padding-top: 4px;
+    border-top: 1px solid #000;
+    break-inside: avoid;
 }
 
 .delivery-print__signs div {
-    width: 40%;
+    flex: 1;
+    text-align: center;
+}
+
+.delivery-print__signs b,
+.delivery-print__signs span {
+    display: block;
 }
 
 .delivery-print__signs span {
-    display: block;
-    padding-top: 46px;
-    border-bottom: 1px solid #000;
-    padding-bottom: 2px;
+    margin-top: 22px;
 }
 </style>

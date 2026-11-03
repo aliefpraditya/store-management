@@ -344,6 +344,7 @@ class DeliveryNoteTest extends TestCase
             ->component('Tenant/Print/DeliveryNote')
             ->where('note.number', $note->number)
             ->where('note.is_copy', false)
+            ->where('note.created_at', $note->created_at->toIso8601String())
             ->where('note.recipient_name', 'Pak Budi')
             ->where('note.sale.number', 'INV/1')
             ->where('note.store.address', 'Jl. Uji 1')
