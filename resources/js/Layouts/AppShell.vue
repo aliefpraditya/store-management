@@ -68,6 +68,16 @@ function toggleSidebar() {
     }
 }
 
+/** The path of every menu entry that has a page. */
+const menuPaths = computed(() => props.menuGroups.flatMap((group) => group.items).filter((item) => item.href).map((item) => new URL(item.href).pathname));
+
+/** Whether the current page is the given path or one below it (a query string does not count). */
+const isWithin = (path) => page.url === path || page.url.startsWith(`${path}/`) || page.url.startsWith(`${path}?`);
+
+/**
+ * An entry is lit for its own page and the pages below it. When another entry's page lies deeper on the same path
+ * (Satuan under Pengaturan Toko), only that deeper entry is lit.
+ */
 const isActive = (item) => {
     if (!item.href) {
         return false;
@@ -75,7 +85,11 @@ const isActive = (item) => {
 
     const path = new URL(item.href).pathname;
 
-    return item.isExact ? page.url === path : page.url.startsWith(path);
+    if (item.isExact) {
+        return page.url === path;
+    }
+
+    return isWithin(path) && !menuPaths.value.some((otherPath) => otherPath.length > path.length && isWithin(otherPath));
 };
 
 useFlashMessages();
