@@ -174,7 +174,7 @@
 <section class="scr" id="blist" data-group="Barang & Stok" data-nav="Daftar Barang" data-title="Daftar Barang" data-sub="Barang milik toko ini. Stok jual dan dead stock dipisah." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin Toko"></aside>
-  <div class="mn"><div class="tb"><h3>Daftar Barang</h3><span class="b"><svg class="ic s"><use href="#i-upload"/></svg>Import Excel</span><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Barang</span></div>
+  <div class="mn"><div class="tb"><h3>Daftar Barang</h3><span class="b"><svg class="ic s"><use href="#i-upload"/></svg>Import Excel</span><span class="b">Ubah Harga Massal</span><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Barang</span></div>
   <div class="pg">
     <div class="row" style="margin-bottom:14px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cari nama, SKU, atau barcode</div><div class="in sel grow">Semua kategori</div><div class="in sel grow">Semua status</div></div>
     <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Stok jual</th><th class="r">Dead stock</th><th class="r">Modal</th><th class="r">Harga jual</th><th>Status</th><th></th></tr>
@@ -190,7 +190,7 @@
 </section>
 
 <!-- 7 FORM BARANG -->
-<section class="scr" id="bform" data-group="Barang & Stok" data-nav="Form Barang" data-title="Form Barang" data-sub="Info, satuan, konversi, dan modal per satuan dalam satu form." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products/1/edit">
+<section class="scr" id="bform" data-group="Barang & Stok" data-nav="Form Barang" data-title="Form Barang" data-sub="Info, satuan, konversi, modal, margin, dan harga jual per satuan dalam satu form." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products/1/edit">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Edit Barang</h3><span class="b">Batal</span><span class="b p">Simpan</span></div>
@@ -201,13 +201,52 @@
     <div class="card mt"><h4>Satuan &amp; harga</h4>
       <div class="tip warn" style="margin-bottom:12px"><svg class="ic s"><use href="#i-alert"/></svg><span>Satuan dan konversi terkunci karena barang ini sudah punya stok. Satuan baru tetap bisa ditambah.</span></div>
       <div class="g2"><div class="f"><span>Satuan dasar</span><div class="in sel">PAIL</div></div><div class="ink2" style="font-size:12.5px;align-self:center">Modal adalah harga beli per satuan, jadi tiap satuan bisa berbeda. Satuan lain otomatis mengikuti modal dasar × konversi sampai modalnya diisi sendiri.</div></div>
-      <table class="t"><tr><th>Satuan</th><th>Konversi</th><th>Barcode</th><th>Modal</th><th>Harga jual</th><th class="ct">Dijual</th><th class="ct">Default</th><th></th></tr>
-        <tr><td><b>PAIL</b> <span class="c pri">dasar</span></td><td>1</td><td class="mute">8991234567890</td><td><span class="in mini">72.875</span></td><td><span class="in mini">116.600</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd on"></span></td><td></td></tr>
-        <tr><td><span class="in mini sel">DUS</span></td><td><span class="in mini">4</span></td><td class="mute">18991234567897</td><td><span class="in mini">280.000</span></td><td><span class="in mini">437.250</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd"></span></td><td></td></tr></table>
+      <table class="t"><tr><th>Satuan</th><th>Konversi</th><th>Barcode</th><th>Modal</th><th>Margin (%)</th><th>Harga jual</th><th class="ct">Dijual</th><th class="ct">Default</th><th></th></tr>
+        <tr><td><b>PAIL</b> <span class="c pri">dasar</span></td><td>1</td><td class="mute">8991234567890</td><td><span class="in mini">72.875</span></td><td><span class="in mini">37,5</span></td><td><span class="in mini">116.600</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd on"></span></td><td></td></tr>
+        <tr><td><span class="in mini sel">DUS</span></td><td style="white-space:nowrap"><span class="in mini">4</span> <span class="b s" style="padding:3px 8px">Hitung</span></td><td class="mute">18991234567897</td><td><span class="in mini">280.000</span></td><td><span class="in mini">35,96</span></td><td><span class="in mini">437.250</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd"></span></td><td></td></tr></table>
       <div class="row mt2"><span class="b s"><svg class="ic s"><use href="#i-plus"/></svg>Tambah satuan</span><span class="sp"></span><span class="tip warn" style="padding:6px 12px"><svg class="ic s"><use href="#i-alert"/></svg>Harga di bawah modal meminta konfirmasi</span></div></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Modal diisi per satuan (beli per dus dan per kaleng bisa beda). Di contoh, DUS dimodali 280.000, bukan 4 × 72.875.</li><li>Satuan dan konversi terkunci setelah ada stok atau transaksi.</li><li>Tombol Hapus muncul di pojok atas bila barang belum punya stok atau transaksi.</li><li>Satuan dipilih dari daftar; yang belum ada ditambah lewat "Tambah satuan baru" tanpa kehilangan isian form.</li><li>Mode margin dan histori harga ada di R2.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Modal diisi per satuan (beli per dus dan per kaleng bisa beda). Di contoh, DUS dimodali 280.000, bukan 4 × 72.875.</li><li>Satuan dan konversi terkunci setelah ada stok atau transaksi.</li><li>Tombol Hapus muncul di pojok atas bila barang belum punya stok atau transaksi.</li><li>Satuan dipilih dari daftar; yang belum ada ditambah lewat "Tambah satuan baru" tanpa kehilangan isian form.</li><li>Margin dan harga jual saling menghitung (margin tidak disimpan); <i>Hitung</i> membuka kalkulator konversi.</li></ul></details>
+</section>
+
+<!-- 7b UBAH HARGA MASSAL -->
+<section class="scr" id="bmass" data-group="Barang & Stok" data-nav="Ubah Harga Massal" data-title="Ubah Harga Massal" data-sub="Ubah modal dan harga jual banyak barang sekaligus: dicentang satu per satu atau per kategori dan merek." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products/bulk-prices">
+<div class="bd shell">
+  <aside class="sb" data-side="store" data-on="Ubah Harga Massal" data-who="Andi|Admin Toko"></aside>
+  <div class="mn"><div class="tb"><span class="b g"><svg class="ic s"><use href="#i-back"/></svg></span><h3>Ubah Harga Massal</h3></div>
+  <div class="pg">
+    <div class="card"><h4>Perubahan harga</h4>
+      <div class="g3"><div class="f"><span>Satuan yang diubah</span><div class="in sel">Semua satuan</div></div><div class="f"><span>Harga beli (modal)</span><div class="in sel">Persen (naik atau turun)</div><div class="in mini" style="margin-top:6px">5 %</div></div><div class="f"><span>Harga jual</span><div class="in sel">Pertahankan margin sekarang</div></div></div>
+      <div class="ink2" style="font-size:12.5px">Margin tiap satuan sekarang dijaga: harga jual naik atau turun mengikuti modal yang baru.</div></div>
+    <div class="row mt" style="margin-bottom:10px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cari nama, SKU, atau barcode</div><div class="in sel grow">Cat</div><div class="in sel grow">Dulux</div><div class="in sel grow">Semua status</div></div>
+    <div class="row" style="justify-content:space-between;margin-bottom:8px"><span><b>2</b> barang dipilih</span><span><span class="b s">Pilih semua 14 hasil</span> <span class="b s">Kosongkan pilihan</span></span></div>
+    <div class="tbl"><table class="t"><tr><th class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></th><th>Barang</th><th>Satuan, modal, dan harga jual sekarang</th></tr>
+      <tr><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td><b>Cat Tembok Putih 5kg</b><small>MU0001 · Cat · Dulux</small></td><td>PAIL modal 72.875 · jual 116.600<br>DUS modal 280.000 · jual 437.250</td></tr>
+      <tr><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td><b>Cat Tembok Kuning 5kg</b><small>MU0006 · Cat · Dulux</small></td><td>PAIL modal 70.000 · jual 112.000<br>DUS modal 270.000 · jual 420.000</td></tr>
+      <tr><td class="ct"><span class="ck"></span></td><td><b>Cat Kayu Cokelat 1kg</b><small>MU0007 · Cat · Dulux</small></td><td>KALENG modal 41.000 · jual 62.000</td></tr></table></div>
+    <div class="row mt2 mute" style="justify-content:space-between"><span>1–3 dari 14 barang</span><span>‹ 1 2 ›</span></div>
+    <div class="row mt" style="justify-content:space-between;border:1px solid var(--line);border-radius:12px;padding:12px 16px;background:#fff"><span>2 barang dipilih</span><span class="b p">Lihat pratinjau</span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Centang barang (bertahan saat cari, filter, dan pindah halaman) atau saring kategori dan merek lalu <i>Pilih semua hasil</i>. Paling banyak 2.000 barang sekali ubah.</li><li>Modal: persen atau nominal Rp. Harga jual: persen, nominal Rp, atur margin, atau pertahankan margin sekarang. Dihitung per satuan, dibulatkan ke sen saja.</li><li>Pratinjau menampilkan nilai lama dan baru; satuan yang tidak bisa dihitung dilewati dengan alasannya. Perubahan tercatat di audit.</li></ul></details>
+</section>
+
+<!-- 7c PRATINJAU UBAH HARGA MASSAL -->
+<section class="scr" id="bmassprev" data-group="Barang & Stok" data-nav="Pratinjau Harga Massal" data-title="Pratinjau Ubah Harga Massal" data-sub="Nilai lama dan baru, sebelum disimpan." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products/bulk-prices">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal" style="max-width:600px">
+    <h3>Pratinjau perubahan</h3>
+    <p class="ink2" style="margin:0 0 12px"><b>2</b> barang berubah (4 satuan) dari 2 yang dipilih.</p>
+    <table class="t"><tr><th>Barang</th><th>Satuan</th><th class="r">Modal</th><th class="r">Harga jual</th></tr>
+      <tr><td><b>Cat Tembok Putih 5kg</b><small>MU0001</small></td><td>PAIL</td><td class="r">72.875 → <b>76.518,75</b></td><td class="r">116.600 → <b>122.430</b></td></tr>
+      <tr><td></td><td>DUS</td><td class="r">280.000 → <b>294.000</b></td><td class="r">437.250 → <b>459.112,50</b></td></tr>
+      <tr><td><b>Cat Tembok Kuning 5kg</b><small>MU0006</small></td><td>PAIL</td><td class="r">70.000 → <b>73.500</b></td><td class="r">112.000 → <b>117.600</b></td></tr>
+      <tr><td></td><td>DUS</td><td class="r">270.000 → <b>283.500</b></td><td class="r">420.000 → <b>441.000</b></td></tr></table>
+    <div class="row mt"><span class="sp"></span><span class="b">Kembali</span><span class="b p">Terapkan ke 2 barang</span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Pratinjau dihitung server dan diulang saat diterapkan, jadi yang tersimpan selalu hitungan terbaru. Satuan yang dilewati tampil merah dengan alasannya.</li><li>Tombol Terapkan nonaktif bila tidak ada harga yang berubah.</li></ul></details>
 </section>
 
 <!-- 8 IMPORT -->

@@ -11,6 +11,7 @@ const props = defineProps({
     categories: { type: Array, required: true },
     statuses: { type: Array, required: true },
     create_url: { type: String, required: true },
+    bulk_prices_url: { type: String, required: true },
 });
 
 const page = usePage();
@@ -55,6 +56,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 <template>
     <StoreLayout title="Daftar Barang">
         <template #actions>
+            <q-btn flat no-caps icon="price_change" label="Ubah Harga Massal" class="q-mr-sm" @click="router.visit(bulk_prices_url)" />
             <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Barang" @click="router.visit(create_url)" />
         </template>
 

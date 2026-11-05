@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Tenant\BulkPriceController;
 use App\Http\Controllers\Tenant\CashierCodController;
 use App\Http\Controllers\Tenant\CashierController;
 use App\Http\Controllers\Tenant\CashierDeliveryNoteController;
@@ -127,6 +128,9 @@ Route::prefix('t/{tenant}')
             Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->name('tenant.sales.void');
 
             Route::get('products/search', ProductSearchController::class)->name('tenant.products.search');
+            Route::get('products/bulk-prices', [BulkPriceController::class, 'index'])->name('tenant.bulk-prices.index');
+            Route::post('products/bulk-prices/preview', [BulkPriceController::class, 'preview'])->name('tenant.bulk-prices.preview');
+            Route::post('products/bulk-prices', [BulkPriceController::class, 'apply'])->name('tenant.bulk-prices.apply');
             Route::resource('products', ProductController::class)->except(['show'])->names('tenant.products');
             Route::get('settings', [StoreSettingController::class, 'index'])->name('tenant.settings.index');
             Route::put('settings', [StoreSettingController::class, 'update'])->name('tenant.settings.update');

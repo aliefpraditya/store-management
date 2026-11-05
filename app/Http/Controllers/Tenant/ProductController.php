@@ -41,6 +41,7 @@ class ProductController extends Controller
             'statuses' => ProductStatusFilter::options(),
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
             'create_url' => route('tenant.products.create', ['tenant' => tenant('code')]),
+            'bulk_prices_url' => route('tenant.bulk-prices.index', ['tenant' => tenant('code')]),
         ]);
     }
 

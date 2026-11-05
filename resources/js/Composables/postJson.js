@@ -4,7 +4,8 @@
  * @param {string} url
  * @param {object|null} [body] sent as JSON when given
  * @returns {Promise<object>} the `data` of the answer
- * @throws {Error} when the server answers with an error status; the message is the server's, in Indonesian
+ * @throws {Error} when the server answers with an error status; the message is the server's, in Indonesian (for a
+ *   rejected form, the first of its messages)
  */
 export async function postJson(url, body = null) {
     const token = decodeURIComponent((document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]*)/) ?? [])[1] ?? '');
@@ -17,7 +18,9 @@ export async function postJson(url, body = null) {
     });
 
     if (!response.ok) {
-        throw new Error((await response.json().catch(() => ({}))).message ?? 'Permintaan gagal.');
+        const answer = await response.json().catch(() => ({}));
+
+        throw new Error(Object.values(answer.errors ?? {})[0]?.[0] ?? answer.message ?? 'Permintaan gagal.');
     }
 
     return (await response.json()).data;
