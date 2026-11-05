@@ -344,31 +344,31 @@ function submit() {
                                     </td>
                                     <td class="units__narrow">
                                         <span v-if="index === 0">1</span>
-                                        <q-input
-                                            v-else
-                                            v-model.number="row.conversion_factor"
-                                            type="number"
-                                            step="any"
-                                            min="0"
-                                            dense
-                                            outlined
-                                            :disable="isRowLocked(row)"
-                                        >
-                                            <template #append>
-                                                <q-btn
-                                                    flat
-                                                    round
-                                                    dense
-                                                    size="sm"
-                                                    icon="calculate"
-                                                    :disable="isRowLocked(row) || !row.unit || !form.units[0].unit"
-                                                    :aria-label="`Hitung konversi ${row.unit?.code ?? ''}`"
-                                                    @click="openCalculator(index)"
-                                                >
-                                                    <q-tooltip>Hitung konversi</q-tooltip>
-                                                </q-btn>
-                                            </template>
-                                        </q-input>
+                                        <div v-else class="conversion">
+                                            <q-input
+                                                v-model.number="row.conversion_factor"
+                                                type="number"
+                                                step="any"
+                                                min="0"
+                                                dense
+                                                outlined
+                                                class="conversion__input"
+                                                :disable="isRowLocked(row)"
+                                                :aria-label="`Konversi ${row.unit?.code ?? ''}`"
+                                            />
+                                            <q-btn
+                                                outline
+                                                dense
+                                                no-caps
+                                                color="primary"
+                                                icon="calculate"
+                                                label="Hitung"
+                                                class="q-px-sm"
+                                                :disable="isRowLocked(row) || !row.unit || !form.units[0].unit"
+                                                :aria-label="`Hitung konversi ${row.unit?.code ?? ''}`"
+                                                @click="openCalculator(index)"
+                                            />
+                                        </div>
                                     </td>
                                     <td class="units__wide">
                                         <q-input v-model="row.barcode" dense outlined placeholder="Opsional" />
@@ -466,7 +466,7 @@ function submit() {
     display: flex;
     flex-direction: column;
     gap: 14px;
-    max-width: 1000px;
+    max-width: 1160px;
 }
 
 .card {
@@ -532,7 +532,7 @@ function submit() {
 
 .units {
     width: 100%;
-    min-width: 940px;
+    min-width: 1080px;
     border-collapse: collapse;
 }
 
@@ -560,19 +560,43 @@ function submit() {
 }
 
 .units__narrow {
-    width: 110px;
+    width: 220px;
 }
 
 .units__wide {
-    min-width: 170px;
+    min-width: 140px;
 }
 
 .units__price {
-    width: 150px;
+    width: 140px;
 }
 
 .units__margin {
-    width: 120px;
+    width: 130px;
+}
+
+.conversion {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.conversion__input {
+    flex: 1;
+    min-width: 90px;
+}
+
+/* Prices, margins and conversions are typed, not nudged: the up/down arrows only take room from the number. */
+.product-form :deep(input[type='number']) {
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.product-form :deep(input[type='number']::-webkit-outer-spin-button),
+.product-form :deep(input[type='number']::-webkit-inner-spin-button) {
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
 }
 
 .tag {

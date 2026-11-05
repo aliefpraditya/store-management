@@ -374,6 +374,18 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
     margin-bottom: 14px;
 }
 
+.change :deep(input[type='number']) {
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.change :deep(input[type='number']::-webkit-outer-spin-button),
+.change :deep(input[type='number']::-webkit-inner-spin-button) {
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
 .change__grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
