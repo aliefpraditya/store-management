@@ -20,6 +20,9 @@ const isWorking = ref(false);
 /** @type {import('vue').Ref<object[]>} */
 const sales = ref([]);
 
+/** How many COD sales wait in all; more than the list holds when only the newest are shown. */
+const totalWaiting = ref(0);
+
 /** The sale being voided, or null while the void window is closed. */
 const voidTarget = ref(null);
 const voidReason = ref('');
@@ -41,7 +44,10 @@ async function load() {
             throw new Error('Daftar COD tidak bisa dimuat.');
         }
 
-        sales.value = (await response.json()).data;
+        const body = await response.json();
+
+        sales.value = body.data;
+        totalWaiting.value = body.meta.total;
     } catch (error) {
         fail(error);
     } finally {
@@ -78,13 +84,22 @@ function openVoid(sale) {
 
 const canVoid = () => voidReason.value.trim() !== '' && (!voidTarget.value?.has_non_cash_deposit || refundAccount.value.trim() !== '') && !isWorking.value;
 
+/** The void window stays open when the server refuses, so the reason that was typed is not lost. */
 async function submitVoid() {
     const sale = voidTarget.value;
 
-    await act(sale.void_url, { reason: voidReason.value.trim(), refund_account: refundAccount.value.trim() || null }, `Nota ${sale.number} di-void. Barangnya kembali ke stok.`);
-    voidTarget.value = null;
+    const isDone = await act(sale.void_url, { reason: voidReason.value.trim(), refund_account: refundAccount.value.trim() || null }, `Nota ${sale.number} di-void. Barangnya kembali ke stok.`);
+
+    if (isDone) {
+        voidTarget.value = null;
+    }
 }
 
+/**
+ * Posts one action on a COD sale and reloads the list.
+ *
+ * @returns {Promise<boolean>} whether the server accepted it
+ */
 async function act(url, body, successMessage) {
     isWorking.value = true;
 
@@ -93,8 +108,12 @@ async function act(url, body, successMessage) {
         $q.notify({ type: 'positive', position: 'top', message: successMessage });
         emit('changed');
         await load();
+
+        return true;
     } catch (error) {
         fail(error);
+
+        return false;
     } finally {
         isWorking.value = false;
     }
@@ -113,6 +132,7 @@ async function act(url, body, successMessage) {
                 <q-inner-loading :showing="isLoading" />
 
                 <p v-if="!isLoading && sales.length === 0" class="cod__empty">Tidak ada nota COD yang menunggu.</p>
+                <p v-if="totalWaiting > sales.length" class="cod__more">Menampilkan {{ sales.length }} nota terbaru dari {{ totalWaiting }}. Yang lebih lama muncul setelah yang di atas selesai atau di-void.</p>
 
                 <div v-for="sale in sales" :key="sale.id" class="sale">
                     <div class="sale__main">
@@ -189,6 +209,12 @@ async function act(url, body, successMessage) {
     padding: 24px 0;
     color: var(--app-mute);
     text-align: center;
+}
+
+.cod__more {
+    margin: 0 0 8px;
+    color: var(--app-mute);
+    font-size: 12px;
 }
 
 .sale {

@@ -21,11 +21,7 @@ const isVoiding = ref(false);
 
 const canVoid = computed(() => props.sale.status === 'completed' && props.sale.is_cod && props.void_blocker === null);
 
-const hasNonCashDeposit = computed(() => props.sale.payments.some((payment) => ['Transfer', 'QRIS', 'EDC'].includes(payment.method)));
-
-const hasCashDeposit = computed(() => props.sale.payments.some((payment) => payment.method === 'Tunai'));
-
-const isVoidReady = computed(() => voidReason.value.trim() !== '' && (!hasNonCashDeposit.value || refundAccount.value.trim() !== ''));
+const isVoidReady = computed(() => voidReason.value.trim() !== '' && (!props.sale.has_non_cash_deposit || refundAccount.value.trim() !== ''));
 
 function openVoid() {
     voidReason.value = '';
@@ -116,8 +112,8 @@ function submitVoid() {
 
                 <q-card-section class="void-dialog__fields">
                     <q-input v-model="voidReason" outlined dense autofocus maxlength="255" label="Alasan void" />
-                    <p v-if="hasCashDeposit" class="void-dialog__note">DP tunai dikembalikan dari laci shift Anda, jadi Anda perlu shift yang sedang berjalan.</p>
-                    <q-input v-if="hasNonCashDeposit" v-model="refundAccount" outlined dense maxlength="255" label="Rekening penerima pengembalian DP" placeholder="Bank, nomor rekening, atas nama" />
+                    <p v-if="sale.has_cash_deposit" class="void-dialog__note">DP tunai dikembalikan dari laci shift Anda, jadi Anda perlu shift yang sedang berjalan.</p>
+                    <q-input v-if="sale.has_non_cash_deposit" v-model="refundAccount" outlined dense maxlength="255" label="Rekening penerima pengembalian DP" placeholder="Bank, nomor rekening, atas nama" />
                 </q-card-section>
 
                 <q-card-actions align="right">

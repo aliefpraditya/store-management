@@ -21,7 +21,9 @@ use App\Models\SalePayment;
 use App\Models\SaleReturn;
 use App\Models\User;
 use Brick\Math\BigDecimal;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -260,12 +262,24 @@ class DailyClosingService
      */
     private function voidFigures(string $dateText): array
     {
-        $voidedOnDayQuery = Sale::query()->where('status', SaleStatus::Voided)->whereDate('voided_at', $dateText);
+        $voidedOnDayQuery = $this->voidedOn(CarbonImmutable::parse($dateText));
 
         return [
             'voids_count' => (clone $voidedOnDayQuery)->count(),
             'total_voids' => $this->money((clone $voidedOnDayQuery)->sum('total')),
         ];
+    }
+
+    /**
+     * A range on `voided_at` rather than `DATE(voided_at)`, so the index on that column is used.
+     *
+     * @return Builder<Sale>
+     */
+    private function voidedOn(CarbonInterface $date): Builder
+    {
+        return Sale::query()
+            ->where('status', SaleStatus::Voided)
+            ->whereBetween('voided_at', [$date->copy()->startOfDay(), $date->copy()->endOfDay()]);
     }
 
     /**
@@ -275,9 +289,7 @@ class DailyClosingService
      */
     public function voidsOf(CarbonInterface $date): array
     {
-        return Sale::query()
-            ->where('status', SaleStatus::Voided)
-            ->whereDate('voided_at', $date->toDateString())
+        return $this->voidedOn($date)
             ->orderBy('voided_at')
             ->get()
             ->map(fn (Sale $sale): array => [

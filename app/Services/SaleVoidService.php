@@ -15,7 +15,6 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SaleReturn;
 use App\Models\User;
-use Brick\Math\BigDecimal;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -43,12 +42,13 @@ class SaleVoidService
         return DB::transaction(function () use ($sale, $voider, $reason, $refundAccount): Sale {
             DailyClosing::lockAgainstClosing();
 
-            $lockedSale = Sale::query()->with(['items', 'payments', 'deliveryNotes'])->lockForUpdate()->findOrFail($sale->id);
+            $lockedSale = Sale::query()->with(['items', 'payments'])->lockForUpdate()->findOrFail($sale->id);
+            $lockedSale->setRelation('deliveryNotes', $this->deliveryNotes->lockedNotesOf($lockedSale));
 
             $this->requireVoidable($lockedSale);
 
-            $cashDeposit = $this->depositPaidBy($lockedSale, [PaymentMethod::Cash]);
-            $nonCashDeposit = $this->depositPaidBy($lockedSale, [PaymentMethod::Transfer, PaymentMethod::Qris, PaymentMethod::Edc]);
+            $cashDeposit = $lockedSale->cashDeposit();
+            $nonCashDeposit = $lockedSale->nonCashDeposit();
 
             $refundShift = $cashDeposit->isPositive() ? $this->runningShiftOf($voider) : null;
 
@@ -84,6 +84,7 @@ class SaleVoidService
     public function voidBlocker(Sale $sale): ?CodSaleException
     {
         return match (true) {
+            $sale->status === SaleStatus::Voided => CodSaleException::alreadyVoided(),
             $sale->status !== SaleStatus::Completed => CodSaleException::notCompleted($sale->status->label()),
             ! $sale->isCod() => CodSaleException::notCod(),
             DailyClosing::isClosedOn(today()) => CodSaleException::dayClosed(today()->format('d/m/Y')),
@@ -109,14 +110,6 @@ class SaleVoidService
     private function hasReturns(Sale $sale): bool
     {
         return SaleReturn::query()->where('sale_id', $sale->id)->whereIn('status', [SaleReturnStatus::Pending, SaleReturnStatus::Completed])->exists();
-    }
-
-    /**
-     * @param  list<PaymentMethod>  $methods
-     */
-    private function depositPaidBy(Sale $sale, array $methods): BigDecimal
-    {
-        return BigDecimal::of((string) $sale->payments->whereIn('method', $methods)->sum('amount'))->minus((string) ($methods === [PaymentMethod::Cash] ? $sale->change_amount : 0));
     }
 
     /**

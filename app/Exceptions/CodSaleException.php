@@ -12,7 +12,12 @@ class CodSaleException extends Exception
 {
     public static function notCod(): self
     {
-        return new self('Hanya nota COD yang bisa di-void. Nota lain memakai Retur.');
+        return new self('Hanya nota COD yang bisa diproses di sini. Nota lain memakai Retur.');
+    }
+
+    public static function alreadyVoided(): self
+    {
+        return new self('Nota ini sudah di-void. Muat ulang daftar COD untuk melihat keadaan terbaru.');
     }
 
     public static function notCompleted(string $statusLabel): self

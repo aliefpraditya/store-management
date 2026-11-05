@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ApiErrorCode;
 use App\Exceptions\ExpenseException;
+use App\Http\Controllers\Concerns\AnswersJsonErrors;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\SaveCashierExpenseRequest;
 use App\Http\Resources\CashierExpenseResource;
@@ -21,6 +22,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class CashierExpenseController extends Controller
 {
+    use AnswersJsonErrors;
+
     public function __construct(
         private readonly ExpenseService $expenseService,
         private readonly ExpenseCategoryService $categoryService,
@@ -64,10 +67,5 @@ class CashierExpenseController extends Controller
     private function shiftNotOpen(): JsonResponse
     {
         return $this->errorResponse(ApiErrorCode::ShiftNotOpen, ExpenseException::shiftNotOpen()->getMessage(), 'Pengeluaran dari laci dicatat di shift yang sedang terbuka. Buka shift di kasir.', Response::HTTP_CONFLICT);
-    }
-
-    private function errorResponse(ApiErrorCode $code, string $message, string $moreInfo, int $status): JsonResponse
-    {
-        return response()->json(['code' => $code->value, 'message' => $message, 'more_info' => $moreInfo], $status);
     }
 }

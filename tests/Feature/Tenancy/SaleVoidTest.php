@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Enums\DeliveryNoteStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\SaleReturnStatus;
 use App\Enums\SaleStatus;
 use App\Enums\UserRole;
@@ -11,15 +12,18 @@ use App\Models\DailyClosing;
 use App\Models\DeliveryNote;
 use App\Models\Product;
 use App\Models\Sale;
+use App\Models\SalePayment;
 use App\Models\SaleReturn;
 use App\Models\StockMovement;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\CodSaleService;
 use App\Services\DailyClosingService;
+use App\Services\DeliveryNoteService;
 use App\Services\SaleService;
 use App\Services\ShiftService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsCashierFixtures;
@@ -194,7 +198,11 @@ class SaleVoidTest extends TestCase
         $this->actingAs($this->cashier)->postJson($this->voidUrl($sale), ['reason' => 'Batal'])->assertOk();
 
         $this->actingAs($this->cashier)->postJson($this->voidUrl($sale), ['reason' => 'Lagi'])->assertUnprocessable()
-            ->assertJsonPath('message', 'Nota ini berstatus Void, jadi tidak bisa diproses lagi.');
+            ->assertExactJson([
+                'code' => 4223,
+                'message' => 'Nota ini sudah di-void. Muat ulang daftar COD untuk melihat keadaan terbaru.',
+                'more_info' => 'Muat ulang daftar COD untuk melihat keadaan nota yang terbaru, lalu coba lagi.',
+            ]);
         $this->assertSame('100.000', $this->stockInPieces($this->brush));
     }
 
@@ -203,7 +211,7 @@ class SaleVoidTest extends TestCase
         $cashSale = $this->sellCod([['method' => 'cash', 'amount' => 100000]]);
 
         $this->actingAs($this->cashier)->postJson($this->voidUrl($cashSale), ['reason' => 'Salah'])->assertUnprocessable()
-            ->assertJsonPath('message', 'Hanya nota COD yang bisa di-void. Nota lain memakai Retur.');
+            ->assertJsonPath('message', 'Hanya nota COD yang bisa diproses di sini. Nota lain memakai Retur.');
         $this->assertSame(SaleStatus::Completed, $this->reloaded($cashSale)->status);
     }
 
@@ -227,6 +235,108 @@ class SaleVoidTest extends TestCase
 
         $this->actingAs($this->cashier)->postJson($this->voidUrl($sale), ['reason' => 'Batal'])->assertUnprocessable()
             ->assertJsonPath('message', 'Nota ini sudah punya retur, jadi tidak bisa di-void.');
+    }
+
+    public function test_a_sale_paid_with_return_credit_cannot_be_voided(): void
+    {
+        $sale = $this->sellCod();
+        $this->store->run(fn () => SalePayment::query()->create(['sale_id' => $sale->id, 'method' => PaymentMethod::ReturnCredit, 'amount' => '0.00']));
+
+        $this->actingAs($this->cashier)->postJson($this->voidUrl($sale), ['reason' => 'Batal'])->assertUnprocessable()
+            ->assertJsonPath('message', 'Nota pengganti retur tidak bisa di-void. Pakai Retur.');
+        $this->assertSame(SaleStatus::Completed, $this->reloaded($sale)->status);
+    }
+
+    public function test_a_note_whose_goods_came_back_does_not_stand_in_the_way_of_the_void(): void
+    {
+        $sale = $this->sellCod();
+        $note = $this->store->run(fn (): DeliveryNote => DeliveryNote::query()->with('items')->sole());
+        $this->store->run(function () use ($note): void {
+            $service = app(DeliveryNoteService::class);
+            $service->ship($note);
+            $service->complete($note, [['item_id' => $note->items[0]->id, 'quantity_delivered' => 0, 'quantity_returned' => 10]]);
+        });
+
+        $this->actingAs($this->cashier)->postJson($this->voidUrl($sale), ['reason' => 'Dibawa pulang lagi'])->assertOk();
+
+        $this->assertSame([SaleStatus::Voided, DeliveryNoteStatus::Returned], [$this->reloaded($sale)->status, $this->store->run(fn (): DeliveryNoteStatus => DeliveryNote::query()->sole()->status)]);
+    }
+
+    public function test_any_cashier_of_the_store_may_void_a_cod_sale_of_another(): void
+    {
+        $sale = $this->sellCod();
+        $otherCashier = $this->storeUser();
+
+        $this->actingAs($otherCashier)->postJson($this->voidUrl($sale), ['reason' => 'Pelanggan menelepon'])->assertOk();
+
+        $sale = $this->reloaded($sale);
+        $this->assertSame([SaleStatus::Voided, $otherCashier->id, $this->cashier->id], [$sale->status, $sale->voided_by, $sale->cashier_id]);
+    }
+
+    public function test_a_deposit_by_cash_and_by_transfer_goes_back_to_its_own_place(): void
+    {
+        $sale = $this->sellCod([['method' => 'cash', 'amount' => 20000], ['method' => 'transfer', 'amount' => 30000], ['method' => 'cod', 'amount' => 50000]]);
+
+        $this->actingAs($this->cashier)->postJson($this->voidUrl($sale), ['reason' => 'Ditolak', 'refund_account' => 'BCA 1234567 a.n. Budi'])->assertOk();
+
+        $sale = $this->reloaded($sale);
+        $this->assertSame(['20000.00', 'BCA 1234567 a.n. Budi', $this->shift->id], [$sale->void_cash_refund, $sale->void_refund_account, $sale->void_cash_shift_id]);
+    }
+
+    public function test_the_receipt_page_tells_which_kinds_of_deposit_the_sale_holds(): void
+    {
+        $sale = $this->sellCod([['method' => 'cash', 'amount' => 20000], ['method' => 'transfer', 'amount' => 30000], ['method' => 'cod', 'amount' => 50000]]);
+        $codOnly = $this->sellCod();
+        $showUrl = fn (Sale $sale): string => route('tenant.sales.show', ['tenant' => $this->store->code, 'sale' => $sale->id]);
+
+        $this->actingAs($this->admin)->get($showUrl($sale))->assertInertia(fn (Assert $page) => $page->where('sale.has_cash_deposit', true)->where('sale.has_non_cash_deposit', true));
+        $this->actingAs($this->admin)->get($showUrl($codOnly))->assertInertia(fn (Assert $page) => $page->where('sale.has_cash_deposit', false)->where('sale.has_non_cash_deposit', false));
+    }
+
+    public function test_the_notes_of_the_sale_are_locked_while_it_is_voided(): void
+    {
+        $sale = $this->sellCod();
+        $statements = [];
+        DB::listen(function ($query) use (&$statements): void {
+            $statements[] = $query->sql;
+        });
+
+        $this->actingAs($this->cashier)->postJson($this->voidUrl($sale), ['reason' => 'Batal'])->assertOk();
+
+        $this->assertNotEmpty(array_filter($statements, fn (string $sql): bool => str_contains($sql, 'from `delivery_notes`') && str_contains($sql, 'for update')));
+    }
+
+    public function test_voiding_on_a_later_day_leaves_the_saved_figures_of_the_closed_day_as_they_were(): void
+    {
+        $sale = $this->sellCod();
+        $yesterday = today()->subDay();
+        $this->store->run(function () use ($sale, $yesterday): void {
+            Sale::query()->whereKey($sale->id)->update(['business_date' => $yesterday]);
+            DailyClosing::query()->create(['business_date' => $yesterday, 'status' => 'closed', 'sales_count' => 1, 'total_sales' => 100000, 'voids_count' => 0, 'closed_by' => $this->admin->id, 'closed_at' => now()]);
+        });
+
+        $this->actingAs($this->cashier)->postJson($this->voidUrl($sale), ['reason' => 'Ditolak besoknya'])->assertOk();
+
+        $closing = $this->store->run(fn (): DailyClosing => DailyClosing::query()->whereDate('business_date', $yesterday)->sole());
+        $this->assertSame([1, '100000.00', 0], [$closing->sales_count, $closing->total_sales, $closing->voids_count]);
+        $this->assertSame(1, $this->store->run(fn (): int => app(DailyClosingService::class)->summarize(today())['voids_count']));
+    }
+
+    public function test_a_void_belongs_to_the_day_it_was_made_from_its_first_second_to_its_last(): void
+    {
+        $lastSecond = $this->sellCod();
+        $nextDay = $this->sellCod();
+        $this->actingAs($this->cashier)->postJson($this->voidUrl($lastSecond), ['reason' => 'Batal'])->assertOk();
+        $this->actingAs($this->cashier)->postJson($this->voidUrl($nextDay), ['reason' => 'Batal'])->assertOk();
+        $this->store->run(function () use ($lastSecond, $nextDay): void {
+            Sale::query()->whereKey($lastSecond->id)->update(['voided_at' => today()->setTime(23, 59, 59)]);
+            Sale::query()->whereKey($nextDay->id)->update(['voided_at' => today()->addDay()->startOfDay()]);
+        });
+
+        $this->assertSame([1, 1], $this->store->run(fn (): array => [
+            app(DailyClosingService::class)->summarize(today())['voids_count'],
+            app(DailyClosingService::class)->summarize(today()->addDay())['voids_count'],
+        ]));
     }
 
     public function test_a_cash_deposit_goes_back_out_of_the_drawer_of_the_shift_that_voids(): void

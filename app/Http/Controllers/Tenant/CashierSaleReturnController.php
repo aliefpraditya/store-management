@@ -8,6 +8,7 @@ use App\Enums\ReturnDisposition;
 use App\Enums\ReturnResolution;
 use App\Enums\SaleStatus;
 use App\Exceptions\SaleReturnException;
+use App\Http\Controllers\Concerns\AnswersJsonErrors;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\SaveCashierSaleReturnRequest;
 use App\Http\Resources\PrintableSaleReturnResource;
@@ -34,6 +35,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class CashierSaleReturnController extends Controller
 {
+    use AnswersJsonErrors;
+
     public function __construct(
         private readonly SaleReturnService $returnService,
         private readonly ShiftService $shiftService,
@@ -151,10 +154,5 @@ class CashierSaleReturnController extends Controller
     private function refusedResponse(SaleReturnException $exception): JsonResponse
     {
         return $this->errorResponse(ApiErrorCode::ReturnRefused, $exception->getMessage(), 'Perbaiki isian retur sesuai pesan ini, lalu coba lagi.', Response::HTTP_UNPROCESSABLE_ENTITY);
-    }
-
-    private function errorResponse(ApiErrorCode $code, string $message, string $moreInfo, int $status): JsonResponse
-    {
-        return response()->json(['code' => $code->value, 'message' => $message, 'more_info' => $moreInfo], $status);
     }
 }

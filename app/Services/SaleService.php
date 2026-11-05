@@ -150,7 +150,7 @@ class SaleService
             throw SaleException::receiptIdInUse();
         }
 
-        return $alreadyRecordedSale->load(['items', 'payments']);
+        return $alreadyRecordedSale->load(['items', 'payments', 'deliveryNotes']);
     }
 
     /**

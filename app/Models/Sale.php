@@ -78,7 +78,34 @@ class Sale extends Model implements AuditableContract
      */
     public function codAmount(): string
     {
-        return (string) BigDecimal::of((string) $this->payments->where('method', PaymentMethod::Cod)->sum('amount'))->toScale(2);
+        return (string) $this->amountPaidBy([PaymentMethod::Cod])->toScale(2);
+    }
+
+    /**
+     * The cash taken in advance, after the change that was handed back. Needs `payments` loaded.
+     */
+    public function cashDeposit(): BigDecimal
+    {
+        return $this->amountPaidBy([PaymentMethod::Cash])->minus((string) $this->change_amount);
+    }
+
+    /**
+     * What was paid in advance by transfer, QRIS or EDC, which goes back to an account rather than out of a drawer.
+     * Needs `payments` loaded.
+     */
+    public function nonCashDeposit(): BigDecimal
+    {
+        return $this->amountPaidBy([PaymentMethod::Transfer, PaymentMethod::Qris, PaymentMethod::Edc]);
+    }
+
+    /**
+     * @param  list<PaymentMethod>  $methods
+     */
+    private function amountPaidBy(array $methods): BigDecimal
+    {
+        return $this->payments
+            ->whereIn('method', $methods)
+            ->reduce(fn (BigDecimal $sum, SalePayment $payment): BigDecimal => $sum->plus((string) $payment->amount), BigDecimal::zero());
     }
 
     public function isCod(): bool

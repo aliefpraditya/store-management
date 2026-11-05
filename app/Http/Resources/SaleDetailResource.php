@@ -36,6 +36,8 @@ class SaleDetailResource extends JsonResource
             'void_refund_account' => $this->void_refund_account,
             'is_cod' => $this->isCod(),
             'cod_amount' => $this->codAmount(),
+            'has_cash_deposit' => $this->cashDeposit()->isPositive(),
+            'has_non_cash_deposit' => $this->nonCashDeposit()->isPositive(),
             'delivery_notes' => $this->relationLoaded('deliveryNotes')
                 ? $this->deliveryNotes->map(fn ($note): array => [
                     'number' => $note->number,

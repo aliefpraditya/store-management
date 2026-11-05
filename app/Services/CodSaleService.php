@@ -67,14 +67,26 @@ class CodSaleService
      */
     public function undeliveredSales(int $limit): Collection
     {
+        return $this->undeliveredSalesQuery()->with(['payments', 'deliveryNotes'])->orderByDesc('id')->limit($limit)->get();
+    }
+
+    /**
+     * How many COD sales wait for their delivery, so the till can say when its list shows only the newest ones.
+     */
+    public function undeliveredCount(): int
+    {
+        return $this->undeliveredSalesQuery()->count();
+    }
+
+    /**
+     * @return Builder<Sale>
+     */
+    private function undeliveredSalesQuery(): Builder
+    {
         return Sale::query()
-            ->with(['payments', 'deliveryNotes'])
             ->where('status', SaleStatus::Completed)
             ->whereHas('payments', fn (Builder $payments) => $payments->where('method', PaymentMethod::Cod))
-            ->whereDoesntHave('deliveryNotes', fn (Builder $notes) => $notes->whereIn('status', DeliveryNoteStatus::withDeliveredGoods()))
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get();
+            ->whereDoesntHave('deliveryNotes', fn (Builder $notes) => $notes->whereIn('status', DeliveryNoteStatus::withDeliveredGoods()));
     }
 
     /**
@@ -86,7 +98,12 @@ class CodSaleService
     public function markDelivered(Sale $sale): Sale
     {
         return DB::transaction(function () use ($sale): Sale {
-            $lockedSale = Sale::query()->with(['payments', 'deliveryNotes.items'])->lockForUpdate()->findOrFail($sale->id);
+            $lockedSale = Sale::query()->with('payments')->lockForUpdate()->findOrFail($sale->id);
+            $lockedSale->setRelation('deliveryNotes', $this->deliveryNotes->lockedNotesOf($lockedSale));
+
+            if ($lockedSale->status === SaleStatus::Voided) {
+                throw CodSaleException::alreadyVoided();
+            }
 
             if ($lockedSale->status !== SaleStatus::Completed) {
                 throw CodSaleException::notCompleted($lockedSale->status->label());

@@ -3,7 +3,6 @@
 namespace App\Http\Resources;
 
 use App\Enums\DeliveryNoteStatus;
-use App\Enums\PaymentMethod;
 use App\Models\DeliveryNote;
 use App\Models\Sale;
 use Illuminate\Http\Request;
@@ -33,9 +32,9 @@ class CodSaleResource extends JsonResource
             'customer_name' => $this->customer_name,
             'recipient_name' => $latestNote?->recipient_name,
             'cod_amount' => $this->codAmount(),
-            'deposit_amount' => (string) $this->payments->whereNotIn('method', [PaymentMethod::Cod])->sum('amount'),
-            'has_cash_deposit' => $this->payments->contains('method', PaymentMethod::Cash),
-            'has_non_cash_deposit' => $this->payments->contains(fn ($payment): bool => in_array($payment->method, [PaymentMethod::Transfer, PaymentMethod::Qris, PaymentMethod::Edc], true)),
+            'deposit_amount' => (string) $this->cashDeposit()->plus($this->nonCashDeposit())->toScale(2),
+            'has_cash_deposit' => $this->cashDeposit()->isPositive(),
+            'has_non_cash_deposit' => $this->nonCashDeposit()->isPositive(),
             'delivery_status' => $latestNote?->status->value,
             'delivery_status_label' => $latestNote?->status->label() ?? 'Belum ada surat jalan',
             'can_mark_delivered' => $activeNotes->contains(fn (DeliveryNote $note): bool => $note->status->isUnfinished()),

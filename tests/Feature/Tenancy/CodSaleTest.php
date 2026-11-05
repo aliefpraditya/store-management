@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\CodSaleService;
 use App\Services\DeliveryNoteService;
 use App\Services\SaleService;
+use App\Services\SaleVoidService;
 use App\Services\ShiftService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -177,6 +178,18 @@ class CodSaleTest extends TestCase
         $this->assertSame([1, 1], [$this->saleCount(), $this->store->run(fn (): int => DeliveryNote::query()->count())]);
     }
 
+    public function test_a_repeated_submit_still_offers_the_note_to_print(): void
+    {
+        $body = $this->body();
+
+        $this->actingAs($this->cashier)->post($this->url('sales.store'), $body)->assertSessionHasNoErrors();
+        $note = $this->store->run(fn (): DeliveryNote => DeliveryNote::query()->sole());
+
+        $this->actingAs($this->cashier)->post($this->url('sales.store'), $body)->assertSessionHasNoErrors();
+
+        $this->assertSame([['id' => $note->id, 'number' => $note->number, 'print_url' => $this->url('delivery-notes.print', ['delivery_note' => $note->id])]], session('last_sale')['delivery_notes']);
+    }
+
     public function test_the_shift_summary_splits_cod_by_whether_it_was_delivered(): void
     {
         $delivered = $this->sellCod(['payments' => [['method' => 'cash', 'amount' => 40000], ['method' => 'cod', 'amount' => 60000]]]);
@@ -230,7 +243,39 @@ class CodSaleTest extends TestCase
         $cashSale = $this->store->run(fn (): Sale => app(SaleService::class)->create($this->shift, $this->cashier, $this->body(['payments' => [['method' => 'cash', 'amount' => 100000]]])));
 
         $this->actingAs($this->cashier)->postJson($this->url('cod.delivered', ['sale' => $cashSale->id]))->assertUnprocessable()
-            ->assertJsonPath('message', 'Hanya nota COD yang bisa di-void. Nota lain memakai Retur.');
+            ->assertJsonPath('message', 'Hanya nota COD yang bisa diproses di sini. Nota lain memakai Retur.');
+    }
+
+    public function test_a_refused_till_action_answers_with_the_standard_error_body(): void
+    {
+        $sale = $this->sellCod();
+        $this->store->run(fn () => app(CodSaleService::class)->markDelivered($sale));
+
+        $this->actingAs($this->cashier)->postJson($this->url('cod.delivered', ['sale' => $sale->id]))->assertUnprocessable()
+            ->assertExactJson([
+                'code' => 4223,
+                'message' => 'Nota ini tidak punya surat jalan yang masih berjalan.',
+                'more_info' => 'Muat ulang daftar COD untuk melihat keadaan nota yang terbaru, lalu coba lagi.',
+            ]);
+    }
+
+    public function test_a_note_that_is_already_on_its_way_is_finished_as_delivered(): void
+    {
+        $sale = $this->sellCod();
+        $this->store->run(fn () => app(DeliveryNoteService::class)->ship(DeliveryNote::query()->sole()));
+
+        $this->actingAs($this->cashier)->postJson($this->url('cod.delivered', ['sale' => $sale->id]))->assertOk();
+
+        $this->assertSame(DeliveryNoteStatus::Delivered, $this->store->run(fn (): DeliveryNoteStatus => DeliveryNote::query()->sole()->status));
+    }
+
+    public function test_a_voided_sale_cannot_be_marked_delivered(): void
+    {
+        $sale = $this->sellCod();
+        $this->store->run(fn () => app(SaleVoidService::class)->void($sale, $this->cashier, 'Batal', null));
+
+        $this->actingAs($this->cashier)->postJson($this->url('cod.delivered', ['sale' => $sale->id]))->assertUnprocessable()
+            ->assertJsonPath('message', 'Nota ini sudah di-void. Muat ulang daftar COD untuk melihat keadaan terbaru.');
     }
 
     public function test_the_cod_list_holds_undelivered_cod_sales_of_any_day(): void
@@ -243,6 +288,7 @@ class CodSaleTest extends TestCase
 
         $response = $this->actingAs($this->cashier)->getJson($this->url('cod.index'))->assertOk()
             ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.number', $waiting->number)
             ->assertJsonPath('data.0.cod_amount', '100000.00')
             ->assertJsonPath('data.0.recipient_name', 'Pak Budi')
@@ -250,7 +296,7 @@ class CodSaleTest extends TestCase
             ->assertJsonPath('data.0.can_mark_delivered', true)
             ->assertJsonPath('data.0.has_cash_deposit', false);
 
-        $this->assertStringEndsWith('/cashier/cod/'.$waiting->id.'/void', $response->json('data.0.void_url'));
+        $this->assertStringEndsWith('/cashier/cod/'.$waiting->id.'/voids', $response->json('data.0.void_url'));
     }
 
     public function test_a_cod_sale_whose_goods_came_back_stays_on_the_list_until_it_is_voided(): void

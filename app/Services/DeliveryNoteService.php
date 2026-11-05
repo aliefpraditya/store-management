@@ -186,6 +186,18 @@ class DeliveryNoteService
     }
 
     /**
+     * The notes of a receipt with their items, locked until the transaction ends, so an admin finishing or cancelling
+     * one of them at the same moment waits instead of changing it under a void or a delivery mark of the till. In note
+     * order, like every other lock on notes. Call it inside a transaction.
+     *
+     * @return Collection<int, DeliveryNote>
+     */
+    public function lockedNotesOf(Sale $sale): Collection
+    {
+        return DeliveryNote::query()->with('items')->where('sale_id', $sale->id)->orderBy('id')->lockForUpdate()->get();
+    }
+
+    /**
      * @throws DeliveryNoteException
      */
     public function ship(DeliveryNote $note): void
