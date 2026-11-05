@@ -32,11 +32,11 @@ trait BuildsCashierFixtures
         return $this->store->run(fn () => Register::query()->where('code', 'K1')->firstOrFail());
     }
 
-    protected function openShiftFor(User $user, ?Register $register = null): CashShift
+    protected function openShiftFor(User $user, ?Register $register = null, ?string $openingCash = null): CashShift
     {
         $register ??= $this->register();
 
-        return $this->store->run(fn () => app(ShiftService::class)->open($user, $register));
+        return $this->store->run(fn () => app(ShiftService::class)->open($user, $register, $openingCash));
     }
 
     protected function mainWarehouse(): Warehouse

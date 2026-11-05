@@ -31,7 +31,6 @@ class CashierShiftTest extends TestCase
         parent::setUp();
 
         $this->store = $this->prepareStoreDatabase(['code' => 'test_cashier_shift', 'receipt_prefix' => 'TCS']);
-        $this->store->run(fn () => Register::query()->where('code', 'K1')->update(['fixed_opening_cash' => 500000]));
     }
 
     private function url(string $route, array $parameters = []): string
@@ -39,14 +38,23 @@ class CashierShiftTest extends TestCase
         return route("tenant.cashier.{$route}", ['tenant' => $this->store->code, ...$parameters]);
     }
 
-    private function openShift(User $user, ?int $registerId = null): TestResponse
+    private function openShift(User $user, ?int $registerId = null, mixed $openingCash = '500000', ?string $openingNote = null): TestResponse
     {
-        return $this->actingAs($user)->post($this->url('shifts.store'), ['register_id' => $registerId ?? $this->register()->id]);
+        return $this->actingAs($user)->post($this->url('shifts.store'), [
+            'register_id' => $registerId ?? $this->register()->id,
+            'opening_cash' => $openingCash,
+            'opening_cash_note' => $openingNote,
+        ]);
     }
 
-    private function closeShift(User $user, CashShift $shift, mixed $countedCash, ?string $note = null): TestResponse
+    /**
+     * Unless told otherwise the drawer keeps 500.000 (or all the cash when less is counted), as the cashier would by habit.
+     */
+    private function closeShift(User $user, CashShift $shift, mixed $countedCash, ?string $note = null, mixed $drawerLeftCash = null): TestResponse
     {
-        return $this->actingAs($user)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => $countedCash, 'closing_note' => $note]);
+        $drawerLeftCash ??= is_numeric($countedCash) ? min(500000, (float) $countedCash) : 0;
+
+        return $this->actingAs($user)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => $countedCash, 'drawer_left_cash' => $drawerLeftCash, 'closing_note' => $note]);
     }
 
     private function shiftOf(User $user): ?CashShift
@@ -78,7 +86,7 @@ class CashierShiftTest extends TestCase
             ->where('summary', null)
             ->has('registers', 1)
             ->where('registers.0.code', 'K1')
-            ->where('registers.0.fixed_opening_cash', '500000.00')
+            ->where('registers.0.carried_over_cash', null)
             ->where('registers.0.busy_with', null)
             ->has('payment_methods', 5)
             ->where('payment_methods.0', ['value' => 'cash', 'label' => 'Tunai'])
@@ -86,14 +94,14 @@ class CashierShiftTest extends TestCase
             ->where('can_leave_to_dashboard', false));
     }
 
-    public function test_opening_a_shift_takes_the_fixed_opening_cash_of_the_register(): void
+    public function test_the_first_shift_of_a_register_opens_with_the_cash_the_cashier_entered(): void
     {
         $cashier = $this->storeUser();
 
         $this->openShift($cashier)->assertRedirect($this->url('index'))->assertSessionHas('success', 'Shift dibuka.');
 
         $shift = $this->shiftOf($cashier);
-        $this->assertSame([CashShiftStatus::Open, '500000.00', $cashier->name, now()->toDateString()], [$shift->status, $shift->opening_cash, $shift->cashier_name, $shift->business_date->toDateString()]);
+        $this->assertSame([CashShiftStatus::Open, '500000.00', null, $cashier->name, now()->toDateString()], [$shift->status, $shift->opening_cash, $shift->opening_cash_note, $shift->cashier_name, $shift->business_date->toDateString()]);
 
         $this->actingAs($cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
             ->where('shift.id', $shift->id)
@@ -135,7 +143,7 @@ class CashierShiftTest extends TestCase
         $this->assertNull($this->shiftOf($cashier));
     }
 
-    public function test_closing_with_the_exact_cash_has_no_difference_and_a_deposit_above_the_fixed_cash(): void
+    public function test_closing_with_the_exact_cash_has_no_difference_and_nothing_to_deposit_when_it_all_stays(): void
     {
         $cashier = $this->storeUser();
         $this->openShift($cashier);
@@ -144,7 +152,7 @@ class CashierShiftTest extends TestCase
         $this->closeShift($cashier, $shift, '500000')
             ->assertRedirect($this->url('index'))
             ->assertSessionHas('success', 'Shift ditutup.')
-            ->assertSessionHas('closed_shift', ['expected_cash' => '500000.00', 'counted_cash' => '500000.00', 'cash_difference' => '0.00', 'deposit_amount' => '0.00']);
+            ->assertSessionHas('closed_shift', ['expected_cash' => '500000.00', 'counted_cash' => '500000.00', 'cash_difference' => '0.00', 'deposit_amount' => '0.00', 'drawer_left_cash' => '500000.00']);
 
         $closed = $this->shiftOf($cashier);
         $this->assertSame([CashShiftStatus::Closed, ShiftDifferenceStatus::None], [$closed->status, $closed->difference_status]);
@@ -167,19 +175,114 @@ class CashierShiftTest extends TestCase
         $this->assertSame(['-10000.00', ShiftDifferenceStatus::PendingApproval, 'uang kembalian kurang'], [$closed->cash_difference, $closed->difference_status, $closed->closing_note]);
     }
 
-    public function test_the_deposit_is_the_counted_cash_above_the_fixed_opening_cash(): void
+    public function test_the_deposit_is_the_counted_cash_minus_what_the_cashier_leaves_in_the_drawer(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+        $this->closeShift($cashier, $this->shiftOf($cashier), '500000', null, '300000');
+
+        $closed = $this->shiftOf($cashier);
+        $this->assertSame(['200000.00', '300000.00'], [$closed->deposit_amount, $closed->drawer_left_cash]);
+
+        $other = $this->storeUser();
+        $this->openShift($other, null, '300000');
+        $this->closeShift($other, $this->shiftOf($other), '620000', 'lebih', '400000');
+
+        $closed = $this->shiftOf($other);
+        $this->assertSame(['220000.00', '400000.00'], [$closed->deposit_amount, $closed->drawer_left_cash]);
+    }
+
+    public function test_the_drawer_cannot_keep_more_than_was_counted(): void
     {
         $cashier = $this->storeUser();
         $this->openShift($cashier);
         $shift = $this->shiftOf($cashier);
 
-        $this->closeShift($cashier, $shift, '500000');
-        $this->assertSame('0.00', $this->shiftOf($cashier)->deposit_amount);
+        $this->closeShift($cashier, $shift, '500000', null, '500001')->assertSessionHas('error', 'Uang yang ditinggal di laci tidak boleh lebih dari tunai yang dihitung.');
 
-        $other = $this->storeUser();
-        $this->openShift($other);
-        $this->closeShift($other, $this->shiftOf($other), '620000', 'lebih');
-        $this->assertSame('120000.00', $this->shiftOf($other)->deposit_amount);
+        $this->assertSame(CashShiftStatus::Open, $this->shiftOf($cashier)->status);
+    }
+
+    public function test_what_is_left_in_the_drawer_is_validated(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+        $shift = $this->shiftOf($cashier);
+        $close = fn (mixed $left) => $this->actingAs($cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '500000'] + ($left === null ? [] : ['drawer_left_cash' => $left]));
+
+        $close(null)->assertSessionHasErrors(['drawer_left_cash' => 'Isi uang yang ditinggal di laci.']);
+        $close('abc')->assertSessionHasErrors('drawer_left_cash');
+        $close('-5')->assertSessionHasErrors(['drawer_left_cash' => 'Uang yang ditinggal di laci tidak boleh negatif.']);
+        $close('10.555')->assertSessionHasErrors('drawer_left_cash');
+        $this->assertSame(CashShiftStatus::Open, $this->shiftOf($cashier)->status);
+    }
+
+    public function test_without_being_told_the_drawer_keeps_the_opening_cash_or_all_the_counted_cash_when_less(): void
+    {
+        $shifts = $this->store->run(fn (): ShiftService => app(ShiftService::class));
+        $first = $this->openShiftFor($this->storeUser(), null, '500000');
+        $closedFirst = $this->store->run(fn () => $shifts->close($first, '650000', 'lebih'));
+
+        $second = $this->openShiftFor($this->storeUser());
+        $closedSecond = $this->store->run(fn () => $shifts->close($second, '120000', 'kurang'));
+
+        $this->assertSame(['500000.00', '150000.00', '120000.00', '0.00'], [$closedFirst->drawer_left_cash, $closedFirst->deposit_amount, $closedSecond->drawer_left_cash, $closedSecond->deposit_amount]);
+    }
+
+    public function test_the_next_shift_on_the_register_is_offered_what_the_last_one_left_in_the_drawer(): void
+    {
+        $first = $this->storeUser();
+        $this->openShift($first);
+        $this->closeShift($first, $this->shiftOf($first), '500000', null, '300000');
+
+        $this->actingAs($this->storeUser())->get($this->url('index'))
+            ->assertInertia(fn (Assert $page) => $page->where('registers.0.carried_over_cash', '300000.00'));
+
+        $second = $this->storeUser();
+        $this->openShift($second, null, '300000')->assertSessionHas('success');
+        $this->assertNull($this->shiftOf($second)->opening_cash_note);
+    }
+
+    public function test_only_the_latest_closed_shift_of_the_register_counts_and_other_registers_are_apart(): void
+    {
+        $secondRegister = $this->store->run(fn () => Register::factory()->create(['code' => 'K2', 'name' => 'Kasir 2', 'warehouse_id' => $this->mainWarehouse()->id]));
+        $first = $this->storeUser();
+        $this->openShift($first);
+        $this->closeShift($first, $this->shiftOf($first), '500000', null, '300000');
+        $this->openShift($first, null, '300000');
+        $this->closeShift($first, $this->shiftOf($first), '450000', 'kurang', '100000');
+
+        $shifts = $this->store->run(fn (): ShiftService => app(ShiftService::class));
+
+        $this->assertSame('100000.00', $this->store->run(fn () => $shifts->carriedOverCash($this->register())));
+        $this->assertNull($this->store->run(fn () => $shifts->carriedOverCash($secondRegister)));
+    }
+
+    public function test_opening_with_another_amount_than_the_drawer_was_left_with_needs_a_reason(): void
+    {
+        $first = $this->storeUser();
+        $this->openShift($first);
+        $this->closeShift($first, $this->shiftOf($first), '500000', null, '300000');
+        $second = $this->storeUser();
+
+        $this->openShift($second, null, '250000')->assertSessionHas('error', 'Modal awal berbeda dari sisa laci shift sebelumnya (Rp 300.000). Isi alasannya.');
+        $this->assertNull($this->shiftOf($second));
+
+        $this->openShift($second, null, '250000', 'Dipakai beli galon')->assertSessionHas('success');
+
+        $shift = $this->shiftOf($second);
+        $this->assertSame(['250000.00', 'Dipakai beli galon'], [$shift->opening_cash, $shift->opening_cash_note]);
+    }
+
+    public function test_the_opening_cash_is_validated(): void
+    {
+        $cashier = $this->storeUser();
+
+        $this->openShift($cashier, null, '')->assertSessionHasErrors(['opening_cash' => 'Isi modal kas awal.']);
+        $this->openShift($cashier, null, 'abc')->assertSessionHasErrors('opening_cash');
+        $this->openShift($cashier, null, '-1')->assertSessionHasErrors(['opening_cash' => 'Modal kas awal tidak boleh negatif.']);
+        $this->openShift($cashier, null, '10.555')->assertSessionHasErrors('opening_cash');
+        $this->assertNull($this->shiftOf($cashier));
     }
 
     public function test_a_shift_cannot_be_closed_twice(): void
@@ -234,18 +337,6 @@ class CashierShiftTest extends TestCase
     {
         $this->actingAs($this->storeUser(UserRole::StoreAdmin))->get($this->url('index'))
             ->assertInertia(fn (Assert $page) => $page->where('can_leave_to_dashboard', true)->where('urls.dashboard', route('tenant.dashboard', ['tenant' => $this->store->code])));
-    }
-
-    public function test_the_deposit_follows_the_cash_the_shift_opened_with_even_if_the_register_was_changed_since(): void
-    {
-        $cashier = $this->storeUser();
-        $this->openShift($cashier);
-        $this->store->run(fn () => Register::query()->where('code', 'K1')->update(['fixed_opening_cash' => 700000]));
-
-        $this->closeShift($cashier, $this->shiftOf($cashier), '500000');
-
-        $closed = $this->shiftOf($cashier);
-        $this->assertSame(['500000.00', '0.00'], [$closed->expected_cash, $closed->deposit_amount]);
     }
 
     public function test_the_database_refuses_a_second_open_shift_of_the_same_cashier_or_register(): void

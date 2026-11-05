@@ -48,7 +48,7 @@ class OpenShiftLockTest extends TestCase
      */
     private function openShiftThroughTheScreen(User $user): void
     {
-        $this->actingAs($user)->post($this->url('tenant.cashier.shifts.store'), ['register_id' => $this->register()->id])->assertSessionHas('success');
+        $this->actingAs($user)->post($this->url('tenant.cashier.shifts.store'), ['register_id' => $this->register()->id, 'opening_cash' => '0'])->assertSessionHas('success');
         $this->actingAs($user)->get($this->url('tenant.cashier.index'))->assertOk();
     }
 
@@ -56,7 +56,7 @@ class OpenShiftLockTest extends TestCase
     {
         $shift = $this->store->run(fn () => CashShift::query()->where('cashier_id', $user->id)->latest('id')->firstOrFail());
 
-        $this->actingAs($user)->post($this->url('tenant.cashier.shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0'])->assertSessionHas('success');
+        $this->actingAs($user)->post($this->url('tenant.cashier.shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'drawer_left_cash' => '0'])->assertSessionHas('success');
         $this->actingAs($user)->get($this->url('tenant.cashier.index'))->assertOk();
     }
 

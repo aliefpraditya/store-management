@@ -63,4 +63,14 @@ class ShiftException extends Exception
     {
         return new self('Ada selisih kas, isi catatan penutupan.');
     }
+
+    public static function openingCashNeedsNote(string $carriedOverCash): self
+    {
+        return new self('Modal awal berbeda dari sisa laci shift sebelumnya (Rp '.number_format((float) $carriedOverCash, 0, ',', '.').'). Isi alasannya.');
+    }
+
+    public static function drawerLeftExceedsCounted(): self
+    {
+        return new self('Uang yang ditinggal di laci tidak boleh lebih dari tunai yang dihitung.');
+    }
 }

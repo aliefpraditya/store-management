@@ -75,9 +75,7 @@ class ExpenseTest extends TestCase
      */
     private function openShiftWithFloat(): CashShift
     {
-        $this->store->run(fn () => Register::query()->where('code', 'K1')->update(['fixed_opening_cash' => 100000]));
-
-        return $this->openShiftFor($this->cashier);
+        return $this->openShiftFor($this->cashier, null, '100000');
     }
 
     private function closeShift(CashShift $shift, string $countedCash): void

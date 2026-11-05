@@ -10,11 +10,10 @@ const props = defineProps({
     /** What the store itself has, shown as the placeholder of the paper fields that were left blank. */
     store_letterhead: { type: Object, required: true },
     paper_widths: { type: Array, required: true },
-    /** One page of the units, with the paginator's rom, 	o and 	otal. */
+    /** One page of the units, with the paginator's from, to and total. */
     units: { type: Object, required: true },
     unit_filters: { type: Object, required: true },
     unit_per_page_options: { type: Array, required: true },
-    registers: { type: Array, required: true },
     urls: { type: Object, required: true },
 });
 
@@ -24,23 +23,11 @@ const form = useForm({ ...props.settings });
 
 const deleteWithConfirmation = useConfirmDelete();
 
-/** The opening cash being typed per register, by register id; saved one register at a time. */
-const openingCash = ref(Object.fromEntries(props.registers.map((register) => [register.id, register.fixed_opening_cash])));
-const savingRegisterId = ref(null);
-
 const isUnitDialogOpen = ref(false);
 const editedUnit = ref(null);
 
 function save() {
     form.put(props.urls.update, { preserveScroll: true });
-}
-
-function saveRegister(register) {
-    router.put(register.update_url, { fixed_opening_cash: openingCash.value[register.id] }, {
-        preserveScroll: true,
-        onStart: () => (savingRegisterId.value = register.id),
-        onFinish: () => (savingRegisterId.value = null),
-    });
 }
 
 const unitSearch = ref(props.unit_filters.search);
@@ -117,42 +104,26 @@ function confirmDeleteUnit(unit) {
                 </div>
             </section>
 
-            <div class="column">
-                <section class="card">
-                    <h2>Stok opname</h2>
+            <section class="card">
+                <h2>Stok opname</h2>
 
-                    <q-input
-                        v-model="form.large_variance_threshold"
-                        type="number"
-                        min="0"
-                        step="any"
-                        outlined
-                        dense
-                        prefix="Rp"
-                        label="Ambang selisih besar"
-                        hint="Selisih yang nilainya di atas ini wajib diberi alasan saat opname diposting. Kosongkan untuk tanpa batas."
-                        :error="!!form.errors.large_variance_threshold"
-                        :error-message="form.errors.large_variance_threshold"
-                    />
+                <q-input
+                    v-model="form.large_variance_threshold"
+                    type="number"
+                    min="0"
+                    step="any"
+                    outlined
+                    dense
+                    prefix="Rp"
+                    label="Ambang selisih besar"
+                    hint="Selisih yang nilainya di atas ini wajib diberi alasan saat opname diposting. Kosongkan untuk tanpa batas."
+                    :error="!!form.errors.large_variance_threshold"
+                    :error-message="form.errors.large_variance_threshold"
+                />
 
-                    <q-toggle v-model="form.lock_sales_during_opname" label="Kunci penjualan barang yang sedang dihitung opname" />
-                    <p class="hint">Barang yang ada di opname berstatus Menghitung atau Review tidak bisa dijual di kasir sampai opname selesai.</p>
-                </section>
-
-                <section class="card">
-                    <h2>Register</h2>
-                    <p class="hint">Modal kas tetap dipakai sebagai kas awal tiap shift. Perubahan berlaku untuk shift berikutnya.</p>
-
-                    <div v-for="register in registers" :key="register.id" class="register">
-                        <div class="register__name">
-                            <b>{{ register.name }}</b>
-                            <small>{{ register.code }}<template v-if="register.has_open_shift"> · shift sedang berjalan memakai modal lama</template></small>
-                        </div>
-                        <q-input v-model="openingCash[register.id]" type="number" min="0" step="any" outlined dense prefix="Rp" :aria-label="`Modal kas ${register.name}`" class="register__input" />
-                        <q-btn outline dense no-caps color="primary" label="Simpan" :loading="savingRegisterId === register.id" @click="saveRegister(register)" />
-                    </div>
-                </section>
-            </div>
+                <q-toggle v-model="form.lock_sales_during_opname" label="Kunci penjualan barang yang sedang dihitung opname" />
+                <p class="hint">Barang yang ada di opname berstatus Menghitung atau Review tidak bisa dijual di kasir sampai opname selesai.</p>
+            </section>
         </div>
 
         <section class="card units">
@@ -239,12 +210,6 @@ function confirmDeleteUnit(unit) {
     margin-bottom: 16px;
 }
 
-.column {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-}
-
 .card {
     display: flex;
     flex-direction: column;
@@ -279,30 +244,6 @@ function confirmDeleteUnit(unit) {
 
 .error {
     color: #be123c;
-}
-
-.register {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.register__name {
-    flex: 1;
-}
-
-.register__name b,
-.register__name small {
-    display: block;
-}
-
-.register__name small {
-    color: var(--app-mute);
-    font-size: 12px;
-}
-
-.register__input {
-    width: 170px;
 }
 
 .units__head {

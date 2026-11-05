@@ -52,7 +52,7 @@ class CashierController extends Controller
     }
 
     /**
-     * @return list<array{id: int, code: string, name: string, fixed_opening_cash: string, busy_with: string|null}>
+     * @return list<array{id: int, code: string, name: string, carried_over_cash: string|null, busy_with: string|null}>
      */
     private function registersToOpen(): array
     {
@@ -63,7 +63,7 @@ class CashierController extends Controller
                 'id' => $register->id,
                 'code' => $register->code,
                 'name' => $register->name,
-                'fixed_opening_cash' => $register->fixed_opening_cash,
+                'carried_over_cash' => $this->shiftService->carriedOverCash($register),
                 'busy_with' => $openShifts[$register->id] ?? null,
             ])->all();
     }

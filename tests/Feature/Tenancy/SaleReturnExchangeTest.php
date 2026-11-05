@@ -93,7 +93,7 @@ class SaleReturnExchangeTest extends TestCase
         $cashier = $this->storeUser();
         $register = $this->store->run(fn () => Register::factory()->create(['code' => 'K2', 'name' => 'Kasir 2', 'warehouse_id' => $this->mainWarehouse()->id]));
 
-        return [$cashier, $this->openShiftFor($cashier, $register)];
+        return [$cashier, $this->openShiftFor($cashier, $register, '500000')];
     }
 
     private function saleReturn(): SaleReturn

@@ -14,6 +14,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'confirm']);
 
 const countedCash = ref('');
+const drawerLeftCash = ref('');
+const isDrawerLeftEdited = ref(false);
 const note = ref('');
 
 watch(
@@ -21,10 +23,19 @@ watch(
     (isOpen) => {
         if (isOpen) {
             countedCash.value = '';
+            drawerLeftCash.value = '';
+            isDrawerLeftEdited.value = false;
             note.value = '';
         }
     },
 );
+
+/** Until the cashier types an amount, the drawer keeps what the shift opened with, as long as the count covers it. */
+watch(countedCash, (counted) => {
+    if (!isDrawerLeftEdited.value && counted !== '' && counted !== null) {
+        drawerLeftCash.value = String(Math.min(Number(props.summary.opening_cash), Number(counted)));
+    }
+});
 
 const isCountEntered = computed(() => countedCash.value !== '' && countedCash.value !== null);
 
@@ -32,10 +43,23 @@ const difference = computed(() => roundMoney(Number(countedCash.value) - Number(
 
 const isNoteNeeded = computed(() => isCountEntered.value && difference.value !== 0);
 
-const canConfirm = computed(() => isCountEntered.value && (!isNoteNeeded.value || note.value.trim() !== '') && !props.isProcessing);
+const isDrawerLeftEntered = computed(() => drawerLeftCash.value !== '' && drawerLeftCash.value !== null);
+
+const isDrawerLeftTooMuch = computed(() => isCountEntered.value && isDrawerLeftEntered.value && Number(drawerLeftCash.value) > Number(countedCash.value));
+
+const deposit = computed(() => roundMoney(Number(countedCash.value) - Number(drawerLeftCash.value)));
+
+const canConfirm = computed(
+    () => isCountEntered.value
+        && isDrawerLeftEntered.value
+        && Number(drawerLeftCash.value) >= 0
+        && !isDrawerLeftTooMuch.value
+        && (!isNoteNeeded.value || note.value.trim() !== '')
+        && !props.isProcessing,
+);
 
 function confirm() {
-    emit('confirm', { counted_cash: Number(countedCash.value), closing_note: note.value.trim() || null });
+    emit('confirm', { counted_cash: Number(countedCash.value), drawer_left_cash: Number(drawerLeftCash.value), closing_note: note.value.trim() || null });
 }
 </script>
 
@@ -72,6 +96,21 @@ function confirm() {
                 <div v-if="isCountEntered" class="close__difference" :class="{ 'close__difference--bad': difference !== 0 }">
                     {{ difference === 0 ? 'Kas cocok' : `Selisih ${formatRupiah(difference)}` }}
                 </div>
+
+                <q-input
+                    v-model="drawerLeftCash"
+                    type="number"
+                    min="0"
+                    step="any"
+                    outlined
+                    dense
+                    prefix="Rp"
+                    label="Ditinggal di laci untuk shift berikutnya"
+                    :error="isDrawerLeftTooMuch"
+                    error-message="Tidak boleh lebih dari tunai yang dihitung."
+                    @update:model-value="isDrawerLeftEdited = true"
+                />
+                <div v-if="isCountEntered && isDrawerLeftEntered && !isDrawerLeftTooMuch" class="close__deposit">Setoran: {{ formatRupiah(deposit) }}</div>
 
                 <q-input v-model="note" outlined dense maxlength="500" :label="isNoteNeeded ? 'Catatan selisih (wajib)' : 'Catatan (opsional)'" />
             </q-card-section>
@@ -165,6 +204,13 @@ function confirm() {
     border-radius: 10px;
     background: #e7f8f1;
     color: #059669;
+    font-weight: 600;
+}
+
+.close__deposit {
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: #f6f6f7;
     font-weight: 600;
 }
 

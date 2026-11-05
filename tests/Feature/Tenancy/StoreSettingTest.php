@@ -9,14 +9,12 @@ use App\Enums\UserRole;
 use App\Models\CashShift;
 use App\Models\DeliveryNote;
 use App\Models\Product;
-use App\Models\Register;
 use App\Models\Sale;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\SaleService;
-use App\Services\ShiftService;
 use App\Services\StoreSettingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -114,7 +112,6 @@ class StoreSettingTest extends TestCase
     {
         $this->actingAs($this->cashier)->get($this->url('index'))->assertForbidden();
         $this->actingAs($this->cashier)->put($this->url('update'), $this->body())->assertForbidden();
-        $this->actingAs($this->cashier)->put($this->url('registers.update', ['register' => $this->register()->id]), ['fixed_opening_cash' => 1000])->assertForbidden();
     }
 
     public function test_the_page_starts_with_the_defaults(): void
@@ -134,9 +131,7 @@ class StoreSettingTest extends TestCase
             ->where('unit_filters', ['search' => '', 'sort' => 'code', 'direction' => 'asc', 'per_page' => 10])
             ->where('unit_per_page_options', [10, 25, 50, 100])
             ->where('urls.unit_create', route('tenant.units.store', ['tenant' => $this->store->code]))
-            ->has('registers', 1)
-            ->where('registers.0.code', 'K1')
-            ->where('registers.0.has_open_shift', false));
+            ->missing('registers'));
     }
 
     public function test_the_settings_are_saved_and_shown_again(): void
@@ -210,38 +205,6 @@ class StoreSettingTest extends TestCase
         $sheetUrl = $this->actingAs($this->cashier)->postJson(route('tenant.cashier.delivery-notes.print', ['tenant' => $this->store->code, 'delivery_note' => $note->id]))->json('data.sheet_url');
 
         $this->actingAs($this->cashier)->get($sheetUrl)->assertInertia(fn (Assert $page) => $page->where('note.store.name', 'MITRA UTAMA'));
-    }
-
-    public function test_the_fixed_opening_cash_of_a_register_is_changed_for_the_next_shift(): void
-    {
-        $register = $this->register();
-
-        $this->actingAs($this->admin)->put($this->url('registers.update', ['register' => $register->id]), ['fixed_opening_cash' => 250000])->assertSessionHasNoErrors()->assertSessionHas('success');
-
-        $shift = $this->openShiftFor($this->cashier);
-        $this->assertSame('250000.00', $shift->opening_cash);
-    }
-
-    public function test_a_running_shift_keeps_the_opening_cash_it_started_with(): void
-    {
-        $shift = $this->openShiftFor($this->cashier);
-
-        $this->actingAs($this->admin)->put($this->url('registers.update', ['register' => $this->register()->id]), ['fixed_opening_cash' => 250000])->assertSessionHasNoErrors();
-
-        $this->assertSame('0.00', $this->store->run(fn (): string => app(ShiftService::class)->summarize($shift)['opening_cash']));
-        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
-            ->where('registers.0.has_open_shift', true)
-            ->where('registers.0.fixed_opening_cash', '250000.00'));
-    }
-
-    public function test_the_opening_cash_is_validated(): void
-    {
-        $put = fn ($value) => $this->actingAs($this->admin)->put($this->url('registers.update', ['register' => $this->register()->id]), ['fixed_opening_cash' => $value]);
-
-        $put(-5)->assertSessionHasErrors(['fixed_opening_cash' => 'Modal kas tetap tidak boleh negatif.']);
-        $put('')->assertSessionHasErrors('fixed_opening_cash');
-        $put('abc')->assertSessionHasErrors('fixed_opening_cash');
-        $this->assertSame('0.00', $this->store->run(fn (): string => Register::query()->where('code', 'K1')->value('fixed_opening_cash')));
     }
 
     public function test_a_variance_worth_more_than_the_limit_needs_a_reason_to_be_posted(): void

@@ -1,10 +1,10 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 
 const props = defineProps({
-    /** @type {{id: number, code: string, name: string, fixed_opening_cash: string, busy_with: string|null}[]} */
+    /** @type {{id: number, code: string, name: string, carried_over_cash: string|null, busy_with: string|null}[]} */
     registers: { type: Array, required: true },
     openUrl: { type: String, required: true },
     storeName: { type: String, required: true },
@@ -13,14 +13,42 @@ const props = defineProps({
 const firstFreeRegister = props.registers.find((register) => register.busy_with === null) ?? props.registers[0] ?? null;
 
 const registerId = ref(firstFreeRegister?.id ?? null);
+const openingCash = ref('');
+const openingNote = ref('');
 const isOpening = ref(false);
 
 const register = computed(() => props.registers.find((candidate) => candidate.id === registerId.value) ?? null);
 
-const canOpen = computed(() => register.value !== null && register.value.busy_with === null && !isOpening.value);
+/** The drawer's cash is whatever the last shift on the register left in it; a register that never had a shift has nothing to carry over. */
+const hasCarriedOverCash = computed(() => register.value?.carried_over_cash !== null && register.value?.carried_over_cash !== undefined);
+
+const isOpeningEntered = computed(() => openingCash.value !== '' && openingCash.value !== null);
+
+const isOpeningChanged = computed(() => hasCarriedOverCash.value && isOpeningEntered.value && Number(openingCash.value) !== Number(register.value.carried_over_cash));
+
+const canOpen = computed(
+    () => register.value !== null
+        && register.value.busy_with === null
+        && isOpeningEntered.value
+        && (!isOpeningChanged.value || openingNote.value.trim() !== '')
+        && !isOpening.value,
+);
+
+watch(
+    register,
+    (selected) => {
+        openingCash.value = selected?.carried_over_cash ?? '';
+        openingNote.value = '';
+    },
+    { immediate: true },
+);
 
 function openShift() {
-    router.post(props.openUrl, { register_id: registerId.value }, { onStart: () => (isOpening.value = true), onFinish: () => (isOpening.value = false) });
+    router.post(
+        props.openUrl,
+        { register_id: registerId.value, opening_cash: Number(openingCash.value), opening_cash_note: isOpeningChanged.value ? openingNote.value.trim() : null },
+        { onStart: () => (isOpening.value = true), onFinish: () => (isOpening.value = false) },
+    );
 }
 </script>
 
@@ -47,10 +75,13 @@ function openShift() {
                 />
                 <div v-else class="open__register">{{ register.code }} · {{ register.name }}</div>
 
-                <dl v-if="register" class="open__cash">
-                    <dt>Modal kas awal</dt>
-                    <dd>{{ formatRupiah(register.fixed_opening_cash) }}</dd>
-                </dl>
+                <q-input v-model="openingCash" type="number" min="0" step="any" outlined dense prefix="Rp" label="Modal kas awal" autofocus>
+                    <template #hint>
+                        <template v-if="hasCarriedOverCash">Sisa laci shift sebelumnya: {{ formatRupiah(register.carried_over_cash) }}</template>
+                        <template v-else>Belum ada shift sebelumnya di register ini. Hitung uang di laci lalu isi.</template>
+                    </template>
+                </q-input>
+                <q-input v-if="isOpeningChanged" v-model="openingNote" outlined dense maxlength="255" label="Alasan modal berbeda dari sisa laci (wajib)" />
                 <p v-if="register?.busy_with" class="open__busy">{{ register.name }} sedang dipakai {{ register.busy_with }}.</p>
             </q-card-section>
 
@@ -95,20 +126,6 @@ function openShift() {
 
 .open__register {
     font-weight: 600;
-}
-
-.open__cash {
-    display: flex;
-    justify-content: space-between;
-    margin: 0;
-    padding: 10px 14px;
-    border-radius: 10px;
-    background: #f6f6f7;
-}
-
-.open__cash dd {
-    margin: 0;
-    font-weight: 700;
 }
 
 .open__busy {

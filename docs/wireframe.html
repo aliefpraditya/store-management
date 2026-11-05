@@ -105,7 +105,7 @@
     <div class="tip ok mt"><svg class="ic s"><use href="#i-check"/></svg><span>Berhasil: toko langsung Aktif. Gagal: toko tersimpan dengan status Gagal dan pesan galat, lalu bisa diperbaiki dan dicoba lagi.</span></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Kode dan nama database disarankan otomatis dari nama toko, boleh diubah sebelum disimpan.</li><li>Setelah toko aktif, bagian Database terkunci. Admin awal dan modal kas tetap menyusul bersama Register.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Kode dan nama database disarankan otomatis dari nama toko, boleh diubah sebelum disimpan.</li><li>Setelah toko aktif, bagian Database terkunci. Admin awal menyusul bersama Register.</li></ul></details>
 </section>
 
 <!-- 4 USER & AKSES -->
@@ -266,15 +266,15 @@
 </section>
 
 <!-- 11 BUKA SHIFT -->
-<section class="scr" id="shiftbuka" data-group="Penjualan" data-nav="Buka Shift" data-title="Buka Shift" data-sub="Wajib sebelum berjualan. Modal kas tetap." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
+<section class="scr" id="shiftbuka" data-group="Penjualan" data-nav="Buka Shift" data-title="Buka Shift" data-sub="Wajib sebelum berjualan. Modal terisi dari sisa laci." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/cashier">
 <div class="bd full" style="background:var(--bg)">
   <div class="scrim"><div class="modal">
     <p class="mute" style="margin:0">Mitra Utama</p><h3>Buka shift</h3><p class="ink2" style="margin:0 0 18px">K1 · Kasir 1</p>
-    <div class="f"><span>Modal kas awal</span><div class="in big dis"><svg class="ic"><use href="#i-lock"/></svg>Rp 500.000</div></div>
+    <div class="f"><span>Modal kas awal</span><div class="in big">Rp 500.000</div><span class="mute" style="font-size:12.5px">Sisa laci shift sebelumnya: Rp 500.000</span></div>
     <div class="b p w l mt">Buka Shift</div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Modal tetap hanya diubah Admin. Satu register hanya punya satu shift terbuka, dan satu kasir satu shift.</li><li>Selama shift terbuka, Kasir tidak bisa keluar; shift ditutup dulu. Admin tetap bisa membuka menu toko, dan tombol keluar di sidebar memberi peringatan dengan jalan pintas ke Kasir.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Modal terisi dari sisa laci shift sebelumnya. Kasir boleh mengubahnya, tetapi wajib mengisi alasan; register yang belum pernah punya shift mengisi modal sendiri. Satu register hanya punya satu shift terbuka, dan satu kasir satu shift.</li><li>Selama shift terbuka, Kasir tidak bisa keluar; shift ditutup dulu. Admin tetap bisa membuka menu toko, dan tombol keluar di sidebar memberi peringatan dengan jalan pintas ke Kasir.</li></ul></details>
 </section>
 
 <!-- 12 KASIR -->
@@ -687,7 +687,7 @@
     <div class="sum mt2"><div><span>Jumlah nota</span><span>14</span></div><div><span>Total penjualan</span><span>4.850.000</span></div><div><span>Tunai (setelah kembalian)</span><span>3.250.000</span></div><div><span>Transfer</span><span>900.000</span></div><div><span>QRIS</span><span>700.000</span></div><div><span>EDC</span><span>0</span></div><div><span>Retur disetujui (semua cara pengembalian)</span><span>450.000</span></div><div><span>COD sudah diantar (3 nota)</span><span>1.450.000</span></div><div><span>COD belum diantar (2 nota)</span><span>847.500</span></div><div class="t"><span>Modal kas awal</span><span>500.000</span></div><div><span>Retur tunai</span><span style="color:var(--bad)">−150.000</span></div><div><span>Pengeluaran dari laci</span><span style="color:var(--bad)">−120.000</span></div><div class="t"><span>Tunai seharusnya di laci</span><span>3.480.000</span></div></div>
     <div class="g2 mt"><div class="f"><span>Tunai yang dihitung</span><div class="in big">3.470.000</div></div><div class="f"><span>Selisih</span><div class="in big" style="color:var(--bad)">−10.000</div></div></div>
     <div class="f"><span>Catatan selisih (wajib)</span><div class="in">Kembalian kurang Rp 10.000</div></div>
-    <div class="tip"><svg class="ic s"><use href="#i-wallet"/></svg><span>Modal 500.000 tinggal di laci · <b>setoran Rp 3.090.000</b></span></div>
+    <div class="f"><span>Ditinggal di laci untuk shift berikutnya · setoran <b>Rp 2.970.000</b></span><div class="in">500.000</div></div>
     <div class="row mt"><span class="sp"></span><span class="b">Batal</span><span class="b bad">Tutup Shift</span></div>
   </div></div>
 </div>
@@ -806,7 +806,7 @@
 </section>
 
 <!-- 23 PENGATURAN -->
-<section class="scr" id="setelan" data-group="Pengaturan" data-nav="Pengaturan Toko" data-title="Pengaturan Toko" data-sub="Nota dan cetakan, aturan opname, modal kas register, dan satuan barang." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/settings">
+<section class="scr" id="setelan" data-group="Pengaturan" data-nav="Pengaturan Toko" data-title="Pengaturan Toko" data-sub="Nota dan cetakan, aturan opname, dan satuan barang." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/settings">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Pengaturan Toko" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>Pengaturan Toko</h3><span class="b p">Simpan</span></div>
@@ -814,7 +814,6 @@
     <div class="card"><h4>Nota dan cetakan</h4><div class="f"><span>Nama di nota</span><div class="in">Toko Mitra Utama</div></div><div class="f"><span>Alamat</span><div class="in">Jl. Poros Kuprik</div></div><div class="f"><span>Telepon</span><div class="in">0813-5411-1168</div></div><div class="f"><span>Teks penutup nota</span><div class="in" style="min-height:64px">Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan kecuali ada perjanjian sebelumnya.<br>Terimakasih Telah Berbelanja</div></div><div class="f"><span>Lebar kertas nota</span><div class="seg"><span>58 mm</span><span class="on">80 mm</span></div></div></div>
     <div>
       <div class="card"><h4>Stok opname</h4><div class="f"><span>Ambang selisih besar (wajib alasan di atas ini)</span><div class="in">Rp 500.000</div></div><div class="row" style="gap:8px"><span class="sw on"></span><span>Kunci penjualan barang yang sedang dihitung opname</span></div></div>
-      <div class="card mt"><h4>Register</h4><div class="list"><div><span class="t">Kasir 1 · K1<small>modal kas tetap, berlaku untuk shift berikutnya</small></span><span class="in mini">500.000</span><span class="b s">Simpan</span></div></div></div>
       <div class="card mt"><div class="row" style="justify-content:space-between"><h4>Satuan</h4><span class="b s p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Satuan</span></div><div class="in ph" style="margin-bottom:8px"><svg class="ic s"><use href="#i-search"/></svg>Cari kode atau nama satuan</div><div class="list"><div><span class="t"><b>DUS</b><small>Dus · 12 barang</small></span><span class="b s">Edit</span></div><div><span class="t"><b>BOTOL</b><small>Belum dipakai</small></span><span class="b s">Edit</span><span class="b s bad">Hapus</span></div></div><div class="row mt2" style="justify-content:space-between"><span class="mute" style="font-size:12.5px">1–10 dari 48 satuan</span><span class="in sel mini">10 per halaman</span></div></div>
     </div>
   </div></div></div>

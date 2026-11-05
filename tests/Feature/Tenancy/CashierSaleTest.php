@@ -263,7 +263,7 @@ class CashierSaleTest extends TestCase
         ];
         $this->actingAs($this->cashier)->post($this->url('sales.store'), $payload)->assertSessionHas('last_sale');
         $shift = $this->store->run(fn () => CashShift::query()->where('cashier_id', $this->cashier->id)->firstOrFail());
-        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'closing_note' => 'Uji'])->assertSessionHas('success');
+        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'drawer_left_cash' => '0', 'closing_note' => 'Uji'])->assertSessionHas('success');
 
         $this->store->run(function () use ($shift, $payload): void {
             $service = app(SaleService::class);
@@ -376,15 +376,15 @@ class CashierSaleTest extends TestCase
         $this->sell([[$unit, 13]], [['cash', 200000]]);
         $shift = $this->store->run(fn () => CashShift::query()->sole());
 
-        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '130000'])
-            ->assertSessionHas('closed_shift', ['expected_cash' => '130000.00', 'counted_cash' => '130000.00', 'cash_difference' => '0.00', 'deposit_amount' => '130000.00']);
+        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '130000', 'drawer_left_cash' => '0'])
+            ->assertSessionHas('closed_shift', ['expected_cash' => '130000.00', 'counted_cash' => '130000.00', 'cash_difference' => '0.00', 'deposit_amount' => '130000.00', 'drawer_left_cash' => '0.00']);
     }
 
     public function test_a_closed_shift_can_no_longer_sell(): void
     {
         $unit = $this->unitOf($this->sellableProduct(), 'PCS');
         $shift = $this->store->run(fn () => CashShift::query()->sole());
-        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'closing_note' => 'kosong']);
+        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'drawer_left_cash' => '0', 'closing_note' => 'kosong']);
 
         $this->sell([[$unit, 1]], [['cash', 10000]])->assertSessionHas('error', 'Buka shift dulu sebelum berjualan.');
     }

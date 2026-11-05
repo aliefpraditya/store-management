@@ -21,8 +21,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Opens and closes a cashier's shift. A register has one open shift at a time; the opening cash is the register's
- * fixed amount, and closing compares the counted cash with what the receipts say should be in the drawer.
+ * Opens and closes a cashier's shift. A register has one open shift at a time. The petty cash travels with the
+ * drawer: closing records what the cashier leaves in it, and the next shift on that register opens with that amount (or
+ * another one, with a reason). Closing compares the counted cash with what the receipts say should be in the drawer.
  *
  * @phpstan-import-type CodTotals from CodSaleService
  *
@@ -45,11 +46,35 @@ class ShiftService
     }
 
     /**
+     * What the last closed shift left in the register's drawer, or null when the register has never been closed (its
+     * first shift has to be told how much cash it starts with).
+     *
+     * @return numeric-string|null
+     */
+    public function carriedOverCash(Register $register): ?string
+    {
+        $left = CashShift::query()
+            ->where('register_id', $register->id)
+            ->where('status', CashShiftStatus::Closed)
+            ->whereNotNull('drawer_left_cash')
+            ->latest('id')
+            ->value('drawer_left_cash');
+
+        return $left === null ? null : (string) BigDecimal::of((string) $left)->toScale(2);
+    }
+
+    /**
+     * Opens a shift on the register. Without `$openingCash` the shift starts with what the drawer was left with (zero
+     * when there is nothing to carry over). Another amount than the carried-over one needs a reason, so a shortage
+     * cannot be hidden by quietly typing a lower opening cash.
+     *
+     * @param  numeric-string|null  $openingCash
+     *
      * @throws ShiftException
      */
-    public function open(User $user, Register $register): CashShift
+    public function open(User $user, Register $register, ?string $openingCash = null, ?string $openingNote = null): CashShift
     {
-        return DB::transaction(function () use ($user, $register): CashShift {
+        return DB::transaction(function () use ($user, $register, $openingCash, $openingNote): CashShift {
             $register = Register::query()->lockForUpdate()->findOrFail($register->id);
 
             if (! $register->is_active) {
@@ -70,6 +95,14 @@ class ShiftService
                 throw ShiftException::registerInUse($register->name, $busyShift->cashier_name);
             }
 
+            $carriedOverCash = $this->carriedOverCash($register);
+            $opening = BigDecimal::of($openingCash ?? $carriedOverCash ?? '0')->toScale(2);
+            $isOpeningChanged = $carriedOverCash !== null && ! $opening->isEqualTo($carriedOverCash);
+
+            if ($isOpeningChanged && blank($openingNote)) {
+                throw ShiftException::openingCashNeedsNote($carriedOverCash);
+            }
+
             try {
                 return CashShift::query()->create([
                     'client_uuid' => (string) Str::uuid(),
@@ -78,7 +111,8 @@ class ShiftService
                     'cashier_id' => $user->id,
                     'cashier_name' => $user->name,
                     'opened_at' => now(),
-                    'opening_cash' => $register->fixed_opening_cash,
+                    'opening_cash' => (string) $opening,
+                    'opening_cash_note' => $isOpeningChanged ? trim($openingNote) : null,
                     'status' => CashShiftStatus::Open,
                     'difference_status' => ShiftDifferenceStatus::None,
                 ]);
@@ -146,14 +180,17 @@ class ShiftService
     }
 
     /**
-     * Closes the shift with the cash counted. A difference needs a note and waits for an admin's approval; the
-     * cash above the register's fixed amount is the deposit to hand over.
+     * Closes the shift with the cash counted. A difference needs a note and waits for an admin's approval. The cashier
+     * says how much stays in the drawer for the next shift, and the rest of the counted cash is the deposit to hand
+     * over. Without `$drawerLeftCash` the opening cash stays (or all the counted cash when that is less).
+     *
+     * @param  numeric-string|null  $drawerLeftCash
      *
      * @throws ShiftException
      */
-    public function close(CashShift $shift, string $countedCash, ?string $note): CashShift
+    public function close(CashShift $shift, string $countedCash, ?string $note, ?string $drawerLeftCash = null): CashShift
     {
-        return DB::transaction(function () use ($shift, $countedCash, $note): CashShift {
+        return DB::transaction(function () use ($shift, $countedCash, $note, $drawerLeftCash): CashShift {
             $shift = CashShift::query()->with('register')->lockForUpdate()->findOrFail($shift->id);
 
             if ($shift->status !== CashShiftStatus::Open) {
@@ -174,13 +211,22 @@ class ShiftService
                 throw ShiftException::differenceNeedsNote();
             }
 
+            $left = $drawerLeftCash === null
+                ? BigDecimal::min(BigDecimal::of((string) $shift->opening_cash), $counted)
+                : BigDecimal::of($drawerLeftCash);
+
+            if ($left->isGreaterThan($counted)) {
+                throw ShiftException::drawerLeftExceedsCounted();
+            }
+
             $shift->forceFill([
                 'status' => CashShiftStatus::Closed,
                 'closed_at' => now(),
                 'expected_cash' => (string) $expectedCash->toScale(2),
                 'counted_cash' => (string) $counted->toScale(2),
                 'cash_difference' => (string) $difference->toScale(2),
-                'deposit_amount' => (string) $counted->minus($shift->opening_cash)->toScale(2),
+                'deposit_amount' => (string) $counted->minus($left)->toScale(2),
+                'drawer_left_cash' => (string) $left->toScale(2),
                 'difference_status' => $difference->isZero() ? ShiftDifferenceStatus::None : ShiftDifferenceStatus::PendingApproval,
                 'closing_note' => filled($note) ? trim($note) : null,
             ])->save();

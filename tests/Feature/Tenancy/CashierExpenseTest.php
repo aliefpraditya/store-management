@@ -9,7 +9,6 @@ use App\Enums\UserRole;
 use App\Models\CashShift;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
-use App\Models\Register;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\ShiftService;
@@ -37,9 +36,8 @@ class CashierExpenseTest extends TestCase
         parent::setUp();
 
         $this->store = $this->prepareStoreDatabase(['code' => 'test_cashier_expenses', 'receipt_prefix' => 'TCE']);
-        $this->store->run(fn () => Register::query()->where('code', 'K1')->update(['fixed_opening_cash' => 100000]));
         $this->cashier = $this->storeUser();
-        $this->shift = $this->openShiftFor($this->cashier);
+        $this->shift = $this->openShiftFor($this->cashier, null, '100000');
     }
 
     private function url(string $name): string
@@ -119,7 +117,7 @@ class CashierExpenseTest extends TestCase
 
         $closedShift = $this->store->run(fn (): CashShift => app(ShiftService::class)->close($this->shift, '75000', null));
 
-        $this->assertSame(['75000.00', '0.00', '-25000.00'], [$closedShift->expected_cash, $closedShift->cash_difference, $closedShift->deposit_amount]);
+        $this->assertSame(['75000.00', '0.00', '0.00', '75000.00'], [$closedShift->expected_cash, $closedShift->cash_difference, $closedShift->deposit_amount, $closedShift->drawer_left_cash]);
     }
 
     public function test_a_cashier_cannot_take_money_without_a_running_shift(): void

@@ -64,8 +64,8 @@ Route::prefix('t/{tenant}')
             Route::post('receipts/{sale}/returns', [CashierSaleReturnController::class, 'store'])->middleware('signed')->name('receipts.returns.store');
             Route::get('returns/{sale_return}/sheet', [CashierSaleReturnController::class, 'sheet'])->name('returns.sheet');
             Route::get('cod', [CashierCodController::class, 'index'])->name('cod.index');
-            Route::post('cod/{sale}/delivered', [CashierCodController::class, 'delivered'])->name('cod.delivered');
-            Route::post('cod/{sale}/void', [CashierCodController::class, 'void'])->name('cod.void');
+            Route::post('cod/{sale}/deliveries', [CashierCodController::class, 'delivered'])->name('cod.delivered');
+            Route::post('cod/{sale}/voids', [CashierCodController::class, 'void'])->name('cod.void');
             Route::get('expenses', [CashierExpenseController::class, 'index'])->name('expenses.index');
             Route::post('expenses', [CashierExpenseController::class, 'store'])->name('expenses.store');
         });
@@ -124,13 +124,12 @@ Route::prefix('t/{tenant}')
 
             Route::get('sales', [SaleHistoryController::class, 'index'])->name('tenant.sales.index');
             Route::get('sales/{sale}', [SaleHistoryController::class, 'show'])->name('tenant.sales.show');
-            Route::post('sales/{sale}/void', [SaleHistoryController::class, 'void'])->name('tenant.sales.void');
+            Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->name('tenant.sales.void');
 
             Route::get('products/search', ProductSearchController::class)->name('tenant.products.search');
             Route::resource('products', ProductController::class)->except(['show'])->names('tenant.products');
             Route::get('settings', [StoreSettingController::class, 'index'])->name('tenant.settings.index');
             Route::put('settings', [StoreSettingController::class, 'update'])->name('tenant.settings.update');
-            Route::put('settings/registers/{register}', [StoreSettingController::class, 'updateRegister'])->name('tenant.settings.registers.update');
             Route::resource('settings/units', UnitController::class)->only(['store', 'update', 'destroy'])->names('tenant.units');
 
             Route::prefix('stock-opnames')->name('tenant.stock-opnames.')->scopeBindings()->group(function () {

@@ -113,8 +113,10 @@ function markFollowedUp() {
                         <dt>Selisih</dt><dd>{{ formatRupiah(shift.cash_difference) }}</dd>
                     </div>
                     <div><dt>Setoran</dt><dd>{{ formatRupiah(shift.deposit_amount) }}</dd></div>
+                    <div><dt>Ditinggal di laci</dt><dd>{{ formatRupiah(shift.drawer_left_cash) }}</dd></div>
                 </template>
             </dl>
+            <p v-if="shift.opening_cash_note" class="shift__note"><small>Alasan modal awal berbeda dari sisa laci</small>{{ shift.opening_cash_note }}</p>
             <p v-if="shift.closing_note" class="shift__note"><small>Catatan kasir</small>{{ shift.closing_note }}</p>
 
             <template v-if="shift.returns.length > 0">

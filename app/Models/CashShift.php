@@ -17,7 +17,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 /**
  * Lives in the store database. `cashier_id` points at a central user, so it has no relation.
  */
-#[Fillable(['client_uuid', 'register_id', 'business_date', 'cashier_id', 'cashier_name', 'opened_at', 'opening_cash', 'closed_at', 'expected_cash', 'counted_cash', 'cash_difference', 'deposit_amount', 'status', 'difference_status', 'closing_note'])]
+#[Fillable(['client_uuid', 'register_id', 'business_date', 'cashier_id', 'cashier_name', 'opened_at', 'opening_cash', 'opening_cash_note', 'closed_at', 'expected_cash', 'counted_cash', 'cash_difference', 'deposit_amount', 'drawer_left_cash', 'status', 'difference_status', 'closing_note'])]
 class CashShift extends Model implements AuditableContract
 {
     /** @use HasFactory<CashShiftFactory> */
@@ -39,6 +39,7 @@ class CashShift extends Model implements AuditableContract
             'counted_cash' => 'decimal:2',
             'cash_difference' => 'decimal:2',
             'deposit_amount' => 'decimal:2',
+            'drawer_left_cash' => 'decimal:2',
             'status' => CashShiftStatus::class,
             'difference_status' => ShiftDifferenceStatus::class,
         ];

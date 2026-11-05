@@ -3,7 +3,7 @@ import { formatRupiah } from '../../Composables/useMoneyFormat';
 
 defineProps({
     modelValue: { type: Boolean, required: true },
-    /** @type {{expected_cash: string, counted_cash: string, cash_difference: string, deposit_amount: string}|null} */
+    /** @type {{expected_cash: string, counted_cash: string, cash_difference: string, deposit_amount: string, drawer_left_cash: string}|null} */
     shiftTotals: { type: Object, default: null },
 });
 
@@ -24,6 +24,7 @@ const emit = defineEmits(['update:modelValue']);
                         <dd>{{ formatRupiah(shiftTotals.cash_difference) }}</dd>
                     </div>
                     <div class="closed__deposit"><dt>Setoran</dt><dd>{{ formatRupiah(shiftTotals.deposit_amount) }}</dd></div>
+                    <div><dt>Ditinggal di laci</dt><dd>{{ formatRupiah(shiftTotals.drawer_left_cash) }}</dd></div>
                 </dl>
                 <p v-if="Number(shiftTotals.cash_difference) !== 0" class="closed__note">Selisih menunggu persetujuan Admin.</p>
             </q-card-section>

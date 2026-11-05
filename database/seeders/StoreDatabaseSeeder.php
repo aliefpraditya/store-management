@@ -10,8 +10,7 @@ use Illuminate\Database\Seeder;
 
 /**
  * Data every store database starts with: the two warehouses, the first cash register (K1, selling from the main
- * warehouse, with no fixed opening cash until an admin sets one) and the usual expense categories. Safe to run again:
- * existing rows are left alone.
+ * warehouse) and the usual expense categories. Safe to run again: existing rows are left alone.
  */
 class StoreDatabaseSeeder extends Seeder
 {
@@ -33,7 +32,7 @@ class StoreDatabaseSeeder extends Seeder
 
         Register::query()->firstOrCreate(
             ['code' => 'K1'],
-            ['name' => 'Kasir 1', 'warehouse_id' => $mainWarehouse->id, 'fixed_opening_cash' => 0, 'is_active' => true],
+            ['name' => 'Kasir 1', 'warehouse_id' => $mainWarehouse->id, 'is_active' => true],
         );
     }
 }

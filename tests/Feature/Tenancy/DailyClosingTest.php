@@ -308,7 +308,7 @@ class DailyClosingTest extends TestCase
     {
         $this->closeToday();
 
-        $this->actingAs($this->cashier)->post(route('tenant.cashier.shifts.store', ['tenant' => $this->store->code]), ['register_id' => $this->register()->id])
+        $this->actingAs($this->cashier)->post(route('tenant.cashier.shifts.store', ['tenant' => $this->store->code]), ['register_id' => $this->register()->id, 'opening_cash' => '0'])
             ->assertSessionHas('error', 'Hari '.today()->format('d/m/Y').' sudah ditutup. Minta Super Admin membuka kembali hari itu sebelum membuka shift.');
 
         $this->assertSame(0, $this->store->run(fn (): int => CashShift::query()->count()));
