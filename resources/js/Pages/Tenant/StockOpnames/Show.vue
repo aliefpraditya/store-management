@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
+import DamagedGoodsDialog from '../../../Components/DamagedGoodsDialog.vue';
 import ProductSearchSelect from '../../../Components/ProductSearchSelect.vue';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -11,6 +12,8 @@ const props = defineProps({
     summary: { type: Object, required: true },
     items: { type: Object, required: true },
     filters: { type: Object, required: true },
+    /** The reasons a variance can be given; `needs_damage_decision` marks the one that asks where damaged goods go. */
+    reasons: { type: Array, required: true },
 });
 
 const page = usePage();
@@ -38,15 +41,17 @@ const scopeSummary = computed(() =>
 const search = ref(props.filters.search);
 const filter = ref(props.filters.filter);
 
-const filterOptions = [
+const filterOptions = computed(() => [
     { label: 'Semua barang', value: '' },
     { label: 'Belum dihitung', value: 'uncounted' },
     { label: 'Ada selisih', value: 'variance' },
-];
+    ...(props.opname.requires_review ? [{ label: 'Selisih belum direview', value: 'unreviewed' }] : []),
+]);
 
 /**
- * What the admin is typing, per item id: one quantity per unit counted (5 DUS and 3 PAIL are two parts) and the reason.
- * @type {import('vue').Ref<Record<number, {parts: {unit_code: string, quantity: string}[], reason: string}>>}
+ * What the admin is typing, per item id: one quantity per unit counted (5 DUS and 3 PAIL are two parts), the reason of the
+ * variance from the store's list, and a note.
+ * @type {import('vue').Ref<Record<number, {parts: {unit_code: string, quantity: string}[], reason_id: number|null, note: string}>>}
  */
 const typedCounts = ref({});
 
@@ -59,7 +64,32 @@ const loadedCounts = ref({});
 function typedCountOf(item) {
     return {
         parts: [{ unit_code: item.base_unit, quantity: item.counted_quantity === null ? '' : String(Number(item.counted_quantity)) }],
-        reason: item.reason ?? '',
+        reason_id: item.reason_id,
+        note: item.note ?? '',
+    };
+}
+
+/**
+ * What the admin decides while reviewing the variances, per item id: the reason, a note, whether the item is reviewed, and
+ * for damaged goods where the units go (dead stock, DG product with its price per base unit, full price).
+ * @type {import('vue').Ref<Record<number, {reason_id: number|null, note: string, is_reviewed: boolean, dead: string, dg: string, full: string, price: string}>>}
+ */
+const reviews = ref({});
+
+/** The reviews as they were last loaded from the server, to tell which ones were edited. */
+const loadedReviews = ref({});
+
+const textOf = (value) => (value === null || value === undefined ? '' : String(Number(value)));
+
+function reviewOf(item) {
+    return {
+        reason_id: item.reason_id,
+        note: item.note ?? '',
+        is_reviewed: item.is_reviewed,
+        dead: textOf(item.damage?.dead_stock_quantity),
+        dg: textOf(item.damage?.damaged_goods_quantity),
+        full: textOf(item.damage?.full_price_quantity),
+        price: textOf(item.damage?.damaged_goods_price),
     };
 }
 
@@ -68,6 +98,8 @@ watch(
     (items) => {
         typedCounts.value = Object.fromEntries(items.map((item) => [item.id, typedCountOf(item)]));
         loadedCounts.value = Object.fromEntries(items.map((item) => [item.id, JSON.stringify(typedCountOf(item))]));
+        reviews.value = Object.fromEntries(items.map((item) => [item.id, reviewOf(item)]));
+        loadedReviews.value = Object.fromEntries(items.map((item) => [item.id, JSON.stringify(reviewOf(item))]));
     },
     { immediate: true },
 );
@@ -76,7 +108,114 @@ const dirtyItems = computed(() => props.items.data.filter((item) => JSON.stringi
 
 const isDirty = computed(() => dirtyItems.value.length > 0);
 
+const dirtyReviews = computed(() => props.items.data.filter((item) => JSON.stringify(reviews.value[item.id]) !== loadedReviews.value[item.id]));
+
+const isReviewDirty = computed(() => dirtyReviews.value.length > 0);
+
+/** Whether the variances are explained and reviewed on this screen: only in the review step of a routine opname. */
+const isReviewing = computed(() => props.opname.can_review);
+
+/** The row an input of the item edits: the count while counting, the review while reviewing. */
+const editableRow = (item) => (props.opname.can_count ? typedCounts.value[item.id] : reviews.value[item.id]);
+
+const hasVariance = (item) => varianceOf(item) !== null && varianceOf(item) !== 0;
+
+/** Counting lets every item be given a reason; reviewing only the ones that have a variance. */
+const isReasonEditable = (item) => props.opname.can_count || (isReviewing.value && hasVariance(item));
+
+const reasonOptionsOf = (item) =>
+    props.reasons.filter((reason) => reason.is_active || reason.id === editableRow(item)?.reason_id).map((reason) => ({ label: reason.name, value: reason.id }));
+
+const reasonOf = (reasonId) => props.reasons.find((reason) => reason.id === reasonId) ?? null;
+
+const isDamagedReason = (item) => reasonOf(reviews.value[item.id]?.reason_id)?.needs_damage_decision ?? false;
+
+const damageNumber = (value) => (value === '' ? 0 : Number(value));
+
+/** What the damaged reason asks to be split: the shortage, in the base unit. */
+const shortageOf = (item) => Math.abs(Math.min(varianceOf(item) ?? 0, 0));
+
+/**
+ * @returns {boolean} whether the three parts of the damaged decision are filled and add up to the shortage
+ */
+function isDamageDecided(item) {
+    const row = reviews.value[item.id];
+
+    if ([row.dead, row.dg, row.full].some((part) => part === '')) {
+        return false;
+    }
+
+    const sum = Math.round((damageNumber(row.dead) + damageNumber(row.dg) + damageNumber(row.full)) * 1000) / 1000;
+
+    return sum === shortageOf(item) && (damageNumber(row.dg) === 0 || (row.price !== '' && item.damage?.damaged_goods_problem === null));
+}
+
+/** An item can be marked reviewed once it has a reason and, for damaged goods, a complete decision. */
+function isReviewable(item) {
+    const row = reviews.value[item.id];
+
+    if (!hasVariance(item) || row.reason_id === null) {
+        return false;
+    }
+
+    return !isDamagedReason(item) || (varianceOf(item) < 0 && isDamageDecided(item));
+}
+
+/** A new reason is a new thing to review, and a reason that is not damaged goods has no decision to keep. */
+function changeReason(item) {
+    const row = reviews.value[item.id];
+
+    row.is_reviewed = false;
+
+    if (!isDamagedReason(item)) {
+        Object.assign(row, { dead: '', dg: '', full: '', price: '' });
+    }
+}
+
+function markAllReviewed() {
+    props.items.data.filter(isReviewable).forEach((item) => {
+        reviews.value[item.id].is_reviewed = true;
+    });
+}
+
+const damageDialog = ref({ isOpen: false, itemId: null });
+
+const damageDialogItem = computed(() => {
+    const item = props.items.data.find((candidate) => candidate.id === damageDialog.value.itemId);
+
+    if (item === undefined) {
+        return null;
+    }
+
+    return {
+        productName: item.product.name,
+        baseUnit: item.base_unit,
+        shortage: shortageOf(item),
+        damagedGoodsSku: item.damage?.damaged_goods_sku ?? '',
+        damagedGoodsProblem: item.damage?.damaged_goods_problem ?? null,
+        currentPrice: item.damage?.damaged_goods_price ?? null,
+    };
+});
+
+function openDamageDialog(item) {
+    damageDialog.value = { isOpen: true, itemId: item.id };
+}
+
+function saveDamageDecision(decision) {
+    const row = reviews.value[damageDialog.value.itemId];
+
+    Object.assign(row, decision, { is_reviewed: false });
+}
+
+const damageSummary = (item) => {
+    const row = reviews.value[item.id];
+
+    return isDamageDecided(item) ? `Dead stock ${row.dead} · DG ${row.dg} · Penuh ${row.full}` : 'Tentukan keputusan';
+};
+
 const uncountedCount = computed(() => props.summary.items_count - props.summary.counted_count);
+
+const unreviewedCount = computed(() => props.summary.variance_count - props.summary.reviewed_count);
 
 /**
  * @returns {number|null} the typed count in the base unit, or null while nothing is typed
@@ -158,7 +297,8 @@ function saveCounts(afterSaved) {
     const counts = dirtyItems.value.map((item) => ({
         item_id: item.id,
         parts: typedCounts.value[item.id].parts.map((part) => ({ unit_code: part.unit_code, quantity: part.quantity === '' ? null : part.quantity })),
-        reason: typedCounts.value[item.id].reason || null,
+        reason_id: typedCounts.value[item.id].reason_id,
+        note: typedCounts.value[item.id].note || null,
     }));
 
     router.put(
@@ -173,12 +313,45 @@ function saveCounts(afterSaved) {
 }
 
 /**
- * Runs the next step only after unsaved counts are stored, so moving on never throws typed counts away.
+ * @param {() => void} [afterSaved] runs once the review is stored
+ */
+function saveReview(afterSaved) {
+    const rows = dirtyReviews.value.map((item) => {
+        const row = reviews.value[item.id];
+        const isDamaged = isDamagedReason(item);
+
+        return {
+            item_id: item.id,
+            reason_id: row.reason_id,
+            note: row.note || null,
+            is_reviewed: row.is_reviewed,
+            dead_stock_quantity: isDamaged && row.dead !== '' ? row.dead : null,
+            damaged_goods_quantity: isDamaged && row.dg !== '' ? row.dg : null,
+            full_price_quantity: isDamaged && row.full !== '' ? row.full : null,
+            damaged_goods_price: isDamaged && damageNumber(row.dg) > 0 && row.price !== '' ? row.price : null,
+        };
+    });
+
+    router.put(
+        props.opname.urls.review,
+        { rows },
+        {
+            preserveScroll: true,
+            onSuccess: () => afterSaved?.(),
+            onError: (errors) => $q.notify({ type: 'negative', position: 'top', message: Object.values(errors)[0] ?? 'Review gagal disimpan.' }),
+        },
+    );
+}
+
+/**
+ * Runs the next step only after unsaved counts and reviews are stored, so moving on never throws typed work away.
  * @param {() => void} runNext
  */
 function afterSavingCounts(runNext) {
     if (isDirty.value) {
         saveCounts(runNext);
+    } else if (isReviewDirty.value) {
+        saveReview(runNext);
     } else {
         runNext();
     }
@@ -218,6 +391,10 @@ function finishCounting() {
 }
 
 function postOpname() {
+    afterSavingCounts(confirmPosting);
+}
+
+function confirmPosting() {
     confirmDialog(
         {
             title: 'Posting opname?',
@@ -295,6 +472,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
             <q-btn v-if="opname.can_count" outline no-caps color="primary" label="Simpan" :disable="!isDirty" class="q-mr-sm" @click="saveCounts()" />
             <q-btn v-if="opname.can_count" color="primary" unelevated no-caps label="Selesai Hitung" @click="finishCounting" />
             <q-btn v-if="opname.can_reopen" flat no-caps label="Hitung Ulang" class="q-mr-sm" @click="postAction(opname.urls.reopen)" />
+            <q-btn v-if="isReviewing" outline no-caps color="primary" label="Simpan Review" :disable="!isReviewDirty" class="q-mr-sm" @click="saveReview()" />
             <q-btn v-if="opname.can_post" color="positive" unelevated no-caps label="Posting" @click="postOpname" />
         </template>
 
@@ -318,6 +496,10 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 
         <section v-if="summary.items_count > 0" class="kpis">
             <div class="kpi"><small>{{ opname.is_counting_arrivals ? 'Diisi' : 'Dihitung' }}</small><b>{{ summary.counted_count }} / {{ summary.items_count }}</b></div>
+            <div v-if="opname.requires_review && opname.status !== 'counting' && opname.status !== 'draft'" class="kpi">
+                <small>Selisih sudah direview</small>
+                <b :class="{ 'kpi--bad': unreviewedCount > 0 }">{{ summary.reviewed_count }} / {{ summary.variance_count }}</b>
+            </div>
             <div class="kpi"><small>{{ opname.is_counting_arrivals ? 'Barang bertambah' : 'Barang ada selisih' }}</small><b>{{ summary.variance_count }}</b></div>
             <div class="kpi">
                 <small>{{ opname.is_counting_arrivals ? 'Nilai penambahan (estimasi)' : 'Nilai selisih (estimasi)' }}</small>
@@ -331,6 +513,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                 <template #prepend><q-icon name="search" /></template>
             </q-input>
             <q-select v-model="filter" :options="filterOptions" option-value="value" option-label="label" emit-value map-options outlined dense class="filters__select" />
+            <q-btn v-if="isReviewing" flat no-caps color="grey-8" icon="done_all" label="Tandai yang lengkap di halaman ini sudah direview" @click="markAllReviewed" />
             <q-btn
                 v-if="opname.can_count && !opname.is_counting_arrivals && uncountedCount > 0"
                 flat
@@ -351,12 +534,14 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                         <th class="lines__right">{{ opname.is_counting_arrivals ? 'Bertambah' : 'Selisih' }}</th>
                         <th v-if="opname.is_counting_arrivals" class="lines__right">Stok setelah</th>
                         <th>Alasan</th>
+                        <th>Catatan</th>
+                        <th v-if="opname.requires_review && ['review', 'posted'].includes(opname.status)">Direview</th>
                         <th v-if="opname.can_manage_products"></th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-if="items.data.length === 0">
-                        <td colspan="7" class="lines__empty">
+                        <td colspan="9" class="lines__empty">
                             <template v-if="opname.status === 'draft' && opname.scope !== 'selected'">Barang masuk daftar hitung saat opname dimulai.</template>
                             <template v-else-if="opname.can_manage_products && summary.items_count === 0">Tambahkan barang yang akan dihitung.</template>
                             <template v-else>Tidak ada barang yang cocok.</template>
@@ -433,18 +618,64 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             <span v-else class="lines__muted">—</span>
                         </td>
                         <td>
+                            <q-select
+                                v-if="isReasonEditable(item)"
+                                v-model="editableRow(item).reason_id"
+                                :options="reasonOptionsOf(item)"
+                                emit-value
+                                map-options
+                                clearable
+                                outlined
+                                dense
+                                hide-bottom-space
+                                placeholder="Pilih alasan"
+                                class="lines__reason"
+                                :aria-label="`Alasan ${item.product.name}`"
+                                @update:model-value="isReviewing && changeReason(item)"
+                            />
+                            <span v-else>{{ item.reason_name ?? '' }}</span>
+                            <q-btn
+                                v-if="isReviewing && hasVariance(item) && isDamagedReason(item)"
+                                outline
+                                dense
+                                no-caps
+                                size="sm"
+                                :color="isDamageDecided(item) ? 'positive' : 'warning'"
+                                icon="report_problem"
+                                :label="damageSummary(item)"
+                                class="lines__decision"
+                                @click="openDamageDialog(item)"
+                            />
+                            <small v-else-if="item.needs_damage_decision && item.damage && item.damage.dead_stock_quantity !== null" class="lines__muted">
+                                Dead stock {{ formatQuantity(item.damage.dead_stock_quantity) }} · DG {{ formatQuantity(item.damage.damaged_goods_quantity) }} · Penuh {{ formatQuantity(item.damage.full_price_quantity) }}
+                            </small>
+                        </td>
+                        <td>
                             <q-input
-                                v-if="opname.can_count"
-                                v-model="typedCounts[item.id].reason"
+                                v-if="isReasonEditable(item)"
+                                v-model="editableRow(item).note"
                                 outlined
                                 dense
                                 hide-bottom-space
                                 maxlength="255"
                                 placeholder="mis. tumpah"
-                                class="lines__reason"
-                                :aria-label="`Alasan ${item.product.name}`"
+                                class="lines__note"
+                                :aria-label="`Catatan ${item.product.name}`"
                             />
-                            <span v-else>{{ item.reason ?? '' }}</span>
+                            <span v-else>{{ item.note ?? '' }}</span>
+                        </td>
+                        <td v-if="opname.requires_review && ['review', 'posted'].includes(opname.status)">
+                            <q-checkbox
+                                v-if="isReviewing && hasVariance(item)"
+                                v-model="reviews[item.id].is_reviewed"
+                                dense
+                                :disable="!isReviewable(item)"
+                                :aria-label="`Sudah direview ${item.product.name}`"
+                            >
+                                <q-tooltip v-if="!isReviewable(item)">Pilih alasan{{ isDamagedReason(item) ? ' dan tentukan keputusan barang rusak' : '' }} dulu.</q-tooltip>
+                            </q-checkbox>
+                            <span v-else-if="item.is_reviewed" class="chip chip--ok">Sudah</span>
+                            <span v-else class="lines__muted">—</span>
                         </td>
                         <td v-if="opname.can_manage_products" class="lines__right">
                             <q-btn flat round dense icon="delete_outline" color="negative" :aria-label="`Hapus ${item.product.name}`" @click="removeProduct(item)" />
@@ -465,6 +696,13 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                 </q-card-actions>
             </q-card>
         </q-dialog>
+
+        <DamagedGoodsDialog
+            v-model="damageDialog.isOpen"
+            :item="damageDialogItem"
+            :decision="damageDialog.itemId === null ? undefined : { dead: reviews[damageDialog.itemId].dead, dg: reviews[damageDialog.itemId].dg, full: reviews[damageDialog.itemId].full, price: reviews[damageDialog.itemId].price }"
+            @save="saveDamageDecision"
+        />
 
         <div v-if="items.total > 0" class="pager">
             <span class="lines__muted">{{ items.from }}–{{ items.to }} dari {{ items.total }} barang</span>
@@ -541,7 +779,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 
 .kpis {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 14px;
     margin-bottom: 14px;
 }
@@ -663,7 +901,16 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 }
 
 .lines__reason {
-    min-width: 160px;
+    min-width: 170px;
+}
+
+.lines__note {
+    min-width: 150px;
+}
+
+.lines__decision {
+    display: flex;
+    margin-top: 6px;
 }
 
 .pager {

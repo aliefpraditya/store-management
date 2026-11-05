@@ -2,17 +2,15 @@
 
 namespace App\Services;
 
-use App\Enums\ProductStatusFilter;
 use App\Exceptions\BulkPriceException;
 use App\Models\Product;
 use App\Models\ProductUnit;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Changes the modal and the selling price of many items in one go. The admin picks the items (by ticking them or by
+ * Changes the modal and the selling price of many items in one go. The admin picks the items on the item list (by ticking them or by
  * category and brand), looks at a preview, and applies. The apply works the numbers out again under the products' row
  * locks, so what is saved is never what a stale preview showed. Every unit is saved through its model, which is what
  * keeps the price history in the audit trail, and every changed product moves its save counter so an item form that
@@ -31,29 +29,6 @@ class BulkPriceService
     private const PREVIEW_PRODUCT_LIMIT = 100;
 
     public function __construct(private readonly PriceChangeCalculator $calculator) {}
-
-    /**
-     * The items the admin can pick from, narrowed like the item list plus a brand.
-     *
-     * @return LengthAwarePaginator<int, Product>
-     */
-    public function paginateCandidates(string $search, ?int $categoryId, ?int $brandId, ?ProductStatusFilter $status, int $perPage): LengthAwarePaginator
-    {
-        return $this->candidates($search, $categoryId, $brandId, $status)
-            ->with(['category', 'brand', 'productUnits'])
-            ->paginate($perPage)
-            ->withQueryString();
-    }
-
-    /**
-     * Every item the same narrowing matches, up to {@see self::MAX_PRODUCTS}, for "select all".
-     *
-     * @return list<int>
-     */
-    public function matchingIds(string $search, ?int $categoryId, ?int $brandId, ?ProductStatusFilter $status): array
-    {
-        return $this->candidates($search, $categoryId, $brandId, $status)->limit(self::MAX_PRODUCTS)->pluck('products.id')->map(fn ($id): int => (int) $id)->all();
-    }
 
     /**
      * What the change would do to the picked items, without saving anything. Only items that change or are skipped are
@@ -94,20 +69,6 @@ class BulkPriceService
 
             return $this->totals($plans);
         });
-    }
-
-    /**
-     * @return Builder<Product>
-     */
-    private function candidates(string $search, ?int $categoryId, ?int $brandId, ?ProductStatusFilter $status): Builder
-    {
-        return Product::query()
-            ->search($search)
-            ->when($categoryId, fn (Builder $query, int $categoryId) => $query->where('products.category_id', $categoryId))
-            ->when($brandId, fn (Builder $query, int $brandId) => $query->where('products.brand_id', $brandId))
-            ->when($status, fn (Builder $query, ProductStatusFilter $status) => $query->where('products.is_active', $status->isActive()))
-            ->orderBy('products.name')
-            ->orderBy('products.id');
     }
 
     /**

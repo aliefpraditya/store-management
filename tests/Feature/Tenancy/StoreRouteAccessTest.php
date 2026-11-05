@@ -101,7 +101,7 @@ class StoreRouteAccessTest extends TestCase
 
         $this->assertCount(7, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.products.')));
         $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.units.')));
-        $this->assertCount(13, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-opnames.')));
+        $this->assertCount(14, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-opnames.')));
         $this->assertCount(1, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-history.')));
         $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.sales.')));
         $this->assertCount(10, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.delivery-notes.')));
@@ -111,8 +111,9 @@ class StoreRouteAccessTest extends TestCase
         $this->assertCount(5, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.daily-closings.')));
         $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.settings.')));
         $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.reports.')));
-        $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.bulk-prices.')));
-        $this->assertCount(67, $adminRoutes);
+        $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.bulk-prices.')));
+        $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.opname-reasons.')));
+        $this->assertCount(69, $adminRoutes);
 
         foreach ($adminRoutes as $route) {
             $this->assertContains(

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { router, useForm, usePage } from '@inertiajs/vue3';
+import OpnameReasonsCard from '../../../Components/OpnameReasonsCard.vue';
 import UnitFormDialog from '../../../Components/UnitFormDialog.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -14,6 +15,8 @@ const props = defineProps({
     units: { type: Object, required: true },
     unit_filters: { type: Object, required: true },
     unit_per_page_options: { type: Array, required: true },
+    /** The reasons an opname variance can be given, with where to change each. */
+    opname_reasons: { type: Array, required: true },
     urls: { type: Object, required: true },
 });
 
@@ -116,7 +119,7 @@ function confirmDeleteUnit(unit) {
                     dense
                     prefix="Rp"
                     label="Ambang selisih besar"
-                    hint="Selisih yang nilainya di atas ini wajib diberi alasan saat opname diposting. Kosongkan untuk tanpa batas."
+                    hint="Selisih yang nilainya di atas ini wajib diberi catatan saat opname diposting. Kosongkan untuk tanpa batas."
                     :error="!!form.errors.large_variance_threshold"
                     :error-message="form.errors.large_variance_threshold"
                 />
@@ -125,6 +128,8 @@ function confirmDeleteUnit(unit) {
                 <p class="hint">Barang yang ada di opname berstatus Menghitung atau Review tidak bisa dijual di kasir sampai opname selesai.</p>
             </section>
         </div>
+
+        <OpnameReasonsCard :reasons="opname_reasons" :create-url="urls.opname_reason_create" class="opname-reasons" />
 
         <section class="card units">
             <div class="units__head">
@@ -244,6 +249,10 @@ function confirmDeleteUnit(unit) {
 
 .error {
     color: #be123c;
+}
+
+.opname-reasons {
+    margin-bottom: 16px;
 }
 
 .units__head {

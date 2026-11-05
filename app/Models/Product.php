@@ -15,9 +15,10 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
- * Lives in the store database. Quantities and `cost_price` are per base unit.
+ * Lives in the store database. Quantities and `cost_price` are per base unit. A damaged-goods (DG) product is made by an
+ * opname from the product it was damaged from (`damaged_from_product_id`), with its own SKU and price.
  */
-#[Fillable(['sku', 'name', 'category_id', 'brand_id', 'base_unit_code', 'cost_price', 'min_stock', 'is_active'])]
+#[Fillable(['sku', 'name', 'category_id', 'brand_id', 'base_unit_code', 'cost_price', 'min_stock', 'is_active', 'is_damaged_goods', 'damaged_from_product_id'])]
 class Product extends Model implements AuditableContract
 {
     /** @use HasFactory<ProductFactory> */
@@ -39,6 +40,7 @@ class Product extends Model implements AuditableContract
             'cost_price' => 'decimal:2',
             'min_stock' => 'decimal:3',
             'is_active' => 'boolean',
+            'is_damaged_goods' => 'boolean',
             'version' => 'integer',
         ];
     }
@@ -57,6 +59,14 @@ class Product extends Model implements AuditableContract
     public function brand(): BelongsTo
     {
         return $this->belongsTo(Brand::class);
+    }
+
+    /**
+     * @return BelongsTo<Product, $this>
+     */
+    public function damagedFrom(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'damaged_from_product_id');
     }
 
     /**

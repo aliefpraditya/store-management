@@ -7,6 +7,7 @@ use App\Models\StockOpnameItem;
 use Closure;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * Saves the counts typed on one page of an opname. Each row is an item with one or more quantities, each in
@@ -32,7 +33,8 @@ class SaveStockOpnameCountsRequest extends FormRequest
             'counts.*.parts' => ['present', 'array'],
             'counts.*.parts.*.unit_code' => ['required', 'string'],
             'counts.*.parts.*.quantity' => ['nullable', 'numeric', 'min:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'],
-            'counts.*.reason' => ['nullable', 'string', 'max:255'],
+            'counts.*.reason_id' => ['nullable', 'integer', Rule::exists('opname_reasons', 'id')],
+            'counts.*.note' => ['nullable', 'string', 'max:255'],
         ];
     }
 
@@ -91,6 +93,7 @@ class SaveStockOpnameCountsRequest extends FormRequest
             'counts.*.parts.*.quantity.min' => 'Jumlah tidak boleh negatif.',
             'counts.*.parts.*.quantity.decimal' => 'Jumlah maksimal 3 angka desimal.',
             'counts.*.parts.*.quantity.max' => 'Jumlah terlalu besar.',
+            'counts.*.reason_id.exists' => 'Alasan tidak dikenal.',
         ];
     }
 }

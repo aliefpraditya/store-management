@@ -4,13 +4,15 @@ namespace Database\Seeders;
 
 use App\Enums\WarehouseType;
 use App\Models\ExpenseCategory;
+use App\Models\OpnameReason;
 use App\Models\Register;
 use App\Models\Warehouse;
 use Illuminate\Database\Seeder;
 
 /**
  * Data every store database starts with: the two warehouses, the first cash register (K1, selling from the main
- * warehouse) and the usual expense categories. Safe to run again: existing rows are left alone.
+ * warehouse), the usual expense categories and the reasons of an opname variance. Safe to run again: existing rows are
+ * left alone.
  */
 class StoreDatabaseSeeder extends Seeder
 {
@@ -18,6 +20,10 @@ class StoreDatabaseSeeder extends Seeder
     {
         foreach (ExpenseCategory::DEFAULT_NAMES as $categoryName) {
             ExpenseCategory::query()->firstOrCreate(['name' => $categoryName], ['is_active' => true]);
+        }
+
+        foreach (OpnameReason::DEFAULTS as $reasonName => $behavior) {
+            OpnameReason::query()->firstOrCreate(['name' => $reasonName], ['behavior' => $behavior, 'is_system' => true, 'is_active' => true]);
         }
 
         $mainWarehouse = Warehouse::query()->firstOrCreate(

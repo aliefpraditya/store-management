@@ -8,7 +8,7 @@
 
   var SIDE={
     pusat:[['Dashboard','home'],['Master Toko','store'],['User & Akses','users']],
-    store:[['Dashboard','home'],'Barang',['Daftar Barang','box'],['Ubah Harga Massal','wallet'],'Stok',['Stok Opname','clip'],['Histori Stok','layers'],'Penjualan',['Kasir','cart'],['Riwayat Nota','receipt'],['Surat Jalan','truck'],['Retur','undo'],'Kas & Harian',['Rekap Shift','clock'],['Pengeluaran','minus'],['Tutup Hari','lock'],['Laporan','chart'],'Pengaturan',['Pengaturan Toko','cog']]
+    store:[['Dashboard','home'],'Barang',['Daftar Barang','box'],'Stok',['Stok Opname','clip'],['Histori Stok','layers'],'Penjualan',['Kasir','cart'],['Riwayat Nota','receipt'],['Surat Jalan','truck'],['Retur','undo'],'Kas & Harian',['Rekap Shift','clock'],['Pengeluaran','minus'],['Tutup Hari','lock'],['Laporan','chart'],'Pengaturan',['Pengaturan Toko','cog']]
   };
   var R2STORE=['Menyusul (R2)',['Pembelian','tag'],['Penerimaan Kontainer','ship'],['Transfer Gudang','swap'],['Audit Trail','shield']];
   if(R2){SIDE.pusat.push('Menyusul (R2)',['Cek Stok Lintas Toko','search','r2'],['Audit Trail','shield','r2']);SIDE.store=SIDE.store.concat(R2STORE)}

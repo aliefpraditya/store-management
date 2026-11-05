@@ -10,15 +10,18 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\AddStockOpnameProductRequest;
 use App\Http\Requests\Tenant\SaveStockOpnameCountsRequest;
 use App\Http\Requests\Tenant\SaveStockOpnameRequest;
+use App\Http\Requests\Tenant\SaveStockOpnameReviewRequest;
 use App\Http\Resources\StockOpnameItemResource;
 use App\Http\Resources\StockOpnameListResource;
 use App\Http\Resources\StockOpnameResource;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\OpnameReason;
 use App\Models\Product;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
 use App\Models\Warehouse;
+use App\Services\OpnameReasonService;
 use App\Services\StockOpnameReport;
 use App\Services\StockOpnameService;
 use Closure;
@@ -33,7 +36,11 @@ class StockOpnameController extends Controller
 
     private const ITEMS_PER_PAGE = 50;
 
-    public function __construct(private readonly StockOpnameService $opnameService, private readonly StockOpnameReport $opnameReport) {}
+    public function __construct(
+        private readonly StockOpnameService $opnameService,
+        private readonly StockOpnameReport $opnameReport,
+        private readonly OpnameReasonService $opnameReasons,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -67,7 +74,7 @@ class StockOpnameController extends Controller
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
             'brands' => Brand::query()->orderBy('name')->get(['id', 'name']),
             'scopes' => collect(StockOpnameScope::cases())->map(fn (StockOpnameScope $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
-            'reasons' => collect(StockOpnameReason::cases())->map(fn (StockOpnameReason $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
+            'reasons' => collect(StockOpnameReason::selectable())->map(fn (StockOpnameReason $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
         ]);
     }
 
@@ -91,6 +98,12 @@ class StockOpnameController extends Controller
             'summary' => $this->opnameReport->summarize($stockOpname),
             'items' => $items,
             'filters' => ['search' => $search, 'filter' => $filter],
+            'reasons' => $this->opnameReasons->all()->map(fn (OpnameReason $reason): array => [
+                'id' => $reason->id,
+                'name' => $reason->name,
+                'is_active' => $reason->is_active,
+                'needs_damage_decision' => $reason->behavior->needsDamageDecision(),
+            ])->all(),
         ]);
     }
 
@@ -111,6 +124,15 @@ class StockOpnameController extends Controller
             $this->opnameService->saveCounts($stockOpname, $request->validated('counts'));
 
             return 'Hitungan disimpan.';
+        });
+    }
+
+    public function saveReview(SaveStockOpnameReviewRequest $request, StockOpname $stockOpname): RedirectResponse
+    {
+        return $this->redirectBackWithOutcome(function () use ($request, $stockOpname): string {
+            $this->opnameService->saveReview($stockOpname, $request->user()->id, $request->validated('rows'));
+
+            return 'Review disimpan.';
         });
     }
 

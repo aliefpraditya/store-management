@@ -11,9 +11,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Lives in the store database. One product of an opname, all quantities in the base unit.
- * `counted_quantity` is null until counted: blank is not the same as zero.
+ * `counted_quantity` is null until counted: blank is not the same as zero. A variance gets a reason from the store's list and,
+ * once an admin has looked at it, `reviewed_at` (`reviewed_by` is a central user id). For a damaged reason the admin splits
+ * the damaged units into `dead_stock_quantity`, `damaged_goods_quantity` (sold on as a DG product at `damaged_goods_price`
+ * per base unit) and `full_price_quantity` (fine after all, they stay on the shelf).
  */
-#[Fillable(['stock_opname_id', 'product_id', 'snapshot_quantity', 'counted_quantity', 'system_quantity_at_posting', 'cost_price_at_posting', 'variance', 'reason'])]
+#[Fillable(['stock_opname_id', 'product_id', 'snapshot_quantity', 'counted_quantity', 'system_quantity_at_posting', 'cost_price_at_posting', 'variance', 'reason_id', 'note', 'reviewed_at', 'reviewed_by', 'dead_stock_quantity', 'damaged_goods_quantity', 'full_price_quantity', 'damaged_goods_price'])]
 class StockOpnameItem extends Model
 {
     /** @use HasFactory<StockOpnameItemFactory> */
@@ -30,6 +33,11 @@ class StockOpnameItem extends Model
             'system_quantity_at_posting' => 'decimal:3',
             'cost_price_at_posting' => 'decimal:2',
             'variance' => 'decimal:3',
+            'reviewed_at' => 'datetime',
+            'dead_stock_quantity' => 'decimal:3',
+            'damaged_goods_quantity' => 'decimal:3',
+            'full_price_quantity' => 'decimal:3',
+            'damaged_goods_price' => 'decimal:2',
         ];
     }
 
@@ -66,6 +74,19 @@ class StockOpnameItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class)->withTrashed();
+    }
+
+    /**
+     * @return BelongsTo<OpnameReason, $this>
+     */
+    public function reason(): BelongsTo
+    {
+        return $this->belongsTo(OpnameReason::class, 'reason_id');
+    }
+
+    public function isReviewed(): bool
+    {
+        return $this->reviewed_at !== null;
     }
 
     public function isCounted(): bool

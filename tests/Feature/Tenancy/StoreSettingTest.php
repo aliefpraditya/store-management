@@ -86,9 +86,9 @@ class StoreSettingTest extends TestCase
     /**
      * An opname of the brushes in the given status, with the count typed in (the stock is 100).
      */
-    private function opnameWithCount(StockOpnameStatus $status, ?string $counted = '98', ?string $reason = null): StockOpname
+    private function opnameWithCount(StockOpnameStatus $status, ?string $counted = '98', ?string $note = null): StockOpname
     {
-        return $this->store->run(function () use ($status, $counted, $reason): StockOpname {
+        return $this->store->run(function () use ($status, $counted, $note): StockOpname {
             $opname = StockOpname::factory()->create([
                 'warehouse_id' => $this->mainWarehouse()->id,
                 'reason_code' => StockOpnameReason::Correction,
@@ -97,7 +97,7 @@ class StoreSettingTest extends TestCase
                 'snapshot_at' => now(),
                 'created_by' => $this->admin->id,
             ]);
-            StockOpnameItem::factory()->create(['stock_opname_id' => $opname->id, 'product_id' => $this->brush->id, 'snapshot_quantity' => '100', 'counted_quantity' => $counted, 'reason' => $reason]);
+            StockOpnameItem::factory()->create(['stock_opname_id' => $opname->id, 'product_id' => $this->brush->id, 'snapshot_quantity' => '100', 'counted_quantity' => $counted, 'note' => $note]);
 
             return $opname;
         });
@@ -207,18 +207,18 @@ class StoreSettingTest extends TestCase
         $this->actingAs($this->cashier)->get($sheetUrl)->assertInertia(fn (Assert $page) => $page->where('note.store.name', 'MITRA UTAMA'));
     }
 
-    public function test_a_variance_worth_more_than_the_limit_needs_a_reason_to_be_posted(): void
+    public function test_a_variance_worth_more_than_the_limit_needs_a_note_to_be_posted(): void
     {
         $this->save(['large_variance_threshold' => '10000']);
         $opname = $this->opnameWithCount(StockOpnameStatus::Review, '98');
 
-        $this->postOpname($opname)->assertSessionHas('error', 'Selisih Kuas bernilai di atas Rp 10.000, jadi wajib diberi alasan. Isi alasannya di baris barang itu, lalu posting lagi.');
+        $this->postOpname($opname)->assertSessionHas('error', 'Selisih Kuas bernilai di atas Rp 10.000, jadi wajib diberi catatan. Isi catatannya di baris barang itu, lalu posting lagi.');
 
         $this->assertSame('100.000', $this->stockInPieces($this->brush));
         $this->assertSame(StockOpnameStatus::Review, $this->store->run(fn (): StockOpnameStatus => $opname->fresh()->status));
     }
 
-    public function test_a_large_variance_with_a_reason_is_posted(): void
+    public function test_a_large_variance_with_a_note_is_posted(): void
     {
         $this->save(['large_variance_threshold' => '10000']);
         $opname = $this->opnameWithCount(StockOpnameStatus::Review, '98', 'Dua kuas rusak');
@@ -228,7 +228,7 @@ class StoreSettingTest extends TestCase
         $this->assertSame('98.000', $this->stockInPieces($this->brush));
     }
 
-    public function test_a_small_variance_needs_no_reason(): void
+    public function test_a_small_variance_needs_no_note(): void
     {
         $this->save(['large_variance_threshold' => '10000']);
         $opname = $this->opnameWithCount(StockOpnameStatus::Review, '99');

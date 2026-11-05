@@ -29,6 +29,7 @@ class ProductListResource extends JsonResource
             'category' => $this->category->name,
             'brand' => $this->brand?->name,
             'is_active' => $this->is_active,
+            'is_damaged_goods' => $this->is_damaged_goods,
             'min_stock' => $this->min_stock,
             'sellable_stock' => $this->getAttribute('sellable_stock'),
             'dead_stock' => $this->getAttribute('dead_stock'),

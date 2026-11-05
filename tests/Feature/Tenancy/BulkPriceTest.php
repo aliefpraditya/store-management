@@ -10,6 +10,7 @@ use App\Models\ProductUnit;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use OwenIt\Auditing\Models\Audit;
@@ -87,35 +88,58 @@ class BulkPriceTest extends TestCase
         $product = $this->item();
         $payload = $this->payload($product, ['selling_method' => 'percent', 'selling_value' => 10]);
 
-        $this->actingAs($cashier)->get($this->url('index'))->assertForbidden();
         $this->actingAs($cashier)->postJson($this->url('preview'), $payload)->assertForbidden();
         $this->actingAs($cashier)->post($this->url('apply'), $payload)->assertForbidden();
         $this->assertSame(['6000.00', '10000.00'], $this->pricesOf($product, 'PCS'));
     }
 
-    public function test_the_page_lists_the_items_and_narrows_them_by_category_and_brand(): void
+    public function test_the_item_list_offers_the_picking_and_what_the_bulk_window_needs(): void
     {
         [$paint, $tools] = $this->store->run(fn (): array => [Category::query()->create(['name' => 'Cat']), Category::query()->create(['name' => 'Alat'])]);
         $dulux = $this->store->run(fn (): Brand => Brand::query()->create(['name' => 'Dulux']));
         $wall = $this->item('Cat Tembok', ['category_id' => $paint->id, 'brand_id' => $dulux->id]);
         $this->item('Cat Kayu', ['category_id' => $paint->id]);
         $brush = $this->item('Kuas', ['category_id' => $tools->id]);
+        $listUrl = route('tenant.products.index', ['tenant' => $this->store->code]);
 
-        $this->actingAs($this->admin)->get($this->url('index'))->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->component('Tenant/Products/BulkPrice')
+        $this->actingAs($this->admin)->get($listUrl)->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Tenant/Products/Index')
             ->has('products.data', 3)
-            ->where('products.data.0.name', 'Cat Kayu')
-            ->where('products.data.0.units.0', ['code' => 'PCS', 'cost_price' => '6000.00', 'selling_price' => '10000.00', 'is_sellable' => true])
             ->has('matching_ids', 3)
-            ->where('max_products', 2000)
-            ->where('urls.apply', $this->url('apply')));
+            ->has('brands', 1)
+            ->where('bulk_price.max_products', 2000)
+            ->where('bulk_price.units', ['DUS', 'PCS'])
+            ->where('bulk_price.cost_methods.0', ['value' => 'percent', 'label' => 'Persen (naik atau turun)'])
+            ->where('bulk_price.selling_methods.2', ['value' => 'set', 'label' => 'Setarakan ke harga tertentu', 'takes_value' => true])
+            ->where('bulk_price.selling_methods.4', ['value' => 'keep_margin', 'label' => 'Pertahankan margin sekarang', 'takes_value' => false])
+            ->where('bulk_price.cost_methods.2', ['value' => 'set', 'label' => 'Setarakan ke harga tertentu'])
+            ->where('bulk_price.urls.preview', $this->url('preview'))
+            ->where('bulk_price.urls.apply', $this->url('apply')));
 
-        $this->actingAs($this->admin)->get($this->url('index').'?category='.$paint->id.'&brand='.$dulux->id)->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($listUrl.'?category='.$paint->id.'&brand='.$dulux->id)->assertInertia(fn (Assert $page) => $page
             ->has('products.data', 1)
             ->where('matching_ids', [$wall->id])
             ->where('filters.brand', $dulux->id));
 
-        $this->actingAs($this->admin)->get($this->url('index').'?category='.$tools->id)->assertInertia(fn (Assert $page) => $page->where('matching_ids', [$brush->id]));
+        $this->actingAs($this->admin)->get($listUrl.'?category='.$tools->id)->assertInertia(fn (Assert $page) => $page->where('matching_ids', [$brush->id]));
+    }
+
+    public function test_select_all_follows_the_condition_and_status_filters_too(): void
+    {
+        $normal = $this->item('Normal');
+        $inactive = $this->item('Mati', ['is_active' => false]);
+        $dg = $this->item('Rusak', ['is_damaged_goods' => true]);
+        $listUrl = route('tenant.products.index', ['tenant' => $this->store->code]);
+
+        $this->actingAs($this->admin)->get($listUrl.'?status=inactive')->assertInertia(fn (Assert $page) => $page->where('matching_ids', [$inactive->id]));
+        $this->actingAs($this->admin)->get($listUrl.'?condition=damaged')->assertInertia(fn (Assert $page) => $page->where('matching_ids', [$dg->id]));
+        $this->actingAs($this->admin)->get($listUrl.'?condition=normal&status=active')->assertInertia(fn (Assert $page) => $page->where('matching_ids', [$normal->id]));
+    }
+
+    public function test_the_bulk_price_change_has_no_page_of_its_own(): void
+    {
+        $this->assertFalse(Route::has('tenant.bulk-prices.index'));
+        $this->assertTrue(Route::has('tenant.bulk-prices.preview') && Route::has('tenant.bulk-prices.apply'));
     }
 
     public function test_a_percent_change_of_both_prices_is_previewed_per_unit_without_saving(): void
@@ -133,6 +157,48 @@ class BulkPriceTest extends TestCase
             ->assertJsonPath('data.products.0.units.1.new_price', '121000.00');
 
         $this->assertSame(['6000.00', '10000.00'], $this->pricesOf($product, 'PCS'));
+    }
+
+    public function test_a_price_can_be_set_to_the_same_amount_for_every_chosen_unit(): void
+    {
+        $product = $this->item();
+
+        $this->preview($this->payload($product, ['cost_method' => 'set', 'cost_value' => 4000, 'selling_method' => 'set', 'selling_value' => 55000]))
+            ->assertOk()
+            ->assertJsonPath('data.totals', ['products_selected' => 1, 'products_changed' => 1, 'units_changed' => 2, 'units_skipped' => 0])
+            ->assertJsonPath('data.products.0.units.0.new_cost', '4000.00')
+            ->assertJsonPath('data.products.0.units.0.new_price', '55000.00')
+            ->assertJsonPath('data.products.0.units.1.new_cost', '4000.00')
+            ->assertJsonPath('data.products.0.units.1.new_price', '55000.00');
+    }
+
+    public function test_setting_a_price_can_be_limited_to_one_unit_and_keeps_the_products_modal_in_step(): void
+    {
+        $product = $this->item();
+
+        $this->apply($this->payload($product, ['unit_code' => 'PCS', 'cost_method' => 'set', 'cost_value' => '5500.50', 'selling_method' => 'set', 'selling_value' => 9000]))->assertSessionHasNoErrors();
+
+        $this->assertSame(['5500.50', '9000.00'], $this->pricesOf($product, 'PCS'));
+        $this->assertSame(['70000.00', '110000.00'], $this->pricesOf($product, 'DUS'));
+        $this->assertSame('5500.50', $this->store->run(fn () => Product::query()->findOrFail($product->id)->cost_price));
+    }
+
+    public function test_a_margin_can_follow_a_price_that_was_set_in_the_same_run(): void
+    {
+        $product = $this->item();
+
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'cost_method' => 'set', 'cost_value' => 8000, 'selling_method' => 'margin', 'selling_value' => 20]))
+            ->assertJsonPath('data.products.0.units.0.new_price', '10000.00');
+    }
+
+    public function test_a_price_to_set_cannot_be_negative(): void
+    {
+        $ids = [$this->item()->id];
+
+        $this->preview(['product_ids' => $ids, 'cost_method' => 'set', 'cost_value' => -1])->assertJsonValidationErrors(['cost_value' => 'Harga beli tidak boleh negatif.']);
+        $this->preview(['product_ids' => $ids, 'selling_method' => 'set', 'selling_value' => -1])->assertJsonValidationErrors(['selling_value' => 'Harga jual tidak boleh negatif.']);
+        $this->preview(['product_ids' => $ids, 'selling_method' => 'set', 'selling_value' => 0])->assertOk();
+        $this->preview(['product_ids' => $ids, 'selling_method' => 'set'])->assertJsonValidationErrors(['selling_value' => 'Isi angka perubahan harga jual.']);
     }
 
     public function test_a_nominal_change_can_be_limited_to_one_unit(): void

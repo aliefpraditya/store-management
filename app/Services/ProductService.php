@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\ProductConditionFilter;
 use App\Enums\ProductStatusFilter;
 use App\Exceptions\ProductHasTransactionsException;
 use App\Exceptions\ProductSaveException;
@@ -35,22 +36,48 @@ class ProductService
     private const PICKER_LIMIT = 15;
 
     /**
-     * The item list: stock totals and flags per row, narrowed by a search, a category and an active/inactive choice.
+     * The item list: stock totals and flags per row, narrowed by a search, a category, a brand, an active/inactive choice
+     * and whether the item is damaged goods (DG).
      *
      * @return LengthAwarePaginator<int, Product>
      */
-    public function paginateProducts(string $search, ?int $categoryId, ?ProductStatusFilter $status, int $perPage): LengthAwarePaginator
+    public function paginateProducts(string $search, ?int $categoryId, ?int $brandId, ?ProductStatusFilter $status, ?ProductConditionFilter $condition, int $perPage): LengthAwarePaginator
     {
-        return Product::query()
+        return $this->filteredProducts($search, $categoryId, $brandId, $status, $condition)
             ->withStockTotals()
             ->withTransactionFlag()
             ->with(['category', 'brand', 'productUnits'])
-            ->search($search)
-            ->when($categoryId, fn (Builder $query, int $categoryId) => $query->where('products.category_id', $categoryId))
-            ->when($status, fn (Builder $query, ProductStatusFilter $status) => $query->where('products.is_active', $status->isActive()))
-            ->orderBy('products.name')
             ->paginate($perPage)
             ->withQueryString();
+    }
+
+    /**
+     * Every item the same narrowing matches, up to what one bulk price change takes, so the list can offer "select all".
+     *
+     * @return list<int>
+     */
+    public function matchingIds(string $search, ?int $categoryId, ?int $brandId, ?ProductStatusFilter $status, ?ProductConditionFilter $condition): array
+    {
+        return $this->filteredProducts($search, $categoryId, $brandId, $status, $condition)
+            ->limit(BulkPriceService::MAX_PRODUCTS)
+            ->pluck('products.id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+    }
+
+    /**
+     * @return Builder<Product>
+     */
+    private function filteredProducts(string $search, ?int $categoryId, ?int $brandId, ?ProductStatusFilter $status, ?ProductConditionFilter $condition): Builder
+    {
+        return Product::query()
+            ->search($search)
+            ->when($categoryId, fn (Builder $query, int $categoryId) => $query->where('products.category_id', $categoryId))
+            ->when($brandId, fn (Builder $query, int $brandId) => $query->where('products.brand_id', $brandId))
+            ->when($status, fn (Builder $query, ProductStatusFilter $status) => $query->where('products.is_active', $status->isActive()))
+            ->when($condition, fn (Builder $query, ProductConditionFilter $condition) => $query->where('products.is_damaged_goods', $condition->isDamagedGoods()))
+            ->orderBy('products.name')
+            ->orderBy('products.id');
     }
 
     /**

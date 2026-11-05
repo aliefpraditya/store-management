@@ -10,6 +10,7 @@ enum SellingChangeMethod: string
 {
     case Percent = 'percent';
     case Nominal = 'nominal';
+    case Set = 'set';
     case Margin = 'margin';
     case KeepMargin = 'keep_margin';
 
@@ -18,6 +19,7 @@ enum SellingChangeMethod: string
         return match ($this) {
             self::Percent => 'Persen (naik atau turun)',
             self::Nominal => 'Nominal Rp (naik atau turun)',
+            self::Set => 'Setarakan ke harga tertentu',
             self::Margin => 'Atur margin',
             self::KeepMargin => 'Pertahankan margin sekarang',
         };

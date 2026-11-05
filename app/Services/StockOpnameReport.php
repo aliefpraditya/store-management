@@ -14,13 +14,15 @@ use Illuminate\Pagination\LengthAwarePaginator;
  * The variance is worked out in SQL here ({@see self::varianceSql()}) with the same rule as
  * {@see StockOpname::varianceOf()}, which posting uses; change both together.
  *
- * @phpstan-type OpnameSummary array{items_count: int, counted_count: int, variance_count: int, variance_value: string}
+ * @phpstan-type OpnameSummary array{items_count: int, counted_count: int, variance_count: int, reviewed_count: int, variance_value: string}
  */
 class StockOpnameReport
 {
     public const ITEM_FILTER_UNCOUNTED = 'uncounted';
 
     public const ITEM_FILTER_VARIANCE = 'variance';
+
+    public const ITEM_FILTER_UNREVIEWED = 'unreviewed';
 
     /** The cost price an item's variance is valued at: today's until the opname is posted, then the one it was posted with. */
     private const COST_PRICE_SQL = 'coalesce(stock_opname_items.cost_price_at_posting, products.cost_price)';
@@ -54,7 +56,7 @@ class StockOpnameReport
         $term = trim((string) $search);
 
         return $this->itemsQuery($opname)
-            ->with('product.baseUnit', 'product.productUnits')
+            ->with('product.baseUnit', 'product.productUnits', 'reason')
             ->selectRaw('stock_opname_items.*, '.self::COST_PRICE_SQL.' as product_cost_price')
             ->selectRaw(self::SYSTEM_QUANTITY_SQL.' as system_quantity')
             ->selectRaw("{$variance} as variance_quantity")
@@ -64,6 +66,10 @@ class StockOpnameReport
             ->when($filter === self::ITEM_FILTER_UNCOUNTED, fn (Builder $query) => $query->whereNull('stock_opname_items.counted_quantity'))
             ->when($filter === self::ITEM_FILTER_VARIANCE, fn (Builder $query) => $query
                 ->whereNotNull('stock_opname_items.counted_quantity')
+                ->whereRaw("{$variance} != 0"))
+            ->when($filter === self::ITEM_FILTER_UNREVIEWED, fn (Builder $query) => $query
+                ->whereNotNull('stock_opname_items.counted_quantity')
+                ->whereNull('stock_opname_items.reviewed_at')
                 ->whereRaw("{$variance} != 0"))
             ->orderBy('products.name')
             ->paginate($perPage)
@@ -83,6 +89,7 @@ class StockOpnameReport
             "count(*) as items_count,
             count(stock_opname_items.counted_quantity) as counted_count,
             coalesce(sum(stock_opname_items.counted_quantity is not null and {$variance} != 0), 0) as variance_count,
+            coalesce(sum(stock_opname_items.counted_quantity is not null and {$variance} != 0 and stock_opname_items.reviewed_at is not null), 0) as reviewed_count,
             coalesce(sum({$variance} * ".self::COST_PRICE_SQL.'), 0) as variance_value',
         )->first();
 
@@ -90,6 +97,7 @@ class StockOpnameReport
             'items_count' => (int) $totals->items_count,
             'counted_count' => (int) $totals->counted_count,
             'variance_count' => (int) $totals->variance_count,
+            'reviewed_count' => (int) $totals->reviewed_count,
             'variance_value' => (string) BigDecimal::of((string) $totals->variance_value)->toScale(2, RoundingMode::HalfUp),
         ];
     }

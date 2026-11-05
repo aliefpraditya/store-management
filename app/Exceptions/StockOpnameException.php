@@ -9,6 +9,8 @@ use Exception;
  */
 class StockOpnameException extends Exception
 {
+    private const PROBLEMS_SHOWN = 5;
+
     public static function wrongStatus(string $action, string $statusLabel): self
     {
         return new self("Opname berstatus {$statusLabel}, jadi tidak bisa {$action}.");
@@ -37,11 +39,27 @@ class StockOpnameException extends Exception
     /**
      * @param  list<string>  $productNames
      */
-    public static function largeVarianceNeedsReason(array $productNames, string $thresholdText): self
+    public static function largeVarianceNeedsNote(array $productNames, string $thresholdText): self
     {
         $names = implode(', ', $productNames);
 
-        return new self("Selisih {$names} bernilai di atas Rp {$thresholdText}, jadi wajib diberi alasan. Isi alasannya di baris barang itu, lalu posting lagi.");
+        return new self("Selisih {$names} bernilai di atas Rp {$thresholdText}, jadi wajib diberi catatan. Isi catatannya di baris barang itu, lalu posting lagi.");
+    }
+
+    /**
+     * @param  list<string>  $problems  each one names the product and says what is missing
+     */
+    public static function reviewIncomplete(array $problems): self
+    {
+        $shown = array_slice($problems, 0, self::PROBLEMS_SHOWN);
+        $others = count($problems) - count($shown);
+
+        return new self('Selisih belum selesai direview: '.implode('; ', $shown).($others > 0 ? "; dan {$others} barang lain" : '').'.');
+    }
+
+    public static function cannotReview(string $productName, string $problem): self
+    {
+        return new self("{$productName}: {$problem}");
     }
 
     public static function nothingCounted(): self

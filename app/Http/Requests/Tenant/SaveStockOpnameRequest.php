@@ -34,7 +34,7 @@ class SaveStockOpnameRequest extends FormRequest
                 Rule::requiredIf(fn (): bool => $this->isCategoryScope() && blank($this->input('category_id'))),
                 'nullable', 'integer', Rule::exists('brands', 'id'),
             ],
-            'reason_code' => ['required', Rule::enum(StockOpnameReason::class)],
+            'reason_code' => ['required', Rule::enum(StockOpnameReason::class)->only(StockOpnameReason::selectable())],
         ];
     }
 

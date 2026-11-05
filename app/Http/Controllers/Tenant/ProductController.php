@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\CostChangeMethod;
+use App\Enums\ProductConditionFilter;
 use App\Enums\ProductStatusFilter;
+use App\Enums\SellingChangeMethod;
 use App\Exceptions\ProductHasTransactionsException;
 use App\Exceptions\ProductSaveException;
 use App\Http\Controllers\Controller;
@@ -13,6 +16,7 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Unit;
+use App\Services\BulkPriceService;
 use App\Services\ProductService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,19 +33,33 @@ class ProductController extends Controller
     {
         $search = $request->string('search')->toString();
         $categoryId = $request->integer('category') ?: null;
-        $statusFilter = $request->string('status')->toString();
+        $brandId = $request->integer('brand') ?: null;
+        $status = ProductStatusFilter::tryFrom($request->string('status')->toString());
+        $condition = ProductConditionFilter::tryFrom($request->string('condition')->toString());
 
         $products = $this->productService
-            ->paginateProducts($search, $categoryId, ProductStatusFilter::tryFrom($statusFilter), self::PER_PAGE)
+            ->paginateProducts($search, $categoryId, $brandId, $status, $condition, self::PER_PAGE)
             ->through(fn (Product $product): array => ProductListResource::make($product)->resolve());
 
         return Inertia::render('Tenant/Products/Index', [
             'products' => $products,
-            'filters' => ['search' => $search, 'category' => $categoryId, 'status' => $statusFilter],
+            'matching_ids' => $this->productService->matchingIds($search, $categoryId, $brandId, $status, $condition),
+            'filters' => ['search' => $search, 'category' => $categoryId, 'brand' => $brandId, 'status' => $status?->value ?? '', 'condition' => $condition?->value ?? ''],
             'statuses' => ProductStatusFilter::options(),
+            'conditions' => ProductConditionFilter::options(),
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
+            'brands' => Brand::query()->orderBy('name')->get(['id', 'name']),
             'create_url' => route('tenant.products.create', ['tenant' => tenant('code')]),
-            'bulk_prices_url' => route('tenant.bulk-prices.index', ['tenant' => tenant('code')]),
+            'bulk_price' => [
+                'units' => Unit::query()->orderBy('code')->pluck('code'),
+                'cost_methods' => collect(CostChangeMethod::cases())->map(fn (CostChangeMethod $method): array => ['value' => $method->value, 'label' => $method->label()])->all(),
+                'selling_methods' => collect(SellingChangeMethod::cases())->map(fn (SellingChangeMethod $method): array => ['value' => $method->value, 'label' => $method->label(), 'takes_value' => $method->takesValue()])->all(),
+                'max_products' => BulkPriceService::MAX_PRODUCTS,
+                'urls' => [
+                    'preview' => route('tenant.bulk-prices.preview', ['tenant' => tenant('code')]),
+                    'apply' => route('tenant.bulk-prices.apply', ['tenant' => tenant('code')]),
+                ],
+            ],
         ]);
     }
 

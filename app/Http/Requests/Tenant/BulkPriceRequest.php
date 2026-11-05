@@ -34,9 +34,9 @@ class BulkPriceRequest extends FormRequest
             'product_ids.*' => ['integer', 'distinct'],
             'unit_code' => ['nullable', 'string', Rule::exists('units', 'code')],
             'cost_method' => ['nullable', Rule::enum(CostChangeMethod::class)],
-            'cost_value' => [Rule::requiredIf($this->filled('cost_method')), 'nullable', 'numeric', 'decimal:0,2', 'between:-999999999999,999999999999', ...$this->percentRule($this->input('cost_method') === CostChangeMethod::Percent->value)],
+            'cost_value' => [Rule::requiredIf($this->filled('cost_method')), 'nullable', 'numeric', 'decimal:0,2', 'between:-999999999999,999999999999', ...$this->percentRule($this->input('cost_method') === CostChangeMethod::Percent->value), ...$this->setRule($this->input('cost_method') === CostChangeMethod::Set->value)],
             'selling_method' => ['nullable', Rule::enum(SellingChangeMethod::class)],
-            'selling_value' => [Rule::requiredIf($sellingMethod?->takesValue() ?? false), 'nullable', 'numeric', 'decimal:0,2', 'between:-999999999999,999999999999', ...$this->percentRule($sellingMethod === SellingChangeMethod::Percent), ...$this->marginRule($sellingMethod === SellingChangeMethod::Margin)],
+            'selling_value' => [Rule::requiredIf($sellingMethod?->takesValue() ?? false), 'nullable', 'numeric', 'decimal:0,2', 'between:-999999999999,999999999999', ...$this->percentRule($sellingMethod === SellingChangeMethod::Percent), ...$this->setRule($sellingMethod === SellingChangeMethod::Set), ...$this->marginRule($sellingMethod === SellingChangeMethod::Margin)],
         ];
     }
 
@@ -54,10 +54,12 @@ class BulkPriceRequest extends FormRequest
             'cost_value.numeric' => 'Perubahan harga beli harus berupa angka.',
             'cost_value.decimal' => 'Perubahan harga beli maksimal 2 angka desimal.',
             'cost_value.gt' => 'Penurunan harga beli harus kurang dari 100 persen.',
+            'cost_value.gte' => 'Harga beli tidak boleh negatif.',
             'selling_value.required' => 'Isi angka perubahan harga jual.',
             'selling_value.numeric' => 'Perubahan harga jual harus berupa angka.',
             'selling_value.decimal' => 'Perubahan harga jual maksimal 2 angka desimal.',
             'selling_value.gt' => 'Penurunan harga jual harus kurang dari 100 persen.',
+            'selling_value.gte' => 'Harga jual tidak boleh negatif.',
             'selling_value.min' => 'Margin tidak boleh negatif.',
             'selling_value.lt' => 'Margin harus kurang dari 100 persen.',
         ];
@@ -71,6 +73,16 @@ class BulkPriceRequest extends FormRequest
     private function percentRule(bool $isPercent): array
     {
         return $isPercent ? ['gt:-100'] : [];
+    }
+
+    /**
+     * A price to set every unit to cannot be below zero.
+     *
+     * @return list<string>
+     */
+    private function setRule(bool $isSet): array
+    {
+        return $isSet ? ['gte:0'] : [];
     }
 
     /**

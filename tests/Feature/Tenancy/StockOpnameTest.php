@@ -9,6 +9,7 @@ use App\Enums\StockOpnameStatus;
 use App\Enums\UserRole;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\OpnameReason;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\Stock;
@@ -126,7 +127,7 @@ class StockOpnameTest extends TestCase
             'warehouse_id' => $this->warehouse()->id,
             'opname_date' => '2026-10-24',
             'scope' => StockOpnameScope::Selected->value,
-            'reason_code' => StockOpnameReason::Correction->value,
+            'reason_code' => StockOpnameReason::Routine->value,
             ...$overrides,
         ]);
     }
@@ -172,10 +173,10 @@ class StockOpnameTest extends TestCase
     /**
      * @param  list<array{unit_code: string, quantity: string|null}>  $parts
      */
-    private function saveCount(StockOpname $opname, StockOpnameItem $item, array $parts, ?string $reason = null): TestResponse
+    private function saveCount(StockOpname $opname, StockOpnameItem $item, array $parts, ?string $note = null, ?int $reasonId = null): TestResponse
     {
         return $this->actingAs($this->admin)->put($this->url('counts', ['stock_opname' => $opname->id]), [
-            'counts' => [['item_id' => $item->id, 'parts' => $parts, 'reason' => $reason]],
+            'counts' => [['item_id' => $item->id, 'parts' => $parts, 'note' => $note, 'reason_id' => $reasonId]],
         ]);
     }
 
@@ -238,7 +239,7 @@ class StockOpnameTest extends TestCase
         $this->assertSame('OPN/TOP/2610/0001', $opname->number);
         $this->assertSame(StockOpnameStatus::Draft, $opname->status);
         $this->assertSame($this->admin->id, $opname->created_by);
-        $this->assertSame(StockOpnameReason::Correction, $opname->reason_code);
+        $this->assertSame(StockOpnameReason::Routine, $opname->reason_code);
     }
 
     public function test_numbers_run_on_within_a_month_and_restart_in_the_next(): void
@@ -313,7 +314,9 @@ class StockOpnameTest extends TestCase
             ->has('scopes', 2)
             ->where('scopes.0.label', 'Kategori & merek tertentu')
             ->has('brands')
-            ->has('reasons', 7)
+            ->has('reasons', 3)
+            ->where('reasons.0.value', 'routine')
+            ->where('reasons.2.value', 'stock_increase')
             ->where('store_url', $this->url('store'))
         );
     }
@@ -529,7 +532,7 @@ class StockOpnameTest extends TestCase
 
         $item = $item->fresh();
         $this->assertSame('23.000', $item->counted_quantity);
-        $this->assertSame('tumpah', $item->reason);
+        $this->assertSame('tumpah', $item->note);
     }
 
     public function test_an_empty_count_marks_the_item_as_not_counted_again(): void
@@ -831,8 +834,12 @@ class StockOpnameTest extends TestCase
             $short = $this->makeProduct('Cat '.$reason->value, '24');
             $over = $this->makeProduct('Kuas '.$reason->value, '10');
             $opname = $this->opname(['status' => StockOpnameStatus::Review, 'reason_code' => $reason]);
-            $this->addItem($opname, $short, '23', '24');
-            $this->addItem($opname, $over, '15', '10');
+            $shortItem = $this->addItem($opname, $short, '23', '24');
+            $overItem = $this->addItem($opname, $over, '15', '10');
+
+            if ($reason->requiresVarianceReview()) {
+                $this->inStore(fn () => StockOpnameItem::query()->whereKey([$shortItem->id, $overItem->id])->update(['reason_id' => OpnameReason::query()->where('name', 'Cek stok')->value('id'), 'reviewed_at' => now()]));
+            }
 
             $onScreen = fn () => $this->inStore(fn () => app(StockOpnameReport::class)->paginateItems($opname->fresh(), null, null, 50)
                 ->getCollection()->mapWithKeys(fn (StockOpnameItem $item): array => [$item->product_id => $item->getAttribute('variance_quantity')])->all());

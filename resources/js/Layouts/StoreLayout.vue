@@ -24,13 +24,7 @@ const menuGroups = computed(() => {
             label: null,
             items: [{ label: 'Dashboard', icon: 'space_dashboard', href: store.value.dashboard_url, isExact: true }],
         },
-        {
-            label: 'Barang',
-            items: [
-                { label: 'Daftar Barang', icon: 'inventory_2', href: store.value.products_url },
-                { label: 'Ubah Harga Massal', icon: 'price_change', href: store.value.bulk_prices_url },
-            ],
-        },
+        { label: 'Barang', items: [{ label: 'Daftar Barang', icon: 'inventory_2', href: store.value.products_url }] },
         {
             label: 'Stok',
             items: [

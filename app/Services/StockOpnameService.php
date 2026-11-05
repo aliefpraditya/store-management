@@ -6,7 +6,9 @@ use App\Enums\StockMovementType;
 use App\Enums\StockOpnameReason;
 use App\Enums\StockOpnameScope;
 use App\Enums\StockOpnameStatus;
+use App\Enums\WarehouseType;
 use App\Exceptions\StockOpnameException;
+use App\Models\OpnameReason;
 use App\Models\Product;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
@@ -23,8 +25,14 @@ use Illuminate\Support\Facades\DB;
  * system quantity of an item is simply the live stock (snapshot + movements since the snapshot), and the
  * variance is written to the ledger when the opname is posted.
  *
+ * Every variance of a routine opname is explained and reviewed before posting: the item gets a reason from the store's list,
+ * an admin marks it reviewed, and for a damaged reason (Rusak) the admin also splits the damaged units into dead stock, a
+ * DG product sold at its own price, and units that turn out fine to sell at full price. Posting writes those splits as
+ * stock movements.
+ *
  * @phpstan-type CountPart array{unit_code: string, quantity: string|null}
- * @phpstan-type CountRow array{item_id: int, parts: list<CountPart>, reason: string|null}
+ * @phpstan-type CountRow array{item_id: int, parts: list<CountPart>, reason_id: int|null, note: string|null}
+ * @phpstan-type ReviewRow array{item_id: int, reason_id: int|null, note: string|null, is_reviewed: bool, dead_stock_quantity: string|null, damaged_goods_quantity: string|null, full_price_quantity: string|null, damaged_goods_price: string|null}
  */
 class StockOpnameService
 {
@@ -39,6 +47,7 @@ class StockOpnameService
         private readonly StockService $stockLedger,
         private readonly DocumentNumberGenerator $documentNumbers,
         private readonly StoreSettingService $settings,
+        private readonly DamagedGoodsService $damagedGoods,
     ) {}
 
     /**
@@ -156,8 +165,53 @@ class StockOpnameService
 
                 $item?->forceFill([
                     'counted_quantity' => $this->toBaseQuantity($item->product, $count['parts']),
-                    'reason' => filled($count['reason']) ? trim($count['reason']) : null,
+                    'reason_id' => $count['reason_id'],
+                    'note' => filled($count['note']) ? trim($count['note']) : null,
                 ])->save();
+            }
+        });
+    }
+
+    /**
+     * Saves what the admin decided while reviewing the variances: the reason, a note, whether the item is reviewed, and for
+     * a damaged reason where the damaged units go. An item can only be marked reviewed when it is complete, so a half
+     * decided one is refused with the reason, and the rest of the page is not saved either.
+     *
+     * @param  list<ReviewRow>  $rows
+     *
+     * @throws StockOpnameException
+     */
+    public function saveReview(StockOpname $opname, int $userId, array $rows): void
+    {
+        DB::transaction(function () use ($opname, $userId, $rows): void {
+            $opname = $this->lockedInStatus($opname, 'direview', StockOpnameStatus::Review);
+
+            $itemsById = $opname->items()->with(['product', 'reason'])->whereIn('id', array_column($rows, 'item_id'))->get()->keyBy('id');
+            $reasonsById = OpnameReason::query()->get()->keyBy('id');
+            $systemQuantities = $this->currentQuantities($opname, $itemsById->pluck('product_id')->all());
+
+            foreach ($rows as $row) {
+                $item = $itemsById->get($row['item_id']);
+
+                if ($item === null) {
+                    continue;
+                }
+
+                $reason = $row['reason_id'] === null ? null : $reasonsById->get($row['reason_id']);
+                $isDamaged = $reason?->behavior->needsDamageDecision() ?? false;
+
+                $item->forceFill([
+                    'reason_id' => $reason?->id,
+                    'note' => filled($row['note']) ? trim($row['note']) : null,
+                    'dead_stock_quantity' => $isDamaged ? $row['dead_stock_quantity'] : null,
+                    'damaged_goods_quantity' => $isDamaged ? $row['damaged_goods_quantity'] : null,
+                    'full_price_quantity' => $isDamaged ? $row['full_price_quantity'] : null,
+                    'damaged_goods_price' => $isDamaged ? $row['damaged_goods_price'] : null,
+                ])->setRelation('reason', $reason);
+
+                $this->markReviewed($opname, $item, $row['is_reviewed'], $userId, $systemQuantities[$item->product_id] ?? '0');
+
+                $item->save();
             }
         });
     }
@@ -200,6 +254,8 @@ class StockOpnameService
         DB::transaction(function () use ($opname): void {
             $opname = $this->lockedInStatus($opname, 'dihitung ulang', StockOpnameStatus::Review);
 
+            // A new count can change a variance, so what was reviewed on the old one has to be looked at again.
+            $opname->items()->update(['reviewed_at' => null, 'reviewed_by' => null]);
             $opname->forceFill(['status' => StockOpnameStatus::Counting])->save();
         });
     }
@@ -213,6 +269,11 @@ class StockOpnameService
      * first stock row can still be created by both at once, so a deadlock is retried. The cost price is kept on each item,
      * so the value of the variance does not move when a cost price is edited later.
      *
+     * Before anything is written, a routine opname is checked against the stock as it is locked now: every variance needs
+     * a reason, a decision when the reason is damaged goods, and the admin's review mark, and a variance above the store's
+     * limit needs a note. A sale landing during the review can change a variance, which is why this is checked here and not
+     * only when the admin marked the item.
+     *
      * @throws StockOpnameException
      */
     public function post(StockOpname $opname, int $userId): void
@@ -223,10 +284,11 @@ class StockOpnameService
                 ? StockMovementType::OpeningBalance
                 : StockMovementType::OpnameAdjustment;
 
-            $countedItems = $opname->items()->with('product:id,name,cost_price')->whereNotNull('counted_quantity')->orderBy('product_id')->get();
+            $countedItems = $opname->items()->with(['product', 'reason'])->whereNotNull('counted_quantity')->orderBy('product_id')->get();
             $systemQuantities = $this->stockLedger->lockedQuantities($countedItems->pluck('product_id')->all(), $opname->warehouse_id);
 
-            $this->requireReasonsForLargeVariances($opname, $countedItems, $systemQuantities);
+            $this->requireNotesForLargeVariances($opname, $countedItems, $systemQuantities);
+            $this->requireReviewedVariances($opname, $countedItems, $systemQuantities);
 
             foreach ($countedItems as $item) {
                 $systemQuantity = $systemQuantities[$item->product_id];
@@ -238,18 +300,17 @@ class StockOpnameService
                     'variance' => (string) $variance,
                 ])->save();
 
-                if (! $variance->isZero()) {
-                    $this->stockLedger->record(
-                        $item->product_id,
-                        $opname->warehouse_id,
-                        $movementType,
-                        (string) $variance,
-                        $opname,
-                        $userId,
-                        $item->reason ?? $opname->reason_code?->label(),
-                        $systemQuantity,
-                    );
+                if ($variance->isZero()) {
+                    continue;
                 }
+
+                if ($this->isDamagedGoodsDecision($opname, $item)) {
+                    $this->postDamagedItem($opname, $item, $systemQuantity, $movementType, $userId);
+
+                    continue;
+                }
+
+                $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $variance, $opname, $userId, $this->movementNote($opname, $item), $systemQuantity);
             }
 
             $opname->forceFill(['status' => StockOpnameStatus::Posted, 'approved_by' => $userId, 'posted_at' => now()])->save();
@@ -257,7 +318,7 @@ class StockOpnameService
     }
 
     /**
-     * A variance worth more than the store's limit (the variance times the last cost price) needs a reason on its row.
+     * A variance worth more than the store's limit (the variance times the last cost price) needs a note on its row.
      * Checked before anything is written, against the stock as it is locked now, so nothing is half posted.
      *
      * @param  Collection<int, StockOpnameItem>  $countedItems
@@ -265,7 +326,7 @@ class StockOpnameService
      *
      * @throws StockOpnameException
      */
-    private function requireReasonsForLargeVariances(StockOpname $opname, Collection $countedItems, array $systemQuantities): void
+    private function requireNotesForLargeVariances(StockOpname $opname, Collection $countedItems, array $systemQuantities): void
     {
         $threshold = $this->settings->largeVarianceThreshold();
 
@@ -273,16 +334,183 @@ class StockOpnameService
             return;
         }
 
-        $namesWithoutReason = $countedItems
-            ->filter(fn (StockOpnameItem $item): bool => blank($item->reason)
+        $namesWithoutNote = $countedItems
+            ->filter(fn (StockOpnameItem $item): bool => blank($item->note)
                 && $opname->varianceOf($item->counted_quantity, $systemQuantities[$item->product_id])->abs()->multipliedBy($item->product->cost_price)->isGreaterThan($threshold))
             ->map(fn (StockOpnameItem $item): string => $item->product->name)
             ->values()
             ->all();
 
-        if ($namesWithoutReason !== []) {
-            throw StockOpnameException::largeVarianceNeedsReason($namesWithoutReason, number_format((float) (string) $threshold, 0, ',', '.'));
+        if ($namesWithoutNote !== []) {
+            throw StockOpnameException::largeVarianceNeedsNote($namesWithoutNote, number_format((float) (string) $threshold, 0, ',', '.'));
         }
+    }
+
+    /**
+     * @param  Collection<int, StockOpnameItem>  $countedItems
+     * @param  array<int, string>  $systemQuantities  live quantity by product id
+     *
+     * @throws StockOpnameException
+     */
+    private function requireReviewedVariances(StockOpname $opname, Collection $countedItems, array $systemQuantities): void
+    {
+        if (! $opname->reason_code?->requiresVarianceReview()) {
+            return;
+        }
+
+        $problems = [];
+
+        foreach ($countedItems as $item) {
+            $variance = $opname->varianceOf($item->counted_quantity, $systemQuantities[$item->product_id]);
+            $problem = $variance->isZero() ? null : $this->reviewProblem($item, $variance, true);
+
+            if ($problem !== null) {
+                $problems[] = "{$item->product->name} ({$problem})";
+            }
+        }
+
+        if ($problems !== []) {
+            throw StockOpnameException::reviewIncomplete($problems);
+        }
+    }
+
+    /**
+     * Marks an item reviewed or not. Marking needs the item counted and complete, judged against the live stock.
+     *
+     * @param  numeric-string  $systemQuantity
+     *
+     * @throws StockOpnameException
+     */
+    private function markReviewed(StockOpname $opname, StockOpnameItem $item, bool $isReviewed, int $userId, string $systemQuantity): void
+    {
+        if (! $isReviewed) {
+            $item->forceFill(['reviewed_at' => null, 'reviewed_by' => null]);
+
+            return;
+        }
+
+        if (! $item->isCounted()) {
+            throw StockOpnameException::cannotReview($item->product->name, 'belum dihitung, jadi belum bisa ditandai sudah direview.');
+        }
+
+        $variance = $opname->varianceOf((string) $item->counted_quantity, $systemQuantity);
+        $problem = $variance->isZero() ? null : $this->reviewProblem($item, $variance, false);
+
+        if ($problem !== null) {
+            throw StockOpnameException::cannotReview($item->product->name, $problem);
+        }
+
+        $item->forceFill(['reviewed_at' => $item->reviewed_at ?? now(), 'reviewed_by' => $item->reviewed_by ?? $userId]);
+    }
+
+    /**
+     * What is still missing on an item with a variance before it can be posted, in words for the admin, or null when it
+     * is complete. The reason comes first; for a damaged reason the three parts of the decision must be filled and add up
+     * to the shortage, and units that become a DG product need a price and a DG SKU that is free.
+     *
+     * @param  bool  $needsReviewMark  whether the admin's "reviewed" mark is also required
+     */
+    private function reviewProblem(StockOpnameItem $item, BigDecimal $variance, bool $needsReviewMark): ?string
+    {
+        if ($item->reason === null) {
+            return 'alasan belum dipilih';
+        }
+
+        if ($item->reason->behavior->needsDamageDecision()) {
+            $problem = $this->damageDecisionProblem($item, $variance);
+
+            if ($problem !== null) {
+                return $problem;
+            }
+        }
+
+        return $needsReviewMark && ! $item->isReviewed() ? 'belum ditandai sudah direview' : null;
+    }
+
+    private function damageDecisionProblem(StockOpnameItem $item, BigDecimal $variance): ?string
+    {
+        if ($variance->isPositive()) {
+            return 'alasan Rusak hanya untuk selisih kurang';
+        }
+
+        if ($item->dead_stock_quantity === null || $item->damaged_goods_quantity === null || $item->full_price_quantity === null) {
+            return 'keputusan barang rusak belum diisi';
+        }
+
+        $deadStock = BigDecimal::of($item->dead_stock_quantity);
+        $damagedGoods = BigDecimal::of($item->damaged_goods_quantity);
+        $shortage = $variance->abs();
+
+        if (! $deadStock->plus($damagedGoods)->plus($item->full_price_quantity)->isEqualTo($shortage)) {
+            return 'keputusan barang rusak harus berjumlah sama dengan selisih ('.rtrim(rtrim((string) $shortage->toScale(3), '0'), '.').')';
+        }
+
+        if ($damagedGoods->isPositive()) {
+            if ($item->damaged_goods_price === null) {
+                return 'harga jual barang DG belum diisi';
+            }
+
+            $skuProblem = $this->damagedGoods->problemFor($item->product);
+
+            if ($skuProblem !== null) {
+                return $skuProblem;
+            }
+        }
+
+        return $deadStock->isPositive() && $this->deadStockWarehouse() === null ? 'gudang dead stock tidak ada' : null;
+    }
+
+    /**
+     * Whether the item is a damaged-goods shortage whose decision splits where the units go (only routine opnames ask for it).
+     */
+    private function isDamagedGoodsDecision(StockOpname $opname, StockOpnameItem $item): bool
+    {
+        return $opname->reason_code?->requiresVarianceReview() === true && $item->reason?->behavior->needsDamageDecision() === true;
+    }
+
+    /**
+     * Posts a damaged-goods shortage: the units that stay on the shelf at full price are not touched, and the others
+     * leave the shelf of the opname's warehouse for dead stock (the same product in the dead stock warehouse) or for the
+     * DG product, which is made now when it does not exist. A shortage is the only thing that gets here, so the units
+     * leaving are a part of what the count found missing.
+     *
+     * @param  numeric-string  $systemQuantity  the locked stock of the item in the opname's warehouse
+     */
+    private function postDamagedItem(StockOpname $opname, StockOpnameItem $item, string $systemQuantity, StockMovementType $movementType, int $userId): void
+    {
+        $deadStock = BigDecimal::of($item->dead_stock_quantity);
+        $damagedGoods = BigDecimal::of($item->damaged_goods_quantity);
+        $leavingShelf = $deadStock->plus($damagedGoods);
+        $note = $this->movementNote($opname, $item);
+
+        if ($leavingShelf->isPositive()) {
+            $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $leavingShelf->negated(), $opname, $userId, $note, $systemQuantity);
+        }
+
+        if ($deadStock->isPositive()) {
+            $this->stockLedger->record($item->product_id, $this->deadStockWarehouse()->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)");
+        }
+
+        if ($damagedGoods->isPositive()) {
+            $twin = $this->damagedGoods->productFor($item->product, (string) $item->damaged_goods_price);
+
+            $this->stockLedger->record($twin->id, $opname->warehouse_id, $movementType, (string) $damagedGoods, $opname, $userId, "{$note} (barang DG {$twin->sku})");
+        }
+    }
+
+    private function deadStockWarehouse(): ?Warehouse
+    {
+        return Warehouse::query()->where('type', WarehouseType::DeadStock)->where('is_active', true)->orderByDesc('is_default')->orderBy('id')->first();
+    }
+
+    /**
+     * The note a stock movement of the item carries: its reason (or what the opname is for) and the note typed with it.
+     */
+    private function movementNote(StockOpname $opname, StockOpnameItem $item): ?string
+    {
+        $note = collect([$item->reason?->name ?? $opname->reason_code?->label(), $item->note])->filter(fn (?string $part): bool => filled($part))->implode(': ');
+
+        return $note === '' ? null : $note;
     }
 
     /**

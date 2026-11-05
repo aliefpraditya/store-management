@@ -14,6 +14,7 @@ use App\Http\Controllers\Tenant\DashboardController as TenantDashboardController
 use App\Http\Controllers\Tenant\DeliveryNoteController;
 use App\Http\Controllers\Tenant\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\ExpenseController;
+use App\Http\Controllers\Tenant\OpnameReasonController;
 use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\ProductSearchController;
 use App\Http\Controllers\Tenant\ReportController;
@@ -128,13 +129,14 @@ Route::prefix('t/{tenant}')
             Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->name('tenant.sales.void');
 
             Route::get('products/search', ProductSearchController::class)->name('tenant.products.search');
-            Route::get('products/bulk-prices', [BulkPriceController::class, 'index'])->name('tenant.bulk-prices.index');
             Route::post('products/bulk-prices/preview', [BulkPriceController::class, 'preview'])->name('tenant.bulk-prices.preview');
             Route::post('products/bulk-prices', [BulkPriceController::class, 'apply'])->name('tenant.bulk-prices.apply');
             Route::resource('products', ProductController::class)->except(['show'])->names('tenant.products');
             Route::get('settings', [StoreSettingController::class, 'index'])->name('tenant.settings.index');
             Route::put('settings', [StoreSettingController::class, 'update'])->name('tenant.settings.update');
             Route::resource('settings/units', UnitController::class)->only(['store', 'update', 'destroy'])->names('tenant.units');
+            Route::post('settings/opname-reasons', [OpnameReasonController::class, 'store'])->name('tenant.opname-reasons.store');
+            Route::put('settings/opname-reasons/{opname_reason}', [OpnameReasonController::class, 'update'])->name('tenant.opname-reasons.update');
 
             Route::prefix('stock-opnames')->name('tenant.stock-opnames.')->scopeBindings()->group(function () {
                 Route::get('/', [StockOpnameController::class, 'index'])->name('index');
@@ -143,6 +145,7 @@ Route::prefix('t/{tenant}')
                 Route::get('{stock_opname}', [StockOpnameController::class, 'show'])->withTrashed()->name('show');
                 Route::post('{stock_opname}/start', [StockOpnameController::class, 'start'])->name('start');
                 Route::put('{stock_opname}/counts', [StockOpnameController::class, 'saveCounts'])->name('counts');
+                Route::put('{stock_opname}/review', [StockOpnameController::class, 'saveReview'])->name('review');
                 Route::post('{stock_opname}/items', [StockOpnameController::class, 'addItem'])->name('items.store');
                 Route::delete('{stock_opname}/items/{item}', [StockOpnameController::class, 'removeItem'])->name('items.destroy');
                 Route::post('{stock_opname}/zero-uncounted', [StockOpnameController::class, 'countUncountedAsZero'])->name('zero-uncounted');

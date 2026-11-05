@@ -59,6 +59,7 @@ class PriceChangeCalculator
         $newCost = match ($method) {
             CostChangeMethod::Percent => $this->scaledByPercent($oldCost, $value),
             CostChangeMethod::Nominal => $oldCost->plus($value)->toScale(self::MONEY_SCALE, RoundingMode::HalfUp),
+            CostChangeMethod::Set => $value->toScale(self::MONEY_SCALE, RoundingMode::HalfUp),
         };
 
         if ($newCost->isNegative()) {
@@ -76,6 +77,7 @@ class PriceChangeCalculator
         $newPrice = match ($method) {
             SellingChangeMethod::Percent => $this->scaledByPercent($oldPrice, $value),
             SellingChangeMethod::Nominal => $oldPrice->plus($value)->toScale(self::MONEY_SCALE, RoundingMode::HalfUp),
+            SellingChangeMethod::Set => $value->toScale(self::MONEY_SCALE, RoundingMode::HalfUp),
             SellingChangeMethod::Margin => $this->priceFromMargin($newCost, $value),
             SellingChangeMethod::KeepMargin => $this->priceKeepingMargin($oldCost, $oldPrice, $newCost),
         };
