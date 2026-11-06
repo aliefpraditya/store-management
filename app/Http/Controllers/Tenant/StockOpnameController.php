@@ -96,6 +96,8 @@ class StockOpnameController extends Controller
         return Inertia::render('Tenant/StockOpnames/Show', [
             'opname' => StockOpnameResource::make($stockOpname->load(['warehouse', 'category', 'brand', 'creator']))->resolve(),
             'summary' => $this->opnameReport->summarize($stockOpname),
+            'damage_summary' => $stockOpname->status === StockOpnameStatus::Review && $stockOpname->reason_code?->requiresVarianceReview() ? $this->opnameReport->damagedGoodsSummary($stockOpname) : null,
+            'sealed_pack_drops' => $stockOpname->status === StockOpnameStatus::Review ? $this->opnameReport->sealedPackDrops($stockOpname) : [],
             'items' => $items,
             'filters' => ['search' => $search, 'filter' => $filter],
             'reasons' => $this->opnameReasons->all()->map(fn (OpnameReason $reason): array => [

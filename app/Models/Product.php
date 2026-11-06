@@ -86,6 +86,15 @@ class Product extends Model implements AuditableContract
     }
 
     /**
+     * The unit that cannot be put back together once cut (a roll of wire), when the product has one. Reads the loaded
+     * units, so load `productUnits` first.
+     */
+    public function sealedPackUnit(): ?ProductUnit
+    {
+        return $this->productUnits->firstWhere('is_sealed_pack', true);
+    }
+
+    /**
      * @return HasMany<Stock, $this>
      */
     public function stocks(): HasMany
@@ -129,15 +138,15 @@ class Product extends Model implements AuditableContract
         where stocks.product_id = products.id and warehouses.type = ?) < products.min_stock)';
 
     /**
-     * Adds `sellable_stock` and `dead_stock`: the product's total in the warehouses of each type, and
-     * `is_below_minimum`, see {@see self::BELOW_MINIMUM_SQL}.
+     * Adds `sellable_stock` and `dead_stock`: the product's total in the warehouses of each type, `sellable_intact_packs` and
+     * `dead_intact_packs`: how many whole sealed packs of it are in the warehouses of each type, and `is_below_minimum`, see {@see self::BELOW_MINIMUM_SQL}.
      *
      * @param  Builder<Product>  $query
      */
     public function scopeWithStockTotals(Builder $query): void
     {
-        $totalIn = fn (WarehouseType $type) => Stock::query()
-            ->selectRaw('coalesce(sum(stocks.quantity), 0)')
+        $totalIn = fn (WarehouseType $type, string $column = 'quantity') => Stock::query()
+            ->selectRaw("coalesce(sum(stocks.{$column}), 0)")
             ->whereColumn('stocks.product_id', 'products.id')
             ->whereIn('stocks.warehouse_id', Warehouse::query()->select('id')->where('type', $type));
 
@@ -145,6 +154,8 @@ class Product extends Model implements AuditableContract
             'products.*',
             'sellable_stock' => $totalIn(WarehouseType::Sellable),
             'dead_stock' => $totalIn(WarehouseType::DeadStock),
+            'sellable_intact_packs' => $totalIn(WarehouseType::Sellable, 'intact_packs'),
+            'dead_intact_packs' => $totalIn(WarehouseType::DeadStock, 'intact_packs'),
         ])->selectRaw(self::BELOW_MINIMUM_SQL.' as is_below_minimum', [WarehouseType::Sellable->value]);
     }
 

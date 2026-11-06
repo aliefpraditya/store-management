@@ -297,9 +297,10 @@ class StockOpnameReviewTest extends TestCase
         ])->all());
 
         $this->assertSame([
-            ['KUAS-1', 'MAIN', '-2.000', 'Rusak: jatuh'],
+            ['KUAS-1', 'MAIN', '-3.000', 'Rusak: jatuh'],
             ['KUAS-1', 'DEAD', '1.000', 'Rusak: jatuh (dead stock)'],
             ['KUAS-1-DG', 'MAIN', '1.000', 'Rusak: jatuh (barang DG KUAS-1-DG)'],
+            ['KUAS-1', 'MAIN', '1.000', 'Rusak: jatuh (layak jual penuh, kembali ke stok jual)'],
         ], $movements);
     }
 
@@ -315,7 +316,7 @@ class StockOpnameReviewTest extends TestCase
         $this->assertSame(['7.000', '3.000'], [$this->stockOf($product), $this->stockOf($product, 'DEAD')]);
     }
 
-    public function test_damaged_units_that_are_all_fine_change_no_stock(): void
+    public function test_damaged_units_that_are_all_fine_leave_the_shelf_and_come_back_so_the_history_shows_them_checked(): void
     {
         $product = $this->brush();
         [$opname, $item] = $this->opnameCounting($product, '7');
@@ -324,7 +325,7 @@ class StockOpnameReviewTest extends TestCase
         $this->postOpname($opname)->assertSessionHas('success');
 
         $this->assertSame(['10.000', '0.000'], [$this->stockOf($product), $this->stockOf($product, 'DEAD')]);
-        $this->assertSame(0, $this->store->run(fn (): int => StockMovement::query()->count()));
+        $this->assertSame([['-3.000', '7.000'], ['3.000', '10.000']], $this->store->run(fn (): array => StockMovement::query()->orderBy('id')->get()->map(fn (StockMovement $movement): array => [$movement->quantity, $movement->balance_after])->all()));
     }
 
     public function test_a_dg_product_made_before_is_used_again_and_repriced(): void
@@ -464,7 +465,72 @@ class StockOpnameReviewTest extends TestCase
             ->where('items.data.0.is_reviewed', false)
             ->where('items.data.0.damage.damaged_goods_price', '5000.00')
             ->where('items.data.0.damage.damaged_goods_sku', 'KUAS-1-DG')
+            ->where('items.data.0.damage.original_cost_price', '6000.00')
+            ->where('items.data.0.damage.original_selling_price', '10000.00')
             ->where('items.data.0.damage.damaged_goods_problem', null));
+    }
+
+    public function test_the_show_page_adds_up_the_damaged_goods_and_what_they_may_cost(): void
+    {
+        $product = $this->brush();
+        [$opname, $item] = $this->opnameCounting($product, '7');
+        $this->review($opname, $item, $this->shortageDecision(['is_reviewed' => false]));
+
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('damage_summary.items.0', [
+                'product_name' => 'Kuas KUAS-1', 'base_unit' => 'PCS', 'dead_stock_quantity' => '1.000', 'damaged_goods_quantity' => '1.000', 'full_price_quantity' => '1.000',
+                'original_price' => '10000.00', 'damaged_goods_price' => '5000.00', 'existing_price' => null, 'loss' => '15000.00',
+            ])
+            ->where('damage_summary.dead_stock_loss', '10000.00')
+            ->where('damage_summary.damaged_goods_loss', '5000.00')
+            ->where('damage_summary.total_loss', '15000.00'));
+    }
+
+    public function test_a_damaged_decision_that_is_not_complete_is_left_out_of_the_summary(): void
+    {
+        $product = $this->brush();
+        [$opname, $item] = $this->opnameCounting($product, '7');
+        $this->review($opname, $item, ['reason_id' => $this->reasonId('Rusak'), 'dead_stock_quantity' => 1]);
+
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertInertia(fn (Assert $page) => $page
+            ->has('damage_summary.items', 0)
+            ->where('damage_summary.total_loss', '0.00'));
+    }
+
+    public function test_there_is_no_damaged_goods_summary_outside_the_review_of_a_routine_opname(): void
+    {
+        $product = $this->brush();
+        [$counting] = $this->opnameCounting($product, '7', ['status' => StockOpnameStatus::Counting]);
+        [$legacy] = $this->opnameCounting($this->brush('KUAS-2'), '7', ['reason_code' => StockOpnameReason::Lost]);
+
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $counting->id]))->assertInertia(fn (Assert $page) => $page->where('damage_summary', null));
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $legacy->id]))->assertInertia(fn (Assert $page) => $page->where('damage_summary', null));
+    }
+
+    public function test_an_existing_dg_product_and_its_price_are_shown_while_deciding_and_in_the_summary(): void
+    {
+        $product = $this->brush();
+        [$first, $firstItem] = $this->opnameCounting($product, '9');
+        $this->review($first, $firstItem, $this->shortageDecision(['dead_stock_quantity' => 0, 'damaged_goods_quantity' => 1, 'full_price_quantity' => 0, 'damaged_goods_price' => 5000]));
+        $this->postOpname($first)->assertSessionHas('success');
+
+        [$second, $secondItem] = $this->opnameCounting($product, '8', ['number' => 'OPN/TST/SECOND']);
+        $this->review($second, $secondItem, $this->shortageDecision(['dead_stock_quantity' => 0, 'damaged_goods_quantity' => 1, 'full_price_quantity' => 0, 'damaged_goods_price' => 4500, 'is_reviewed' => false]));
+
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $second->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('items.data.0.damage.existing', ['name' => '(DG) Kuas KUAS-1', 'sku' => 'KUAS-1-DG', 'price' => '5000.00'])
+            ->where('items.data.0.damage.damaged_goods_price', '4500.00')
+            ->where('damage_summary.items.0.existing_price', '5000.00')
+            ->where('damage_summary.items.0.damaged_goods_price', '4500.00'));
+    }
+
+    public function test_a_product_without_a_dg_product_has_nothing_existing(): void
+    {
+        $product = $this->brush();
+        [$opname, $item] = $this->opnameCounting($product, '7');
+        $this->review($opname, $item, $this->shortageDecision(['is_reviewed' => false]));
+
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertInertia(fn (Assert $page) => $page->where('items.data.0.damage.existing', null));
     }
 
     public function test_unreviewed_variances_can_be_filtered_and_counted(): void

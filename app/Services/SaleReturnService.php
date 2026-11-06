@@ -265,6 +265,7 @@ class SaleReturnService
                     $item->base_quantity,
                     $saleReturn,
                     $approver->id,
+                    packChange: $item->saleItem->wholePacksIn($item->quantity),
                 );
             }
 

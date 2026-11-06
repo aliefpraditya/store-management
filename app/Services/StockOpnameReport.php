@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\OpnameReasonBehavior;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
 use Brick\Math\BigDecimal;
@@ -14,6 +15,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
  * The variance is worked out in SQL here ({@see self::varianceSql()}) with the same rule as
  * {@see StockOpname::varianceOf()}, which posting uses; change both together.
  *
+ * @phpstan-type DamagedGoodsRow array{product_name: string, base_unit: string, dead_stock_quantity: string, damaged_goods_quantity: string, full_price_quantity: string, original_price: string, damaged_goods_price: string|null, existing_price: string|null, loss: string}
  * @phpstan-type OpnameSummary array{items_count: int, counted_count: int, variance_count: int, reviewed_count: int, variance_value: string}
  */
 class StockOpnameReport
@@ -30,8 +32,13 @@ class StockOpnameReport
     /** Live stock until the opname is posted, then the quantity it was posted against. */
     private const SYSTEM_QUANTITY_SQL = 'coalesce(stock_opname_items.system_quantity_at_posting, stocks.quantity, 0)';
 
+    /** The whole sealed packs counted in the system quantity, read the same way. */
+    private const SYSTEM_PACKS_SQL = 'coalesce(stock_opname_items.system_packs_at_posting, stocks.intact_packs, 0)';
+
+    public function __construct(private readonly DamagedGoodsService $damagedGoods) {}
+
     /**
-     * The items of an opname with `system_quantity` (live stock until posted, then the stored value),
+     * The items of an opname with `system_quantity` and `system_intact_packs` (live stock until posted, then the stored value),
      * `product_cost_price`, and the product's name and SKU for searching.
      *
      * @return Builder<StockOpnameItem>
@@ -59,6 +66,7 @@ class StockOpnameReport
             ->with('product.baseUnit', 'product.productUnits', 'reason')
             ->selectRaw('stock_opname_items.*, '.self::COST_PRICE_SQL.' as product_cost_price')
             ->selectRaw(self::SYSTEM_QUANTITY_SQL.' as system_quantity')
+            ->selectRaw(self::SYSTEM_PACKS_SQL.' as system_intact_packs')
             ->selectRaw("{$variance} as variance_quantity")
             ->when($term !== '', fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->where('products.name', 'like', "%{$term}%")
@@ -99,6 +107,96 @@ class StockOpnameReport
             'variance_count' => (int) $totals->variance_count,
             'reviewed_count' => (int) $totals->reviewed_count,
             'variance_value' => (string) BigDecimal::of((string) $totals->variance_value)->toScale(2, RoundingMode::HalfUp),
+        ];
+    }
+
+    /**
+     * The items whose count leaves fewer whole sealed packs on the shelf than the system has now (3 whole rolls on the shelf
+     * counted as 100 m of loose pieces and no roll), for the confirmation before posting. Whole packs cannot be sold as such
+     * once they are gone from the count, so a count typed in the small unit only is worth a second look. A count of arrivals only
+     * adds packs, and an item counted before its product had a sealed pack unit has no pack count to compare.
+     *
+     * @return list<array{product_name: string, pack_unit: string, system_packs: int, counted_packs: int}>
+     */
+    public function sealedPackDrops(StockOpname $opname): array
+    {
+        if ($opname->reason_code?->isArrivalCount()) {
+            return [];
+        }
+
+        return $this->itemsQuery($opname)
+            ->with('product.productUnits')
+            ->whereNotNull('stock_opname_items.counted_packs')
+            ->whereRaw(self::SYSTEM_PACKS_SQL.' > stock_opname_items.counted_packs')
+            ->selectRaw('stock_opname_items.*')
+            ->selectRaw(self::SYSTEM_PACKS_SQL.' as system_intact_packs')
+            ->orderBy('products.name')
+            ->get()
+            ->filter(fn (StockOpnameItem $item): bool => $item->product->sealedPackUnit() !== null)
+            ->map(fn (StockOpnameItem $item): array => [
+                'product_name' => $item->product->name,
+                'pack_unit' => $item->product->sealedPackUnit()->unit_code,
+                'system_packs' => (int) $item->getAttribute('system_intact_packs'),
+                'counted_packs' => $item->counted_packs,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * What the damaged-goods decisions of an opname add up to, for the confirmation before posting: for every item with a
+     * complete decision the units going to dead stock, to a DG product and back on the shelf at full price, and the loss
+     * of selling value that follows. Dead stock can no longer be sold, so it loses the full selling price; units sold as
+     * DG lose the difference between the original selling price and the DG price. Prices are per base unit.
+     *
+     * @return array{items: list<DamagedGoodsRow>, dead_stock_loss: string, damaged_goods_loss: string, total_loss: string}
+     */
+    public function damagedGoodsSummary(StockOpname $opname): array
+    {
+        $rows = StockOpnameItem::query()
+            ->where('stock_opname_id', $opname->id)
+            ->whereHas('reason', fn (Builder $reasons) => $reasons->where('behavior', OpnameReasonBehavior::Damaged))
+            ->whereNotNull('counted_quantity')
+            ->whereNotNull('dead_stock_quantity')
+            ->whereNotNull('damaged_goods_quantity')
+            ->whereNotNull('full_price_quantity')
+            ->with(['product.productUnits', 'product.baseUnit'])
+            ->get()
+            ->sortBy(fn (StockOpnameItem $item): string => $item->product->name)
+            ->values();
+
+        $items = [];
+        $deadStockLoss = BigDecimal::zero();
+        $damagedGoodsLoss = BigDecimal::zero();
+
+        foreach ($rows as $item) {
+            $originalPrice = BigDecimal::of((string) ($item->product->productUnits->firstWhere('is_base', true)?->selling_price ?? 0));
+            $damagedGoodsPrice = BigDecimal::of((string) ($item->damaged_goods_price ?? 0));
+            $deadLoss = BigDecimal::of($item->dead_stock_quantity)->multipliedBy($originalPrice);
+            $priceDrop = BigDecimal::max($originalPrice->minus($damagedGoodsPrice), BigDecimal::zero());
+            $dgLoss = BigDecimal::of($item->damaged_goods_quantity)->multipliedBy($priceDrop);
+
+            $deadStockLoss = $deadStockLoss->plus($deadLoss);
+            $damagedGoodsLoss = $damagedGoodsLoss->plus($dgLoss);
+
+            $items[] = [
+                'product_name' => $item->product->name,
+                'base_unit' => $item->product->baseUnit->code,
+                'dead_stock_quantity' => $item->dead_stock_quantity,
+                'damaged_goods_quantity' => $item->damaged_goods_quantity,
+                'full_price_quantity' => $item->full_price_quantity,
+                'original_price' => (string) $originalPrice->toScale(2, RoundingMode::HalfUp),
+                'damaged_goods_price' => $item->damaged_goods_price,
+                'existing_price' => $this->damagedGoods->existingOf($item->product)['price'] ?? null,
+                'loss' => (string) $deadLoss->plus($dgLoss)->toScale(2, RoundingMode::HalfUp),
+            ];
+        }
+
+        return [
+            'items' => $items,
+            'dead_stock_loss' => (string) $deadStockLoss->toScale(2, RoundingMode::HalfUp),
+            'damaged_goods_loss' => (string) $damagedGoodsLoss->toScale(2, RoundingMode::HalfUp),
+            'total_loss' => (string) $deadStockLoss->plus($damagedGoodsLoss)->toScale(2, RoundingMode::HalfUp),
         ];
     }
 

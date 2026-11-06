@@ -39,6 +39,7 @@ const emptyUnitRow = (isDefaultSale = false) => ({
     selling_price: 0,
     margin_percent: '',
     is_default_sale: isDefaultSale,
+    is_sealed_pack: false,
 });
 
 /**
@@ -189,6 +190,17 @@ function ensureDefaultIsSellable() {
     }
 }
 
+/**
+ * Only one unit can be the sealed pack (the roll that cannot be put back together once cut), so choosing one clears the others.
+ * @param {number} index
+ * @param {boolean} isSealedPack
+ */
+function chooseSealedPack(index, isSealedPack) {
+    form.units.forEach((row, rowIndex) => {
+        row.is_sealed_pack = isSealedPack && rowIndex === index;
+    });
+}
+
 function addUnit() {
     form.units.push(emptyUnitRow());
 }
@@ -320,6 +332,7 @@ function submit() {
                                 <th>Harga jual</th>
                                 <th class="units__center">Dijual</th>
                                 <th class="units__center">Default</th>
+                                <th class="units__center" title="Kemasan yang tidak bisa disambung lagi setelah dipotong, mis. rol kawat">Utuh</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -421,6 +434,16 @@ function submit() {
                                         <q-radio :model-value="defaultRowIndex" :val="index" dense :disable="!row.is_sellable" @update:model-value="makeDefault(index)" />
                                     </td>
                                     <td class="units__center">
+                                        <q-checkbox
+                                            v-if="index > 0"
+                                            :model-value="row.is_sealed_pack"
+                                            dense
+                                            :disable="!row.is_sellable"
+                                            :aria-label="`${row.unit?.code ?? 'Satuan'} adalah kemasan utuh`"
+                                            @update:model-value="chooseSealedPack(index, $event)"
+                                        />
+                                    </td>
+                                    <td class="units__center">
                                         <q-btn
                                             v-if="index > 0 && !isRowLocked(row)"
                                             flat
@@ -434,7 +457,7 @@ function submit() {
                                     </td>
                                 </tr>
                                 <tr v-if="rowError(index)">
-                                    <td colspan="9" class="units__error">{{ rowError(index) }}</td>
+                                    <td colspan="10" class="units__error">{{ rowError(index) }}</td>
                                 </tr>
                             </template>
                         </tbody>
@@ -446,6 +469,7 @@ function submit() {
                 <div class="units__footer">
                     <q-btn outline no-caps dense icon="add" label="Tambah satuan" color="primary" class="q-px-sm" @click="addUnit" />
                     <span class="tip">Harga di bawah modal meminta konfirmasi</span>
+                    <span class="tip">Utuh: kemasan yang tidak bisa disambung lagi setelah dipotong (mis. rol, kain, dll).</span>
                 </div>
             </section>
         </q-form>

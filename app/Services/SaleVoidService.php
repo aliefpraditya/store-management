@@ -89,6 +89,7 @@ class SaleVoidService
             ! $sale->isCod() => CodSaleException::notCod(),
             DailyClosing::isClosedOn(today()) => CodSaleException::dayClosed(today()->format('d/m/Y')),
             $sale->payments->contains('method', PaymentMethod::ReturnCredit) => CodSaleException::paidByReturnCredit(),
+            $sale->payments->contains('method', PaymentMethod::OrderDeposit) => CodSaleException::paidByOrderDeposit(),
             $this->hasReturns($sale) => CodSaleException::hasReturns(),
             $sale->deliveryNotes->contains(fn (DeliveryNote $note): bool => $note->status->hasDeliveredGoods()) => CodSaleException::alreadyDelivered(),
             default => null,
@@ -136,13 +137,14 @@ class SaleVoidService
     }
 
     /**
-     * Every line goes back into the warehouse it was sold from, in product order like a sale takes it out.
+     * Every line goes back into the warehouse it was sold from, in product order like a sale takes it out. Sealed packs
+     * sold whole come back as whole packs; a pack that was opened for a smaller unit stays opened, and its pieces come back loose.
      */
     private function putGoodsBack(Sale $sale, User $voider): void
     {
         foreach ($sale->items->sortBy('product_id') as $item) {
             /** @var SaleItem $item */
-            $this->stockLedger->record($item->product_id, $sale->warehouse_id, StockMovementType::SaleVoid, '+'.$item->base_quantity, $sale, $voider->id);
+            $this->stockLedger->record($item->product_id, $sale->warehouse_id, StockMovementType::SaleVoid, '+'.$item->base_quantity, $sale, $voider->id, packChange: $item->wholePacksIn($item->quantity));
         }
     }
 }

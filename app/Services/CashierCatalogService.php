@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\CustomerOrderItem;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\Stock;
 use App\Models\StockOpnameItem;
+use Brick\Math\BigDecimal;
 use Illuminate\Support\Collection;
 
 /**
@@ -14,8 +16,11 @@ use Illuminate\Support\Collection;
  * "cat" does not open with empty shelves; a specific term whose matches are all sold out still shows them. A term
  * that is exactly a unit's barcode finds that product alone and tells which unit was scanned.
  *
- * @phpstan-type CatalogUnit array{id: int, code: string, conversion_factor: string, price: string, barcode: string|null}
- * @phpstan-type CatalogItem array{id: int, sku: string, name: string, base_unit: string, stock: string, units: list<CatalogUnit>, matched_unit_id: int|null, is_being_counted: bool}
+ * A product with a sealed pack unit (a roll of wire) also tells how many whole packs are left (`intact_packs`, null for other
+ * products), because the stock in the base unit alone does not say how many packs can still be sold whole.
+ *
+ * @phpstan-type CatalogUnit array{id: int, code: string, conversion_factor: string, price: string, barcode: string|null, is_sealed_pack: bool}
+ * @phpstan-type CatalogItem array{id: int, sku: string, name: string, base_unit: string, stock: string, reserved: string, intact_packs: int|null, units: list<CatalogUnit>, matched_unit_id: int|null, is_being_counted: bool}
  */
 class CashierCatalogService
 {
@@ -86,6 +91,7 @@ class CashierCatalogService
     private function catalogItems(Collection $products, int $warehouseId, ?ProductUnit $scannedUnit): array
     {
         $stocks = $this->stockOf($products, $warehouseId);
+        $reserved = CustomerOrderItem::reservedQuantities($warehouseId, $products->modelKeys());
         $countedProductIds = $this->settings->isSalesLockedDuringOpname() ? StockOpnameItem::productIdsBeingCounted($warehouseId, $products->modelKeys()) : [];
 
         return $products->map(fn (Product $product): array => [
@@ -93,13 +99,16 @@ class CashierCatalogService
             'sku' => $product->sku,
             'name' => $product->name,
             'base_unit' => $product->base_unit_code,
-            'stock' => (string) ($stocks[$product->id] ?? '0.000'),
+            'stock' => (string) BigDecimal::max(BigDecimal::of((string) ($stocks[$product->id]->quantity ?? '0'))->minus($reserved[$product->id] ?? '0'), '0')->toScale(3),
+            'reserved' => (string) BigDecimal::of($reserved[$product->id] ?? '0')->toScale(3),
+            'intact_packs' => $product->sealedPackUnit() === null ? null : (int) ($stocks[$product->id]->intact_packs ?? 0),
             'units' => $product->productUnits->map(fn (ProductUnit $unit): array => [
                 'id' => $unit->id,
                 'code' => $unit->unit_code,
                 'conversion_factor' => $unit->conversion_factor,
                 'price' => $unit->selling_price,
                 'barcode' => $unit->barcode,
+                'is_sealed_pack' => $unit->is_sealed_pack,
             ])->values()->all(),
             'matched_unit_id' => $scannedUnit?->product_id === $product->id ? $scannedUnit->id : null,
             'is_being_counted' => in_array($product->id, $countedProductIds, true),
@@ -108,13 +117,14 @@ class CashierCatalogService
 
     /**
      * @param  Collection<int, Product>  $products
-     * @return Collection<int, string> quantity in the base unit per product id
+     * @return Collection<int, Stock> the stock row (base unit quantity and whole sealed packs) per product id
      */
     private function stockOf(Collection $products, int $warehouseId): Collection
     {
         return Stock::query()
             ->where('warehouse_id', $warehouseId)
             ->whereIn('product_id', $products->modelKeys())
-            ->pluck('quantity', 'product_id');
+            ->get()
+            ->keyBy('product_id');
     }
 }

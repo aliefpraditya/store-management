@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { marginFromPrice } from '../Composables/usePriceMargin';
 import { formatQuantity } from '../Composables/useQuantityFormat';
 
 const props = defineProps({
@@ -7,7 +8,7 @@ const props = defineProps({
     /**
      * The item being decided: its product, base unit, the shortage found (positive) and what the server knows about its
      * DG product: the SKU it would take, a reason it cannot have one, and the price it has now.
-     * @type {{productName: string, baseUnit: string, shortage: number, damagedGoodsSku: string, damagedGoodsProblem: string|null, currentPrice: string|null}|null}
+     * @type {{productName: string, baseUnit: string, shortage: number, damagedGoodsSku: string, damagedGoodsProblem: string|null, existingName: string|null, existingSku: string|null, existingPrice: string|null, originalCost: string|null, originalPrice: string|null}|null}
      */
     item: { type: Object, default: null },
     /** The decision typed so far, to start from. @type {{dead: string, dg: string, full: string, price: string}} */
@@ -43,6 +44,18 @@ const hasDamagedGoods = computed(() => number(dg.value) > 0);
 
 const isDamagedGoodsBlocked = computed(() => hasDamagedGoods.value && props.item?.damagedGoodsProblem !== null);
 
+const priceFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
+
+/** What the typed DG price earns over the modal, as a share of that price, to price against. */
+const typedMargin = computed(() => (props.item?.originalCost == null || price.value === '' ? null : marginFromPrice(props.item.originalCost, price.value)));
+
+const hintOfPrice = computed(() => {
+    const margin = typedMargin.value === null ? '' : `Margin ${priceFormat.format(typedMargin.value)}% dari modal. `;
+    const other = props.item?.existingPrice ? `Harga barang DG sekarang ${priceFormat.format(props.item.existingPrice)}, diganti harga ini.` : 'Satuan lain mengikuti harga ini dikali konversinya.';
+
+    return margin + other;
+});
+
 const canSave = computed(() => remaining.value === 0 && !isDamagedGoodsBlocked.value && (!hasDamagedGoods.value || (price.value !== '' && number(price.value) >= 0)));
 
 /** Puts the whole shortage in one place, the quick answer when nothing is split. */
@@ -71,7 +84,19 @@ function save() {
             <q-card-section class="damaged__fields">
                 <q-input v-model="dead" type="number" min="0" step="any" outlined dense :suffix="item.baseUnit" label="Masuk dead stock" hint="Tidak dijual di kasir." />
                 <q-input v-model="dg" type="number" min="0" step="any" outlined dense :suffix="item.baseUnit" label="Dijual sebagai barang DG" :hint="item.damagedGoodsProblem ? `Tidak bisa: ${item.damagedGoodsProblem}` : `Jadi barang baru ${item.damagedGoodsSku}.`" :error="isDamagedGoodsBlocked" />
-                <q-input v-if="hasDamagedGoods && !item.damagedGoodsProblem" v-model="price" type="number" min="0" step="any" outlined dense prefix="Rp" :label="`Harga jual DG per ${item.baseUnit}`" :hint="item.currentPrice ? `Harga barang DG sekarang ${formatQuantity(item.currentPrice)}.` : 'Satuan lain mengikuti harga ini dikali konversinya.'" />
+                <template v-if="hasDamagedGoods && !item.damagedGoodsProblem">
+                    <div v-if="item.existingSku" class="damaged__existing">
+                        Barang DG sudah ada: <b>{{ item.existingName }}</b> ({{ item.existingSku }}).
+                        <template v-if="item.existingPrice !== null">Harga jualnya sekarang <b>Rp {{ priceFormat.format(item.existingPrice) }}</b> per {{ item.baseUnit }}.</template>
+                        Stok rusak ini ditambahkan ke sana.
+                    </div>
+                    <div v-if="item.originalPrice !== null" class="damaged__reference">
+                        <div><span>Harga jual asli</span><b>Rp {{ priceFormat.format(item.originalPrice) }}</b></div>
+                        <div><span>Modal</span><b>Rp {{ priceFormat.format(item.originalCost) }}</b></div>
+                        <small>per {{ item.baseUnit }}</small>
+                    </div>
+                    <q-input v-model="price" type="number" min="0" step="any" outlined dense prefix="Rp" :label="`Harga jual DG per ${item.baseUnit}`" :hint="hintOfPrice" />
+                </template>
                 <q-input v-model="full" type="number" min="0" step="any" outlined dense :suffix="item.baseUnit" label="Layak jual harga penuh" hint="Ternyata tidak rusak, tetap di stok jual." />
 
                 <div class="damaged__quick">
@@ -113,6 +138,46 @@ function save() {
     display: flex;
     flex-direction: column;
     gap: 14px;
+}
+
+.damaged :deep(input[type='number']) {
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.damaged :deep(input[type='number']::-webkit-outer-spin-button),
+.damaged :deep(input[type='number']::-webkit-inner-spin-button) {
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.damaged__existing {
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: #fdf1e0;
+    color: #c2710c;
+    font-size: 13px;
+}
+
+.damaged__reference {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 18px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: #f6f6f7;
+}
+
+.damaged__reference span {
+    margin-right: 6px;
+    color: var(--app-mute);
+    font-size: 12.5px;
+}
+
+.damaged__reference small {
+    color: var(--app-mute);
 }
 
 .damaged__quick {

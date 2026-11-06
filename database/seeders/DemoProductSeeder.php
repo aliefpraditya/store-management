@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  *
  * Run it for one store: php artisan tenants:seed --tenants=mitra_utama --class='Database\Seeders\DemoProductSeeder'
  *
- * @phpstan-type UnitSpec array{0: string, 1: int|float, 2: int|float, 3: int|float}
+ * @phpstan-type UnitSpec array{0: string, 1: int|float, 2: int|float, 3: int|float, 4?: bool}
  * @phpstan-type ProductSpec array{sku: string, name: string, category: string, brand: string|null, min_stock: int, is_active?: bool, units: list<UnitSpec>, stock: list<array{0: string, 1: int|float}>}
  */
 class DemoProductSeeder extends Seeder
@@ -36,8 +36,9 @@ class DemoProductSeeder extends Seeder
     private const BARCODE_PREFIX = '8990';
 
     /**
-     * Each unit is [code, conversion into the base unit, cost price, selling price]; the first is the base unit.
-     * A stock entry is [unit code, quantity]; several entries for one product add up (5 DUS + 3 PAIL).
+     * Each unit is [code, conversion into the base unit, cost price, selling price, is it a sealed pack]; the first is the
+     * base unit, and the last value is left out for units that are not a sealed pack (a roll that cannot be put back together
+     * once cut). A stock entry is [unit code, quantity]; several entries for one product add up (5 DUS + 3 PAIL).
      *
      * @return list<ProductSpec>
      */
@@ -55,9 +56,9 @@ class DemoProductSeeder extends Seeder
             ['sku' => 'DEMO-05', 'name' => 'Pipa PVC 3"', 'category' => 'Pipa & Fitting', 'brand' => 'Rucika', 'min_stock' => 10,
                 'units' => [['BTG', 1, 78000, 92000], ['IKAT', 10, 740000, 870000]], 'stock' => [['IKAT', 2], ['BTG', 6]]],
             ['sku' => 'DEMO-06', 'name' => 'Kabel NYM 2x1.5', 'category' => 'Listrik', 'brand' => 'Eterna', 'min_stock' => 50,
-                'units' => [['MTR', 1, 9500, 12000], ['ROL', 50, 450000, 580000]], 'stock' => [['ROL', 4], ['MTR', 23]]],
+                'units' => [['MTR', 1, 9500, 12000], ['ROL', 50, 450000, 580000, true]], 'stock' => [['ROL', 4], ['MTR', 23]]],
             ['sku' => 'DEMO-07', 'name' => 'Selang Air 1/2"', 'category' => 'Pipa & Fitting', 'brand' => null, 'min_stock' => 50,
-                'units' => [['MTR', 1, 5500, 7500], ['ROL', 100, 500000, 680000]], 'stock' => [['ROL', 2], ['MTR', 45]]],
+                'units' => [['MTR', 1, 5500, 7500], ['ROL', 100, 500000, 680000, true]], 'stock' => [['ROL', 2], ['MTR', 45]]],
             ['sku' => 'DEMO-08', 'name' => 'Lem Kayu Putih', 'category' => 'Lem & Perekat', 'brand' => null, 'min_stock' => 12,
                 'units' => [['PCS', 1, 11000, 15000], ['LSN', 12, 125000, 165000], ['DUS', 144, 1380000, 1800000]], 'stock' => [['LSN', 3], ['PCS', 5]]],
             ['sku' => 'DEMO-09', 'name' => 'Kuas 3"', 'category' => 'Perkakas', 'brand' => null, 'min_stock' => 12,
@@ -74,6 +75,9 @@ class DemoProductSeeder extends Seeder
                 'units' => [['PCS', 1, 9000, 13000], ['LSN', 12, 100000, 145000]], 'stock' => []],
             ['sku' => 'DEMO-15', 'name' => 'Gembok Lama (nonaktif)', 'category' => 'Perkakas', 'brand' => null, 'min_stock' => 0, 'is_active' => false,
                 'units' => [['PCS', 1, 20000, 30000]], 'stock' => []],
+            // 3 whole rolls plus two leftovers of 50 m: 400 m in all, but only 3 rolls can still be sold as a roll.
+            ['sku' => 'DEMO-16', 'name' => 'Kawat Bendrat', 'category' => 'Bahan Bangunan', 'brand' => null, 'min_stock' => 100,
+                'units' => [['MTR', 1, 1500, 2200], ['ROL', 100, 140000, 200000, true]], 'stock' => [['ROL', 3], ['MTR', 100]]],
         ];
     }
 
@@ -89,7 +93,10 @@ class DemoProductSeeder extends Seeder
         foreach ($this->products() as $spec) {
             $unitRows = [];
 
-            foreach ($spec['units'] as $index => [$unitCode, $conversion, $cost, $price]) {
+            foreach ($spec['units'] as $index => $unitSpec) {
+                [$unitCode, $conversion, $cost, $price] = $unitSpec;
+                $isSealedPack = $unitSpec[4] ?? false;
+
                 $unitRows[] = [
                     'unit' => ['code' => $unitCode],
                     'conversion_factor' => $conversion,
@@ -98,6 +105,7 @@ class DemoProductSeeder extends Seeder
                     'cost_price' => $cost,
                     'selling_price' => $price,
                     'is_default_sale' => $index === 0,
+                    'is_sealed_pack' => $isSealedPack,
                 ];
             }
 
@@ -155,7 +163,8 @@ class DemoProductSeeder extends Seeder
             $counts[] = [
                 'item_id' => StockOpnameItem::query()->where('stock_opname_id', $opname->id)->where('product_id', $productsBySku[$spec['sku']]->id)->value('id'),
                 'parts' => array_map(fn (array $part): array => ['unit_code' => $part[0], 'quantity' => (string) $part[1]], $spec['stock']),
-                'reason' => null,
+                'reason_id' => null,
+                'note' => null,
             ];
         }
 

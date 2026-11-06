@@ -76,6 +76,49 @@ trait BuildsCashierFixtures
         });
     }
 
+    /**
+     * Wire counted in MTR (cost 500, price 1.000) and sold by the ROL of 100 m (cost 45.000, price 90.000), a sealed pack:
+     * a cut roll cannot be sold whole again. By default 400 m in the main warehouse, of which 3 rolls are whole and the
+     * other 100 m is loose (two rolls of 50 m left over).
+     */
+    protected function wireProduct(string $name = 'Kawat', string $metres = '400', int $wholeRolls = 3): Product
+    {
+        return $this->store->run(function () use ($name, $metres, $wholeRolls): Product {
+            $mtr = Unit::query()->firstOrCreate(['code' => 'MTR'], ['name' => 'Meter']);
+            $rol = Unit::query()->firstOrCreate(['code' => 'ROL'], ['name' => 'Roll']);
+
+            $product = Product::factory()->create(['name' => $name, 'base_unit_code' => $mtr->code, 'cost_price' => 500]);
+
+            ProductUnit::factory()->create([
+                'product_id' => $product->id, 'unit_code' => $mtr->code, 'conversion_factor' => 1, 'is_base' => true,
+                'cost_price' => 500, 'selling_price' => 1000, 'sort_order' => 0,
+            ]);
+            ProductUnit::factory()->create([
+                'product_id' => $product->id, 'unit_code' => $rol->code, 'conversion_factor' => 100, 'is_base' => false,
+                'is_default_sale' => false, 'is_sealed_pack' => true, 'cost_price' => 45000, 'selling_price' => 90000, 'sort_order' => 1,
+            ]);
+
+            Stock::query()->updateOrInsert(
+                ['product_id' => $product->id, 'warehouse_id' => $this->mainWarehouse()->id],
+                ['quantity' => $metres, 'intact_packs' => $wholeRolls],
+            );
+
+            return $product;
+        });
+    }
+
+    /**
+     * @return array{quantity: string, intact_packs: int}
+     */
+    protected function shelfOf(Product $product): array
+    {
+        return $this->store->run(function () use ($product): array {
+            $stock = Stock::query()->where('product_id', $product->id)->where('warehouse_id', $this->mainWarehouse()->id)->firstOrFail();
+
+            return ['quantity' => (string) $stock->quantity, 'intact_packs' => $stock->intact_packs];
+        });
+    }
+
     protected function unitOf(Product $product, string $code): ProductUnit
     {
         return $this->store->run(fn () => ProductUnit::query()->where('product_id', $product->id)->where('unit_code', $code)->firstOrFail());

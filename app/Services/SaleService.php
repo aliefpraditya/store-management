@@ -6,16 +6,17 @@ use App\Enums\CashShiftStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
+use App\Exceptions\CustomerOrderException;
 use App\Exceptions\DeliveryNoteException;
 use App\Exceptions\SaleException;
 use App\Models\CashShift;
-use App\Models\ProductUnit;
+use App\Models\CustomerOrder;
+use App\Models\CustomerOrderItem;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\StockOpnameItem;
 use App\Models\User;
 use Brick\Math\BigDecimal;
-use Brick\Math\RoundingMode;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,10 +26,15 @@ use Illuminate\Support\Str;
  * register's warehouse. Prices and costs are read from the database, never from the cashier's screen. The
  * `client_uuid` makes a double submit return the first receipt instead of selling twice.
  *
- * @phpstan-type SaleLine array{product_unit_id: int, quantity: numeric-string|float|int}
+ * A receipt can also be the collection of a customer order (`customer_order_id`): the lines and prices come from the
+ * order, and the deposit already taken goes on the receipt as the `order_deposit` payment, so only the rest is paid.
+ *
+ * @phpstan-import-type CartLine from CartPricer
+ * @phpstan-import-type PricedLine from CartPricer
+ *
  * @phpstan-type SalePaymentInput array{method: string, amount: numeric-string|float|int, reference?: string|null}
  * @phpstan-type DeliveryNoteInput array{recipient_name?: string|null, recipient_address?: string|null, recipient_phone?: string|null, driver_name?: string|null, vehicle_number?: string|null, notes?: string|null}
- * @phpstan-type SaleData array{client_uuid: string, customer_name?: string|null, items: list<SaleLine>, payments: list<SalePaymentInput>, delivery_note?: DeliveryNoteInput|null}
+ * @phpstan-type SaleData array{client_uuid: string, customer_name?: string|null, items?: list<CartLine>, payments?: list<SalePaymentInput>, delivery_note?: DeliveryNoteInput|null, customer_order_id?: int|null}
  */
 class SaleService
 {
@@ -39,6 +45,8 @@ class SaleService
         private readonly DocumentNumberGenerator $documentNumbers,
         private readonly DeliveryNoteService $deliveryNotes,
         private readonly StoreSettingService $settings,
+        private readonly CartPricer $cartPricer,
+        private readonly CustomerOrderService $customerOrders,
     ) {}
 
     /**
@@ -62,21 +70,58 @@ class SaleService
                 throw SaleException::shiftNotOpen();
             }
 
-            $lines = $this->priceLines($saleInput['items']);
+            $warehouseId = $shift->register->warehouse_id;
+            $collectedOrder = $this->collectedOrderOf($saleInput, $warehouseId);
 
-            $this->requireNoOpnameLock($lines, $shift->register->warehouse_id);
-            $this->requireStock($lines, $shift->register->warehouse_id);
+            $lines = $this->cartPricer->price($collectedOrder === null ? $saleInput['items'] : $this->customerOrders->collectionLines($collectedOrder));
 
-            $total = $lines->reduce(fn (BigDecimal $sum, array $line): BigDecimal => $sum->plus($line['subtotal']), BigDecimal::zero());
-            [$paidTotal, $changeAmount] = $this->settle($total, $saleInput['payments']);
+            $this->requireNoOpnameLock($lines, $warehouseId);
+            $this->requireStock($lines, $warehouseId, $collectedOrder?->id);
+            $packChanges = $this->planPackChanges($lines, $warehouseId);
+
+            $total = $this->cartPricer->totalOf($lines);
+            $payments = $saleInput['payments'] ?? [];
+            $depositOfOrder = $collectedOrder?->depositBalance() ?? BigDecimal::zero();
+            [$paidTotal, $changeAmount] = $this->settle($total, $payments, $depositOfOrder);
 
             $sale = $this->recordReceipt($shift, $cashier, $saleInput, $total, $paidTotal, $changeAmount);
-            $this->recordLines($sale, $lines, $cashier);
-            $this->recordPayments($sale, $saleInput['payments']);
+            $this->recordLines($sale, $lines, $cashier, $packChanges);
+            $this->recordPayments($sale, $payments, $depositOfOrder);
             $this->recordDeliveryNoteOfCod($sale->load('items'), $cashier, $saleInput);
+
+            if ($collectedOrder !== null) {
+                $this->customerOrders->completeWith($collectedOrder, $sale);
+            }
 
             return $sale->load(['items', 'payments', 'deliveryNotes']);
         }, StockService::DEADLOCK_ATTEMPTS);
+    }
+
+    /**
+     * The customer order this receipt collects, locked, or null for an ordinary sale. Its goods sit in one warehouse,
+     * so it can only be collected at a register of that warehouse.
+     *
+     * @param  SaleData  $saleInput
+     *
+     * @throws SaleException
+     */
+    private function collectedOrderOf(array $saleInput, int $warehouseId): ?CustomerOrder
+    {
+        if (blank($saleInput['customer_order_id'] ?? null)) {
+            return null;
+        }
+
+        try {
+            $order = $this->customerOrders->claimForCollection($saleInput['customer_order_id']);
+        } catch (CustomerOrderException $exception) {
+            throw new SaleException($exception->getMessage(), previous: $exception);
+        }
+
+        if ($order->warehouse_id !== $warehouseId) {
+            throw SaleException::orderIsInAnotherWarehouse();
+        }
+
+        return $order;
     }
 
     /**
@@ -89,7 +134,7 @@ class SaleService
      */
     private function recordDeliveryNoteOfCod(Sale $sale, User $cashier, array $saleInput): void
     {
-        $isCod = collect($saleInput['payments'])->contains(fn (array $payment): bool => $payment['method'] === PaymentMethod::Cod->value);
+        $isCod = collect($saleInput['payments'] ?? [])->contains(fn (array $payment): bool => $payment['method'] === PaymentMethod::Cod->value);
 
         if (! $isCod) {
             return;
@@ -116,17 +161,17 @@ class SaleService
      * What the cart would cost right now, line by line, without selling anything. Used to settle an exchange before
      * the replacement receipt exists.
      *
-     * @param  list<SaleLine>  $items
+     * @param  list<CartLine>  $items
      * @return array{total: string, lines: list<array{product_unit_id: int, name: string, unit: string, quantity: string, unit_price: string, subtotal: string}>}
      *
      * @throws SaleException
      */
     public function quote(array $items): array
     {
-        $lines = $this->priceLines($items);
+        $lines = $this->cartPricer->price($items);
 
         return [
-            'total' => (string) $lines->reduce(fn (BigDecimal $sum, array $line): BigDecimal => $sum->plus($line['subtotal']), BigDecimal::zero())->toScale(2),
+            'total' => (string) $this->cartPricer->totalOf($lines)->toScale(2),
             'lines' => $lines->map(fn (array $line): array => [
                 'product_unit_id' => $line['attributes']['product_unit_id'],
                 'name' => $line['product_name'],
@@ -181,10 +226,11 @@ class SaleService
 
     /**
      * @param  Collection<int, array{product_id: int, base_quantity: string, attributes: array<string, mixed>}>  $lines
+     * @param  array<int, int>  $packChanges  change in whole sealed packs by line index, see {@see self::planPackChanges()}
      */
-    private function recordLines(Sale $sale, Collection $lines, User $cashier): void
+    private function recordLines(Sale $sale, Collection $lines, User $cashier, array $packChanges): void
     {
-        foreach ($lines as $line) {
+        foreach ($lines as $index => $line) {
             $sale->items()->create($line['attributes']);
 
             $this->stockLedger->record(
@@ -194,14 +240,16 @@ class SaleService
                 '-'.$line['base_quantity'],
                 $sale,
                 $cashier->id,
+                packChange: $packChanges[$index] ?? 0,
             );
         }
     }
 
     /**
      * @param  list<SalePaymentInput>  $payments
+     * @param  BigDecimal  $depositOfOrder  what the customer already put down on the order this receipt collects
      */
-    private function recordPayments(Sale $sale, array $payments): void
+    private function recordPayments(Sale $sale, array $payments, BigDecimal $depositOfOrder): void
     {
         foreach ($payments as $payment) {
             $sale->payments()->create([
@@ -210,66 +258,10 @@ class SaleService
                 'reference' => filled($payment['reference'] ?? null) ? trim($payment['reference']) : null,
             ]);
         }
-    }
 
-    /**
-     * One entry per cart line with the price, cost and base quantity worked out from the product unit.
-     *
-     * @param  list<SaleLine>  $items
-     * @return Collection<int, array{product_id: int, product_name: string, base_unit_code: string, base_quantity: string, subtotal: BigDecimal, attributes: array<string, mixed>}>
-     *
-     * @throws SaleException
-     */
-    private function priceLines(array $items): Collection
-    {
-        $productUnitsById = ProductUnit::query()
-            ->with(['product', 'unit'])
-            ->whereIn('id', array_column($items, 'product_unit_id'))
-            ->get()
-            ->keyBy('id');
-
-        return collect($items)->map(function (array $cartLine) use ($productUnitsById): array {
-            $productUnit = $productUnitsById->get($cartLine['product_unit_id']);
-            $product = $productUnit?->product;
-
-            if ($productUnit === null || $product === null) {
-                throw SaleException::lineNotFound();
-            }
-
-            if ($product->trashed() || ! $product->is_active) {
-                throw SaleException::productUnavailable($product->name);
-            }
-
-            if (! $productUnit->is_sellable) {
-                throw SaleException::notSellable($product->name);
-            }
-
-            $quantity = BigDecimal::of((string) $cartLine['quantity']);
-            $baseQuantity = $quantity->multipliedBy($productUnit->conversion_factor)->toScale(3, RoundingMode::HalfUp);
-            $subtotal = $quantity->multipliedBy($productUnit->selling_price)->toScale(2, RoundingMode::HalfUp);
-
-            return [
-                'product_id' => $product->id,
-                'product_name' => $product->name,
-                'base_unit_code' => $product->base_unit_code,
-                'base_quantity' => (string) $baseQuantity,
-                'subtotal' => $subtotal,
-                'attributes' => [
-                    'product_id' => $product->id,
-                    'product_unit_id' => $productUnit->id,
-                    'product_name' => $product->name,
-                    'unit_name' => $productUnit->unit_code,
-                    'quantity' => (string) $quantity,
-                    'conversion_snapshot' => $productUnit->conversion_factor,
-                    'base_quantity' => (string) $baseQuantity,
-                    'unit_price' => $productUnit->selling_price,
-                    'cost_total' => (string) $quantity->multipliedBy($productUnit->cost_price)->toScale(2, RoundingMode::HalfUp),
-                    'is_cost_estimated' => false,
-                    'is_manual_price' => false,
-                    'subtotal' => (string) $subtotal,
-                ],
-            ];
-        });
+        if ($depositOfOrder->isPositive()) {
+            $sale->payments()->create(['method' => PaymentMethod::OrderDeposit, 'amount' => (string) $depositOfOrder->toScale(2)]);
+        }
     }
 
     /**
@@ -295,24 +287,74 @@ class SaleService
 
     /**
      * Every product must have enough in the warehouse for all its lines together, even when sold in different units.
-     * Stock rows are locked in a fixed order so two sales cannot wait on each other.
+     * What is set aside for customer orders that are ready to be collected is not available, except to the order being
+     * collected (`$collectedOrderId`). Stock rows are locked in a fixed order so two sales cannot wait on each other.
      *
      * @param  Collection<int, array{product_id: int, product_name: string, base_unit_code: string, base_quantity: string}>  $lines
      *
      * @throws SaleException
      */
-    private function requireStock(Collection $lines, int $warehouseId): void
+    private function requireStock(Collection $lines, int $warehouseId, ?int $collectedOrderId): void
     {
         $linesByProduct = $lines->groupBy('product_id')->sortKeys();
+        $reserved = CustomerOrderItem::reservedQuantities($warehouseId, $linesByProduct->keys()->all(), $collectedOrderId);
 
         foreach ($linesByProduct as $productId => $productLines) {
             $required = $productLines->reduce(fn (BigDecimal $sum, array $line): BigDecimal => $sum->plus($line['base_quantity']), BigDecimal::zero());
-            $available = BigDecimal::of($this->stockLedger->lockedQuantity($productId, $warehouseId));
+            $available = BigDecimal::max(BigDecimal::of($this->stockLedger->lockedQuantity($productId, $warehouseId))->minus($reserved[$productId] ?? '0'), '0');
 
             if ($required->isGreaterThan($available)) {
-                throw SaleException::insufficientStock($productLines[0]['product_name'], $this->quantityText($available, $productLines[0]['base_unit_code']));
+                throw SaleException::insufficientStock($productLines[0]['product_name'], SaleException::quantityText($available, $productLines[0]['base_unit_code']));
             }
         }
+    }
+
+    /**
+     * For products with a sealed pack unit (a roll of wire), the total in the base unit being enough is not enough: whole
+     * packs can only be sold while whole packs are left, and a smaller unit opens a pack once the loose pieces run out. This
+     * works out, line by line in cart order, how many whole packs each line takes off the stock, and refuses a line the
+     * packs cannot cover. The stock rows are already locked by {@see self::requireStock()}.
+     *
+     * @param  Collection<int, array{product: Product, product_id: int, product_name: string, base_unit_code: string, base_quantity: string, is_sealed_pack: bool, attributes: array<string, mixed>}>  $lines
+     * @return array<int, int> change in whole packs (zero or negative) by line index, for the lines of products that have a sealed pack unit
+     *
+     * @throws SaleException
+     */
+    private function planPackChanges(Collection $lines, int $warehouseId): array
+    {
+        $productIds = $lines->filter(fn (array $line): bool => $line['product']->sealedPackUnit() !== null)->pluck('product_id')->unique()->sort()->values()->all();
+
+        if ($productIds === []) {
+            return [];
+        }
+
+        $lockedStocks = $this->stockLedger->lockedStocks($productIds, $warehouseId);
+        $shelves = [];
+        $packChanges = [];
+
+        foreach ($lines as $index => $line) {
+            $packUnit = $line['product']->sealedPackUnit();
+
+            if ($packUnit === null) {
+                continue;
+            }
+
+            $productId = $line['product_id'];
+            $shelves[$productId] ??= new SealedPackStock(
+                BigDecimal::of($lockedStocks[$productId]['quantity']),
+                $lockedStocks[$productId]['intact_packs'],
+                BigDecimal::of($packUnit->conversion_factor),
+                $line['product_name'],
+                $packUnit->unit_code,
+                $line['base_unit_code'],
+            );
+
+            $packChanges[$index] = $line['is_sealed_pack']
+                ? $shelves[$productId]->takeSealedPacks(BigDecimal::of($line['attributes']['quantity'])->toInt())
+                : $shelves[$productId]->takeLoose(BigDecimal::of($line['base_quantity']));
+        }
+
+        return $packChanges;
     }
 
     /**
@@ -321,13 +363,14 @@ class SaleService
      * total exactly.
      *
      * @param  list<SalePaymentInput>  $payments
+     * @param  BigDecimal|null  $alreadyPaid  money already received before this sale, such as the deposit of a customer order
      * @return array{0: BigDecimal, 1: BigDecimal} paid total and change
      *
      * @throws SaleException
      */
-    public function settle(BigDecimal $total, array $payments): array
+    public function settle(BigDecimal $total, array $payments, ?BigDecimal $alreadyPaid = null): array
     {
-        $paidTotal = BigDecimal::zero();
+        $paidTotal = $alreadyPaid ?? BigDecimal::zero();
         $cashReceived = BigDecimal::zero();
         $codPaymentCount = 0;
 
@@ -363,12 +406,5 @@ class SaleService
         }
 
         return [$paidTotal->toScale(2), $change->toScale(2)];
-    }
-
-    private function quantityText(BigDecimal $quantity, string $unitCode): string
-    {
-        $text = rtrim(rtrim((string) $quantity->toScale(3), '0'), '.');
-
-        return "{$text} {$unitCode}";
     }
 }

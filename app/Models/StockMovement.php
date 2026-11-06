@@ -12,9 +12,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Lives in the store database. The stock ledger: one signed row (base unit) per change, never edited or
- * deleted. `reference_type` is a short name such as `stock_opname`, see {@see StockHistoryService}.
+ * deleted. `pack_change` is the signed change in whole sealed packs (0 for products without one) and `packs_after` the
+ * count after it. `reference_type` is a short name such as `stock_opname`, see {@see StockHistoryService}.
  */
-#[Fillable(['product_id', 'warehouse_id', 'moved_at', 'type', 'quantity', 'balance_after', 'reference_type', 'reference_id', 'user_id', 'note'])]
+#[Fillable(['product_id', 'warehouse_id', 'moved_at', 'type', 'quantity', 'balance_after', 'pack_change', 'packs_after', 'reference_type', 'reference_id', 'user_id', 'note'])]
 class StockMovement extends Model
 {
     /** @use HasFactory<StockMovementFactory> */
@@ -30,6 +31,8 @@ class StockMovement extends Model
             'type' => StockMovementType::class,
             'quantity' => 'decimal:3',
             'balance_after' => 'decimal:3',
+            'pack_change' => 'integer',
+            'packs_after' => 'integer',
         ];
     }
 

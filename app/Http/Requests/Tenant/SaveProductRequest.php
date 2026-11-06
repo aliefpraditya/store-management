@@ -51,6 +51,7 @@ class SaveProductRequest extends FormRequest
             'units.*.is_sellable' => ['required', 'boolean'],
             'units.*.selling_price' => ['required', 'numeric', 'min:0', 'max:9999999999999', 'decimal:0,2'],
             'units.*.is_default_sale' => ['required', 'boolean'],
+            'units.*.is_sealed_pack' => ['sometimes', 'boolean'],
         ];
 
         foreach (array_keys((array) $this->input('units', [])) as $index) {
@@ -77,6 +78,7 @@ class SaveProductRequest extends FormRequest
                 $this->validateCategoryIsChosen($validator);
                 $this->validateUnitsAreDistinct($validator);
                 $this->validateSellingSetup($validator);
+                $this->validateSealedPack($validator);
                 $this->validateUnitsCanBeSaved($validator);
             },
         ];
@@ -177,6 +179,33 @@ class SaveProductRequest extends FormRequest
 
         if (! $defaultSaleRows->first()['is_sellable']) {
             $validator->errors()->add('units', 'Satuan default kasir harus bisa dijual.');
+        }
+    }
+
+    /**
+     * At most one unit is the sealed pack (the roll), it is a unit the item is sold in, and it is not the base unit, which
+     * is the piece a pack is cut into.
+     */
+    private function validateSealedPack(Validator $validator): void
+    {
+        $sealedIndexes = collect($this->unitRows())->keys()->filter(fn (int $index): bool => (bool) ($this->unitRows()[$index]['is_sealed_pack'] ?? false))->values();
+
+        if ($sealedIndexes->isEmpty()) {
+            return;
+        }
+
+        if ($sealedIndexes->count() > 1) {
+            $validator->errors()->add('units', 'Hanya satu satuan yang boleh ditandai kemasan utuh.');
+
+            return;
+        }
+
+        $index = $sealedIndexes->first();
+
+        if ($index === 0) {
+            $validator->errors()->add('units.0.is_sealed_pack', 'Satuan dasar tidak bisa jadi kemasan utuh: itu satuan potongannya.');
+        } elseif (! $this->unitRows()[$index]['is_sellable']) {
+            $validator->errors()->add("units.{$index}.is_sealed_pack", 'Kemasan utuh harus satuan yang bisa dijual.');
         }
     }
 

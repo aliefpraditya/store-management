@@ -102,7 +102,12 @@ watch([selectedProduct, warehouseId, from, to], () => applyFilters());
                         <td class="history__right">
                             <template v-if="Number(movement.quantity) < 0">{{ formatQuantity(Math.abs(movement.quantity)) }}</template>
                         </td>
-                        <td class="history__right"><b>{{ formatQuantity(movement.balance_after) }}</b> {{ movement.base_unit }}</td>
+                        <td class="history__right">
+                            <b>{{ formatQuantity(movement.balance_after) }}</b> {{ movement.base_unit }}
+                            <small v-if="movement.pack_unit" class="history__packs">
+                                {{ movement.packs_after }} {{ movement.pack_unit }} utuh<template v-if="movement.pack_change !== 0"> ({{ movement.pack_change > 0 ? '+' : '−' }}{{ Math.abs(movement.pack_change) }})</template>
+                            </small>
+                        </td>
                         <td>{{ movement.warehouse }}</td>
                     </tr>
                 </tbody>
@@ -195,6 +200,11 @@ watch([selectedProduct, warehouseId, from, to], () => applyFilters());
 
 .history__table .history__right b {
     display: inline;
+}
+
+.history__packs {
+    display: block;
+    color: #64748b;
 }
 
 .history__empty {

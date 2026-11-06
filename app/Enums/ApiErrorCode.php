@@ -14,5 +14,6 @@ enum ApiErrorCode: int
     case ReturnRefused = 4221;
     case ExpenseRefused = 4222;
     case CodRefused = 4223;
+    case OrderRefused = 4224;
     case ShiftIsOpen = 4231;
 }

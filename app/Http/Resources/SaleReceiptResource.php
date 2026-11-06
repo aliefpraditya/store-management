@@ -20,6 +20,7 @@ class SaleReceiptResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'print_url' => route('tenant.cashier.receipts.print', ['tenant' => tenant('code'), 'sale' => $this->id]),
             'delivery_url' => route('tenant.cashier.receipts.delivery', ['tenant' => tenant('code'), 'sale' => $this->id]),
             'delivery_note_store_url' => route('tenant.cashier.receipts.delivery-notes.store', ['tenant' => tenant('code'), 'sale' => $this->id]),
             'number' => $this->number,

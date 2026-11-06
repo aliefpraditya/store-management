@@ -10,6 +10,7 @@ enum PaymentMethod: string
     case Edc = 'edc';
     case ReturnCredit = 'return_credit';
     case Cod = 'cod';
+    case OrderDeposit = 'order_deposit';
 
     public function label(): string
     {
@@ -20,12 +21,14 @@ enum PaymentMethod: string
             self::Edc => 'EDC',
             self::ReturnCredit => 'Kredit retur',
             self::Cod => 'COD',
+            self::OrderDeposit => 'Uang muka pesanan',
         };
     }
 
     /**
      * Methods money can come in or go back by: what a refund, an exchange payment or the drawer summary works with.
-     * Return credit only comes from an exchange, and COD is not money received yet.
+     * Return credit only comes from an exchange, COD is not money received yet, and an order deposit was already
+     * received when the order was made.
      *
      * @return list<self>
      */

@@ -14,6 +14,9 @@ const props = defineProps({
     filters: { type: Object, required: true },
     /** The reasons a variance can be given; `needs_damage_decision` marks the one that asks where damaged goods go. */
     reasons: { type: Array, required: true },
+    /** What the damaged goods decisions add up to, for the posting confirmation; null outside the review of a routine opname. */
+    damage_summary: { type: Object, default: null },
+    sealed_pack_drops: { type: Array, default: () => [] },
 });
 
 const page = usePage();
@@ -59,11 +62,32 @@ const typedCounts = ref({});
 const loadedCounts = ref({});
 
 /**
- * A saved count comes back as one base-unit quantity, so it is shown as a single part in the base unit.
+ * A saved count comes back as one base-unit quantity, so it is shown as a single part in the base unit. A product with a
+ * sealed pack unit (a roll of wire) is split into the whole packs counted and the loose rest, so that saving it again does
+ * not lose which of the metres were whole rolls.
  */
+function savedPartsOf(item) {
+    if (item.counted_quantity === null) {
+        return [{ unit_code: item.base_unit, quantity: '' }];
+    }
+
+    const sealedPackUnit = item.units.find((unit) => unit.is_sealed_pack);
+
+    if (!sealedPackUnit || item.counted_packs === null) {
+        return [{ unit_code: item.base_unit, quantity: String(Number(item.counted_quantity)) }];
+    }
+
+    const looseQuantity = Math.round((Number(item.counted_quantity) - item.counted_packs * Number(sealedPackUnit.conversion_factor)) * 1000) / 1000;
+
+    return [
+        { unit_code: sealedPackUnit.code, quantity: String(item.counted_packs) },
+        { unit_code: item.base_unit, quantity: String(looseQuantity) },
+    ];
+}
+
 function typedCountOf(item) {
     return {
-        parts: [{ unit_code: item.base_unit, quantity: item.counted_quantity === null ? '' : String(Number(item.counted_quantity)) }],
+        parts: savedPartsOf(item),
         reason_id: item.reason_id,
         note: item.note ?? '',
     };
@@ -89,7 +113,7 @@ function reviewOf(item) {
         dead: textOf(item.damage?.dead_stock_quantity),
         dg: textOf(item.damage?.damaged_goods_quantity),
         full: textOf(item.damage?.full_price_quantity),
-        price: textOf(item.damage?.damaged_goods_price),
+        price: textOf(item.damage?.damaged_goods_price ?? item.damage?.existing?.price),
     };
 }
 
@@ -193,7 +217,11 @@ const damageDialogItem = computed(() => {
         shortage: shortageOf(item),
         damagedGoodsSku: item.damage?.damaged_goods_sku ?? '',
         damagedGoodsProblem: item.damage?.damaged_goods_problem ?? null,
-        currentPrice: item.damage?.damaged_goods_price ?? null,
+        existingName: item.damage?.existing?.name ?? null,
+        existingSku: item.damage?.existing?.sku ?? null,
+        existingPrice: item.damage?.existing?.price ?? null,
+        originalCost: item.damage?.original_cost_price ?? null,
+        originalPrice: item.damage?.original_selling_price ?? null,
     };
 });
 
@@ -253,12 +281,81 @@ function varianceOf(item) {
 }
 
 /**
- * @returns {string|null} the stock once the typed arrival is added, or null while nothing is typed
+ * @returns {number|null} how many of the typed parts are whole sealed packs, or null for a product without a sealed pack unit
+ *   or while nothing is typed
+ */
+function countedPacksOf(item) {
+    const sealedPackUnit = item.units.find((unit) => unit.is_sealed_pack);
+
+    if (!sealedPackUnit || countedBase(item) === null) {
+        return null;
+    }
+
+    return typedCounts.value[item.id].parts
+        .filter((part) => part.unit_code === sealedPackUnit.code && part.quantity !== '' && part.quantity !== null)
+        .reduce((sum, part) => sum + Number(part.quantity), 0);
+}
+
+/**
+ * The variance of a product with a sealed pack unit, split the way it is counted: the whole packs and the loose rest
+ * (3 whole rolls + 100 m counted as 200 m and no roll is -3 ROL and +100 MTR), so a lost roll is not hidden in the metres.
+ * @returns {{packChange: number, looseChange: number, packCode: string}|null} null for a product without a sealed pack unit,
+ *   or while nothing is typed
+ */
+function splitVarianceOf(item) {
+    const sealedPackUnit = item.units.find((unit) => unit.is_sealed_pack);
+    const variance = varianceOf(item);
+    const countedPacks = props.opname.can_count ? countedPacksOf(item) : item.counted_packs;
+
+    if (!sealedPackUnit || variance === null || countedPacks === null) {
+        return null;
+    }
+
+    const packChange = countedPacks - (props.opname.is_counting_arrivals ? 0 : item.system_intact_packs);
+    const looseChange = Math.round((variance - packChange * Number(sealedPackUnit.conversion_factor)) * 1000) / 1000;
+
+    return { packChange, looseChange, packCode: sealedPackUnit.code };
+}
+
+/**
+ * @returns {string} the variance in words: "−3 ROL +100 MTR" for a product with a sealed pack unit, otherwise "−200 MTR"
+ */
+function varianceTextOf(item) {
+    const split = splitVarianceOf(item);
+
+    if (split === null || (split.packChange === 0 && split.looseChange === 0)) {
+        return formatVariance(varianceOf(item), item.base_unit);
+    }
+
+    return [
+        split.packChange !== 0 ? formatVariance(split.packChange, split.packCode) : null,
+        split.looseChange !== 0 ? formatVariance(split.looseChange, item.base_unit) : null,
+    ]
+        .filter(Boolean)
+        .join(' ');
+}
+
+/** A lost whole pack is a loss even when the metres add up, so it colours the chip like a shortage. */
+function varianceChipClassOf(item) {
+    const packChange = splitVarianceOf(item)?.packChange ?? 0;
+
+    return packChange < 0 ? 'chip--bad' : varianceClass(varianceOf(item));
+}
+
+/**
+ * @returns {string|null} the stock once the typed count (or arrival) is applied, or null while nothing is typed
  */
 function stockAfter(item) {
     const variance = varianceOf(item);
 
-    return variance === null ? null : formatStock(Number(item.system_quantity) + variance, item.units, item.base_unit);
+    if (variance === null) {
+        return null;
+    }
+
+    const countedPacks = countedPacksOf(item);
+    const intactPacksAfter = countedPacks === null ? null : props.opname.is_counting_arrivals ? item.system_intact_packs + countedPacks : countedPacks;
+
+    return formatStock(Number(item.system_quantity) + variance, item.units, item.base_unit, intactPacksAfter);
 }
 
 function varianceClass(variance) {
@@ -394,18 +491,32 @@ function postOpname() {
     afterSavingCounts(confirmPosting);
 }
 
+const isPostOpen = ref(false);
+
+const postMessage = computed(() =>
+    props.opname.is_counting_arrivals
+        ? `Stok sekitar ${props.summary.variance_count} barang akan bertambah, dengan nilai sekitar ${formatMoney(props.summary.variance_value)}. Angka ini dari tampilan terakhir. Setelah diposting, opname tidak bisa diubah.`
+        : `Stok sekitar ${props.summary.variance_count} barang akan diperbarui, dengan nilai selisih sekitar ${formatMoney(props.summary.variance_value)}. Angka ini dari tampilan terakhir. Setelah diposting, opname tidak bisa diubah.`,
+);
+
+/** How many damaged goods rows the posting confirmation lists before saying how many more there are. */
+const DAMAGE_ROWS_SHOWN = 6;
+
+const damageRows = computed(() => props.damage_summary?.items.slice(0, DAMAGE_ROWS_SHOWN) ?? []);
+
+const sealedPackDropRows = computed(() => props.sealed_pack_drops.slice(0, DAMAGE_ROWS_SHOWN));
+
+const hasDamageSummary = computed(() => (props.damage_summary?.items.length ?? 0) > 0);
+
+const rupiah = (value) => `Rp ${moneyFormat.format(Number(value))}`;
+
 function confirmPosting() {
-    confirmDialog(
-        {
-            title: 'Posting opname?',
-            message: props.opname.is_counting_arrivals
-                ? `Stok sekitar ${props.summary.variance_count} barang akan bertambah, dengan nilai sekitar ${formatMoney(props.summary.variance_value)}. Angka ini dari tampilan terakhir; penjualan yang masuk sebelum posting ikut menggeser hasilnya. Setelah diposting, opname tidak bisa diubah.`
-                : `Stok sekitar ${props.summary.variance_count} barang akan diperbarui, dengan nilai selisih sekitar ${formatMoney(props.summary.variance_value)}. Angka ini dari tampilan terakhir; penjualan yang masuk sebelum posting ikut menggeser selisihnya. Setelah diposting, opname tidak bisa diubah.`,
-            okLabel: 'Posting',
-            okColor: 'positive',
-        },
-        () => postAction(props.opname.urls.post),
-    );
+    isPostOpen.value = true;
+}
+
+function post() {
+    isPostOpen.value = false;
+    postAction(props.opname.urls.post);
 }
 
 /** A draft is erased for good; a started opname is cancelled and hidden from the list but kept. */
@@ -552,7 +663,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             <b>{{ item.product.name }}</b>
                             <small>{{ item.product.sku }}</small>
                         </td>
-                        <td class="lines__right">{{ formatStock(item.system_quantity, item.units, item.base_unit) }}</td>
+                        <td class="lines__right">{{ formatStock(item.system_quantity, item.units, item.base_unit, item.system_intact_packs) }}</td>
                         <td>
                             <div v-if="opname.can_count" class="parts">
                                 <div v-for="(part, partIndex) in typedCounts[item.id].parts" :key="partIndex" class="parts__row">
@@ -600,15 +711,18 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                                         @click="addPart(item)"
                                     />
                                 </div>
+                                <small v-if="item.units.some((unit) => unit.is_sealed_pack)" class="lines__muted">
+                                    Hitung yang masih utuh sebagai {{ item.units.find((unit) => unit.is_sealed_pack).code }}, dan sisa potongan dalam satuan yang lebih kecil.
+                                </small>
                             </div>
                             <template v-else>
-                                <span v-if="item.counted_quantity !== null">{{ formatStock(item.counted_quantity, item.units, item.base_unit) }}</span>
+                                <span v-if="item.counted_quantity !== null">{{ formatStock(item.counted_quantity, item.units, item.base_unit, item.counted_packs) }}</span>
                                 <span v-else class="lines__muted">Belum dihitung</span>
                             </template>
                         </td>
                         <td class="lines__right">
                             <template v-if="varianceOf(item) !== null">
-                                <span class="chip" :class="varianceClass(varianceOf(item))">{{ formatVariance(varianceOf(item), item.base_unit) }}</span>
+                                <span class="chip" :class="varianceChipClassOf(item)">{{ varianceTextOf(item) }}</span>
                                 <small v-if="!opname.can_count && Number(item.variance_value) !== 0" class="lines__muted">{{ formatMoney(item.variance_value) }}</small>
                             </template>
                             <span v-else class="lines__muted">—</span>
@@ -618,6 +732,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             <span v-else class="lines__muted">—</span>
                         </td>
                         <td>
+                            <div class="lines__reason-row">
                             <q-select
                                 v-if="isReasonEditable(item)"
                                 v-model="editableRow(item).reason_id"
@@ -636,17 +751,18 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             <span v-else>{{ item.reason_name ?? '' }}</span>
                             <q-btn
                                 v-if="isReviewing && hasVariance(item) && isDamagedReason(item)"
-                                outline
-                                dense
+                                :unelevated="!isDamageDecided(item)"
+                                :outline="isDamageDecided(item)"
                                 no-caps
-                                size="sm"
+                                dense
                                 :color="isDamageDecided(item) ? 'positive' : 'warning'"
-                                icon="report_problem"
+                                :icon="isDamageDecided(item) ? 'check_circle' : 'edit_note'"
                                 :label="damageSummary(item)"
-                                class="lines__decision"
+                                class="lines__decision q-px-md"
                                 @click="openDamageDialog(item)"
                             />
-                            <small v-else-if="item.needs_damage_decision && item.damage && item.damage.dead_stock_quantity !== null" class="lines__muted">
+                            </div>
+                            <small v-if="!isReviewing && item.needs_damage_decision && item.damage && item.damage.dead_stock_quantity !== null" class="lines__muted">
                                 Dead stock {{ formatQuantity(item.damage.dead_stock_quantity) }} · DG {{ formatQuantity(item.damage.damaged_goods_quantity) }} · Penuh {{ formatQuantity(item.damage.full_price_quantity) }}
                             </small>
                         </td>
@@ -693,6 +809,68 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                 </q-card-section>
                 <q-card-actions align="right">
                     <q-btn flat no-caps label="Tutup" v-close-popup />
+                </q-card-actions>
+            </q-card>
+        </q-dialog>
+
+        <q-dialog v-model="isPostOpen">
+            <q-card class="post">
+                <q-card-section>
+                    <div class="post__title">Posting opname?</div>
+                    <p class="post__message">{{ postMessage }}</p>
+
+                    <div v-if="sealedPackDropRows.length > 0" class="post__warning">
+                        <b>Rol utuh berkurang</b>
+                        <ul>
+                            <li v-for="row in sealedPackDropRows" :key="row.product_name">
+                                {{ row.product_name }}: {{ row.pack_unit }} utuh turun dari {{ row.system_packs }} jadi {{ row.counted_packs }}
+                            </li>
+                        </ul>
+                        <p v-if="sealed_pack_drops.length > sealedPackDropRows.length" class="post__more">Dan {{ sealed_pack_drops.length - sealedPackDropRows.length }} barang lain.</p>
+                        <small>Yang tidak dihitung sebagai kemasan utuh tidak bisa dijual per kemasan lagi. Bila ada kemasan yang sebenarnya masih utuh, kembali ke hitungan dan tulis dalam satuan kemasannya.</small>
+                    </div>
+
+                    <template v-if="hasDamageSummary">
+                        <div class="post__heading">Barang rusak</div>
+                        <table class="post__table">
+                            <thead>
+                                <tr>
+                                    <th>Barang</th>
+                                    <th class="post__right">Dead stock</th>
+                                    <th class="post__right">Barang DG</th>
+                                    <th class="post__right">Layak jual penuh</th>
+                                    <th class="post__right">Kemungkinan rugi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="row in damageRows" :key="row.product_name">
+                                    <td><b>{{ row.product_name }}</b></td>
+                                    <td class="post__right">{{ formatQuantity(row.dead_stock_quantity) }} {{ row.base_unit }}</td>
+                                    <td class="post__right">
+                                        {{ formatQuantity(row.damaged_goods_quantity) }} {{ row.base_unit }}
+                                        <small v-if="Number(row.damaged_goods_quantity) > 0">
+                                            dijual {{ rupiah(row.damaged_goods_price) }}, asli {{ rupiah(row.original_price) }}
+                                            <template v-if="row.existing_price !== null && Number(row.existing_price) !== Number(row.damaged_goods_price)"><br />harga DG sekarang {{ rupiah(row.existing_price) }}, jadi {{ rupiah(row.damaged_goods_price) }}</template>
+                                        </small>
+                                    </td>
+                                    <td class="post__right">{{ formatQuantity(row.full_price_quantity) }} {{ row.base_unit }}</td>
+                                    <td class="post__right post__loss">{{ rupiah(row.loss) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p v-if="damage_summary.items.length > damageRows.length" class="post__more">Dan {{ damage_summary.items.length - damageRows.length }} barang rusak lain, ikut dihitung di total.</p>
+
+                        <div class="post__total">
+                            <b>Kemungkinan kerugian: {{ rupiah(damage_summary.total_loss) }}</b>
+                            <small>Dead stock {{ rupiah(damage_summary.dead_stock_loss) }} + selisih harga barang DG {{ rupiah(damage_summary.damaged_goods_loss) }}</small>
+                        </div>
+                        <small class="post__note">Dihitung dari harga jual: dead stock tidak bisa dijual lagi (rugi sebesar harga jual aslinya), barang DG rugi sebesar selisih harga jual asli dan harga DG. Yang layak jual penuh tidak rugi.</small>
+                    </template>
+                </q-card-section>
+
+                <q-card-actions align="right">
+                    <q-btn flat no-caps color="negative" label="Batal" v-close-popup />
+                    <q-btn unelevated no-caps color="positive" label="Posting" @click="post" />
                 </q-card-actions>
             </q-card>
         </q-dialog>
@@ -908,9 +1086,110 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
     min-width: 150px;
 }
 
-.lines__decision {
+.post {
+    width: 720px;
+    max-width: 96vw;
+}
+
+.post__title {
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.post__message {
+    margin: 12px 0 0;
+}
+
+.post__heading {
+    margin: 16px 0 6px;
+    font-weight: 700;
+}
+
+.post__table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.post__table th,
+.post__table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--app-line);
+    text-align: left;
+    vertical-align: top;
+}
+
+.post__table th {
+    color: var(--app-mute);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.post__table small {
+    display: block;
+    color: var(--app-mute);
+    font-size: 12px;
+}
+
+.post__table .post__right {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.post__table .post__loss {
+    color: #be123c;
+    font-weight: 600;
+}
+
+.post__warning {
+    margin: 10px 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    color: #92400e;
+}
+
+.post__warning ul {
+    margin: 6px 0;
+    padding-left: 18px;
+}
+
+.post__more {
+    margin: 6px 0 0;
+    color: var(--app-mute);
+    font-size: 12.5px;
+}
+
+.post__total {
     display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #fde8ee;
+    color: #be123c;
+}
+
+.post__total small {
+    color: #be123c;
+}
+
+.post__note {
+    display: block;
     margin-top: 6px;
+    color: var(--app-mute);
+}
+
+.lines__reason-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lines__decision {
+    flex: none;
+    white-space: nowrap;
 }
 
 .pager {

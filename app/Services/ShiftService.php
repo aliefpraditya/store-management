@@ -9,6 +9,7 @@ use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Exceptions\ShiftException;
 use App\Models\CashShift;
+use App\Models\CustomerOrderPayment;
 use App\Models\DailyClosing;
 use App\Models\Register;
 use App\Models\Sale;
@@ -27,7 +28,7 @@ use Illuminate\Support\Str;
  *
  * @phpstan-import-type CodTotals from CodSaleService
  *
- * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, void_cash_refunds: string, cod: CodTotals, drawer_expenses: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
+ * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, void_cash_refunds: string, cod: CodTotals, drawer_expenses: string, order_deposit_cash: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
  */
 class ShiftService
 {
@@ -164,6 +165,7 @@ class ShiftService
         $payments[PaymentMethod::Cash->value] = (string) $cashFromSales->toScale(2);
 
         $drawerExpenses = BigDecimal::of($this->expenseService->drawerTotalOf($shift));
+        $orderDepositCash = $this->orderDepositCashOf($shift);
 
         return [
             'sale_count' => (clone $completedSalesQuery)->count(),
@@ -173,10 +175,28 @@ class ShiftService
             'void_cash_refunds' => (string) $voidCashRefunds->toScale(2),
             'cod' => $this->codSales->totalsOfShift($shift),
             'drawer_expenses' => (string) $drawerExpenses->toScale(2),
+            'order_deposit_cash' => (string) $orderDepositCash->toScale(2),
             'payments' => $payments,
             'opening_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->toScale(2),
-            'expected_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->plus($cashFromSales)->minus($cashRefunds)->minus($voidCashRefunds)->minus($drawerExpenses)->toScale(2),
+            'expected_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->plus($cashFromSales)->plus($orderDepositCash)->minus($cashRefunds)->minus($voidCashRefunds)->minus($drawerExpenses)->toScale(2),
         ];
+    }
+
+    /**
+     * The cash that customer order deposits put into the drawer in this shift, net of deposits given back from it. A
+     * deposit is money in the drawer even though it is no sale yet; the receipt that later collects the order carries it
+     * as `order_deposit`, which is not counted again.
+     */
+    private function orderDepositCashOf(CashShift $shift): BigDecimal
+    {
+        $cashByKind = CustomerOrderPayment::query()
+            ->where('cash_shift_id', $shift->id)
+            ->where('method', PaymentMethod::Cash)
+            ->groupBy('kind')
+            ->selectRaw('kind, sum(amount) as amount')
+            ->pluck('amount', 'kind');
+
+        return BigDecimal::of((string) ($cashByKind[CustomerOrderPayment::KIND_DEPOSIT] ?? 0))->minus((string) ($cashByKind[CustomerOrderPayment::KIND_REFUND] ?? 0));
     }
 
     /**

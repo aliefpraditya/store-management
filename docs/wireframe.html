@@ -285,11 +285,11 @@
     <div class="row mt" style="margin-bottom:10px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cari di daftar ini</div><div class="in sel grow">Selisih belum direview</div><span class="b">Tandai yang lengkap di halaman ini sudah direview</span></div>
     <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Stok sistem</th><th>Hitung fisik</th><th class="r">Selisih</th><th>Alasan</th><th>Catatan</th><th class="ct">Direview</th></tr>
       <tr><td><b>Cat Tembok Putih 5kg</b></td><td class="r">24 PAIL</td><td>23 PAIL</td><td class="r"><span class="c bad">−1 PAIL</span></td><td><span class="in mini sel">Hilang</span></td><td><span class="in mini">dicuri</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td></tr>
-      <tr><td><b>Kuas 3"</b></td><td class="r">38 PCS</td><td>35 PCS</td><td class="r"><span class="c bad">−3 PCS</span></td><td><span class="in mini sel">Rusak</span><br><span class="b s" style="margin-top:6px">Dead stock 1 · DG 1 · Penuh 1</span></td><td><span class="in mini">jatuh</span></td><td class="ct"><span class="ck"></span></td></tr>
+      <tr><td><b>Kuas 3"</b></td><td class="r">38 PCS</td><td>35 PCS</td><td class="r"><span class="c bad">−3 PCS</span></td><td style="white-space:nowrap"><span class="in mini sel">Rusak</span> <span class="b p">Tentukan keputusan</span></td><td><span class="in mini">jatuh</span></td><td class="ct"><span class="ck"></span></td></tr>
       <tr><td><b>Thinner 1L</b></td><td class="r">12 KALENG</td><td>14 KALENG</td><td class="r"><span class="c warn">+2 KALENG</span></td><td><span class="in mini sel">Pembelian</span></td><td><span class="in mini ph">catatan</span></td><td class="ct"><span class="ck"></span></td></tr></table></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Pada Opname Rutin, tiap barang yang selisih wajib punya alasan dan dicentang sudah direview sebelum posting. Centang baru bisa bila alasan dan keputusan barang rusak lengkap.</li><li>Alasan Rusak membuka keputusan barang rusak (tombol di bawah alasan). Pemeriksaan diulang saat posting terhadap stok terbaru; Hitung Ulang menghapus semua tanda review.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Pada Opname Rutin, tiap barang yang selisih wajib punya alasan dan dicentang sudah direview sebelum posting. Centang baru bisa bila alasan dan keputusan barang rusak lengkap.</li><li>Alasan Rusak memunculkan tombol Tentukan keputusan di sebelah alasan, yang membuka keputusan barang rusak (setelah diisi, tombolnya berisi ringkasannya: Dead stock 1 · DG 1 · Penuh 1). Pemeriksaan diulang saat posting terhadap stok terbaru; Hitung Ulang menghapus semua tanda review.</li></ul></details>
 </section>
 
 <!-- 9c KEPUTUSAN BARANG RUSAK -->
@@ -299,13 +299,32 @@
     <h3>Keputusan barang rusak</h3><p class="ink2" style="margin:0 0 14px">Kuas 3" kurang 3 PCS. Bagi jumlah itu sampai pas.</p>
     <div class="f"><span>Masuk dead stock</span><div class="in">1 PCS</div></div>
     <div class="f"><span>Dijual sebagai barang DG</span><div class="in">1 PCS</div></div>
-    <div class="g2"><div class="f"><span>Harga jual DG per PCS</span><div class="in">Rp 6.000</div></div><div class="tip" style="align-self:end"><span>Jadi barang baru <b>MU0004-DG</b></span></div></div>
+    <div class="tip warn" style="margin-bottom:10px"><span>Barang DG sudah ada: <b>(DG) Kuas 3"</b> (MU0004-DG). Harga jualnya sekarang <b>Rp 7.000</b> per PCS. Stok rusak ini ditambahkan ke sana.</span></div>
+    <div class="ink2" style="background:#f6f6f7;border-radius:10px;padding:8px 12px;margin-bottom:10px">Harga jual asli <b>Rp 10.000</b> · Modal <b>Rp 6.000</b> <span class="mute">per PCS</span></div>
+    <div class="g2"><div class="f"><span>Harga jual DG per PCS</span><div class="in">Rp 7.500</div><span class="mute" style="font-size:12.5px">Margin 20% dari modal.</span></div><div class="tip" style="align-self:end"><span>Jadi barang baru <b>MU0004-DG</b></span></div></div>
     <div class="f"><span>Layak jual harga penuh</span><div class="in">1 PCS</div></div>
     <div class="tip ok" style="margin-top:10px"><svg class="ic s"><use href="#i-check"/></svg><span>Pas: semua 3 PCS sudah dibagi.</span></div>
     <div class="row mt"><span class="sp"></span><span class="b">Batal</span><span class="b p">Pakai keputusan</span></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Saat posting: dead stock pindah ke gudang dead stock; barang DG dibuat (nama "(DG) nama", SKU "SKU-DG", satuan dan modal disalin) dan stoknya bertambah di gudang opname; yang layak jual penuh tidak diubah.</li><li>Barang DG yang sudah ada dipakai lagi. Ditolak bila SKU DG dipakai barang lain.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Saat posting: dead stock pindah ke gudang dead stock; barang DG dibuat (nama "(DG) nama", SKU "SKU-DG", satuan dan modal disalin) dan stoknya bertambah di gudang opname; yang layak jual penuh kembali ke stok jual. Histori Stok mencatat seluruh jumlah rusak keluar lebih dulu, lalu tiap bagian masuk ke tujuannya.</li><li>Barang DG yang sudah ada dipakai lagi. Ditolak bila SKU DG dipakai barang lain.</li></ul></details>
+</section>
+
+<!-- 9d KONFIRMASI POSTING OPNAME -->
+<section class="scr" id="opnamepost" data-group="Barang & Stok" data-nav="Konfirmasi Posting Opname" data-title="Konfirmasi Posting Opname" data-sub="Sebelum posting: apa yang terjadi pada barang rusak dan kemungkinan kerugiannya." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/stock-opnames/3">
+<div class="bd full" style="background:var(--bg)">
+  <div class="scrim"><div class="modal" style="max-width:760px">
+    <h3>Posting opname?</h3>
+    <p class="ink2" style="margin:8px 0 0">Stok sekitar 2 barang akan diperbarui, dengan nilai selisih sekitar −Rp 91.875. Angka ini dari tampilan terakhir; penjualan yang masuk sebelum posting ikut menggeser selisihnya. Setelah diposting, opname tidak bisa diubah.</p>
+    <p style="margin:14px 0 6px"><b>Barang rusak</b></p>
+    <table class="t"><tr><th>Barang</th><th class="r">Dead stock</th><th class="r">Barang DG</th><th class="r">Layak jual penuh</th><th class="r">Kemungkinan rugi</th></tr>
+      <tr><td><b>Kuas 3"</b></td><td class="r">1 PCS</td><td class="r">1 PCS<small>dijual Rp 7.500, asli Rp 10.000<br>harga DG sekarang Rp 7.000, jadi Rp 7.500</small></td><td class="r">1 PCS</td><td class="r" style="color:var(--bad)"><b>Rp 12.500</b></td></tr></table>
+    <div class="tip bad" style="margin-top:12px"><span><b>Kemungkinan kerugian: Rp 12.500</b><br>Dead stock Rp 10.000 + selisih harga barang DG Rp 2.500</span></div>
+    <p class="mute" style="font-size:12.5px;margin:6px 0 0">Dihitung dari harga jual: dead stock tidak bisa dijual lagi (rugi sebesar harga jual aslinya), barang DG rugi sebesar selisih harga jual asli dan harga DG. Yang layak jual penuh tidak rugi.</p>
+    <div class="row mt"><span class="sp"></span><span class="b bad">Batal</span><span class="b ok">Posting</span></div>
+  </div></div>
+</div>
+<details class="nt"><summary>Catatan</summary><ul><li>Ringkasan barang rusak hanya muncul pada Opname Rutin yang punya keputusan barang rusak lengkap. Enam barang pertama ditampilkan; total menghitung semuanya.</li><li>Bila barang DG-nya sudah ada dengan harga lain, ditampilkan harga sekarang dan harga barunya.</li></ul></details>
 </section>
 
 <!-- 10 HISTORI STOK -->

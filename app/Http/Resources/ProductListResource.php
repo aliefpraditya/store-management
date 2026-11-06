@@ -21,6 +21,7 @@ class ProductListResource extends JsonResource
     public function toArray(Request $request): array
     {
         $defaultSaleUnit = $this->productUnits->firstWhere('is_default_sale', true);
+        $sealedPackUnit = $this->sealedPackUnit();
 
         return [
             'id' => $this->id,
@@ -39,7 +40,13 @@ class ProductListResource extends JsonResource
             'units' => $this->productUnits->map(fn ($productUnit): array => [
                 'code' => $productUnit->unit_code,
                 'conversion_factor' => $productUnit->conversion_factor,
+                'is_sealed_pack' => $productUnit->is_sealed_pack,
             ])->values()->all(),
+            'sealed_pack' => $sealedPackUnit === null ? null : [
+                'unit' => $sealedPackUnit->unit_code,
+                'intact' => (int) $this->getAttribute('sellable_intact_packs'),
+                'dead_intact' => (int) $this->getAttribute('dead_intact_packs'),
+            ],
             'default_sale' => $defaultSaleUnit === null ? null : [
                 'unit' => $defaultSaleUnit->unit_code,
                 'price' => $defaultSaleUnit->selling_price,

@@ -23,7 +23,7 @@ class StockHistoryService
     public function paginate(array $filters, int $perPage): LengthAwarePaginator
     {
         $movements = StockMovement::query()
-            ->with(['product.baseUnit', 'warehouse'])
+            ->with(['product.baseUnit', 'product.productUnits', 'warehouse'])
             ->when($filters['product_id'], fn (Builder $query, int $productId) => $query->where('product_id', $productId))
             ->when($filters['warehouse_id'], fn (Builder $query, int $warehouseId) => $query->where('warehouse_id', $warehouseId))
             ->when($filters['from'], fn (Builder $query, string $from) => $query->where('moved_at', '>=', $from.' 00:00:00'))

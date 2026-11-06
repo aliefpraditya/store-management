@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Models\CustomerOrder;
 use App\Models\DeliveryNote;
 use App\Models\Sale;
 use App\Services\PrintCounter;
@@ -22,7 +23,7 @@ trait AnswersPrints
      * @param  string  $sheetRouteName  the route of the sheet in the caller's area
      * @param  string  $routeParameterName  the sheet route's parameter for the document, e.g. `sale`
      */
-    protected function recordPrintAnswer(PrintCounter $printCounter, Sale|DeliveryNote $document, string $sheetRouteName, string $routeParameterName): JsonResponse
+    protected function recordPrintAnswer(PrintCounter $printCounter, Sale|DeliveryNote|CustomerOrder $document, string $sheetRouteName, string $routeParameterName): JsonResponse
     {
         $printNumber = $printCounter->recordPrint($document);
 

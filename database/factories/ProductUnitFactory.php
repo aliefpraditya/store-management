@@ -28,6 +28,7 @@ class ProductUnitFactory extends Factory
             'cost_price' => 1000,
             'selling_price' => 15000,
             'is_default_sale' => true,
+            'is_sealed_pack' => false,
         ];
     }
 }

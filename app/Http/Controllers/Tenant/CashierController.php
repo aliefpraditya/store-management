@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\CashShiftStatus;
+use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CashShiftResource;
 use App\Models\CashShift;
+use App\Models\CustomerOrder;
 use App\Models\Register;
 use App\Models\Store;
 use App\Services\ShiftService;
@@ -34,6 +36,9 @@ class CashierController extends Controller
             'registers' => $shift === null ? $this->registersToOpen() : [],
             'payment_methods' => PaymentMethod::saleOptions(),
             'last_sale' => $request->session()->pull('last_sale'),
+            'last_order' => $request->session()->pull('last_order'),
+            'open_order_count' => CustomerOrder::query()->whereIn('status', OrderStatus::unfinished())->count(),
+            'ready_order_count' => CustomerOrder::query()->where('status', OrderStatus::Ready)->count(),
             'closed_shift' => $request->session()->pull('closed_shift'),
             'can_leave_to_dashboard' => $request->user()->isAdminIn($store),
             'urls' => [
@@ -45,6 +50,7 @@ class CashierController extends Controller
                 'receipts' => route('tenant.cashier.receipts', ['tenant' => $code]),
                 'return_lookup' => route('tenant.cashier.returns.lookup', ['tenant' => $code]),
                 'cod' => route('tenant.cashier.cod.index', ['tenant' => $code]),
+                'orders' => route('tenant.cashier.orders.index', ['tenant' => $code]),
                 'expenses' => route('tenant.cashier.expenses.index', ['tenant' => $code]),
                 'expenses_store' => route('tenant.cashier.expenses.store', ['tenant' => $code]),
             ],

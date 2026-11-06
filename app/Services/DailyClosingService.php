@@ -13,6 +13,7 @@ use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Exceptions\DailyClosingException;
 use App\Models\CashShift;
+use App\Models\CustomerOrderPayment;
 use App\Models\DailyClosing;
 use App\Models\DeliveryNote;
 use App\Models\Expense;
@@ -36,7 +37,7 @@ use Illuminate\Support\Facades\DB;
  * What a day holds follows the shifts opened on it: the receipts and expenses carry the shift's business date, and a
  * return belongs to the day of the shift it was made in (a return of an old receipt is booked on the day it is made).
  *
- * @phpstan-type Figures array{shifts_count: int, sales_count: int, total_sales: string, sales_cash: string, sales_transfer: string, sales_qris: string, sales_edc: string, sales_cod: string, total_returns: string, refunds_cash: string, voids_count: int, total_voids: string, expenses_drawer: string, expenses_other: string, total_expected_cash: string, total_counted_cash: string, total_cash_difference: string, total_deposit: string}
+ * @phpstan-type Figures array{shifts_count: int, sales_count: int, total_sales: string, sales_cash: string, sales_transfer: string, sales_qris: string, sales_edc: string, sales_cod: string, total_returns: string, refunds_cash: string, voids_count: int, total_voids: string, order_deposits_received: string, order_deposits_refunded: string, expenses_drawer: string, expenses_other: string, total_expected_cash: string, total_counted_cash: string, total_cash_difference: string, total_deposit: string}
  * @phpstan-type Checklist array{can_close: bool, open_shifts: list<array{label: string, cashier_name: string, show_url: string}>, pending_differences: list<array{label: string, amount: string, show_url: string}>, pending_return_count: int, unfinished_delivery_note_count: int}
  */
 class DailyClosingService
@@ -113,6 +114,7 @@ class DailyClosingService
             ...$this->salesFigures($dateText),
             ...$this->returnFigures($date),
             ...$this->voidFigures($dateText),
+            ...$this->orderDepositFigures($date),
             ...$this->expenseFigures($dateText),
             ...$this->cashFigures($dateText),
         ];
@@ -267,6 +269,26 @@ class DailyClosingService
         return [
             'voids_count' => (clone $voidedOnDayQuery)->count(),
             'total_voids' => $this->money((clone $voidedOnDayQuery)->sum('total')),
+        ];
+    }
+
+    /**
+     * Deposits of customer orders taken and given back in the day's shifts, by every method. They are not sales: the
+     * goods are only sold when the customer collects them, so the deposit is kept apart from the sales figures.
+     *
+     * @return array{order_deposits_received: string, order_deposits_refunded: string}
+     */
+    private function orderDepositFigures(CarbonInterface $date): array
+    {
+        $amountByKind = CustomerOrderPayment::query()
+            ->whereIn('cash_shift_id', $this->shiftIdsOf($date))
+            ->groupBy('kind')
+            ->selectRaw('kind, sum(amount) as amount')
+            ->pluck('amount', 'kind');
+
+        return [
+            'order_deposits_received' => $this->money($amountByKind[CustomerOrderPayment::KIND_DEPOSIT] ?? 0),
+            'order_deposits_refunded' => $this->money($amountByKind[CustomerOrderPayment::KIND_REFUND] ?? 0),
         ];
     }
 

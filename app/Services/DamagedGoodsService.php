@@ -52,13 +52,20 @@ class DamagedGoodsService
     }
 
     /**
-     * The base-unit selling price of the twin as it stands, or null while there is no twin.
+     * The twin made earlier as the admin should see it before pricing more damaged units into it: its name, its SKU and
+     * the selling price of its base unit. Null while the product has no twin.
+     *
+     * @return array{name: string, sku: string, price: string|null}|null
      */
-    public function currentPriceOf(Product $product): ?string
+    public function existingOf(Product $product): ?array
     {
         $twin = $this->twinOf($product);
 
-        return $twin?->productUnits()->where('is_base', true)->value('selling_price');
+        if ($twin === null) {
+            return null;
+        }
+
+        return ['name' => $twin->name, 'sku' => $twin->sku, 'price' => $twin->productUnits()->where('is_base', true)->value('selling_price')];
     }
 
     /**

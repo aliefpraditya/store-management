@@ -165,6 +165,7 @@ class StockOpnameService
 
                 $item?->forceFill([
                     'counted_quantity' => $this->toBaseQuantity($item->product, $count['parts']),
+                    'counted_packs' => $this->toWholePacks($item->product, $count['parts']),
                     'reason_id' => $count['reason_id'],
                     'note' => filled($count['note']) ? trim($count['note']) : null,
                 ])->save();
@@ -284,8 +285,9 @@ class StockOpnameService
                 ? StockMovementType::OpeningBalance
                 : StockMovementType::OpnameAdjustment;
 
-            $countedItems = $opname->items()->with(['product', 'reason'])->whereNotNull('counted_quantity')->orderBy('product_id')->get();
-            $systemQuantities = $this->stockLedger->lockedQuantities($countedItems->pluck('product_id')->all(), $opname->warehouse_id);
+            $countedItems = $opname->items()->with(['product.productUnits', 'reason'])->whereNotNull('counted_quantity')->orderBy('product_id')->get();
+            $lockedStocks = $this->stockLedger->lockedStocks($countedItems->pluck('product_id')->all(), $opname->warehouse_id);
+            $systemQuantities = array_map(fn (array $stock): string => $stock['quantity'], $lockedStocks);
 
             $this->requireNotesForLargeVariances($opname, $countedItems, $systemQuantities);
             $this->requireReviewedVariances($opname, $countedItems, $systemQuantities);
@@ -293,24 +295,26 @@ class StockOpnameService
             foreach ($countedItems as $item) {
                 $systemQuantity = $systemQuantities[$item->product_id];
                 $variance = $opname->varianceOf($item->counted_quantity, $systemQuantity);
+                $packChange = $this->packChangeOf($opname, $item, $lockedStocks[$item->product_id]['intact_packs'], BigDecimal::of($systemQuantity)->plus($variance));
 
                 $item->forceFill([
                     'system_quantity_at_posting' => $systemQuantity,
+                    'system_packs_at_posting' => $item->product->sealedPackUnit() === null ? null : $lockedStocks[$item->product_id]['intact_packs'],
                     'cost_price_at_posting' => $item->product->cost_price,
                     'variance' => (string) $variance,
                 ])->save();
 
-                if ($variance->isZero()) {
+                if ($variance->isZero() && $packChange === 0) {
                     continue;
                 }
 
-                if ($this->isDamagedGoodsDecision($opname, $item)) {
-                    $this->postDamagedItem($opname, $item, $systemQuantity, $movementType, $userId);
+                if (! $variance->isZero() && $this->isDamagedGoodsDecision($opname, $item)) {
+                    $this->postDamagedItem($opname, $item, $systemQuantity, $movementType, $userId, $packChange);
 
                     continue;
                 }
 
-                $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $variance, $opname, $userId, $this->movementNote($opname, $item), $systemQuantity);
+                $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $variance, $opname, $userId, $this->movementNote($opname, $item), $systemQuantity, $packChange);
             }
 
             $opname->forceFill(['status' => StockOpnameStatus::Posted, 'approved_by' => $userId, 'posted_at' => now()])->save();
@@ -469,23 +473,23 @@ class StockOpnameService
     }
 
     /**
-     * Posts a damaged-goods shortage: the units that stay on the shelf at full price are not touched, and the others
-     * leave the shelf of the opname's warehouse for dead stock (the same product in the dead stock warehouse) or for the
-     * DG product, which is made now when it does not exist. A shortage is the only thing that gets here, so the units
-     * leaving are a part of what the count found missing.
+     * Posts a damaged-goods shortage. Every damaged unit the count found missing first leaves the shelf of the opname's
+     * warehouse in one movement, so the history shows all of them as checked; then they go where the admin decided: dead
+     * stock (the same product in the dead stock warehouse), the DG product (made now when it does not exist), or back on the
+     * shelf when they turned out fine to sell at full price, in a movement of their own. The shelf ends up with the count.
      *
      * @param  numeric-string  $systemQuantity  the locked stock of the item in the opname's warehouse
+     * @param  int  $packChange  the change in whole sealed packs, taken in the first movement
      */
-    private function postDamagedItem(StockOpname $opname, StockOpnameItem $item, string $systemQuantity, StockMovementType $movementType, int $userId): void
+    private function postDamagedItem(StockOpname $opname, StockOpnameItem $item, string $systemQuantity, StockMovementType $movementType, int $userId, int $packChange): void
     {
         $deadStock = BigDecimal::of($item->dead_stock_quantity);
         $damagedGoods = BigDecimal::of($item->damaged_goods_quantity);
-        $leavingShelf = $deadStock->plus($damagedGoods);
+        $fullPrice = BigDecimal::of($item->full_price_quantity);
+        $shortage = $deadStock->plus($damagedGoods)->plus($fullPrice);
         $note = $this->movementNote($opname, $item);
 
-        if ($leavingShelf->isPositive()) {
-            $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $leavingShelf->negated(), $opname, $userId, $note, $systemQuantity);
-        }
+        $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $shortage->negated(), $opname, $userId, $note, $systemQuantity, $packChange);
 
         if ($deadStock->isPositive()) {
             $this->stockLedger->record($item->product_id, $this->deadStockWarehouse()->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)");
@@ -495,6 +499,10 @@ class StockOpnameService
             $twin = $this->damagedGoods->productFor($item->product, (string) $item->damaged_goods_price);
 
             $this->stockLedger->record($twin->id, $opname->warehouse_id, $movementType, (string) $damagedGoods, $opname, $userId, "{$note} (barang DG {$twin->sku})");
+        }
+
+        if ($fullPrice->isPositive()) {
+            $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $fullPrice, $opname, $userId, "{$note} (layak jual penuh, kembali ke stok jual)");
         }
     }
 
@@ -565,6 +573,65 @@ class StockOpnameService
         }
 
         return (string) $total->toScale(3, RoundingMode::HalfUp);
+    }
+
+    /**
+     * How many of the counted parts were whole sealed packs (a count in the product's sealed pack unit), so a roll of wire
+     * counted as 3 ROL and 100 MTR is 3 intact rolls and 100 loose metres. Null for a product without a sealed pack unit,
+     * and for an item that was not counted.
+     *
+     * @param  list<CountPart>  $parts
+     *
+     * @throws StockOpnameException
+     */
+    private function toWholePacks(Product $product, array $parts): ?int
+    {
+        $packUnit = $product->sealedPackUnit();
+        $filledParts = array_filter($parts, fn (array $part): bool => filled($part['quantity']));
+
+        if ($packUnit === null || $filledParts === []) {
+            return null;
+        }
+
+        $packs = BigDecimal::zero();
+
+        foreach ($filledParts as $part) {
+            if ($part['unit_code'] === $packUnit->unit_code) {
+                $packs = $packs->plus($part['quantity']);
+            }
+        }
+
+        if (! $packs->isEqualTo($packs->toScale(0, RoundingMode::Down))) {
+            throw StockOpnameException::sealedPacksNotWhole($product->name, $packUnit->unit_code);
+        }
+
+        return $packs->toInt();
+    }
+
+    /**
+     * The change in whole sealed packs that posting an item makes: the shelf ends up with the packs that were counted (or,
+     * for a count of arrivals, gets them added). An item counted before its product had a sealed pack unit has no pack count,
+     * so it keeps its packs as far as the new quantity still holds them.
+     *
+     * @param  int  $intactPacks  the locked number of whole packs on the shelf now
+     * @param  BigDecimal  $newQuantity  the quantity the shelf holds once the variance is posted
+     */
+    private function packChangeOf(StockOpname $opname, StockOpnameItem $item, int $intactPacks, BigDecimal $newQuantity): int
+    {
+        $packUnit = $item->product->sealedPackUnit();
+
+        if ($packUnit === null) {
+            return 0;
+        }
+
+        $fittingPacks = $newQuantity->dividedBy($packUnit->conversion_factor, 0, RoundingMode::Down)->toInt();
+        $targetPacks = match (true) {
+            $item->counted_packs === null => $intactPacks,
+            $opname->reason_code?->isArrivalCount() === true => $intactPacks + $item->counted_packs,
+            default => $item->counted_packs,
+        };
+
+        return min($targetPacks, $fittingPacks) - $intactPacks;
     }
 
     /**

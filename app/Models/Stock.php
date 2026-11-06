@@ -9,7 +9,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Lives in the store database. One row per product and warehouse (composite key), a cache of the
- * stock_movements ledger.
+ * stock_movements ledger. For a product with a sealed pack unit, `intact_packs` is how many whole packs are in `quantity`;
+ * the rest of the quantity is loose pieces. It stays 0 for products without one.
  */
 class Stock extends Model
 {
@@ -27,7 +28,7 @@ class Stock extends Model
      */
     protected function casts(): array
     {
-        return ['quantity' => 'decimal:3'];
+        return ['quantity' => 'decimal:3', 'intact_packs' => 'integer'];
     }
 
     /**

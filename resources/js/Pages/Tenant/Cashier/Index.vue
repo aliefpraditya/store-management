@@ -11,6 +11,7 @@ import DeliveryNoteDialog from '../../../Components/Cashier/DeliveryNoteDialog.v
 import ReturnDialog from '../../../Components/Cashier/ReturnDialog.vue';
 import ReturnLookupDialog from '../../../Components/Cashier/ReturnLookupDialog.vue';
 import CodDialog from '../../../Components/Cashier/CodDialog.vue';
+import OrderListDialog from '../../../Components/Cashier/OrderListDialog.vue';
 import ExpenseDialog from '../../../Components/Cashier/ExpenseDialog.vue';
 import ReceiptHistoryDialog from '../../../Components/Cashier/ReceiptHistoryDialog.vue';
 import ShiftOpenPanel from '../../../Components/Cashier/ShiftOpenPanel.vue';
@@ -25,6 +26,10 @@ const props = defineProps({
     registers: { type: Array, required: true },
     payment_methods: { type: Array, required: true },
     last_sale: { type: Object, default: null },
+    /** The customer order made by the last checkout, alone or together with `last_sale`. */
+    last_order: { type: Object, default: null },
+    open_order_count: { type: Number, default: 0 },
+    ready_order_count: { type: Number, default: 0 },
     closed_shift: { type: Object, default: null },
     can_leave_to_dashboard: { type: Boolean, required: true },
     urls: { type: Object, required: true },
@@ -61,7 +66,19 @@ const isReturnOpen = ref(false);
 const returnReceipt = ref(null);
 const isExpenseOpen = ref(false);
 const isCodOpen = ref(false);
+const isOrdersOpen = ref(false);
+
+/** The customer order whose goods the customer is collecting; the payment dialog then pays what is left of it. */
+const collectingOrder = ref(null);
+
 let saleUuid = newUuid();
+let orderUuid = newUuid();
+
+/** What the payment dialog charges now: what is left of the order being collected, or the part of the cart that is in stock. */
+const paymentTotal = computed(() => (collectingOrder.value ? Number(collectingOrder.value.remaining) : cart.split.value.saleTotal));
+
+/** The cart divided into receipt and order, only when part of it is short of stock. */
+const splitForPayment = computed(() => (collectingOrder.value || cart.split.value.orderLines.length === 0 ? null : cart.split.value));
 
 const timeFormat = new Intl.DateTimeFormat('id-ID', { timeStyle: 'short' });
 
@@ -178,7 +195,16 @@ function setLineUnit(line, code) {
 }
 
 function stockTextOf(line) {
-    return formatStock(line.product.stock, line.product.units, line.product.base_unit);
+    return formatStock(line.product.stock, line.product.units, line.product.base_unit, line.product.intact_packs);
+}
+
+/**
+ * An item that is sold out can still be added: the part the shelf cannot serve becomes a customer order at the payment
+ * screen. Only an item an opname is counting is held back, since it cannot be sold.
+ * @param {object} item an item from the lookup
+ */
+function isItemHeldBack(item) {
+    return item.is_being_counted;
 }
 
 function openPayment() {
@@ -188,14 +214,20 @@ function openPayment() {
         return;
     }
 
-    if (cart.hasOverStock.value) {
-        $q.notify({ type: 'negative', message: 'Ada barang yang melebihi stok. Kurangi jumlahnya.', position: 'top' });
-
-        return;
-    }
-
     isPaymentOpen.value = true;
 }
+
+/** Collecting an order pays what is left of it; the cart is not touched. */
+function startCollecting(order) {
+    collectingOrder.value = order;
+    isPaymentOpen.value = true;
+}
+
+watch(isPaymentOpen, (isOpen) => {
+    if (!isOpen) {
+        collectingOrder.value = null;
+    }
+});
 
 function clearCart() {
     if (cart.isEmpty.value) {
@@ -214,24 +246,46 @@ function clearCart() {
     });
 }
 
-function submitSale({ customer_name, payments, delivery_note }) {
-    router.post(
-        props.urls.sales,
-        { client_uuid: saleUuid, customer_name, items: cart.saleItemsPayload.value, payments, delivery_note },
-        {
-            preserveScroll: true,
-            onStart: () => (isPaying.value = true),
-            onFinish: () => (isPaying.value = false),
-            onSuccess: (successPage) => {
-                if (successPage.props.last_sale) {
+/**
+ * What "Bayar" sends: the order being collected, or the cart divided into the receipt for what is in stock and the order
+ * for what is short. The server makes both in one transaction.
+ */
+function checkoutBody({ customer_name, payments, delivery_note, order }) {
+    const body = { client_uuid: saleUuid, customer_name, payments, delivery_note };
+
+    if (collectingOrder.value) {
+        return { ...body, customer_order_id: collectingOrder.value.id };
+    }
+
+    const inStockItems = cart.inStockItemsPayload.value;
+
+    return {
+        ...body,
+        ...(inStockItems.length > 0 ? { items: inStockItems } : {}),
+        ...(order ? { order: { ...order, client_uuid: orderUuid, items: cart.shortItemsPayload.value } } : {}),
+    };
+}
+
+function submitSale(checkout) {
+    const isCollecting = collectingOrder.value !== null;
+
+    router.post(props.urls.sales, checkoutBody(checkout), {
+        preserveScroll: true,
+        onStart: () => (isPaying.value = true),
+        onFinish: () => (isPaying.value = false),
+        onSuccess: (successPage) => {
+            if (successPage.props.last_sale || successPage.props.last_order) {
+                if (!isCollecting) {
                     cart.clear();
-                    isPaymentOpen.value = false;
-                    saleUuid = newUuid();
                 }
-            },
-            onError: (errors) => $q.notify({ type: 'negative', message: Object.values(errors)[0], position: 'top' }),
+
+                isPaymentOpen.value = false;
+                saleUuid = newUuid();
+                orderUuid = newUuid();
+            }
         },
-    );
+        onError: (errors) => $q.notify({ type: 'negative', message: Object.values(errors)[0], position: 'top' }),
+    });
 }
 
 function openClose() {
@@ -254,9 +308,9 @@ function closeShift(closingForm) {
 }
 
 watch(
-    () => props.last_sale,
-    (sale) => {
-        if (sale) {
+    () => [props.last_sale, props.last_order],
+    ([sale, order]) => {
+        if (sale || order) {
             isSaleDoneOpen.value = true;
             nextTick(() => searchInput.value?.focus());
         }
@@ -301,7 +355,7 @@ function openReturn(receipt) {
 }
 
 /** A finished return or an expense changes the drawer, so the figures of the close-shift dialog are fetched again. */
-const refreshShiftSummary = () => router.reload({ only: ['summary'] });
+const refreshShiftSummary = () => router.reload({ only: ['summary', 'open_order_count', 'ready_order_count'] });
 
 /** F9 pays, F8 empties the cart, F2 goes to the search box. */
 function onKeydown(event) {
@@ -311,7 +365,7 @@ function onKeydown(event) {
 
     const shortcuts = { F9: openPayment, F8: clearCart, F2: () => searchInput.value?.focus() };
 
-    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value && !isReturnLookupOpen.value && !isReturnOpen.value && !isExpenseOpen.value && !isCodOpen.value) {
+    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value && !isReturnLookupOpen.value && !isReturnOpen.value && !isExpenseOpen.value && !isCodOpen.value && !isOrdersOpen.value) {
         event.preventDefault();
         shortcuts[event.key]();
     }
@@ -381,6 +435,10 @@ onBeforeUnmount(() => {
                         <q-btn v-if="shift" flat no-caps dense icon="receipt_long" label="Riwayat Nota" @click="isReceiptsOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense icon="undo" label="Retur" @click="isReturnLookupOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense icon="local_shipping" label="COD" @click="isCodOpen = true" />
+                        <q-btn v-if="shift" flat no-caps dense icon="assignment" label="Pesanan" @click="isOrdersOpen = true">
+                            <q-badge v-if="open_order_count > 0" :color="ready_order_count > 0 ? 'positive' : 'orange'" floating :label="ready_order_count > 0 ? `${ready_order_count} siap` : open_order_count" />
+                            <q-tooltip>Pesanan pelanggan untuk barang yang belum ada</q-tooltip>
+                        </q-btn>
                         <q-btn v-if="shift" flat no-caps dense icon="remove_circle_outline" label="Pengeluaran" @click="isExpenseOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense color="negative" icon="lock_clock" label="Tutup Shift" @click="openClose">
                             <q-tooltip>Tutup shift dulu untuk keluar</q-tooltip>
@@ -413,7 +471,7 @@ onBeforeUnmount(() => {
                             <li v-for="item in searchResults" :key="item.id" class="item">
                                 <div class="item__info">
                                     <b>{{ item.name }}</b>
-                                    <small :class="{ item__empty: Number(item.stock) <= 0 || item.is_being_counted }">{{ item.sku }} · {{ item.is_being_counted ? 'sedang opname, belum bisa dijual' : Number(item.stock) <= 0 ? 'stok habis' : `stok ${formatStock(item.stock, item.units, item.base_unit)}` }}</small>
+                                    <small :class="{ item__empty: Number(item.stock) <= 0 || item.is_being_counted }">{{ item.sku }} · {{ item.is_being_counted ? 'sedang opname, belum bisa dijual' : Number(item.stock) <= 0 ? 'stok habis, bisa dipesan' : `stok ${formatStock(item.stock, item.units, item.base_unit, item.intact_packs)}` }}<template v-if="Number(item.reserved) > 0"> · {{ formatQuantity(item.reserved) }} {{ item.base_unit }} disisihkan untuk pesanan</template></small>
                                 </div>
                                 <div class="item__units">
                                     <q-btn
@@ -424,7 +482,7 @@ onBeforeUnmount(() => {
                                         dense
                                         color="primary"
                                         class="item__unit"
-                                        :disable="Number(item.stock) <= 0 || item.is_being_counted"
+                                        :disable="isItemHeldBack(item)"
                                         :aria-label="`Tambah ${item.name} ${unit.code}`"
                                         @click="addToCart(item, unit)"
                                     >
@@ -443,7 +501,7 @@ onBeforeUnmount(() => {
                             <div v-for="line in cart.lines.value" :key="line.key" class="line" :class="{ 'line--over': cart.isOverStock(line) }">
                                 <div class="line__name">
                                     <b>{{ line.product.name }}</b>
-                                    <small v-if="cart.isOverStock(line)" class="line__warning">Stok tersisa {{ stockTextOf(line) }}</small>
+                                    <small v-if="cart.isOverStock(line)" class="line__warning">{{ cart.stockWarningOf(line) }} {{ stockTextOf(line) }}. Kekurangannya jadi pesanan.</small>
                                     <small v-else>{{ formatRupiah(cart.priceOf(line)) }} / {{ cart.unitOf(line).code }}</small>
                                 </div>
                                 <q-input
@@ -479,7 +537,7 @@ onBeforeUnmount(() => {
                             </div>
                             <div class="cart__buttons">
                                 <q-btn flat no-caps color="grey-8" label="Batal (F8)" :disable="cart.isEmpty.value" @click="clearCart" />
-                                <q-btn color="primary" unelevated no-caps size="lg" class="cart__pay" label="Bayar (F9)" :disable="cart.isEmpty.value" @click="openPayment" />
+                                <q-btn color="primary" unelevated no-caps size="lg" class="cart__pay" :label="cart.hasOverStock.value ? 'Bayar & Pesan (F9)' : 'Bayar (F9)'" :disable="cart.isEmpty.value" @click="openPayment" />
                             </div>
                         </footer>
                     </section>
@@ -489,15 +547,16 @@ onBeforeUnmount(() => {
             </q-page>
         </q-page-container>
 
-        <PaymentDialog v-model="isPaymentOpen" :total="cart.total.value" :payment-methods="payment_methods" :is-processing="isPaying" @confirm="submitSale" />
+        <PaymentDialog v-model="isPaymentOpen" :total="paymentTotal" :payment-methods="payment_methods" :is-processing="isPaying" :split="splitForPayment" :collecting-order="collectingOrder" @confirm="submitSale" />
         <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :payment-methods="payment_methods.filter((method) => method.value !== 'cod')" :is-processing="isClosing" @confirm="closeShift" />
-        <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" @delivery="openDelivery" />
+        <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" :order="last_order" @delivery="openDelivery" />
         <ShiftClosedDialog v-model="isShiftClosedOpen" :shift-totals="closed_shift" />
         <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" @return="openReturn" />
         <DeliveryNoteDialog v-model="isDeliveryOpen" :receipt="deliveryReceipt" />
         <ReturnLookupDialog v-if="shift" v-model="isReturnLookupOpen" :lookup-url="urls.return_lookup" @found="openReturn" />
         <ReturnDialog v-model="isReturnOpen" :receipt="returnReceipt" :products-url="urls.products" @saved="refreshShiftSummary" />
         <CodDialog v-if="shift" v-model="isCodOpen" :list-url="urls.cod" @changed="refreshShiftSummary" />
+        <OrderListDialog v-if="shift" v-model="isOrdersOpen" :list-url="urls.orders" @changed="refreshShiftSummary" @collect="startCollecting" />
         <ExpenseDialog v-if="shift" v-model="isExpenseOpen" :list-url="urls.expenses" :store-url="urls.expenses_store" :expected-cash="summary?.expected_cash ?? null" @saved="refreshShiftSummary" />
     </q-layout>
 </template>

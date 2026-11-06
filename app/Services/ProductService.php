@@ -27,13 +27,15 @@ use Illuminate\Support\Facades\DB;
  * refused), and once a product has stock or history its units and conversions are locked.
  *
  * @phpstan-type NamedOrExisting array{id?: int|string|null, name?: string|null}
- * @phpstan-type UnitRow array{id?: int|null, unit: array{code: string, name?: string|null}, conversion_factor: numeric-string|float|int, barcode?: string|null, is_sellable: bool, cost_price: numeric-string|float|int, selling_price: numeric-string|float|int, is_default_sale: bool}
+ * @phpstan-type UnitRow array{id?: int|null, unit: array{code: string, name?: string|null}, conversion_factor: numeric-string|float|int, barcode?: string|null, is_sellable: bool, cost_price: numeric-string|float|int, selling_price: numeric-string|float|int, is_default_sale: bool, is_sealed_pack?: bool}
  * @phpstan-type ProductInput array{name: string, sku: string, category: NamedOrExisting, brand?: NamedOrExisting|null, min_stock: numeric-string|float|int, is_active: bool, version?: int|null, units: list<UnitRow>}
  * @phpstan-type UnitProblem array{field: string, message: string}
  */
 class ProductService
 {
     private const PICKER_LIMIT = 15;
+
+    public function __construct(private readonly StockService $stockLedger) {}
 
     /**
      * The item list: stock totals and flags per row, narrowed by a search, a category, a brand, an active/inactive choice
@@ -279,6 +281,7 @@ class ProductService
      */
     private function syncUnits(Product $product, array $unitRows): void
     {
+        $previousPackUnit = $product->exists ? $product->productUnits()->where('is_sealed_pack', true)->first() : null;
         $keptIds = collect($unitRows)->pluck('id')->filter()->all();
 
         $product->productUnits()->whereNotIn('id', $keptIds)->get()->each->delete();
@@ -298,8 +301,27 @@ class ProductService
                 'cost_price' => $row['cost_price'],
                 'selling_price' => $row['selling_price'],
                 'is_default_sale' => $row['is_default_sale'],
+                'is_sealed_pack' => $index !== 0 && ($row['is_sealed_pack'] ?? false),
             ])->save();
         }
+
+        $this->startOrStopCountingPacks($product, $previousPackUnit);
+    }
+
+    /**
+     * The stock rows of a product start counting whole packs when it gets a sealed pack unit (or a different one), and stop
+     * when it loses it, see {@see StockService::resetIntactPacks()}. Saving the same unit again changes nothing.
+     */
+    private function startOrStopCountingPacks(Product $product, ?ProductUnit $previousPackUnit): void
+    {
+        $product->unsetRelation('productUnits');
+        $packUnit = $product->sealedPackUnit();
+
+        if ($packUnit?->id === $previousPackUnit?->id) {
+            return;
+        }
+
+        $this->stockLedger->resetIntactPacks($product);
     }
 
     /**

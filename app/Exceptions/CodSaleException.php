@@ -40,6 +40,11 @@ class CodSaleException extends Exception
         return new self('Nota pengganti retur tidak bisa di-void. Pakai Retur.');
     }
 
+    public static function paidByOrderDeposit(): self
+    {
+        return new self('Nota pengambilan pesanan tidak bisa di-void. Pakai Retur.');
+    }
+
     public static function shiftNeededForRefund(): self
     {
         return new self('Nota ini sudah menerima DP tunai. Buka shift dulu untuk mengembalikannya dari laci.');

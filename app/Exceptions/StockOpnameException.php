@@ -26,6 +26,11 @@ class StockOpnameException extends Exception
         return new self("{$productName}: jumlah yang dihitung terlalu besar setelah diubah ke satuan terkecil. Periksa angkanya.");
     }
 
+    public static function sealedPacksNotWhole(string $productName, string $packUnitCode): self
+    {
+        return new self("{$productName}: jumlah {$packUnitCode} yang dihitung harus bilangan bulat, karena hanya yang utuh dihitung {$packUnitCode}. Tulis potongannya dengan satuan yang lebih kecil.");
+    }
+
     public static function noProducts(): self
     {
         return new self('Pilih minimal satu barang sebelum mulai menghitung.');

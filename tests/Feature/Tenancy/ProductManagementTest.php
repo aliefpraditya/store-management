@@ -646,7 +646,8 @@ class ProductManagementTest extends TestCase
             ->where('products.data.0.is_below_minimum', true)
             ->where('products.data.0.base_unit', 'PAIL')
             ->where('products.data.0.default_sale', ['unit' => 'PAIL', 'price' => '116600.00'])
-            ->where('products.data.0.units.1', ['code' => 'DUS', 'conversion_factor' => '4.000'])
+            ->where('products.data.0.units.1', ['code' => 'DUS', 'conversion_factor' => '4.000', 'is_sealed_pack' => false])
+            ->where('products.data.0.sealed_pack', null)
             ->where('products.data.0.edit_url', $this->url('edit', ['product' => $product->id]))
         );
     }

@@ -185,13 +185,13 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                         </td>
                         <td class="items__right">
                             <span :class="{ 'chip chip--bad': product.is_below_minimum }">
-                                {{ formatStock(product.sellable_stock, product.units, product.base_unit) }}
+                                {{ formatStock(product.sellable_stock, product.units, product.base_unit, product.sealed_pack?.intact ?? null) }}
                             </span>
                             <small v-if="product.is_below_minimum">min {{ formatQuantity(product.min_stock) }}</small>
                         </td>
                         <td class="items__right">
                             <span v-if="Number(product.dead_stock) > 0" class="chip chip--warn">
-                                {{ formatStock(product.dead_stock, product.units, product.base_unit) }}
+                                {{ formatStock(product.dead_stock, product.units, product.base_unit, product.sealed_pack?.dead_intact ?? null) }}
                             </span>
                             <span v-else class="items__muted">—</span>
                         </td>

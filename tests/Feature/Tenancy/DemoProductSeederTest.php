@@ -58,7 +58,7 @@ class DemoProductSeederTest extends TestCase
         $this->runDemoSeeder();
 
         $this->inStore(function (): void {
-            $this->assertSame(15, Product::query()->count());
+            $this->assertSame(16, Product::query()->count());
             $this->assertSame(1, Product::query()->where('is_active', false)->count());
 
             $product = Product::query()->where('sku', 'DEMO-03')->with('productUnits')->firstOrFail();
@@ -86,8 +86,24 @@ class DemoProductSeederTest extends TestCase
         $this->inStore(function (): void {
             $opname = StockOpname::query()->sole();
             $this->assertSame(StockOpnameStatus::Posted, $opname->status);
-            $this->assertSame(13, StockMovement::query()->count());
-            $this->assertSame(13, StockMovement::query()->where('type', StockMovementType::OpeningBalance)->where('reference_id', $opname->id)->count());
+            $this->assertSame(14, StockMovement::query()->count());
+            $this->assertSame(14, StockMovement::query()->where('type', StockMovementType::OpeningBalance)->where('reference_id', $opname->id)->count());
+        });
+    }
+
+    public function test_the_wire_is_sold_by_a_sealed_roll_and_starts_with_three_whole_rolls_of_its_400_m(): void
+    {
+        $this->runDemoSeeder();
+
+        $this->inStore(function (): void {
+            $wire = Product::query()->where('sku', 'DEMO-16')->with('productUnits')->firstOrFail();
+            $this->assertSame('ROL', $wire->sealedPackUnit()->unit_code);
+
+            $stock = Stock::query()->where('product_id', $wire->id)->sole();
+            $this->assertSame(['400.000', 3], [$stock->quantity, $stock->intact_packs]);
+
+            $this->assertSame(['ROL'], ProductUnit::query()->where('is_sealed_pack', true)->where('product_id', $wire->id)->pluck('unit_code')->all());
+            $this->assertSame(3, ProductUnit::query()->where('is_sealed_pack', true)->count());
         });
     }
 
@@ -97,9 +113,9 @@ class DemoProductSeederTest extends TestCase
         $this->runDemoSeeder();
 
         $this->inStore(function (): void {
-            $this->assertSame(15, Product::query()->count());
+            $this->assertSame(16, Product::query()->count());
             $this->assertSame(1, StockOpname::query()->count());
-            $this->assertSame(13, StockMovement::query()->count());
+            $this->assertSame(14, StockMovement::query()->count());
         });
     }
 }
