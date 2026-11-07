@@ -38,7 +38,7 @@ const menuGroups = computed(() => {
                 { label: 'Kasir', icon: 'shopping_cart', href: store.value.cashier_url },
                 { label: 'Riwayat Nota', icon: 'receipt_long', href: store.value.sales_url },
                 { label: 'Surat Jalan', icon: 'local_shipping', href: store.value.delivery_notes_url },
-                { label: 'Retur', icon: 'undo', href: store.value.returns_url },
+                { label: 'Retur', icon: 'undo', href: store.value.returns_url, badge: page.props.menu_badges?.returns ?? 0, badgeHint: 'retur menunggu persetujuan' },
             ],
         },
         {

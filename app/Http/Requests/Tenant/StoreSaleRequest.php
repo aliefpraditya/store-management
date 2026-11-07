@@ -39,17 +39,20 @@ class StoreSaleRequest extends FormRequest
             'payments.*.method' => ['required', Rule::in(array_map(fn (PaymentMethod $method): string => $method->value, PaymentMethod::forSale()))],
             'payments.*.amount' => ['required', 'numeric', 'gt:0', 'max:'.self::MAX_AMOUNT, 'decimal:0,2'],
             'payments.*.reference' => ['nullable', 'string', 'max:255'],
+            'hold_delivery' => ['nullable', 'boolean', Rule::prohibitedIf(fn (): bool => ! $this->filled('order'))],
             'delivery_note' => ['nullable', 'array'],
-            'delivery_note.recipient_name' => [Rule::requiredIf($this->isCod(...)), 'nullable', 'string', 'max:255'],
-            'delivery_note.recipient_address' => [Rule::requiredIf($this->isCod(...)), 'nullable', 'string', 'max:1000'],
+            'delivery_note.recipient_name' => [Rule::requiredIf($this->isDeliveryNoteNeeded(...)), 'nullable', 'string', 'max:255'],
+            'delivery_note.recipient_address' => [Rule::requiredIf($this->isDeliveryNoteNeeded(...)), 'nullable', 'string', 'max:1000'],
             'delivery_note.recipient_phone' => ['nullable', 'string', 'max:255'],
             'delivery_note.driver_name' => ['nullable', 'string', 'max:255'],
             'delivery_note.vehicle_number' => ['nullable', 'string', 'max:255'],
             'delivery_note.notes' => ['nullable', 'string', 'max:1000'],
+            'delivery_note.include_linked_sale_items' => ['nullable', 'boolean'],
             'order' => ['nullable', 'array'],
             'order.client_uuid' => ['required_with:order', 'uuid'],
             'order.customer_name' => ['required_with:order', 'string', 'max:255'],
             'order.customer_phone' => ['required_with:order', 'string', 'max:255'],
+            'order.customer_address' => ['nullable', 'string', 'max:1000'],
             'order.source_note' => ['nullable', 'string', 'max:255'],
             'order.expected_date' => ['nullable', 'date', 'after_or_equal:today'],
             'order.items' => ['required_with:order', 'array', 'min:1'],
@@ -68,8 +71,14 @@ class StoreSaleRequest extends FormRequest
     }
 
     /**
-     * A COD sale goes out with a delivery note, so who and where to deliver are asked at the same time.
+     * A COD sale goes out with a delivery note, so who and where to deliver are asked at the same time, unless the delivery
+     * waits for the order made with it.
      */
+    private function isDeliveryNoteNeeded(): bool
+    {
+        return $this->isCod() && ! $this->boolean('hold_delivery');
+    }
+
     private function isCod(): bool
     {
         return collect($this->input('payments'))->contains(fn (mixed $payment): bool => is_array($payment) && ($payment['method'] ?? null) === PaymentMethod::Cod->value);

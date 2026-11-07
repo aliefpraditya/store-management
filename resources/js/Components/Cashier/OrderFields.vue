@@ -8,14 +8,14 @@ const props = defineProps({
     /** The part of the cart that is short: `{line, quantity, subtotal}` entries from the cart's split. */
     orderLines: { type: Array, required: true },
     orderTotal: { type: Number, required: true },
+    /** What was paid beyond the receipt and went to the order as its deposit; worked out by the payment screen. */
+    depositAmount: { type: Number, required: true },
 });
 
-/** @type {import('vue').Ref<{phone: string, sourceNote: string, expectedDate: string, depositAmount: string|number}>} */
+/** @type {import('vue').Ref<{phone: string, address: string, isPayingNow: boolean}>} */
 const form = defineModel({ type: Object, required: true });
 
-const remaining = computed(() => roundMoney(props.orderTotal - (Number(form.value.depositAmount) || 0)));
-
-const isDepositTooMuch = computed(() => remaining.value < 0);
+const remaining = computed(() => roundMoney(props.orderTotal - props.depositAmount));
 </script>
 
 <template>
@@ -23,7 +23,7 @@ const isDepositTooMuch = computed(() => remaining.value < 0);
         <header class="order__head">
             <div>
                 <b>Pesanan (PO)</b>
-                <small>Barang belum ada, dibelikan dulu. Pelanggan membawa nota pesanan ini.</small>
+                <small>Barang belum ada, dibelikan dulu. Pelanggan membawa nota ini.</small>
             </div>
             <b>{{ formatRupiah(orderTotal) }}</b>
         </header>
@@ -36,23 +36,15 @@ const isDepositTooMuch = computed(() => remaining.value < 0);
         </ul>
 
         <q-input v-model="form.phone" outlined dense maxlength="255" label="Telepon pelanggan (wajib)" hint="Untuk dihubungi saat barang sudah datang" />
+        <q-input v-model="form.address" outlined dense type="textarea" autogrow maxlength="1000" label="Alamat pengantaran (opsional)" hint="Diisi bila barang nanti diantar, jadi tidak perlu ditanya lagi" />
 
-        <div class="order__grid">
-            <q-input v-model="form.expectedDate" outlined dense type="date" label="Perkiraan datang" />
-            <q-input v-model="form.sourceNote" outlined dense maxlength="255" label="Dibeli dari" placeholder="Toko lain / supplier" />
-        </div>
 
-        <div class="order__deposit">
-            <b>Uang muka (DP), opsional</b>
-            <div class="order__deposit-row">
-                <q-input v-model="form.depositAmount" type="number" min="0" step="any" outlined dense prefix="Rp" placeholder="0" aria-label="Uang muka" />
-                <q-btn outline no-caps color="primary" label="Bayar lunas" @click="form.depositAmount = orderTotal" />
-            </div>
-        </div>
+        <q-checkbox v-model="form.isPayingNow" dense label="Pelanggan bayar pesanan sekarang (uang muka)" />
 
-        <p v-if="isDepositTooMuch" class="order__warning">Uang muka tidak boleh lebih besar dari total pesanan.</p>
-        <p v-else-if="remaining === 0" class="order__hint">Pesanan lunas, tidak ada yang dibayar lagi saat barang diambil.</p>
-        <p v-else class="order__hint">Sisa {{ formatRupiah(remaining) }} dibayar saat barang diambil, dengan harga yang sama seperti di nota ini.</p>
+        <p v-if="!form.isPayingNow" class="order__hint">Belum dibayar. Seluruh {{ formatRupiah(orderTotal) }} dibayar saat barang diambil, dengan harga yang sama seperti di nota ini. Kelebihan bayar di nota penjualan jadi kembalian.</p>
+        <p v-else-if="depositAmount <= 0" class="order__hint">Isi jumlah yang diterima lebih besar dari nota penjualan: kelebihannya jadi uang muka pesanan.</p>
+        <p v-else-if="remaining === 0" class="order__hint">Uang muka {{ formatRupiah(depositAmount) }}: pesanan lunas, tidak ada yang dibayar lagi saat barang diambil.</p>
+        <p v-else class="order__hint">Uang muka {{ formatRupiah(depositAmount) }}, sisa {{ formatRupiah(remaining) }} dibayar saat barang diambil.</p>
     </section>
 </template>
 
@@ -97,35 +89,9 @@ const isDepositTooMuch = computed(() => remaining.value < 0);
     color: var(--app-mute);
 }
 
-.order__grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-}
-
-.order__deposit {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.order__deposit-row {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 8px;
-}
-
-.order__hint,
-.order__warning {
-    margin: 0;
-    font-size: 12px;
-}
-
 .order__hint {
+    margin: 0;
     color: var(--app-mute);
-}
-
-.order__warning {
-    color: #b91c1c;
+    font-size: 12px;
 }
 </style>

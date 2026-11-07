@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
@@ -66,11 +67,14 @@ class Sale extends Model implements AuditableContract
     }
 
     /**
-     * @return HasMany<DeliveryNote, $this>
+     * The delivery notes that carry goods of this receipt: its own, and a combined note of another receipt that also takes
+     * these goods. Whether the goods were delivered, and whether the receipt can still be voided, follow these notes.
+     *
+     * @return BelongsToMany<DeliveryNote, $this>
      */
-    public function deliveryNotes(): HasMany
+    public function deliveryNotes(): BelongsToMany
     {
-        return $this->hasMany(DeliveryNote::class);
+        return $this->belongsToMany(DeliveryNote::class, 'delivery_note_sales');
     }
 
     /**

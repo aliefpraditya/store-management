@@ -68,7 +68,7 @@ class StoreRouteAccessTest extends TestCase
     {
         $cashierRoutes = array_filter($this->storeRoutes(), fn (RoutingRoute $route): bool => $this->isOpenToCashiers($route));
 
-        $this->assertCount(21, $cashierRoutes);
+        $this->assertCount(26, $cashierRoutes);
 
         foreach ($cashierRoutes as $route) {
             $middleware = app('router')->gatherRouteMiddleware($route);

@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Enums\SaleStatus;
 use App\Models\CustomerOrderItem;
 use App\Models\Product;
 use App\Models\ProductUnit;
+use App\Models\SaleItem;
 use App\Models\Stock;
 use App\Models\StockOpnameItem;
 use Brick\Math\BigDecimal;
@@ -19,7 +21,7 @@ use Illuminate\Support\Collection;
  * A product with a sealed pack unit (a roll of wire) also tells how many whole packs are left (`intact_packs`, null for other
  * products), because the stock in the base unit alone does not say how many packs can still be sold whole.
  *
- * @phpstan-type CatalogUnit array{id: int, code: string, conversion_factor: string, price: string, barcode: string|null, is_sealed_pack: bool}
+ * @phpstan-type CatalogUnit array{id: int, code: string, conversion_factor: string, price: string, barcode: string|null, is_sealed_pack: bool, is_default_sale: bool}
  * @phpstan-type CatalogItem array{id: int, sku: string, name: string, base_unit: string, stock: string, reserved: string, intact_packs: int|null, units: list<CatalogUnit>, matched_unit_id: int|null, is_being_counted: bool}
  */
 class CashierCatalogService
@@ -27,6 +29,10 @@ class CashierCatalogService
     public function __construct(private readonly StoreSettingService $settings) {}
 
     private const RESULT_LIMIT = 20;
+
+    private const BEST_SELLER_LIMIT = 12;
+
+    private const BEST_SELLER_DAYS = 30;
 
     /** Whether the product has stock in the warehouse (the `?`); items that are sold out come after the ones in stock. */
     private const IN_STOCK_FIRST_SQL = 'coalesce((select stocks.quantity from stocks where stocks.product_id = products.id and stocks.warehouse_id = ?), 0) > 0';
@@ -59,6 +65,36 @@ class CashierCatalogService
             ->filter(fn (Product $product): bool => $product->productUnits->isNotEmpty());
 
         return $this->catalogItems($products, $warehouseId, $scannedUnit);
+    }
+
+    /**
+     * The items this warehouse sold most often (by number of receipt lines) in the last days, best seller first, for the
+     * empty till: a cashier adds them without typing. Items that cannot be sold any more are left out.
+     *
+     * @return list<CatalogItem>
+     */
+    public function bestSellers(int $warehouseId): array
+    {
+        $rankedProductIds = SaleItem::query()
+            ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->where('sales.status', SaleStatus::Completed)
+            ->where('sales.warehouse_id', $warehouseId)
+            ->where('sales.sold_at', '>=', now()->subDays(self::BEST_SELLER_DAYS))
+            ->groupBy('sale_items.product_id')
+            ->orderByRaw('count(*) desc')
+            ->limit(self::BEST_SELLER_LIMIT)
+            ->pluck('sale_items.product_id')
+            ->all();
+
+        $products = Product::query()
+            ->where('is_active', true)
+            ->whereKey($rankedProductIds)
+            ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)])
+            ->get()
+            ->filter(fn (Product $product): bool => $product->productUnits->isNotEmpty())
+            ->sortBy(fn (Product $product): int|false => array_search($product->id, $rankedProductIds, true));
+
+        return $this->catalogItems($products, $warehouseId, null);
     }
 
     /**
@@ -109,6 +145,7 @@ class CashierCatalogService
                 'price' => $unit->selling_price,
                 'barcode' => $unit->barcode,
                 'is_sealed_pack' => $unit->is_sealed_pack,
+                'is_default_sale' => (bool) $unit->is_default_sale,
             ])->values()->all(),
             'matched_unit_id' => $scannedUnit?->product_id === $product->id ? $scannedUnit->id : null,
             'is_being_counted' => in_array($product->id, $countedProductIds, true),

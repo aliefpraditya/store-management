@@ -105,6 +105,9 @@ function confirmDeleteUnit(unit) {
                     <q-btn-toggle v-model="form.paper_width" :options="paper_widths.map((width) => ({ label: `${width} mm`, value: width }))" no-caps unelevated toggle-color="primary" color="grey-3" text-color="grey-8" />
                     <small v-if="form.errors.paper_width" class="error">{{ form.errors.paper_width }}</small>
                 </div>
+
+                <q-toggle v-model="form.auto_print_receipt" label="Cetak nota otomatis setelah bayar" />
+                <p class="hint">Nota langsung terbuka untuk dicetak begitu transaksi selesai. Browser kasir harus mengizinkan pop-up untuk situs ini.</p>
             </section>
 
             <section class="card">

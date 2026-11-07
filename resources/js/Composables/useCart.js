@@ -234,6 +234,7 @@ export function useCart(shiftId) {
      * Adds one of the unit; the same item and unit already in the cart just gets one more.
      * @param {object} product an item from the lookup
      * @param {number} unitId
+     * @returns {object} the line that was added or increased, so the screen can show which one it was
      */
     function add(product, unitId) {
         const existingLine = lines.value.find((line) => line.product.id === product.id && line.unitId === unitId);
@@ -241,10 +242,12 @@ export function useCart(shiftId) {
         if (existingLine) {
             existingLine.quantity = quantityOf(existingLine) + 1;
 
-            return;
+            return existingLine;
         }
 
         lines.value.push({ key: newUuid(), product, unitId, quantity: 1 });
+
+        return lines.value[lines.value.length - 1];
     }
 
     /**

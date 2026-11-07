@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\SaleReturnStatus;
+use App\Models\SaleReturn;
 use App\Models\Store;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -46,6 +48,7 @@ class HandleInertiaRequests extends Middleware
                 'error' => fn () => $request->session()->get('error'),
             ],
             'store' => fn () => $this->currentStore(),
+            'menu_badges' => fn () => $this->menuBadges(),
             'has_open_shift' => fn () => $request->session()->get(EnsureUserHasNoOpenShift::SESSION_KEY, []) !== [],
             // Not named `urls`: many pages pass a `urls` prop of their own, which would replace this one.
             'app_urls' => [
@@ -58,6 +61,20 @@ class HandleInertiaRequests extends Middleware
                 'logout' => route('logout'),
             ],
         ];
+    }
+
+    /**
+     * What waits for someone in the store, as the numbers on the sidebar entries; null on central pages.
+     *
+     * @return array{returns: int}|null
+     */
+    private function menuBadges(): ?array
+    {
+        if (! tenancy()->initialized) {
+            return null;
+        }
+
+        return ['returns' => SaleReturn::query()->where('status', SaleReturnStatus::Pending)->count()];
     }
 
     /**

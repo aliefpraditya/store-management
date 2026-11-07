@@ -172,6 +172,10 @@ function signOut() {
                             <q-icon :name="item.icon" size="20px" />
                         </q-item-section>
                         <q-item-section class="q-mini-drawer-hide">{{ item.label }}</q-item-section>
+                        <q-item-section v-if="item.badge > 0" side class="q-mini-drawer-hide">
+                            <q-badge color="negative" :label="item.badge" :aria-label="`${item.badge} ${item.badgeHint ?? ''}`" />
+                        </q-item-section>
+                        <q-badge v-if="item.badge > 0" floating rounded color="negative" class="q-mini-drawer-only" />
                         <q-item-section v-if="!item.href && !group.label" side class="q-mini-drawer-hide">
                             <span class="shell__soon">Segera</span>
                         </q-item-section>

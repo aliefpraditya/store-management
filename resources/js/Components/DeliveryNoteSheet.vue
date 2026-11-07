@@ -33,7 +33,7 @@ const carrier = computed(() => [props.note.driver_name, props.note.vehicle_numbe
                 <span v-else-if="note.is_copy" class="delivery-print__mark">SALINAN</span>
                 <b>Alamat Pengantaran:</b>
                 <span>{{ note.recipient_address }}</span>
-                <span class="delivery-print__reference">No Nota : {{ note.sale.number }}</span>
+                <span class="delivery-print__reference">No Nota : {{ [note.sale.number, ...(note.other_sale_numbers ?? [])].join(', ') }}</span>
                 <span v-if="carrier">Pengantar : {{ carrier }}</span>
             </div>
         </header>

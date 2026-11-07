@@ -13,6 +13,7 @@ use App\Models\CustomerOrderItem;
 use App\Models\CustomerOrderPayment;
 use App\Models\DailyClosing;
 use App\Models\Sale;
+use App\Models\Stock;
 use App\Models\User;
 use Brick\Math\BigDecimal;
 use Illuminate\Support\Arr;
@@ -30,7 +31,7 @@ use Illuminate\Support\Facades\DB;
  * @phpstan-import-type CartLine from CartPricer
  *
  * @phpstan-type DepositInput array{method: string, amount: numeric-string|float|int, reference?: string|null}
- * @phpstan-type OrderData array{client_uuid: string, customer_name: string, customer_phone: string, source_note?: string|null, expected_date?: string|null, items: list<CartLine>, deposits?: list<DepositInput>, origin_sale_id?: int|null}
+ * @phpstan-type OrderData array{client_uuid: string, customer_name: string, customer_phone: string, customer_address?: string|null, source_note?: string|null, expected_date?: string|null, items: list<CartLine>, deposits?: list<DepositInput>, origin_sale_id?: int|null}
  */
 class CustomerOrderService
 {
@@ -112,6 +113,79 @@ class CustomerOrderService
 
             return $lockedOrder;
         }, StockService::DEADLOCK_ATTEMPTS);
+    }
+
+    /**
+     * For orders still waiting for their goods: whether the stock now covers them, and what is still short. The oldest
+     * order is served first from what is not already set aside for ready orders, and takes its share before the next one
+     * is looked at, so two orders asking for the same goods are not both told that the stock is enough. Nothing is locked or
+     * changed: the answer only tells staff which orders can be marked as arrived, and {@see self::markReady()} decides.
+     *
+     * @param  Collection<int, CustomerOrder>  $orders  with `items.product` loaded; orders that are not waiting are skipped
+     * @return array<int, array{is_covered: bool, shortages: list<array{name: string, text: string}>}> by order id
+     */
+    public function stockCoverageOf(Collection $orders): array
+    {
+        $coverage = [];
+
+        foreach ($orders->where('status', OrderStatus::Ordered)->groupBy('warehouse_id') as $warehouseId => $warehouseOrders) {
+            $productIds = $warehouseOrders->flatMap(fn (CustomerOrder $order) => $order->items->pluck('product_id'))->unique()->values()->all();
+            $reserved = CustomerOrderItem::reservedQuantities($warehouseId, $productIds);
+            $available = Stock::query()->where('warehouse_id', $warehouseId)->whereIn('product_id', $productIds)->pluck('quantity', 'product_id')
+                ->map(fn (mixed $quantity, int $productId): BigDecimal => BigDecimal::max(BigDecimal::of((string) $quantity)->minus($reserved[$productId] ?? '0'), '0'))
+                ->all();
+
+            foreach ($warehouseOrders->sortBy('id') as $order) {
+                $coverage[$order->id] = $this->coverageOfOrder($order, $available);
+            }
+        }
+
+        return $coverage;
+    }
+
+    /**
+     * @param  array<int, BigDecimal>  $available  what is left of each product, reduced here when the order is covered
+     * @return array{is_covered: bool, shortages: list<array{name: string, text: string}>}
+     */
+    private function coverageOfOrder(CustomerOrder $order, array &$available): array
+    {
+        $shortages = [];
+        $needs = [];
+
+        foreach ($order->items->groupBy('product_id') as $productId => $productItems) {
+            $required = $productItems->reduce(fn (BigDecimal $sum, CustomerOrderItem $item): BigDecimal => $sum->plus((string) $item->base_quantity), BigDecimal::zero());
+            $left = $available[$productId] ?? BigDecimal::zero();
+            $needs[$productId] = $required;
+
+            if ($required->isGreaterThan($left)) {
+                $shortages[] = ['name' => $productItems->first()->product_name, 'text' => SaleException::quantityText($required->minus($left), $productItems->first()->product->base_unit_code)];
+            }
+        }
+
+        if ($shortages === []) {
+            foreach ($needs as $productId => $required) {
+                $available[$productId] = $available[$productId]->minus($required);
+            }
+        }
+
+        return ['is_covered' => $shortages === [], 'shortages' => $shortages];
+    }
+
+    /**
+     * How many orders are open, ready to be collected, and still waiting but already covered by stock (they only need to
+     * be marked as arrived): the numbers the till's badge shows.
+     *
+     * @return array{open: int, ready: int, arrived: int}
+     */
+    public function badgeCounts(): array
+    {
+        $openOrders = CustomerOrder::query()->whereIn('status', OrderStatus::unfinished())->with('items.product')->get();
+
+        return [
+            'open' => $openOrders->count(),
+            'ready' => $openOrders->where('status', OrderStatus::Ready)->count(),
+            'arrived' => collect($this->stockCoverageOf($openOrders))->where('is_covered', true)->count(),
+        ];
     }
 
     /**
@@ -197,6 +271,7 @@ class CustomerOrderService
             'status' => OrderStatus::Ordered,
             'customer_name' => trim($orderInput['customer_name']),
             'customer_phone' => trim($orderInput['customer_phone']),
+            'customer_address' => filled($orderInput['customer_address'] ?? null) ? trim($orderInput['customer_address']) : null,
             'source_note' => filled($orderInput['source_note'] ?? null) ? trim($orderInput['source_note']) : null,
             'expected_date' => $orderInput['expected_date'] ?? null,
             'total' => (string) $total->toScale(2),

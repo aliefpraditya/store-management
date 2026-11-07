@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
@@ -36,11 +37,30 @@ class DeliveryNote extends Model implements AuditableContract
     }
 
     /**
+     * A note always carries the goods of its own receipt, so the link is made as soon as the note exists.
+     */
+    protected static function booted(): void
+    {
+        static::created(fn (self $note) => $note->sales()->syncWithoutDetaching([$note->sale_id]));
+    }
+
+    /**
      * @return BelongsTo<Sale, $this>
      */
     public function sale(): BelongsTo
     {
         return $this->belongsTo(Sale::class);
+    }
+
+    /**
+     * Every receipt that has goods on this note: its own, and the receipt made together with the order it collected when
+     * that receipt's goods go out on the same note.
+     *
+     * @return BelongsToMany<Sale, $this>
+     */
+    public function sales(): BelongsToMany
+    {
+        return $this->belongsToMany(Sale::class, 'delivery_note_sales');
     }
 
     /**

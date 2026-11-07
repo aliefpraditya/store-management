@@ -102,6 +102,11 @@ class SaleException extends Exception
         return new self('COD tidak bisa digabung dengan uang muka pesanan. Bayar uang muka dengan tunai, transfer, QRIS, atau EDC.');
     }
 
+    public static function deliveryHoldNeedsOrder(): self
+    {
+        return new self('Pengantaran hanya bisa ditahan untuk nota yang dibuat bersama pesanan. Buat surat jalannya sekarang.');
+    }
+
     public static function orderIsInAnotherWarehouse(): self
     {
         return new self('Barang pesanan ini ada di gudang lain. Ambil di kasir gudang tempat pesanan dibuat.');

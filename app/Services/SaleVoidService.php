@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\CashShiftStatus;
+use App\Enums\DeliveryNoteStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\SaleReturnStatus;
 use App\Enums\SaleStatus;
@@ -92,6 +93,7 @@ class SaleVoidService
             $sale->payments->contains('method', PaymentMethod::OrderDeposit) => CodSaleException::paidByOrderDeposit(),
             $this->hasReturns($sale) => CodSaleException::hasReturns(),
             $sale->deliveryNotes->contains(fn (DeliveryNote $note): bool => $note->status->hasDeliveredGoods()) => CodSaleException::alreadyDelivered(),
+            $sale->deliveryNotes->contains(fn (DeliveryNote $note): bool => $note->sale_id !== $sale->id && $note->status !== DeliveryNoteStatus::Cancelled) => CodSaleException::onCombinedDeliveryNote(),
             default => null,
         };
     }

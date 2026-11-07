@@ -16,7 +16,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * and is no revenue: the sale is made when the customer collects the goods (`sale_id`). `origin_sale_id` is the
  * receipt made together with the order when part of the cart was in stock. `created_by` is a central user id.
  */
-#[Fillable(['client_uuid', 'number', 'register_id', 'cash_shift_id', 'warehouse_id', 'status', 'customer_name', 'customer_phone', 'source_note', 'expected_date', 'total', 'ordered_at', 'business_date', 'ready_at', 'origin_sale_id', 'sale_id', 'cancel_reason', 'cancelled_at', 'created_by', 'created_by_name'])]
+#[Fillable(['client_uuid', 'number', 'register_id', 'cash_shift_id', 'warehouse_id', 'status', 'customer_name', 'customer_phone', 'customer_address', 'source_note', 'expected_date', 'total', 'ordered_at', 'business_date', 'ready_at', 'origin_sale_id', 'sale_id', 'cancel_reason', 'cancelled_at', 'created_by', 'created_by_name'])]
 class CustomerOrder extends Model implements AuditableContract
 {
     use Auditable;

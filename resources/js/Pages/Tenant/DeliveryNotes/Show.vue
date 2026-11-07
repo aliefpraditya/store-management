@@ -54,8 +54,24 @@ function complete() {
     });
 }
 
+const isShipOpen = ref(false);
+const isShipping = ref(false);
+const shipForm = ref({ driver_name: '', vehicle_number: '' });
+
+/** Who drives and in what vehicle is only known when the goods go out, so it is asked here and not when the note is made. */
+function openShip() {
+    shipForm.value = { driver_name: props.note.driver_name ?? '', vehicle_number: props.note.vehicle_number ?? '' };
+    isShipOpen.value = true;
+}
+
 function ship() {
-    router.post(props.note.urls.ship, {}, { preserveScroll: true });
+    router.post(props.note.urls.ship, shipForm.value, {
+        preserveScroll: true,
+        onStart: () => (isShipping.value = true),
+        onFinish: () => (isShipping.value = false),
+        onSuccess: () => (isShipOpen.value = false),
+        onError: (errors) => $q.notify({ type: 'negative', message: Object.values(errors)[0], position: 'top' }),
+    });
 }
 
 function cancel() {
@@ -94,7 +110,7 @@ async function print() {
         <template #actions>
             <q-btn v-if="note.can_cancel" flat no-caps dense color="negative" label="Batalkan" class="q-mr-sm" @click="cancel" />
             <q-btn outline no-caps dense color="primary" icon="print" :label="note.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="isPrinting" class="q-mr-sm" @click="print" />
-            <q-btn v-if="note.can_ship" color="primary" unelevated no-caps dense label="Tandai Dikirim" @click="ship" />
+            <q-btn v-if="note.can_ship" color="primary" unelevated no-caps dense label="Tandai Dikirim" @click="openShip" />
             <q-btn v-if="note.can_complete" color="positive" unelevated no-caps dense label="Selesaikan Pengiriman" @click="openComplete" />
             <q-btn v-if="isFinished && note.items.some((item) => Number(item.quantity_returned) > 0)" outline no-caps dense color="primary" icon="undo" label="Buat Retur" class="q-ml-sm" @click="router.visit(note.sale.new_return_url)" />
         </template>
@@ -104,7 +120,7 @@ async function print() {
                 <div>
                     <b>{{ note.number }}</b>
                     <small>{{ dateFormat.format(new Date(note.business_date)) }} · dibuat {{ note.created_by_name }}</small>
-                    <small>Nota <a :href="note.sale.show_url" @click.prevent="router.visit(note.sale.show_url)">{{ note.sale.number }}</a></small>
+                    <small>Nota <a :href="note.sale.show_url" @click.prevent="router.visit(note.sale.show_url)">{{ note.sale.number }}</a><template v-if="note.other_sale_numbers.length > 0">, juga memuat barang dari nota {{ note.other_sale_numbers.join(', ') }}</template></small>
                 </div>
                 <span class="chip" :class="deliveryNoteStatusChipClass[note.status]">{{ note.status_label }}</span>
             </header>
@@ -138,6 +154,23 @@ async function print() {
             </table>
         </article>
 
+        <q-dialog v-model="isShipOpen" persistent>
+            <q-card class="complete">
+                <q-card-section>
+                    <div class="complete__title">Tandai dikirim</div>
+                    <p class="complete__hint">Isi sopir dan kendaraan yang mengantar. Boleh dikosongkan.</p>
+                    <div class="ship__fields">
+                        <q-input v-model="shipForm.driver_name" outlined dense autofocus maxlength="255" label="Sopir" />
+                        <q-input v-model="shipForm.vehicle_number" outlined dense maxlength="255" label="No. kendaraan" />
+                    </div>
+                </q-card-section>
+                <q-card-actions align="right">
+                    <q-btn flat no-caps label="Batal" :disable="isShipping" @click="isShipOpen = false" />
+                    <q-btn color="primary" unelevated no-caps label="Tandai Dikirim" :loading="isShipping" @click="ship" />
+                </q-card-actions>
+            </q-card>
+        </q-dialog>
+
         <q-dialog v-model="isCompleteOpen" persistent>
             <q-card class="complete">
                 <q-card-section>
@@ -159,6 +192,12 @@ async function print() {
 </template>
 
 <style scoped>
+.ship__fields {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
 .note {
     max-width: 720px;
     padding: 20px;

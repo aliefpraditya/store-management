@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\SaleStatus;
 use App\Exceptions\DeliveryNoteException;
+use App\Models\CustomerOrder;
 use App\Models\DeliveryNote;
 use App\Models\DeliveryNoteItem;
 use App\Models\Sale;
@@ -62,7 +63,7 @@ class DeliveryNoteService
      */
     public function notesOfSale(Sale $sale): Collection
     {
-        return DeliveryNote::query()->with('items')->where('sale_id', $sale->id)->orderBy('id')->get();
+        return DeliveryNote::query()->with('items')->whereRelation('sales', 'sales.id', $sale->id)->orderBy('id')->get();
     }
 
     /**
@@ -122,7 +123,12 @@ class DeliveryNoteService
                 throw DeliveryNoteException::noItems();
             }
 
-            $saleItems = $sale->items()->whereIn('id', array_keys($quantities))->get()->keyBy('id');
+            $linkedSale = $this->linkedSaleOf($sale, isLocked: true);
+            $saleItems = SaleItem::query()
+                ->whereIn('sale_id', array_filter([$sale->id, $linkedSale?->id]))
+                ->whereIn('id', array_keys($quantities))
+                ->get()
+                ->keyBy('id');
             $remainingBySaleItemId = $this->remainingQuantities($saleItems);
 
             foreach ($quantities as $saleItemId => $quantity) {
@@ -150,6 +156,8 @@ class DeliveryNoteService
                 'created_by_name' => $creator->name,
             ]);
 
+            $note->sales()->syncWithoutDetaching($saleItems->pluck('sale_id')->unique()->all());
+
             foreach ($quantities as $saleItemId => $quantity) {
                 $saleItem = $saleItems[$saleItemId];
 
@@ -168,21 +176,46 @@ class DeliveryNoteService
     }
 
     /**
-     * The receipt lines of a sale with how much of each is still not on an active delivery note.
+     * The receipt lines of a sale with how much of each is still not on an active delivery note, then the same for the
+     * receipt it is linked to (see {@see self::linkedSaleOf()}), so one note can take both.
      *
-     * @return list<array{id: int, name: string, unit: string, quantity: string, remaining: string}>
+     * @return list<array{id: int, name: string, unit: string, quantity: string, remaining: string, sale_number: string}>
      */
     public function deliverableLines(Sale $sale): array
     {
-        $remainingBySaleItemId = $this->remainingQuantities($sale->items);
+        $linkedSale = $this->linkedSaleOf($sale);
+        $sales = array_filter([$sale->loadMissing('items'), $linkedSale?->loadMissing('items')]);
+        $remainingBySaleItemId = $this->remainingQuantities(collect($sales)->flatMap(fn (Sale $deliverableSale) => $deliverableSale->items));
 
-        return $sale->items->map(fn (SaleItem $saleItem): array => [
-            'id' => $saleItem->id,
-            'name' => $saleItem->product_name,
-            'unit' => $saleItem->unit_name,
-            'quantity' => $saleItem->quantity,
-            'remaining' => (string) $remainingBySaleItemId[$saleItem->id],
-        ])->values()->all();
+        return collect($sales)
+            ->flatMap(fn (Sale $deliverableSale) => $deliverableSale->items->map(fn (SaleItem $saleItem): array => [
+                'id' => $saleItem->id,
+                'name' => $saleItem->product_name,
+                'unit' => $saleItem->unit_name,
+                'quantity' => $saleItem->quantity,
+                'remaining' => (string) $remainingBySaleItemId[$saleItem->id],
+                'sale_number' => $deliverableSale->number,
+            ]))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The receipt that was made together with a customer order this receipt collected, when it is still standing. Its
+     * goods can go out on the same delivery note, so a customer who ordered part of a cart is delivered once, not twice.
+     */
+    public function linkedSaleOf(Sale $sale, bool $isLocked = false): ?Sale
+    {
+        $originSaleId = CustomerOrder::query()->where('sale_id', $sale->id)->value('origin_sale_id');
+
+        if ($originSaleId === null) {
+            return null;
+        }
+
+        return Sale::query()
+            ->where('status', SaleStatus::Completed)
+            ->when($isLocked, fn (Builder $query) => $query->lockForUpdate())
+            ->find($originSaleId);
     }
 
     /**
@@ -194,18 +227,26 @@ class DeliveryNoteService
      */
     public function lockedNotesOf(Sale $sale): Collection
     {
-        return DeliveryNote::query()->with('items')->where('sale_id', $sale->id)->orderBy('id')->lockForUpdate()->get();
+        return DeliveryNote::query()->with('items')->whereRelation('sales', 'sales.id', $sale->id)->orderBy('id')->lockForUpdate()->get();
     }
 
     /**
+     * Marks the goods as on their way. Who drives and in what vehicle is only known now, so it is given here; a driver or
+     * vehicle already on the note stays unless a new one is given.
+     *
      * @throws DeliveryNoteException
      */
-    public function ship(DeliveryNote $note): void
+    public function ship(DeliveryNote $note, ?string $driverName = null, ?string $vehicleNumber = null): void
     {
-        DB::transaction(function () use ($note): void {
+        DB::transaction(function () use ($note, $driverName, $vehicleNumber): void {
             $note = $this->lockedWhere($note, 'dikirim', fn (DeliveryNoteStatus $status): bool => $status->canBeShipped());
 
-            $note->forceFill(['status' => DeliveryNoteStatus::Shipped, 'shipped_at' => now()])->save();
+            $note->forceFill([
+                'status' => DeliveryNoteStatus::Shipped,
+                'shipped_at' => now(),
+                'driver_name' => $this->nullIfBlank($driverName) ?? $note->driver_name,
+                'vehicle_number' => $this->nullIfBlank($vehicleNumber) ?? $note->vehicle_number,
+            ])->save();
         });
     }
 

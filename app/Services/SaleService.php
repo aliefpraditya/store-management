@@ -13,7 +13,6 @@ use App\Models\CashShift;
 use App\Models\CustomerOrder;
 use App\Models\CustomerOrderItem;
 use App\Models\Sale;
-use App\Models\SaleItem;
 use App\Models\StockOpnameItem;
 use App\Models\User;
 use Brick\Math\BigDecimal;
@@ -33,8 +32,8 @@ use Illuminate\Support\Str;
  * @phpstan-import-type PricedLine from CartPricer
  *
  * @phpstan-type SalePaymentInput array{method: string, amount: numeric-string|float|int, reference?: string|null}
- * @phpstan-type DeliveryNoteInput array{recipient_name?: string|null, recipient_address?: string|null, recipient_phone?: string|null, driver_name?: string|null, vehicle_number?: string|null, notes?: string|null}
- * @phpstan-type SaleData array{client_uuid: string, customer_name?: string|null, items?: list<CartLine>, payments?: list<SalePaymentInput>, delivery_note?: DeliveryNoteInput|null, customer_order_id?: int|null}
+ * @phpstan-type DeliveryNoteInput array{recipient_name?: string|null, recipient_address?: string|null, recipient_phone?: string|null, driver_name?: string|null, vehicle_number?: string|null, notes?: string|null, include_linked_sale_items?: bool|null}
+ * @phpstan-type SaleData array{client_uuid: string, customer_name?: string|null, items?: list<CartLine>, payments?: list<SalePaymentInput>, delivery_note?: DeliveryNoteInput|null, hold_delivery?: bool|null, customer_order_id?: int|null}
  */
 class SaleService
 {
@@ -87,11 +86,12 @@ class SaleService
             $sale = $this->recordReceipt($shift, $cashier, $saleInput, $total, $paidTotal, $changeAmount);
             $this->recordLines($sale, $lines, $cashier, $packChanges);
             $this->recordPayments($sale, $payments, $depositOfOrder);
-            $this->recordDeliveryNoteOfCod($sale->load('items'), $cashier, $saleInput);
 
             if ($collectedOrder !== null) {
                 $this->customerOrders->completeWith($collectedOrder, $sale);
             }
+
+            $this->recordDeliveryNoteOfCod($sale->load('items'), $cashier, $saleInput);
 
             return $sale->load(['items', 'payments', 'deliveryNotes']);
         }, StockService::DEADLOCK_ATTEMPTS);
@@ -126,7 +126,9 @@ class SaleService
 
     /**
      * A COD sale cannot leave without its delivery note: it is made in the same transaction as the receipt, for
-     * everything on it, so a note cannot be forgotten and a note cannot exist without its receipt.
+     * everything on it, so a note cannot be forgotten and a note cannot exist without its receipt. The one exception is a
+     * COD receipt made together with a customer order (`hold_delivery`): its goods wait in the store and go out on the
+     * delivery note of the order when it arrives, so everything is delivered and paid once.
      *
      * @param  SaleData  $saleInput
      *
@@ -136,7 +138,7 @@ class SaleService
     {
         $isCod = collect($saleInput['payments'] ?? [])->contains(fn (array $payment): bool => $payment['method'] === PaymentMethod::Cod->value);
 
-        if (! $isCod) {
+        if (! $isCod || ($saleInput['hold_delivery'] ?? false)) {
             return;
         }
 
@@ -150,11 +152,27 @@ class SaleService
             $this->deliveryNotes->create($sale, $cashier, [
                 ...$noteInput,
                 'client_uuid' => (string) Str::uuid(),
-                'items' => $sale->items->map(fn (SaleItem $saleItem): array => ['sale_item_id' => $saleItem->id, 'quantity' => $saleItem->quantity])->all(),
+                'items' => $this->linesOfCodNote($sale, (bool) ($noteInput['include_linked_sale_items'] ?? false)),
             ]);
         } catch (DeliveryNoteException $exception) {
             throw new SaleException($exception->getMessage(), previous: $exception);
         }
+    }
+
+    /**
+     * Everything on the receipt, and, when asked, what is still undelivered of the receipt made together with the order this
+     * receipt collects, so the customer gets one delivery for both.
+     *
+     * @return list<array{sale_item_id: int, quantity: string}>
+     */
+    private function linesOfCodNote(Sale $sale, bool $isIncludingLinkedSale): array
+    {
+        return collect($this->deliveryNotes->deliverableLines($sale))
+            ->filter(fn (array $line): bool => $line['sale_number'] === $sale->number || $isIncludingLinkedSale)
+            ->filter(fn (array $line): bool => BigDecimal::of($line['remaining'])->isPositive())
+            ->map(fn (array $line): array => ['sale_item_id' => $line['id'], 'quantity' => $line['remaining']])
+            ->values()
+            ->all();
     }
 
     /**

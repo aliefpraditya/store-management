@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../Composables/postJson';
 import { printInNewWindow } from '../../Composables/printInNewWindow';
@@ -12,6 +12,8 @@ const props = defineProps({
     sale: { type: Object, default: null },
     /** @type {{number: string, customer_name: string, customer_phone: string, expected_date: string|null, total: string, deposit: string, remaining: string, origin_sale_number: string|null, print_url: string, items: object[]}|null} the customer order made together with the receipt, or alone */
     order: { type: Object, default: null },
+    /** Whether the receipt (or, with no receipt, the order slip) opens for printing as soon as this dialog shows. */
+    isPrintedAutomatically: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:modelValue', 'delivery']);
@@ -23,6 +25,27 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
 const printingId = ref(null);
 const isPrintingOrder = ref(false);
 const isPrintingReceipt = ref(false);
+
+/** The document that was printed by itself last, so showing the dialog again does not print it twice. */
+let lastAutoPrintedNumber = null;
+
+watch(
+    () => [props.modelValue, props.sale?.number ?? props.order?.number],
+    ([isOpen, number]) => {
+        if (!isOpen || !number || !props.isPrintedAutomatically || number === lastAutoPrintedNumber) {
+            return;
+        }
+
+        lastAutoPrintedNumber = number;
+
+        if (props.sale) {
+            printReceipt();
+        } else {
+            printOrder();
+        }
+    },
+    { immediate: true },
+);
 
 /** Counts the print on the server and opens the receipt in a window of its own. */
 async function printReceipt() {
@@ -76,6 +99,12 @@ async function printNote(note) {
                 <b>{{ formatRupiah(sale.change_amount) }}</b>
             </q-card-section>
 
+            <q-card-section v-if="sale?.is_cod && sale.delivery_notes.length === 0" class="done__notes">
+                <div class="done__note">
+                    <span>Barang nota ini disimpan di toko dan diantar bersama pesanan. Surat jalan dan penagihan COD diselesaikan sekali saat barang pesanan datang.</span>
+                </div>
+            </q-card-section>
+
             <q-card-section v-if="sale?.is_cod" class="done__notes">
                 <div v-for="note in sale.delivery_notes" :key="note.id" class="done__note">
                     <span>Surat jalan <b>{{ note.number }}</b> sudah dibuat. Cetak dan sertakan saat barang diantar.</span>
@@ -85,12 +114,13 @@ async function printNote(note) {
 
             <q-card-section v-if="order" class="done__order">
                 <b>Nota pesanan {{ order.number }}</b>
-                <span>{{ order.customer_name }} · {{ order.customer_phone }}<template v-if="order.expected_date"> · perkiraan datang {{ order.expected_date }}</template></span>
+                <span>{{ order.customer_name }} · {{ order.customer_phone }}</span>
                 <ul>
                     <li v-for="(item, index) in order.items" :key="index">{{ formatQuantity(item.quantity) }} {{ item.unit }} {{ item.name }}</li>
                 </ul>
                 <span>Total {{ formatRupiah(order.total) }} · uang muka {{ formatRupiah(order.deposit) }} · sisa {{ formatRupiah(order.remaining) }}</span>
-                <q-btn color="primary" unelevated dense no-caps icon="print" label="Cetak Nota Pesanan" :loading="isPrintingOrder" @click="printOrder" />
+                <small v-if="sale">Pesanan ini ikut tercetak di nota bayar, jadi pelanggan memegang satu lembar.</small>
+                <q-btn v-else color="primary" unelevated dense no-caps icon="print" label="Cetak Nota Pesanan" :loading="isPrintingOrder" @click="printOrder" />
             </q-card-section>
 
             <q-card-section v-if="sale">
@@ -114,7 +144,7 @@ async function printNote(note) {
             </q-card-section>
 
             <q-card-actions align="right">
-                <q-btn v-if="sale" outline no-caps color="primary" icon="print" label="Cetak Nota" :loading="isPrintingReceipt" @click="printReceipt" />
+                <q-btn v-if="sale" outline no-caps color="primary" icon="print" :label="order ? 'Cetak Nota + Pesanan' : 'Cetak Nota'" :loading="isPrintingReceipt" @click="printReceipt" />
                 <q-btn v-if="sale" outline no-caps color="primary" icon="local_shipping" label="Surat Jalan" @click="emit('delivery', sale)" />
                 <q-btn color="primary" unelevated no-caps label="Transaksi Baru" autofocus v-close-popup />
             </q-card-actions>

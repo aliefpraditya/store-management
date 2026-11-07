@@ -1,5 +1,6 @@
 <script setup>
 import { formatQuantity } from '../Composables/useQuantityFormat';
+import Code39Barcode from './Code39Barcode.vue';
 import ThermalPageSize from './ThermalPageSize.vue';
 
 defineProps({
@@ -27,6 +28,10 @@ const figure = (amount) => numberFormat.format(Number(amount));
         </header>
 
         <p class="order-print__title">NOTA PESANAN</p>
+        <div class="order-print__barcode">
+            <Code39Barcode :value="order.number" />
+            <small>{{ order.number }}</small>
+        </div>
         <p v-if="order.status === 'cancelled'" class="order-print__mark">DIBATALKAN</p>
         <p v-else-if="order.is_copy" class="order-print__mark">SALINAN</p>
 
@@ -36,7 +41,6 @@ const figure = (amount) => numberFormat.format(Number(amount));
             <span>Kasir : {{ order.created_by_name }}</span>
             <span>Pelanggan : {{ order.customer_name }}</span>
             <span>Telepon : {{ order.customer_phone }}</span>
-            <span v-if="order.expected_date">Perkiraan datang : {{ dateFormat.format(new Date(order.expected_date)) }}</span>
             <span v-if="order.origin_sale_number">Nota belanja : {{ order.origin_sale_number }}</span>
         </div>
 
@@ -112,6 +116,15 @@ const figure = (amount) => numberFormat.format(Number(amount));
     font-weight: 700;
     text-align: center;
     letter-spacing: 0.2em;
+}
+
+.order-print__barcode {
+    margin: 4px 0 8px;
+    text-align: center;
+}
+
+.order-print__barcode small {
+    font-size: 11px;
 }
 
 .order-print__meta,

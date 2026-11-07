@@ -121,10 +121,6 @@ function submit() {
                         <q-input v-model="form.recipient_phone" label="Telepon" outlined :error="!!form.errors.recipient_phone" :error-message="form.errors.recipient_phone" />
                     </div>
                     <q-input v-model="form.recipient_address" type="textarea" autogrow label="Alamat" outlined :error="!!form.errors.recipient_address" :error-message="form.errors.recipient_address" />
-                    <div class="grid grid--gap">
-                        <q-input v-model="form.driver_name" label="Sopir (opsional)" outlined />
-                        <q-input v-model="form.vehicle_number" label="No. kendaraan (opsional)" outlined />
-                    </div>
                     <q-input v-model="form.notes" label="Catatan (opsional)" outlined class="note-form__notes" />
                 </section>
 
@@ -194,10 +190,6 @@ function submit() {
     grid-template-columns: 1fr 1fr;
     gap: 14px;
     margin-bottom: 14px;
-}
-
-.grid--gap {
-    margin-top: 14px;
 }
 
 .note-form__notes {

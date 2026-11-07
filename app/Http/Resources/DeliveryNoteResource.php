@@ -43,6 +43,12 @@ class DeliveryNoteResource extends JsonResource
                 'show_url' => route('tenant.sales.show', ['tenant' => tenant('code'), 'sale' => $this->sale_id]),
                 'new_return_url' => route('tenant.returns.create', ['tenant' => tenant('code'), 'sale' => $this->sale_id]),
             ],
+            'other_sale_numbers' => $this->items->loadMissing('saleItem.sale')
+                ->map(fn ($item): string => $item->saleItem->sale->number)
+                ->unique()
+                ->reject(fn (string $number): bool => $number === $this->sale->number)
+                ->values()
+                ->all(),
             'items' => $this->items->map(fn ($item): array => [
                 'id' => $item->id,
                 'name' => $item->product_name,

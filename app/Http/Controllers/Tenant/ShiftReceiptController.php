@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ApiErrorCode;
+use App\Enums\OrderStatus;
 use App\Http\Controllers\Concerns\AnswersPrints;
 use App\Http\Controllers\Controller;
+use App\Http\Resources\CustomerOrderResource;
 use App\Http\Resources\SaleDetailResource;
+use App\Models\CustomerOrder;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Services\PrintCounter;
@@ -13,8 +16,10 @@ use App\Services\SaleHistoryService;
 use App\Services\SaleReturnService;
 use App\Services\ShiftService;
 use App\Services\StoreSettingService;
+use Brick\Math\BigDecimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -80,15 +85,53 @@ class ShiftReceiptController extends Controller
     {
         abort_unless($this->canHandle($request, $sale), Response::HTTP_FORBIDDEN);
 
+        $receipt = SaleDetailResource::make($sale->load(['items', 'payments', 'register']))->resolve();
+        $order = $this->orderMadeWith($sale);
+
         return Inertia::render('Tenant/Print/Receipt', [
             'receipt' => [
-                ...SaleDetailResource::make($sale->load(['items', 'payments', 'register']))->resolve(),
+                ...$receipt,
+                'payments' => $order === null ? $receipt['payments'] : $this->paymentsWithDeposit($receipt['payments'], $order),
+                'order' => $order === null ? null : CustomerOrderResource::make($order)->resolve(),
                 'is_copy' => $this->printNumberOf($request) > 1,
                 'store' => $this->settings->letterhead(),
                 'footer' => $this->settings->receiptFooter(),
                 'paper_width' => $this->settings->paperWidth(),
             ],
         ]);
+    }
+
+    /**
+     * The customer order made in the same checkout as the receipt, unless it was cancelled. It is printed on the receipt
+     * itself, so the customer holds one paper for what was paid and what was ordered.
+     */
+    private function orderMadeWith(Sale $sale): ?CustomerOrder
+    {
+        return CustomerOrder::query()
+            ->with(['items', 'payments'])
+            ->where('origin_sale_id', $sale->id)
+            ->where('status', '!=', OrderStatus::Cancelled)
+            ->first();
+    }
+
+    /**
+     * What the customer handed over for the receipt and the order's deposit together, one line per method, so the paper
+     * adds up: payments minus the change is the total plus the deposit.
+     *
+     * @param  list<array{method: string, amount: string, reference: string|null}>  $receiptPayments
+     * @return list<array{method: string, amount: string, reference: string|null}>
+     */
+    private function paymentsWithDeposit(array $receiptPayments, CustomerOrder $order): array
+    {
+        return collect([...$receiptPayments, ...CustomerOrderResource::depositPaymentsOf($order)])
+            ->groupBy('method')
+            ->map(fn (Collection $payments, string $method): array => [
+                'method' => $method,
+                'amount' => (string) $payments->reduce(fn (BigDecimal $sum, array $payment): BigDecimal => $sum->plus($payment['amount']), BigDecimal::zero())->toScale(2),
+                'reference' => $payments->pluck('reference')->filter()->first(),
+            ])
+            ->values()
+            ->all();
     }
 
     private function canHandle(Request $request, Sale $sale): bool

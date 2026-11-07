@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\DB;
  * @phpstan-import-type SaleData from SaleService
  * @phpstan-import-type OrderData from CustomerOrderService
  *
- * @phpstan-type CheckoutOrderData array{client_uuid: string, customer_name: string, customer_phone: string, source_note?: string|null, expected_date?: string|null, items: list<array{product_unit_id: int, quantity: numeric-string|float|int}>, deposit_amount?: numeric-string|float|int|null}
+ * @phpstan-type CheckoutOrderData array{client_uuid: string, customer_name: string, customer_phone: string, customer_address?: string|null, source_note?: string|null, expected_date?: string|null, items: list<array{product_unit_id: int, quantity: numeric-string|float|int}>, deposit_amount?: numeric-string|float|int|null}
  * @phpstan-type CheckoutData SaleData&array{order?: CheckoutOrderData|null}
  */
 class CheckoutService
@@ -48,6 +48,10 @@ class CheckoutService
             $orderInput = $checkoutInput['order'] ?? null;
             $deposit = BigDecimal::of((string) ($orderInput['deposit_amount'] ?? 0));
             $depositPayments = [];
+
+            if (($checkoutInput['hold_delivery'] ?? false) && $orderInput === null) {
+                throw SaleException::deliveryHoldNeedsOrder();
+            }
 
             if ($orderInput !== null && $deposit->isPositive()) {
                 $saleTotal = filled($checkoutInput['items'] ?? null) ? BigDecimal::of($this->sales->quote($checkoutInput['items'])['total']) : BigDecimal::zero();

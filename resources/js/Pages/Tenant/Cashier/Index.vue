@@ -13,10 +13,12 @@ import ReturnLookupDialog from '../../../Components/Cashier/ReturnLookupDialog.v
 import CodDialog from '../../../Components/Cashier/CodDialog.vue';
 import OrderListDialog from '../../../Components/Cashier/OrderListDialog.vue';
 import ExpenseDialog from '../../../Components/Cashier/ExpenseDialog.vue';
+import HeldCartsDialog from '../../../Components/Cashier/HeldCartsDialog.vue';
 import ReceiptHistoryDialog from '../../../Components/Cashier/ReceiptHistoryDialog.vue';
 import ShiftOpenPanel from '../../../Components/Cashier/ShiftOpenPanel.vue';
 import { newUuid, useCart } from '../../../Composables/useCart';
 import { useFlashMessages } from '../../../Composables/useFlashMessages';
+import { useHeldCarts } from '../../../Composables/useHeldCarts';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
 
@@ -28,8 +30,14 @@ const props = defineProps({
     last_sale: { type: Object, default: null },
     /** The customer order made by the last checkout, alone or together with `last_sale`. */
     last_order: { type: Object, default: null },
-    open_order_count: { type: Number, default: 0 },
-    ready_order_count: { type: Number, default: 0 },
+    /** Open orders, orders ready to be collected, and waiting orders whose goods are already in stock (they only need marking). */
+    order_counts: { type: Object, default: () => ({ open: 0, ready: 0, arrived: 0 }) },
+    /** Returns of this shift that wait for an Admin's approval. */
+    pending_return_count: { type: Number, default: 0 },
+    /** The items this warehouse sold most lately, offered when nothing is searched. */
+    best_sellers: { type: Array, default: () => [] },
+    /** Whether the receipt opens for printing by itself once a sale is paid. */
+    is_receipt_printed_automatically: { type: Boolean, default: false },
     closed_shift: { type: Object, default: null },
     can_leave_to_dashboard: { type: Boolean, required: true },
     urls: { type: Object, required: true },
@@ -41,6 +49,7 @@ const $q = useQuasar();
 useFlashMessages();
 
 const cart = useCart(toRef(() => props.shift?.id ?? null));
+const heldCarts = useHeldCarts(toRef(() => props.shift?.id ?? null));
 
 const SEARCH_DELAY_MS = 200;
 const LOOKUP_FAILED_MESSAGE = 'Pencarian barang gagal. Periksa koneksi, lalu coba lagi.';
@@ -67,6 +76,18 @@ const returnReceipt = ref(null);
 const isExpenseOpen = ref(false);
 const isCodOpen = ref(false);
 const isOrdersOpen = ref(false);
+const isHeldOpen = ref(false);
+
+/** The result the arrow keys stand on (-1 for none), and which of its units Enter adds. */
+const highlightedResultIndex = ref(-1);
+const highlightedUnitIndex = ref(0);
+
+/** The cart line the arrow keys stand on while the search box is empty. */
+const selectedLineKey = ref(null);
+
+const isAnyDialogOpen = computed(
+    () => [isPaymentOpen, isCloseOpen, isReceiptsOpen, isDeliveryOpen, isReturnLookupOpen, isReturnOpen, isExpenseOpen, isCodOpen, isOrdersOpen, isHeldOpen, isSaleDoneOpen].some((isOpen) => isOpen.value),
+);
 
 /** The customer order whose goods the customer is collecting; the payment dialog then pays what is left of it. */
 const collectingOrder = ref(null);
@@ -83,6 +104,21 @@ const splitForPayment = computed(() => (collectingOrder.value || cart.split.valu
 const timeFormat = new Intl.DateTimeFormat('id-ID', { timeStyle: 'short' });
 
 const shiftSince = computed(() => (props.shift ? timeFormat.format(new Date(props.shift.opened_at)) : ''));
+
+/** The clock the running time of the shift is read from; it moves every half minute, which is enough for minutes. */
+const now = ref(Date.now());
+let clockTimer;
+
+const shiftRunningFor = computed(() => {
+    if (!props.shift) {
+        return '';
+    }
+
+    const minutes = Math.max(0, Math.floor((now.value - new Date(props.shift.opened_at).getTime()) / 60000));
+    const hours = Math.floor(minutes / 60);
+
+    return hours > 0 ? `${hours} jam ${minutes % 60} menit` : `${minutes} menit`;
+});
 
 /**
  * Looks items up on the server. An answer that arrives after a newer search was started is dropped, so slow
@@ -130,6 +166,7 @@ function notifyLookupFailed(message) {
 
 watch(searchTerm, (term) => {
     clearTimeout(searchTimer);
+    highlightedResultIndex.value = -1;
 
     if (term.trim() === '') {
         latestSearchId++;
@@ -153,14 +190,121 @@ function resetSearch() {
     nextTick(() => searchInput.value?.focus());
 }
 
+/** The unit an item is sold in unless the cashier picks another: the one marked as the default for sale. */
+const defaultUnitOf = (item) => item.units.find((unit) => unit.is_default_sale) ?? item.units[0];
+
+/** Arrow up and down move through the results; the unit chosen on an item starts at its default. */
+function moveHighlight(step) {
+    const lastIndex = searchResults.value.length - 1;
+    const nextIndex = Math.min(Math.max(highlightedResultIndex.value + step, 0), lastIndex);
+
+    highlightedResultIndex.value = nextIndex;
+    highlightedUnitIndex.value = Math.max(searchResults.value[nextIndex].units.indexOf(defaultUnitOf(searchResults.value[nextIndex])), 0);
+
+    nextTick(() => document.querySelector('.item--highlight')?.scrollIntoView({ block: 'nearest' }));
+}
+
+/** Arrow left and right choose the unit of the highlighted result that Enter will add. */
+function moveHighlightedUnit(step) {
+    const unitCount = searchResults.value[highlightedResultIndex.value].units.length;
+
+    highlightedUnitIndex.value = Math.min(Math.max(highlightedUnitIndex.value + step, 0), unitCount - 1);
+}
+
+function moveLineSelection(step) {
+    const lines = cart.lines.value;
+
+    if (lines.length === 0) {
+        return;
+    }
+
+    const currentIndex = lines.findIndex((line) => line.key === selectedLineKey.value);
+    const nextIndex = currentIndex === -1 ? (step > 0 ? 0 : lines.length - 1) : Math.min(Math.max(currentIndex + step, 0), lines.length - 1);
+
+    selectedLineKey.value = lines[nextIndex].key;
+    nextTick(() => document.querySelector('.line--selected')?.scrollIntoView({ block: 'nearest' }));
+}
+
+/** + and - change the quantity of the selected line by one; Delete takes it out. Only while the search box is empty. */
+function changeSelectedLine(event) {
+    const line = cart.lines.value.find((candidate) => candidate.key === selectedLineKey.value);
+
+    if (!line) {
+        return false;
+    }
+
+    if (event.key === '+' || event.key === '=') {
+        line.quantity = cart.quantityOf(line) + 1;
+    } else if (event.key === '-') {
+        line.quantity = Math.max(1, cart.quantityOf(line) - 1);
+    } else if (event.key === 'Delete') {
+        const index = cart.lines.value.indexOf(line);
+
+        cart.remove(line);
+        selectedLineKey.value = cart.lines.value[Math.min(index, cart.lines.value.length - 1)]?.key ?? null;
+    } else {
+        return false;
+    }
+
+    event.preventDefault();
+
+    return true;
+}
+
 /**
- * Enter: a scanned barcode adds the scanned unit at once; a single result adds its first unit. Anything else
- * leaves the results for the cashier to pick a unit.
+ * The keys of the search box. With results: up and down choose an item, left and right its unit, Enter adds it. With the
+ * box empty: up and down choose a cart line, + and - change its quantity, Delete removes it. Escape lets go of both.
+ */
+function onSearchKeydown(event) {
+    const isSearching = searchTerm.value.trim() !== '' && searchResults.value.length > 0;
+
+    if (event.key === 'Escape') {
+        highlightedResultIndex.value = -1;
+        selectedLineKey.value = null;
+
+        return;
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+
+        if (isSearching) {
+            moveHighlight(event.key === 'ArrowDown' ? 1 : -1);
+        } else if (searchTerm.value === '') {
+            moveLineSelection(event.key === 'ArrowDown' ? 1 : -1);
+        }
+
+        return;
+    }
+
+    if (isSearching && highlightedResultIndex.value >= 0 && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault();
+        moveHighlightedUnit(event.key === 'ArrowRight' ? 1 : -1);
+
+        return;
+    }
+
+    if (searchTerm.value === '') {
+        changeSelectedLine(event);
+    }
+}
+
+/**
+ * Enter: the highlighted result is added in its chosen unit; a scanned barcode adds the scanned unit at once; a single
+ * result adds its default unit. Anything else leaves the results for the cashier to pick.
  */
 async function submitSearch() {
     const term = searchTerm.value.trim();
 
     if (term === '') {
+        return;
+    }
+
+    const highlightedItem = searchResults.value[highlightedResultIndex.value];
+
+    if (highlightedItem && !isItemHeldBack(highlightedItem)) {
+        addToCart(highlightedItem, highlightedItem.units[highlightedUnitIndex.value]);
+
         return;
     }
 
@@ -176,18 +320,37 @@ async function submitSearch() {
 
     const scannedItem = foundItems.find((item) => item.matched_unit_id !== null);
 
+    // A typed or scanned SKU that is exactly one item's SKU is that item, even when other items' SKUs contain it.
+    const itemOfExactSku = foundItems.find((item) => item.sku.toLowerCase() === term.toLowerCase());
+
     if (scannedItem) {
-        cart.add(scannedItem, scannedItem.matched_unit_id);
-        resetSearch();
+        addAndShow(scannedItem, scannedItem.matched_unit_id);
+    } else if (itemOfExactSku && !isItemHeldBack(itemOfExactSku)) {
+        addAndShow(itemOfExactSku, defaultUnitOf(itemOfExactSku).id);
     } else if (foundItems.length === 1) {
-        cart.add(foundItems[0], foundItems[0].units[0].id);
-        resetSearch();
+        addAndShow(foundItems[0], defaultUnitOf(foundItems[0]).id);
     }
 }
 
-function addToCart(item, unit) {
-    cart.add(item, unit.id);
+/**
+ * Adds one of the item (the same item and unit already in the cart gets one more) and points at that line, so after a scan
+ * the cashier sees which line grew and by how much.
+ */
+function addAndShow(item, unitId) {
+    selectedLineKey.value = cart.add(item, unitId).key;
     resetSearch();
+    nextTick(() => document.querySelector('.line--selected')?.scrollIntoView({ block: 'nearest' }));
+}
+
+function addToCart(item, unit) {
+    addAndShow(item, unit.id);
+}
+
+/** The nth best seller of the empty till is added in its default unit (Alt and the number, or a click). */
+function addBestSeller(item) {
+    if (!isItemHeldBack(item)) {
+        addToCart(item, defaultUnitOf(item));
+    }
 }
 
 function setLineUnit(line, code) {
@@ -250,8 +413,8 @@ function clearCart() {
  * What "Bayar" sends: the order being collected, or the cart divided into the receipt for what is in stock and the order
  * for what is short. The server makes both in one transaction.
  */
-function checkoutBody({ customer_name, payments, delivery_note, order }) {
-    const body = { client_uuid: saleUuid, customer_name, payments, delivery_note };
+function checkoutBody({ customer_name, payments, delivery_note, order, hold_delivery }) {
+    const body = { client_uuid: saleUuid, customer_name, payments, delivery_note, hold_delivery };
 
     if (collectingOrder.value) {
         return { ...body, customer_order_id: collectingOrder.value.id };
@@ -272,7 +435,13 @@ function submitSale(checkout) {
     router.post(props.urls.sales, checkoutBody(checkout), {
         preserveScroll: true,
         onStart: () => (isPaying.value = true),
-        onFinish: () => (isPaying.value = false),
+        onFinish: () => {
+            isPaying.value = false;
+
+            if (!isPaymentOpen.value) {
+                collectingOrder.value = null;
+            }
+        },
         onSuccess: (successPage) => {
             if (successPage.props.last_sale || successPage.props.last_order) {
                 if (!isCollecting) {
@@ -355,17 +524,71 @@ function openReturn(receipt) {
 }
 
 /** A finished return or an expense changes the drawer, so the figures of the close-shift dialog are fetched again. */
-const refreshShiftSummary = () => router.reload({ only: ['summary', 'open_order_count', 'ready_order_count'] });
+const refreshShiftSummary = () => router.reload({ only: ['summary', 'order_counts', 'pending_return_count'] });
 
-/** F9 pays, F8 empties the cart, F2 goes to the search box. */
-function onKeydown(event) {
-    if (!props.shift) {
+/**
+ * F4 puts the cart on hold, or, when the cart is empty, brings a held one back. The cart being worked on goes on hold
+ * first when another is brought back, so nothing is lost.
+ */
+function holdOrRecallCart() {
+    if (!cart.isEmpty.value) {
+        heldCarts.hold(cart.lines.value);
+        cart.clear();
+        $q.notify({ type: 'info', position: 'top', message: 'Keranjang ditahan. Tekan F4 untuk memanggilnya lagi.' });
+        nextTick(() => searchInput.value?.focus());
+
         return;
     }
 
-    const shortcuts = { F9: openPayment, F8: clearCart, F2: () => searchInput.value?.focus() };
+    if (heldCarts.held.value.length === 0) {
+        $q.notify({ type: 'info', position: 'top', message: 'Belum ada keranjang yang ditahan.' });
 
-    if (shortcuts[event.key] && !isPaymentOpen.value && !isCloseOpen.value && !isReceiptsOpen.value && !isDeliveryOpen.value && !isReturnLookupOpen.value && !isReturnOpen.value && !isExpenseOpen.value && !isCodOpen.value && !isOrdersOpen.value) {
+        return;
+    }
+
+    isHeldOpen.value = true;
+}
+
+function resumeHeldCart(id) {
+    const heldLines = heldCarts.take(id);
+
+    if (!cart.isEmpty.value) {
+        heldCarts.hold(cart.lines.value);
+    }
+
+    cart.lines.value = heldLines;
+    isHeldOpen.value = false;
+    nextTick(() => searchInput.value?.focus());
+    refreshCart();
+}
+
+/**
+ * Collecting an order that is already paid in full needs no payment screen: the cashier confirms the goods are handed
+ * over and the receipt is made with the deposit as its payment.
+ */
+function collectPaidOrder(order) {
+    collectingOrder.value = order;
+    submitSale({ customer_name: null, payments: [], delivery_note: null, order: null, hold_delivery: undefined });
+}
+
+/** F9 pays, F8 empties the cart, F4 holds or recalls a cart, F7 opens the orders, F2 goes to the search box, Alt and 1 to 9 add a best seller. */
+function onKeydown(event) {
+    if (!props.shift || isAnyDialogOpen.value) {
+        return;
+    }
+
+    const bestSellerIndex = event.altKey && /^[1-9]$/.test(event.key) ? Number(event.key) - 1 : -1;
+
+    if (bestSellerIndex >= 0 && props.best_sellers[bestSellerIndex]) {
+        event.preventDefault();
+        addBestSeller(props.best_sellers[bestSellerIndex]);
+
+        return;
+    }
+
+    const shortcuts = { F9: openPayment, F8: clearCart, F4: holdOrRecallCart, F7: () => (isOrdersOpen.value = true), F2: () => searchInput.value?.focus() };
+
+    if (shortcuts[event.key]) {
         event.preventDefault();
         shortcuts[event.key]();
     }
@@ -404,18 +627,29 @@ async function refreshCart() {
     }
 }
 
+/**
+ * Goods come into stock from another screen, so the badges are fetched again now and then; without it the badge of a
+ * waiting order would stay as it was until the cashier reloads the page.
+ */
+const BADGE_REFRESH_MS = 60000;
+let badgeTimer;
+
 onMounted(() => {
     window.addEventListener('keydown', onKeydown);
     searchInput.value?.focus();
+    clockTimer = setInterval(() => (now.value = Date.now()), 30000);
 
     if (props.shift) {
         refreshCart();
+        badgeTimer = setInterval(() => router.reload({ only: ['order_counts', 'pending_return_count'] }), BADGE_REFRESH_MS);
     }
 });
 
 onBeforeUnmount(() => {
     window.removeEventListener('keydown', onKeydown);
     clearTimeout(searchTimer);
+    clearInterval(badgeTimer);
+    clearInterval(clockTimer);
 });
 </script>
 
@@ -428,16 +662,26 @@ onBeforeUnmount(() => {
                 <header class="till__bar">
                     <div class="till__who">
                         <b>{{ page.props.store.name }}</b>
-                        <small v-if="shift">{{ shift.register.code }} · {{ shift.register.name }} · {{ shift.cashier_name }} · shift sejak {{ shiftSince }}</small>
+                        <small v-if="shift">{{ shift.register.code }} · {{ shift.register.name }} · {{ shift.cashier_name }} · shift sejak {{ shiftSince }}, berjalan {{ shiftRunningFor }}</small>
                         <small v-else>Belum ada shift</small>
                     </div>
                     <div class="till__bar-actions">
                         <q-btn v-if="shift" flat no-caps dense icon="receipt_long" label="Riwayat Nota" @click="isReceiptsOpen = true" />
-                        <q-btn v-if="shift" flat no-caps dense icon="undo" label="Retur" @click="isReturnLookupOpen = true" />
+                        <q-btn v-if="shift" flat no-caps dense icon="undo" label="Retur" @click="isReturnLookupOpen = true">
+                            <q-badge v-if="pending_return_count > 0" color="negative" floating :label="pending_return_count" />
+                            <q-tooltip v-if="pending_return_count > 0">{{ pending_return_count }} retur shift ini menunggu persetujuan Admin. Shift belum bisa ditutup sebelum itu.</q-tooltip>
+                        </q-btn>
                         <q-btn v-if="shift" flat no-caps dense icon="local_shipping" label="COD" @click="isCodOpen = true" />
-                        <q-btn v-if="shift" flat no-caps dense icon="assignment" label="Pesanan" @click="isOrdersOpen = true">
-                            <q-badge v-if="open_order_count > 0" :color="ready_order_count > 0 ? 'positive' : 'orange'" floating :label="ready_order_count > 0 ? `${ready_order_count} siap` : open_order_count" />
-                            <q-tooltip>Pesanan pelanggan untuk barang yang belum ada</q-tooltip>
+                        <q-btn v-if="shift" flat no-caps dense icon="assignment" @click="isOrdersOpen = true">
+                            <span>Pesanan</span><kbd class="till__key">F7</kbd>
+                            <q-badge v-if="order_counts.arrived > 0" color="negative" floating :label="order_counts.arrived" />
+                            <q-badge v-else-if="order_counts.ready > 0" color="positive" floating :label="order_counts.ready" />
+                            <q-badge v-else-if="order_counts.open > 0" color="grey-6" floating :label="order_counts.open" />
+                            <q-tooltip>
+                                <div>Pesanan pelanggan: {{ order_counts.open }} terbuka</div>
+                                <div v-if="order_counts.arrived > 0">{{ order_counts.arrived }} barangnya sudah ada di stok, tandai sudah datang</div>
+                                <div v-if="order_counts.ready > 0">{{ order_counts.ready }} siap diambil pelanggan</div>
+                            </q-tooltip>
                         </q-btn>
                         <q-btn v-if="shift" flat no-caps dense icon="remove_circle_outline" label="Pengeluaran" @click="isExpenseOpen = true" />
                         <q-btn v-if="shift" flat no-caps dense color="negative" icon="lock_clock" label="Tutup Shift" @click="openClose">
@@ -460,24 +704,39 @@ onBeforeUnmount(() => {
                             placeholder="Cari nama, SKU, atau scan barcode (Enter)"
                             class="finder__input"
                             @keydown.enter.prevent="submitSearch"
+                            @keydown="onSearchKeydown"
                         >
                             <template #prepend><q-icon name="search" /></template>
                         </q-input>
 
-                        <p v-if="searchTerm.trim() === ''" class="finder__hint">Ketik atau scan barang. F2 fokus ke pencarian, F9 bayar, F8 kosongkan keranjang.</p>
+                        <p v-if="searchTerm.trim() === ''" class="finder__hint">Ketik atau scan barang. F2 cari, F4 tahan keranjang, F7 pesanan, F8 kosongkan, F9 bayar. Panah atas/bawah memilih baris keranjang, + dan - mengubah jumlah, Delete menghapus.</p>
                         <p v-else-if="searchResults.length === 0" class="finder__hint">Tidak ada barang yang cocok.</p>
+                        <p v-else class="finder__hint">Panah atas/bawah memilih barang, kiri/kanan memilih satuan, Enter menambahkan.</p>
+
+                        <section v-if="searchTerm.trim() === '' && best_sellers.length > 0" class="best">
+                            <h3>Barang sering dijual</h3>
+                            <div class="best__grid">
+                                <button v-for="(item, index) in best_sellers" :key="item.id" type="button" class="best__tile" :disabled="isItemHeldBack(item)" @click="addBestSeller(item)">
+                                    <kbd v-if="index < 9" class="best__key">Alt+{{ index + 1 }}</kbd>
+                                    <b>{{ item.name }}</b>
+                                    <small>{{ formatRupiah(defaultUnitOf(item).price) }} / {{ defaultUnitOf(item).code }}</small>
+                                    <small :class="{ item__empty: Number(item.stock) <= 0 }">{{ Number(item.stock) <= 0 ? 'stok habis, bisa dipesan' : `stok ${formatStock(item.stock, item.units, item.base_unit, item.intact_packs)}` }}</small>
+                                </button>
+                            </div>
+                        </section>
 
                         <ul class="finder__results">
-                            <li v-for="item in searchResults" :key="item.id" class="item">
+                            <li v-for="(item, itemIndex) in searchResults" :key="item.id" class="item" :class="{ 'item--highlight': itemIndex === highlightedResultIndex }">
                                 <div class="item__info">
                                     <b>{{ item.name }}</b>
                                     <small :class="{ item__empty: Number(item.stock) <= 0 || item.is_being_counted }">{{ item.sku }} · {{ item.is_being_counted ? 'sedang opname, belum bisa dijual' : Number(item.stock) <= 0 ? 'stok habis, bisa dipesan' : `stok ${formatStock(item.stock, item.units, item.base_unit, item.intact_packs)}` }}<template v-if="Number(item.reserved) > 0"> · {{ formatQuantity(item.reserved) }} {{ item.base_unit }} disisihkan untuk pesanan</template></small>
                                 </div>
                                 <div class="item__units">
                                     <q-btn
-                                        v-for="unit in item.units"
+                                        v-for="(unit, unitIndex) in item.units"
                                         :key="unit.id"
-                                        outline
+                                        :outline="!(itemIndex === highlightedResultIndex && unitIndex === highlightedUnitIndex)"
+                                        :unelevated="itemIndex === highlightedResultIndex && unitIndex === highlightedUnitIndex"
                                         no-caps
                                         dense
                                         color="primary"
@@ -498,7 +757,7 @@ onBeforeUnmount(() => {
                         <div class="cart__lines">
                             <p v-if="cart.isEmpty.value" class="cart__empty">Keranjang kosong</p>
 
-                            <div v-for="line in cart.lines.value" :key="line.key" class="line" :class="{ 'line--over': cart.isOverStock(line) }">
+                            <div v-for="line in cart.lines.value" :key="line.key" class="line" :class="{ 'line--over': cart.isOverStock(line), 'line--selected': line.key === selectedLineKey }">
                                 <div class="line__name">
                                     <b>{{ line.product.name }}</b>
                                     <small v-if="cart.isOverStock(line)" class="line__warning">{{ cart.stockWarningOf(line) }} {{ stockTextOf(line) }}. Kekurangannya jadi pesanan.</small>
@@ -537,6 +796,11 @@ onBeforeUnmount(() => {
                             </div>
                             <div class="cart__buttons">
                                 <q-btn flat no-caps color="grey-8" label="Batal (F8)" :disable="cart.isEmpty.value" @click="clearCart" />
+                                <q-btn flat no-caps color="grey-8" icon="pause_circle" :disable="cart.isEmpty.value && heldCarts.held.value.length === 0" @click="holdOrRecallCart">
+                                    <span>{{ cart.isEmpty.value ? 'Panggil' : 'Tahan' }} (F4)</span>
+                                    <q-badge v-if="heldCarts.held.value.length > 0" color="orange" floating :label="heldCarts.held.value.length" />
+                                    <q-tooltip>{{ cart.isEmpty.value ? 'Panggil keranjang yang ditahan' : 'Tahan keranjang ini supaya antrean jalan, panggil lagi dengan F4 saat keranjang kosong' }}</q-tooltip>
+                                </q-btn>
                                 <q-btn color="primary" unelevated no-caps size="lg" class="cart__pay" :label="cart.hasOverStock.value ? 'Bayar & Pesan (F9)' : 'Bayar (F9)'" :disable="cart.isEmpty.value" @click="openPayment" />
                             </div>
                         </footer>
@@ -549,14 +813,15 @@ onBeforeUnmount(() => {
 
         <PaymentDialog v-model="isPaymentOpen" :total="paymentTotal" :payment-methods="payment_methods" :is-processing="isPaying" :split="splitForPayment" :collecting-order="collectingOrder" @confirm="submitSale" />
         <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :payment-methods="payment_methods.filter((method) => method.value !== 'cod')" :is-processing="isClosing" @confirm="closeShift" />
-        <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" :order="last_order" @delivery="openDelivery" />
+        <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" :order="last_order" :is-printed-automatically="is_receipt_printed_automatically" @delivery="openDelivery" />
+        <HeldCartsDialog v-model="isHeldOpen" :held-carts="heldCarts.held.value" @resume="resumeHeldCart" @discard="heldCarts.discard" />
         <ShiftClosedDialog v-model="isShiftClosedOpen" :shift-totals="closed_shift" />
         <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" @return="openReturn" />
         <DeliveryNoteDialog v-model="isDeliveryOpen" :receipt="deliveryReceipt" />
         <ReturnLookupDialog v-if="shift" v-model="isReturnLookupOpen" :lookup-url="urls.return_lookup" @found="openReturn" />
         <ReturnDialog v-model="isReturnOpen" :receipt="returnReceipt" :products-url="urls.products" @saved="refreshShiftSummary" />
         <CodDialog v-if="shift" v-model="isCodOpen" :list-url="urls.cod" @changed="refreshShiftSummary" />
-        <OrderListDialog v-if="shift" v-model="isOrdersOpen" :list-url="urls.orders" @changed="refreshShiftSummary" @collect="startCollecting" />
+        <OrderListDialog v-if="shift" v-model="isOrdersOpen" :list-url="urls.orders" @changed="refreshShiftSummary" @collect="startCollecting" @collect-paid="collectPaidOrder" />
         <ExpenseDialog v-if="shift" v-model="isExpenseOpen" :list-url="urls.expenses" :store-url="urls.expenses_store" :expected-cash="summary?.expected_cash ?? null" @saved="refreshShiftSummary" />
     </q-layout>
 </template>
@@ -592,7 +857,82 @@ onBeforeUnmount(() => {
 
 .till__bar-actions {
     display: flex;
-    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px 20px;
+}
+
+.till__bar-actions :deep(.q-btn) {
+    padding: 4px 10px;
+}
+
+.till__key {
+    margin-left: 6px;
+    padding: 1px 5px;
+    border: 1px solid var(--app-line);
+    border-radius: 4px;
+    background: #f3f4f6;
+    color: var(--app-ink-soft);
+    font-family: inherit;
+    font-size: 11px;
+}
+
+.best h3 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: var(--app-ink-soft);
+}
+
+.best__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+}
+
+.best__tile {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--app-line);
+    border-radius: 12px;
+    background: var(--app-surface);
+    text-align: left;
+    cursor: pointer;
+}
+
+.best__tile:hover:not(:disabled),
+.best__tile:focus-visible {
+    border-color: var(--q-primary);
+}
+
+.best__tile:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.best__tile small {
+    color: var(--app-mute);
+    font-size: 12px;
+}
+
+.best__key {
+    align-self: flex-start;
+    margin-bottom: 4px;
+    padding: 1px 5px;
+    border: 1px solid var(--app-line);
+    border-radius: 4px;
+    background: #f3f4f6;
+    color: var(--app-ink-soft);
+    font-family: inherit;
+    font-size: 10px;
+}
+
+.item--highlight {
+    border-color: var(--q-primary);
+    outline: 2px solid var(--q-primary);
+    outline-offset: -1px;
 }
 
 .till__main {
@@ -704,6 +1044,12 @@ onBeforeUnmount(() => {
 
 .line--over {
     background: #fff5f6;
+}
+
+.line--selected {
+    outline: 2px solid var(--q-primary);
+    outline-offset: -2px;
+    background: #fff1f1;
 }
 
 .line__name b,

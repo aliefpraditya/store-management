@@ -213,16 +213,12 @@ async function print(note) {
                 <template v-if="hasAnythingLeft">
                     <div class="delivery__label">Surat jalan baru</div>
                     <q-input v-model="form.recipient_name" outlined dense label="Nama penerima" />
-                    <div class="delivery__grid">
-                        <q-input v-model="form.recipient_phone" outlined dense label="Telepon" />
-                        <q-input v-model="form.vehicle_number" outlined dense label="No. kendaraan" />
-                    </div>
+                    <q-input v-model="form.recipient_phone" outlined dense label="Telepon" />
                     <q-input v-model="form.recipient_address" outlined dense type="textarea" autogrow label="Alamat" />
-                    <q-input v-model="form.driver_name" outlined dense label="Sopir" />
 
                     <div class="delivery__label">Barang yang diantar</div>
                     <div v-for="line in receiptDeliveryContext.lines" :key="line.id" class="delivery__line">
-                        <span>{{ line.name }}<small>sisa {{ formatQuantity(line.remaining) }} {{ line.unit }}</small></span>
+                        <span>{{ line.name }}<small>sisa {{ formatQuantity(line.remaining) }} {{ line.unit }}<template v-if="line.sale_number !== receipt.number"> · dari nota {{ line.sale_number }}</template></small></span>
                         <q-input
                             v-model.number="quantities[line.id]"
                             type="number"
@@ -342,12 +338,6 @@ async function print(note) {
 .delivery__items small {
     margin-left: 4px;
     color: var(--app-mute);
-}
-
-.delivery__grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
 }
 
 .delivery__line {

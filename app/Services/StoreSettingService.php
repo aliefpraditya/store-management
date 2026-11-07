@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
  * run while the store's tenancy is initialized.
  *
  * @phpstan-type Letterhead array{name: string, address: string|null, phone: string|null}
- * @phpstan-type StoreSettings array{receipt_name: string, receipt_address: string, receipt_phone: string, receipt_footer: string, paper_width: int, large_variance_threshold: string, lock_sales_during_opname: bool}
+ * @phpstan-type StoreSettings array{receipt_name: string, receipt_address: string, receipt_phone: string, receipt_footer: string, paper_width: int, large_variance_threshold: string, lock_sales_during_opname: bool, auto_print_receipt: bool}
  */
 class StoreSettingService
 {
@@ -24,7 +24,7 @@ class StoreSettingService
 
     public const DEFAULT_PAPER_WIDTH = 80;
 
-    private const KEYS = ['receipt_name', 'receipt_address', 'receipt_phone', 'receipt_footer', 'paper_width', 'large_variance_threshold', 'lock_sales_during_opname'];
+    private const KEYS = ['receipt_name', 'receipt_address', 'receipt_phone', 'receipt_footer', 'paper_width', 'large_variance_threshold', 'lock_sales_during_opname', 'auto_print_receipt'];
 
     /**
      * The store's name, address and phone as printed on paper: what was set for the paper, else what the store has.
@@ -81,6 +81,14 @@ class StoreSettingService
     }
 
     /**
+     * Whether the till prints the receipt by itself once a sale is paid, so the cashier does not press print each time.
+     */
+    public function isReceiptPrintedAutomatically(): bool
+    {
+        return ($this->stored()['auto_print_receipt'] ?? '0') === '1';
+    }
+
+    /**
      * Every setting as the settings page shows it.
      *
      * @return StoreSettings
@@ -97,13 +105,14 @@ class StoreSettingService
             'paper_width' => $this->paperWidth(),
             'large_variance_threshold' => (string) ($this->largeVarianceThreshold()?->toScale(0) ?? ''),
             'lock_sales_during_opname' => $this->isSalesLockedDuringOpname(),
+            'auto_print_receipt' => $this->isReceiptPrintedAutomatically(),
         ];
     }
 
     /**
      * Saves the settings. A blank text is stored as nothing, so it falls back to its default.
      *
-     * @param  array{receipt_name?: string|null, receipt_address?: string|null, receipt_phone?: string|null, receipt_footer?: string|null, paper_width: int|string, large_variance_threshold?: string|int|float|null, lock_sales_during_opname: bool}  $settings
+     * @param  array{receipt_name?: string|null, receipt_address?: string|null, receipt_phone?: string|null, receipt_footer?: string|null, paper_width: int|string, large_variance_threshold?: string|int|float|null, lock_sales_during_opname: bool, auto_print_receipt?: bool|null}  $settings
      */
     public function update(array $settings): void
     {

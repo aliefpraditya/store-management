@@ -20,6 +20,21 @@ use Illuminate\Http\Resources\Json\JsonResource;
 class CustomerOrderResource extends JsonResource
 {
     /**
+     * The money put down on the order, by the method's label, in the shape of a receipt's payments. Expects `payments`
+     * to be loaded.
+     *
+     * @return list<array{method: string, amount: string, reference: string|null}>
+     */
+    public static function depositPaymentsOf(CustomerOrder $order): array
+    {
+        return $order->payments
+            ->where('kind', CustomerOrderPayment::KIND_DEPOSIT)
+            ->map(fn (CustomerOrderPayment $payment): array => ['method' => $payment->method->label(), 'amount' => (string) $payment->amount, 'reference' => $payment->reference])
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(Request $request): array
@@ -35,6 +50,7 @@ class CustomerOrderResource extends JsonResource
             'expected_date' => $this->expected_date?->toDateString(),
             'customer_name' => $this->customer_name,
             'customer_phone' => $this->customer_phone,
+            'customer_address' => $this->customer_address,
             'source_note' => $this->source_note,
             'created_by_name' => $this->created_by_name,
             'status' => $this->status->value,

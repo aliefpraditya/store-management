@@ -3,15 +3,18 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\CashShiftStatus;
-use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
+use App\Enums\SaleReturnStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CashShiftResource;
 use App\Models\CashShift;
-use App\Models\CustomerOrder;
 use App\Models\Register;
+use App\Models\SaleReturn;
 use App\Models\Store;
+use App\Services\CashierCatalogService;
+use App\Services\CustomerOrderService;
 use App\Services\ShiftService;
+use App\Services\StoreSettingService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -21,7 +24,12 @@ use Inertia\Response;
  */
 class CashierController extends Controller
 {
-    public function __construct(private readonly ShiftService $shiftService) {}
+    public function __construct(
+        private readonly ShiftService $shiftService,
+        private readonly CustomerOrderService $customerOrders,
+        private readonly CashierCatalogService $catalog,
+        private readonly StoreSettingService $settings,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -37,8 +45,10 @@ class CashierController extends Controller
             'payment_methods' => PaymentMethod::saleOptions(),
             'last_sale' => $request->session()->pull('last_sale'),
             'last_order' => $request->session()->pull('last_order'),
-            'open_order_count' => CustomerOrder::query()->whereIn('status', OrderStatus::unfinished())->count(),
-            'ready_order_count' => CustomerOrder::query()->where('status', OrderStatus::Ready)->count(),
+            'best_sellers' => $shift === null ? [] : $this->catalog->bestSellers($shift->register->warehouse_id),
+            'is_receipt_printed_automatically' => $this->settings->isReceiptPrintedAutomatically(),
+            'order_counts' => $this->customerOrders->badgeCounts(),
+            'pending_return_count' => $shift === null ? 0 : SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Pending)->count(),
             'closed_shift' => $request->session()->pull('closed_shift'),
             'can_leave_to_dashboard' => $request->user()->isAdminIn($store),
             'urls' => [

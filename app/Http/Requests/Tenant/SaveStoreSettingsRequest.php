@@ -31,6 +31,7 @@ class SaveStoreSettingsRequest extends FormRequest
             'paper_width' => ['required', 'integer', Rule::in(StoreSettingService::PAPER_WIDTHS)],
             'large_variance_threshold' => ['nullable', 'numeric', 'min:0', 'max:'.self::MAX_AMOUNT, 'decimal:0,2'],
             'lock_sales_during_opname' => ['required', 'boolean'],
+            'auto_print_receipt' => ['nullable', 'boolean'],
         ];
     }
 

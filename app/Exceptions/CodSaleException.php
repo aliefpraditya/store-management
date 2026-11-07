@@ -30,6 +30,11 @@ class CodSaleException extends Exception
         return new self('Barang nota ini sudah diantar dan diterima pelanggan, jadi tidak bisa di-void. Pakai Retur untuk barang yang dikembalikan.');
     }
 
+    public static function onCombinedDeliveryNote(): self
+    {
+        return new self('Barang nota ini ikut di surat jalan gabungan milik nota pengambilan pesanan. Void nota pengambilan itu dulu (surat jalannya ikut dibatalkan), atau batalkan surat jalan gabungannya.');
+    }
+
     public static function hasReturns(): self
     {
         return new self('Nota ini sudah punya retur, jadi tidak bisa di-void.');

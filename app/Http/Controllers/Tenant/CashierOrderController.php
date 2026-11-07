@@ -12,8 +12,10 @@ use App\Http\Requests\Tenant\CancelCustomerOrderRequest;
 use App\Http\Resources\CustomerOrderResource;
 use App\Models\CustomerOrder;
 use App\Services\CustomerOrderService;
+use App\Services\DeliveryNoteService;
 use App\Services\PrintCounter;
 use App\Services\StoreSettingService;
+use Brick\Math\BigDecimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -33,6 +35,7 @@ class CashierOrderController extends Controller
 
     public function __construct(
         private readonly CustomerOrderService $customerOrders,
+        private readonly DeliveryNoteService $deliveryNotes,
         private readonly PrintCounter $printCounter,
         private readonly StoreSettingService $settings,
     ) {}
@@ -45,15 +48,32 @@ class CashierOrderController extends Controller
         $openOrdersQuery = CustomerOrder::query()->whereIn('status', OrderStatus::unfinished());
 
         $orders = (clone $openOrdersQuery)
-            ->with(['items', 'payments', 'originSale'])
+            ->with(['items.product', 'payments', 'originSale.items', 'originSale.payments'])
             ->orderByRaw("status = 'ready' desc")
             ->orderBy('expected_date')
             ->orderByDesc('id')
             ->limit(self::LIST_LIMIT)
             ->get();
 
+        $coverage = $this->customerOrders->stockCoverageOf($orders);
+
+        $rows = $orders
+            ->sortBy(fn (CustomerOrder $order): int => match (true) {
+                $order->status === OrderStatus::Ready => 0,
+                $coverage[$order->id]['is_covered'] ?? false => 1,
+                default => 2,
+            })
+            ->map(fn (CustomerOrder $order): array => [
+                ...CustomerOrderResource::make($order)->resolve(),
+                'stock_check' => $coverage[$order->id] ?? null,
+                'origin_sale_undelivered' => $this->undeliveredOfOriginSale($order),
+                'origin_sale_cod_amount' => $order->originSale?->codAmount() ?? '0.00',
+            ])
+            ->values()
+            ->all();
+
         return response()->json([
-            'data' => CustomerOrderResource::collection($orders)->resolve(),
+            'data' => $rows,
             'meta' => ['total' => $openOrdersQuery->count()],
         ]);
     }
@@ -102,6 +122,25 @@ class CashierOrderController extends Controller
                 'paper_width' => $this->settings->paperWidth(),
             ],
         ]);
+    }
+
+    /**
+     * What of the receipt made together with the order has still not gone out on a delivery note, so the cashier can
+     * deliver it together with the order instead of in a second trip.
+     *
+     * @return list<array{name: string, unit: string, remaining: string}>
+     */
+    private function undeliveredOfOriginSale(CustomerOrder $order): array
+    {
+        if ($order->originSale === null) {
+            return [];
+        }
+
+        return collect($this->deliveryNotes->deliverableLines($order->originSale))
+            ->filter(fn (array $line): bool => BigDecimal::of($line['remaining'])->isPositive())
+            ->map(fn (array $line): array => ['name' => $line['name'], 'unit' => $line['unit'], 'remaining' => $line['remaining']])
+            ->values()
+            ->all();
     }
 
     private function refused(CustomerOrderException $exception): JsonResponse

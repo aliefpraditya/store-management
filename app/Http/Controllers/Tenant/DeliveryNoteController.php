@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\CompleteDeliveryNoteRequest;
 use App\Http\Requests\Tenant\DateRangeRequest;
 use App\Http\Requests\Tenant\SaveDeliveryNoteRequest;
+use App\Http\Requests\Tenant\ShipDeliveryNoteRequest;
 use App\Http\Resources\DeliveryNoteListResource;
 use App\Http\Resources\DeliveryNoteResource;
 use App\Models\DeliveryNote;
@@ -109,10 +110,10 @@ class DeliveryNoteController extends Controller
         ]);
     }
 
-    public function ship(DeliveryNote $deliveryNote): RedirectResponse
+    public function ship(ShipDeliveryNoteRequest $request, DeliveryNote $deliveryNote): RedirectResponse
     {
-        return $this->redirectWithOutcome(function () use ($deliveryNote): string {
-            $this->noteService->ship($deliveryNote);
+        return $this->redirectWithOutcome(function () use ($request, $deliveryNote): string {
+            $this->noteService->ship($deliveryNote, $request->validated('driver_name'), $request->validated('vehicle_number'));
 
             return 'Surat jalan ditandai dikirim.';
         });
