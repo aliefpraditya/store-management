@@ -3,7 +3,8 @@
 namespace App\Enums;
 
 /**
- * Where returned goods go: back on the shelf to be sold again, or to the dead-stock warehouse.
+ * Where returned goods were sent when the cashier still chose it, kept for the returns made then. Returns made now carry
+ * none: the goods wait in the returns warehouse for an opname to decide.
  */
 enum ReturnDisposition: string
 {

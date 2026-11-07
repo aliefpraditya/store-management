@@ -26,9 +26,9 @@ const isSaving = ref(false);
 const printingId = ref(null);
 
 /** What the server says about the receipt: its lines, the returns already asked for and the choices to offer. */
-const emptyContext = () => ({ lines: [], returns: [], refund_methods: [], dispositions: [], resolutions: [], is_approved_at_once: false });
+const emptyContext = () => ({ lines: [], returns: [], refund_methods: [], resolutions: [], is_approved_at_once: false });
 
-/** @type {import('vue').Ref<{lines: object[], returns: object[], refund_methods: object[], dispositions: object[], resolutions: object[], is_approved_at_once: boolean}>} */
+/** @type {import('vue').Ref<{lines: object[], returns: object[], refund_methods: object[], resolutions: object[], is_approved_at_once: boolean}>} */
 const receiptReturnContext = ref(emptyContext());
 
 /**
@@ -38,7 +38,6 @@ const receiptReturnContext = ref(emptyContext());
 let returnUuid = newUuid();
 
 const quantities = ref({});
-const dispositions = ref({});
 const refundMethod = ref('cash');
 const refundAccount = ref('');
 const reason = ref('');
@@ -81,7 +80,6 @@ async function load() {
 
         receiptReturnContext.value = (await response.json()).data;
         quantities.value = Object.fromEntries(receiptReturnContext.value.lines.map((line) => [line.id, 0]));
-        dispositions.value = Object.fromEntries(receiptReturnContext.value.lines.map((line) => [line.id, 'resellable']));
         refundMethod.value = receiptReturnContext.value.default_refund_method;
     } catch (error) {
         fail(error);
@@ -125,7 +123,7 @@ async function save() {
                 refund_method: isExchange.value ? exchangeDraft.value.refund_method : refundMethod.value,
                 refund_account: isExchange.value ? exchangeDraft.value.refund_account : refundAccount.value,
                 reason: reason.value,
-                items: receiptReturnContext.value.lines.map((line) => ({ sale_item_id: line.id, quantity: Number(quantities.value[line.id]) || 0, disposition: dispositions.value[line.id] })),
+                items: receiptReturnContext.value.lines.map((line) => ({ sale_item_id: line.id, quantity: Number(quantities.value[line.id]) || 0 })),
                 ...(isExchange.value ? { exchange_items: exchangeDraft.value.items, exchange_payments: exchangeDraft.value.payments } : {}),
             });
 
@@ -250,22 +248,8 @@ async function printReplacement(saleReturn) {
                             :aria-label="`Jumlah retur ${line.name}`"
                             class="return__qty"
                         />
-                        <q-select
-                            v-model="dispositions[line.id]"
-                            :options="receiptReturnContext.dispositions"
-                            option-value="value"
-                            option-label="label"
-                            emit-value
-                            map-options
-                            behavior="menu"
-                            outlined
-                            dense
-                            hide-bottom-space
-                            :disable="Number(line.remaining) <= 0"
-                            :aria-label="`Tujuan ${line.name}`"
-                            class="return__where"
-                        />
                     </div>
+                    <p class="return__hint">Barang yang diretur masuk ke gudang retur dan baru bisa dijual atau jadi dead stock setelah diperiksa lewat opname.</p>
 
                     <q-btn-toggle v-model="resolution" :options="receiptReturnContext.resolutions" no-caps unelevated toggle-color="primary" color="grey-3" text-color="grey-8" />
 
@@ -389,8 +373,10 @@ async function printReplacement(saleReturn) {
     width: 130px;
 }
 
-.return__where {
-    width: 130px;
+.return__hint {
+    margin: 0;
+    color: var(--app-mute);
+    font-size: 12.5px;
 }
 
 .return__total {

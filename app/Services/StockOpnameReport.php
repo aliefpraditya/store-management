@@ -16,7 +16,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
  * {@see StockOpname::varianceOf()}, which posting uses; change both together.
  *
  * @phpstan-type DamagedGoodsRow array{product_name: string, base_unit: string, dead_stock_quantity: string, damaged_goods_quantity: string, full_price_quantity: string, original_price: string, damaged_goods_price: string|null, existing_price: string|null, loss: string}
- * @phpstan-type OpnameSummary array{items_count: int, counted_count: int, variance_count: int, reviewed_count: int, variance_value: string}
+ * @phpstan-type OpnameSummary array{items_count: int, counted_count: int, variance_count: int, reviewed_count: int, review_count: int, variance_value: string}
  */
 class StockOpnameReport
 {
@@ -63,7 +63,7 @@ class StockOpnameReport
         $term = trim((string) $search);
 
         return $this->itemsQuery($opname)
-            ->with('product.baseUnit', 'product.productUnits', 'reason')
+            ->with(['product.baseUnit', 'product.productUnits', 'reason', 'stockOpname' => fn ($opnames) => $opnames->withTrashed()])
             ->selectRaw('stock_opname_items.*, '.self::COST_PRICE_SQL.' as product_cost_price')
             ->selectRaw(self::SYSTEM_QUANTITY_SQL.' as system_quantity')
             ->selectRaw(self::SYSTEM_PACKS_SQL.' as system_intact_packs')
@@ -76,9 +76,8 @@ class StockOpnameReport
                 ->whereNotNull('stock_opname_items.counted_quantity')
                 ->whereRaw("{$variance} != 0"))
             ->when($filter === self::ITEM_FILTER_UNREVIEWED, fn (Builder $query) => $query
-                ->whereNotNull('stock_opname_items.counted_quantity')
-                ->whereNull('stock_opname_items.reviewed_at')
-                ->whereRaw("{$variance} != 0"))
+                ->whereRaw($this->needsReviewSql($opname))
+                ->whereNull('stock_opname_items.reviewed_at'))
             ->orderBy('products.name')
             ->paginate($perPage)
             ->withQueryString();
@@ -92,12 +91,14 @@ class StockOpnameReport
     public function summarize(StockOpname $opname): array
     {
         $variance = $this->varianceSql($opname);
+        $needsReview = $this->needsReviewSql($opname);
 
         $totals = $this->itemsQuery($opname)->toBase()->selectRaw(
             "count(*) as items_count,
             count(stock_opname_items.counted_quantity) as counted_count,
             coalesce(sum(stock_opname_items.counted_quantity is not null and {$variance} != 0), 0) as variance_count,
-            coalesce(sum(stock_opname_items.counted_quantity is not null and {$variance} != 0 and stock_opname_items.reviewed_at is not null), 0) as reviewed_count,
+            coalesce(sum({$needsReview} and stock_opname_items.reviewed_at is not null), 0) as reviewed_count,
+            coalesce(sum({$needsReview}), 0) as review_count,
             coalesce(sum({$variance} * ".self::COST_PRICE_SQL.'), 0) as variance_value',
         )->first();
 
@@ -106,6 +107,7 @@ class StockOpnameReport
             'counted_count' => (int) $totals->counted_count,
             'variance_count' => (int) $totals->variance_count,
             'reviewed_count' => (int) $totals->reviewed_count,
+            'review_count' => (int) $totals->review_count,
             'variance_value' => (string) BigDecimal::of((string) $totals->variance_value)->toScale(2, RoundingMode::HalfUp),
         ];
     }
@@ -155,7 +157,7 @@ class StockOpnameReport
     {
         $rows = StockOpnameItem::query()
             ->where('stock_opname_id', $opname->id)
-            ->whereHas('reason', fn (Builder $reasons) => $reasons->where('behavior', OpnameReasonBehavior::Damaged))
+            ->when($opname->reason_code?->isReturnsCheck() !== true, fn (Builder $items) => $items->whereHas('reason', fn (Builder $reasons) => $reasons->where('behavior', OpnameReasonBehavior::Damaged)))
             ->whereNotNull('counted_quantity')
             ->whereNotNull('dead_stock_quantity')
             ->whereNotNull('damaged_goods_quantity')
@@ -198,6 +200,17 @@ class StockOpnameReport
             'damaged_goods_loss' => (string) $damagedGoodsLoss->toScale(2, RoundingMode::HalfUp),
             'total_loss' => (string) $deadStockLoss->plus($damagedGoodsLoss)->toScale(2, RoundingMode::HalfUp),
         ];
+    }
+
+    /**
+     * SQL that is true for an item the admin has to review: a counted one with a variance, or, in an inspection of returns,
+     * every counted one (it still has to be decided where the goods go). Mirrors `StockOpnameService::isReviewNeeded()`.
+     */
+    private function needsReviewSql(StockOpname $opname): string
+    {
+        return $opname->reason_code?->isReturnsCheck()
+            ? 'stock_opname_items.counted_quantity is not null'
+            : '(stock_opname_items.counted_quantity is not null and '.$this->varianceSql($opname).' != 0)';
     }
 
     /**

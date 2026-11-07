@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\PaymentMethod;
-use App\Enums\ReturnDisposition;
 use App\Enums\ReturnResolution;
 use App\Enums\SaleReturnStatus;
 use App\Exceptions\SaleReturnException;
@@ -72,7 +71,6 @@ class SaleReturnController extends Controller
         return Inertia::render('Tenant/Returns/Create', [
             'sale' => $sale === null ? null : $this->saleOption($sale),
             'refund_methods' => PaymentMethod::cashierOptions(),
-            'dispositions' => ReturnDisposition::options(),
             'resolutions' => ReturnResolution::options(),
             'urls' => [
                 'index' => route('tenant.returns.index', ['tenant' => tenant('code')]),

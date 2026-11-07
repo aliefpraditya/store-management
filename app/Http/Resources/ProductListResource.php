@@ -34,6 +34,7 @@ class ProductListResource extends JsonResource
             'min_stock' => $this->min_stock,
             'sellable_stock' => $this->getAttribute('sellable_stock'),
             'dead_stock' => $this->getAttribute('dead_stock'),
+            'returns_stock' => $this->getAttribute('returns_stock'),
             'is_below_minimum' => (bool) $this->getAttribute('is_below_minimum'),
             'cost_price' => $this->cost_price,
             'base_unit' => $this->base_unit_code,

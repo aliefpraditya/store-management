@@ -167,10 +167,11 @@ class StoreManagementTest extends TestCase
 
         $warehouses = $store->run(fn () => Warehouse::query()->orderBy('code')->get(['code', 'type', 'is_default']));
 
-        $this->assertSame(['DEAD', 'MAIN'], $warehouses->pluck('code')->all());
+        $this->assertSame(['DEAD', 'MAIN', 'RETUR'], $warehouses->pluck('code')->all());
         $this->assertSame(WarehouseType::DeadStock, $warehouses[0]->type);
         $this->assertSame(WarehouseType::Sellable, $warehouses[1]->type);
         $this->assertTrue($warehouses[1]->is_default);
+        $this->assertSame(WarehouseType::Returns, $warehouses[2]->type);
     }
 
     public function test_code_and_prefix_are_normalized(): void

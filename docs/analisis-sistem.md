@@ -96,7 +96,7 @@ Toko
 2. **Belum ada di R1:** `price_histories` (dan kolom `product_units.price_mode`, `margin_percent`, `is_purchasable`), `suppliers`, `purchases`/`purchase_items`, `goods_receipts` (+suppliers, items, costs), `stock_transfers`, `stock_layers`/`stock_layer_allocations`. (`sync_issues` dibatalkan bersama offline, D34.) Ditambahkan lewat migrasi baru tanpa mengubah tabel R1.
 3. **Stok bertambah** hanya lewat **opname** (selisih positif), **retur**, **void**, dan import saldo awal; **berkurang** lewat penjualan dan opname (selisih negatif). **R1 tidak punya dokumen penerimaan/pembelian**: barang yang datang cukup dihitung lewat opname (parsial atau penuh). Harga beli diisi manual di Form Harga (histori sumber `manual`).
 4. **Costing sementara:** `sale_items.cost_total = quantity × product_units.cost_price` (modal satuan yang dijual), `is_cost_estimated = true`; FIFO di R2 membuat layer awal dari nilai persediaan saat itu.
-5. **Dead stock** di R1: retur bisa memilih gudang *Dead Stock*; memindahkannya kembali dilakukan lewat opname (tanpa transfer antar-gudang).
+5. **Dead stock** di R1: barang retur tidak langsung dijual atau dibuang, melainkan menunggu di *Gudang Retur* dan masuk dead stock bila hasil pemeriksaan (opname gudang retur) memutuskannya; memindahkannya kembali dilakukan lewat opname (tanpa transfer antar-gudang).
 6. **Surat jalan tidak mengubah stok** (7.7b); **pengeluaran** dari laci mengurangi tunai seharusnya shift (7.7c); **tutup hari** mengunci transaksi tanggal bisnis itu (7.7d). Konsep `cash_movements` digantikan `expenses`.
 7. **Void** hanya oleh Admin (sederhana, tercatat); batal sebelum bayar langsung oleh kasir. **Pengecualian: nota COD** bisa di-void oleh Kasir maupun Admin dengan alasan, kapan pun nota dibuat, selama barangnya belum diterima pelanggan (lihat 7.5).
 8. Prinsip offline-ready tetap dipasang sejak R1 (`client_uuid`, nomor nota per register, snapshot harga).
@@ -139,7 +139,7 @@ Toko
 | D23 | Nama DB toko | `store_{nama_toko}` dalam snake_case, mis. `store_mitra_utama`. Prefiks nomor nota terpisah (`receipt_prefix`, mis. `MU`) | ✔ Anda; prefiks = usul |
 | D16 | Pembulatan harga | **Tidak ada** | ✔ Anda |
 | D17 | Void | **Sebelum dibayar:** batal langsung + dicatat (`sale_cancellations`). **Sesudah dibayar:** ajukan, Admin menyetujui, hanya di shift berjalan; sesudahnya lewat Retur. **Pengecualian nota COD yang belum diantar:** Kasir atau Admin langsung mem-void dengan alasan, kapan pun nota dibuat, tanpa persetujuan (7.5); DP tunai ikut mengurangi tunai seharusnya shift pembatal, dan nota menyimpan siapa, kapan, dan alasannya | ✔ Anda + usul |
-| D18 | Retur | Tanpa batas hari; approval Admin wajib; selisih boleh dikembalikan tunai; stok kembali ke gudang jual atau Dead Stock | ✔ Anda |
+| D18 | Retur | Tanpa batas hari; approval Admin wajib; selisih boleh dikembalikan tunai; **barang retur masuk Gudang Retur (bukan stok jual), diperiksa lewat opname gudang retur, lalu otomatis dibagi ke stok jual gudang asal / dead stock / barang DG** (7.7); kasir dan admin tidak memilih nasib barang saat retur | ✔ Anda |
 | D19 | Pelanggan, kredit & hutang | **Dihapus dari Fase 1** (wireframe 16 & 23): tidak ada `customers`, penjualan hutang, pembayaran hutang. Tukar barang pada retur tetap ada (nilai retur dipotong otomatis di layar Retur, bukan metode bayar yang dipilih kasir) | ✔ Anda |
 | D24 | Pembelian dari supplier | **Modul terpisah** dari penerimaan kontainer: `purchases` + `purchase_items`; penerimaan dapat merujuk pembelian **full atau partial**; harga/modal FIFO diambil dari pembelian | ✔ Anda |
 | D25 | ~~Offline~~ | ~~Tetap wajib, dikerjakan di Fase 1b~~ — **digantikan D34** | ✔ Anda |
@@ -1460,7 +1460,7 @@ erDiagram
         decimal unit_price "from original sale"
         decimal cost_total "cost of restored layers"
         decimal refund_subtotal
-        enum disposition "resellable, dead_stock"
+        enum disposition "resellable, dead_stock; kosong untuk retur baru (masuk gudang retur)"
         bigint destination_warehouse_id FK
         string condition_note
     }
@@ -1865,8 +1865,9 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 
 **Aturan bisnis**
 1. Retur selalu merujuk nota asli (A4); qty ≤ terjual − sudah diretur. **Tidak ada batas hari** (D18).
-2. **Disposisi per item:** `resellable` → stok kembali ke gudang jual; `dead_stock` → gudang `dead_stock`. Histori stok `sale_return`. Penanganan dead stock lanjutan (jual diskon, musnah, retur supplier) = Fase 2; Fase 1: transfer gudang (dijual lagi) atau opname (musnah).
-3. **Nilai** dari `unit_price` snapshot nota asli; laba dibalik sebesar modal **layer FIFO yang dipulihkan** (`cost_total`). Retur *resellable* mengisi kembali layer yang dipakai nota asli; *dead stock* membuat layer baru di gudang Dead Stock.
+2. **Gudang Retur:** setiap gudang jual punya **satu gudang retur** (tipe `returns`, kolom `returns_for_warehouse_id` menunjuk gudang jual itu; toko lama dibuatkan lewat migrasi, toko baru lewat seeder). Barang yang diretur masuk gudang retur milik **gudang tempat nota itu menjual**, histori stok `sale_return`. Stok di sana **tidak dijual** dan tidak dihitung sebagai stok jual atau dead stock; daftar barang hanya menampilkan "+ X retur menunggu". Kasir/Admin **tidak memilih** "dijual lagi / dead stock" (kolom `sale_return_items.disposition` kosong untuk retur baru; hanya terisi pada retur lama). Berlaku untuk semua retur: refund, tukar barang, dan retur dari surat jalan. Uang, kredit, dan tukar barang tetap diselesaikan saat retur disetujui.
+2a. **Pemeriksaan retur (opname gudang retur):** opname untuk gudang retur selalu berupa *Pemeriksaan Retur* (alasan dan cakupan tidak ditanyakan; alasan per barang juga tidak diisi). Barangnya otomatis semua yang menunggu di gudang itu. Setelah dihitung, **setiap barang yang dihitung wajib diputuskan** (dead stock + barang DG + kembali ke stok jual = jumlah dihitung) dan ditandai sudah direview. Selisih dari catatan ditulis dulu sebagai penyesuaian. Saat diposting, tiap unit dipindah: ke **stok jual gudang asal** (gulungan utuh kembali sebagai gulungan utuh), ke **gudang dead stock**, atau ke **barang DG** ("(DG) nama") di gudang asal; gudang retur kembali kosong. Penanganan dead stock lanjutan (jual diskon, musnah, retur supplier) = Fase 2.
+3. **Nilai** dari `unit_price` snapshot nota asli; laba dibalik sebesar modal **layer FIFO yang dipulihkan** (`cost_total`). Retur masuk gudang retur; layer FIFO baru dipindah ke tujuan akhirnya saat pemeriksaan diposting (FIFO sendiri baru di R2).
 4. **Default metode refund** mengikuti metode pembayaran nota asli (bisa diubah); kredit/hutang pelanggan tidak ada di Fase 1.
 5. **Refund:** metode `cash`/`transfer`/`qris`/`edc`; tunai tercatat sebagai kas keluar di shift berjalan.
 6. **Tukar barang:** barang pengganti dipilih **di layar Retur** (bukan lewat tab metode bayar kasir) → sistem membuat penjualan baru terhubung (`exchange_sale_id`) dan memotong nilai retur otomatis (`return_credit`, internal); bila pengganti lebih mahal pelanggan membayar selisih; bila lebih murah **selisih boleh dikembalikan tunai**.

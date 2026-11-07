@@ -8,7 +8,7 @@ const props = defineProps({
     /**
      * The item being decided: its product, base unit, the shortage found (positive) and what the server knows about its
      * DG product: the SKU it would take, a reason it cannot have one, and the price it has now.
-     * @type {{productName: string, baseUnit: string, shortage: number, damagedGoodsSku: string, damagedGoodsProblem: string|null, existingName: string|null, existingSku: string|null, existingPrice: string|null, originalCost: string|null, originalPrice: string|null}|null}
+     * @type {{productName: string, baseUnit: string, shortage: number, damagedGoodsSku: string, damagedGoodsProblem: string|null, existingName: string|null, existingSku: string|null, existingPrice: string|null, originalCost: string|null, originalPrice: string|null, isReturn?: boolean}|null}
      */
     item: { type: Object, default: null },
     /** The decision typed so far, to start from. @type {{dead: string, dg: string, full: string, price: string}} */
@@ -77,8 +77,9 @@ function save() {
     <q-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)">
         <q-card v-if="item" class="damaged">
             <q-card-section>
-                <div class="damaged__title">Keputusan barang rusak</div>
-                <small class="damaged__hint">{{ item.productName }} kurang {{ formatQuantity(item.shortage) }} {{ item.baseUnit }}. Bagi jumlah itu sampai pas.</small>
+                <div class="damaged__title">{{ item.isReturn ? 'Keputusan barang retur' : 'Keputusan barang rusak' }}</div>
+                <small v-if="item.isReturn" class="damaged__hint">{{ item.productName }} dihitung {{ formatQuantity(item.shortage) }} {{ item.baseUnit }} di gudang retur. Tentukan ke mana semuanya pergi sampai pas.</small>
+                <small v-else class="damaged__hint">{{ item.productName }} kurang {{ formatQuantity(item.shortage) }} {{ item.baseUnit }}. Bagi jumlah itu sampai pas.</small>
             </q-card-section>
 
             <q-card-section class="damaged__fields">
@@ -97,11 +98,11 @@ function save() {
                     </div>
                     <q-input v-model="price" type="number" min="0" step="any" outlined dense prefix="Rp" :label="`Harga jual DG per ${item.baseUnit}`" :hint="hintOfPrice" />
                 </template>
-                <q-input v-model="full" type="number" min="0" step="any" outlined dense :suffix="item.baseUnit" label="Layak jual harga penuh" hint="Ternyata tidak rusak, tetap di stok jual." />
+                <q-input v-model="full" type="number" min="0" step="any" outlined dense :suffix="item.baseUnit" :label="item.isReturn ? 'Kembali ke stok jual' : 'Layak jual harga penuh'" :hint="item.isReturn ? 'Masih bagus, dikembalikan ke gudang asal barang.' : 'Ternyata tidak rusak, tetap di stok jual.'" />
 
                 <div class="damaged__quick">
                     <q-btn flat dense no-caps size="sm" color="primary" label="Semua dead stock" @click="putAllIn('dead')" />
-                    <q-btn flat dense no-caps size="sm" color="primary" label="Semua layak jual penuh" @click="putAllIn('full')" />
+                    <q-btn flat dense no-caps size="sm" color="primary" :label="item.isReturn ? 'Semua kembali ke stok jual' : 'Semua layak jual penuh'" @click="putAllIn('full')" />
                 </div>
 
                 <div class="damaged__remaining" :class="{ 'damaged__remaining--ok': remaining === 0 }">

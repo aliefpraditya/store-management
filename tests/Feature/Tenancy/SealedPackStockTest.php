@@ -188,23 +188,59 @@ class SealedPackStockTest extends TestCase
         $this->assertSame(['quantity' => '400.000', 'intact_packs' => 2], $this->shelfOf($this->wire));
     }
 
-    public function test_a_returned_roll_goes_back_among_the_whole_rolls_and_returned_metres_do_not(): void
+    public function test_a_returned_roll_waits_in_the_returns_warehouse_as_a_whole_roll_and_returned_metres_do_not(): void
     {
         $this->sell([['ROL', 1], ['MTR', 30]]);
         $sale = $this->store->run(fn () => Sale::query()->with('items')->sole());
         $rollLine = $sale->items->firstWhere('unit_name', 'ROL');
         $metreLine = $sale->items->firstWhere('unit_name', 'MTR');
+        $shelfAfterSale = $this->shelfOf($this->wire);
 
         $this->store->run(fn () => app(SaleReturnService::class)->createApproved($sale, $this->shift, $this->admin, [
             'client_uuid' => (string) Str::uuid(),
             'refund_method' => 'cash',
             'items' => [
-                ['sale_item_id' => $rollLine->id, 'quantity' => 1, 'disposition' => 'resellable'],
-                ['sale_item_id' => $metreLine->id, 'quantity' => 30, 'disposition' => 'resellable'],
+                ['sale_item_id' => $rollLine->id, 'quantity' => 1],
+                ['sale_item_id' => $metreLine->id, 'quantity' => 30],
             ],
         ]));
 
-        $this->assertSame(['quantity' => '400.000', 'intact_packs' => 3], $this->shelfOf($this->wire));
+        $this->assertSame($shelfAfterSale, $this->shelfOf($this->wire));
+        $this->assertSame(['quantity' => '130.000', 'intact_packs' => 1], $this->returnsShelfOf($this->wire));
+    }
+
+    public function test_inspecting_the_returns_warehouse_puts_the_roll_back_among_the_whole_rolls_and_the_metres_loose(): void
+    {
+        $this->sell([['ROL', 1], ['MTR', 30]]);
+        $sale = $this->store->run(fn () => Sale::query()->with('items')->sole());
+        $this->store->run(fn () => app(SaleReturnService::class)->createApproved($sale, $this->shift, $this->admin, [
+            'client_uuid' => (string) Str::uuid(),
+            'refund_method' => 'cash',
+            'items' => $sale->items->map(fn ($line): array => ['sale_item_id' => $line->id, 'quantity' => $line->quantity])->all(),
+        ]));
+        $shelfAfterSale = $this->shelfOf($this->wire);
+
+        $opname = $this->store->run(function () {
+            $opnames = app(StockOpnameService::class);
+            $opname = $opnames->create([
+                'warehouse_id' => $this->returnsWarehouse()->id,
+                'opname_date' => now()->toDateString(),
+                'scope' => StockOpnameScope::Selected->value,
+                'reason_code' => StockOpnameReason::ReturnsCheck->value,
+            ], $this->admin->id);
+            $itemId = StockOpnameItem::query()->where('stock_opname_id', $opname->id)->value('id');
+
+            $opnames->start($opname);
+            $opnames->saveCounts($opname, [['item_id' => $itemId, 'reason_id' => null, 'note' => null, 'parts' => [['unit_code' => 'ROL', 'quantity' => '1'], ['unit_code' => 'MTR', 'quantity' => '30']]]]);
+            $opnames->finishCounting($opname);
+            $opnames->saveReview($opname, $this->admin->id, [['item_id' => $itemId, 'reason_id' => null, 'note' => null, 'is_reviewed' => true, 'dead_stock_quantity' => '0', 'damaged_goods_quantity' => '0', 'full_price_quantity' => '130', 'damaged_goods_price' => null]]);
+            $opnames->post($opname, $this->admin->id);
+
+            return $opname;
+        });
+
+        $this->assertSame(['quantity' => '0.000', 'intact_packs' => 0], $this->returnsShelfOf($this->wire));
+        $this->assertSame(['quantity' => '400.000', 'intact_packs' => $shelfAfterSale['intact_packs'] + 1], $this->shelfOf($this->wire));
     }
 
     public function test_an_opname_counts_whole_rolls_apart_from_loose_metres(): void

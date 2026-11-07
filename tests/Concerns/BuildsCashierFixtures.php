@@ -44,6 +44,26 @@ trait BuildsCashierFixtures
         return $this->store->run(fn () => Warehouse::query()->where('code', 'MAIN')->firstOrFail());
     }
 
+    /** The returns warehouse that goes with the main warehouse. */
+    protected function returnsWarehouse(): Warehouse
+    {
+        return $this->store->run(fn () => Warehouse::query()->where('code', 'RETUR')->firstOrFail());
+    }
+
+    /**
+     * What waits for inspection in the returns warehouse.
+     *
+     * @return array{quantity: string, intact_packs: int}
+     */
+    protected function returnsShelfOf(Product $product): array
+    {
+        return $this->store->run(function () use ($product): array {
+            $stock = Stock::query()->where('product_id', $product->id)->where('warehouse_id', $this->returnsWarehouse()->id)->first();
+
+            return ['quantity' => (string) ($stock->quantity ?? '0.000'), 'intact_packs' => $stock->intact_packs ?? 0];
+        });
+    }
+
     /**
      * An item counted in PCS (cost 6.000, price 10.000) and sold by the DUS of 12 (cost 70.000, price 110.000).
      * The stock is in PCS in the main warehouse.

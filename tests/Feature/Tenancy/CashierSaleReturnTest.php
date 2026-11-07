@@ -70,13 +70,13 @@ class CashierSaleReturnTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function body(Sale $sale, int|string $quantity, string $disposition = 'resellable'): array
+    private function body(Sale $sale, int|string $quantity): array
     {
         return [
             'client_uuid' => (string) Str::uuid(),
             'refund_method' => 'cash',
             'reason' => 'Rusak',
-            'items' => [['sale_item_id' => $sale->items[0]->id, 'quantity' => $quantity, 'disposition' => $disposition]],
+            'items' => [['sale_item_id' => $sale->items[0]->id, 'quantity' => $quantity]],
         ];
     }
 
@@ -95,26 +95,25 @@ class CashierSaleReturnTest extends TestCase
             ->assertJsonPath('data.default_refund_method', 'cash')
             ->assertJsonPath('data.is_approved_at_once', false)
             ->assertJsonCount(4, 'data.refund_methods')
-            ->assertJsonCount(2, 'data.dispositions')
             ->assertJsonPath('data.lines.0.quantity', '5.000')
             ->assertJsonPath('data.lines.0.returned', '2.000')
             ->assertJsonPath('data.lines.0.remaining', '3.000')
             ->assertJsonCount(1, 'data.returns')
             ->assertJsonPath('data.returns.0.status', 'pending')
             ->assertJsonPath('data.returns.0.items.0.name', 'Kuas')
-            ->assertJsonPath('data.returns.0.items.0.disposition_label', 'Dijual lagi');
+            ->assertJsonPath('data.returns.0.items.0.disposition_label', 'Gudang retur, menunggu pemeriksaan');
     }
 
     public function test_a_cashier_asks_for_a_return_and_nothing_moves_until_an_admin_approves(): void
     {
         $sale = $this->sellBrushes($this->cashier, $this->shift, 5);
 
-        $response = $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 2, 'dead_stock'))
+        $response = $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 2))
             ->assertCreated()
             ->assertJsonPath('data.status', 'pending')
             ->assertJsonPath('data.status_label', 'Menunggu persetujuan')
             ->assertJsonPath('data.refund_amount', '20000.00')
-            ->assertJsonPath('data.items.0.disposition', 'dead_stock');
+            ->assertJsonPath('data.items.0.disposition', null);
 
         $saleReturn = $this->store->run(fn () => SaleReturn::query()->sole());
         $this->assertSame([$this->cashier->id, null, $this->shift->id], [$saleReturn->requested_by, $saleReturn->approved_by, $saleReturn->cash_shift_id]);
@@ -135,7 +134,7 @@ class CashierSaleReturnTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('data.status', 'completed');
 
-        $this->assertSame('97.000', $this->stockInPieces($this->brush));
+        $this->assertSame('95.000', $this->stockInPieces($this->brush));
     }
 
     public function test_a_return_needs_a_running_shift(): void
@@ -156,7 +155,6 @@ class CashierSaleReturnTest extends TestCase
         $store = $this->signedUrl('receipts.returns.store', ['sale' => $sale->id]);
 
         $this->actingAs($this->cashier)->postJson($store, [...$this->body($sale, 1), 'refund_method' => 'return_credit'])->assertUnprocessable()->assertJsonValidationErrors('refund_method');
-        $this->actingAs($this->cashier)->postJson($store, $this->body($sale, 1, 'lost'))->assertUnprocessable()->assertJsonValidationErrors('items.0.disposition');
         $this->actingAs($this->cashier)->postJson($store, $this->body($sale, 0))->assertUnprocessable()->assertJsonPath('message', 'Pilih minimal satu barang yang diretur.');
         $this->actingAs($this->cashier)->postJson($store, $this->body($sale, 6))->assertUnprocessable()->assertJsonPath('message', 'Kuas melebihi yang masih bisa diretur, sisa 5 PCS.');
         $this->actingAs($this->cashier)->postJson($store, [...$this->body($sale, 1), 'refund_method' => 'transfer'])->assertUnprocessable()

@@ -30,7 +30,7 @@ class SaleReturnItem extends Model
             'unit_price' => 'decimal:2',
             'cost_total' => 'decimal:2',
             'refund_subtotal' => 'decimal:2',
-            'disposition' => ReturnDisposition::class,
+            'disposition' => ReturnDisposition::class, // null for returns made since goods wait in the returns warehouse
         ];
     }
 

@@ -24,7 +24,10 @@ class StockOpnameItemResource extends JsonResource
     public function toArray(Request $request): array
     {
         $variance = $this->isCounted() ? BigDecimal::of($this->getAttribute('variance_quantity')) : null;
-        $isDamaged = $this->reason?->behavior->needsDamageDecision() ?? false;
+        $isReturnsCheck = $this->relationLoaded('stockOpname') && $this->stockOpname?->reason_code?->isReturnsCheck() === true;
+        $isDamaged = $isReturnsCheck
+            ? $this->isCounted() && BigDecimal::of((string) $this->counted_quantity)->isPositive()
+            : $this->reason?->behavior->needsDamageDecision() ?? false;
         $isSealedPackProduct = $this->product->sealedPackUnit() !== null;
 
         return [

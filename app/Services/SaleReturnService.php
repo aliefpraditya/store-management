@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Enums\CashShiftStatus;
 use App\Enums\PaymentMethod;
-use App\Enums\ReturnDisposition;
 use App\Enums\ReturnResolution;
 use App\Enums\SaleReturnProgress;
 use App\Enums\SaleReturnStatus;
@@ -41,7 +40,7 @@ use Illuminate\Support\Str;
  *
  * `client_uuid` makes a double submit return the first return instead of refunding twice.
  *
- * @phpstan-type ReturnLine array{sale_item_id: int, quantity: numeric-string|float|int, disposition: string}
+ * @phpstan-type ReturnLine array{sale_item_id: int, quantity: numeric-string|float|int}
  * @phpstan-type ExchangeLine array{product_unit_id: int, quantity: numeric-string|float|int}
  * @phpstan-type ExchangePayment array{method: string, amount: numeric-string|float|int, reference?: string|null}
  * @phpstan-type ReturnInput array{client_uuid: string, resolution?: string, refund_method: string, refund_account?: string|null, reason?: string|null, items: list<ReturnLine>, exchange_items?: list<ExchangeLine>, exchange_payments?: list<ExchangePayment>}
@@ -503,7 +502,6 @@ class SaleReturnService
         return $requestedLines->map(function (array $line) use ($saleItems, $returnedQuantityBySaleItemId, $sale): array {
             $saleItem = $saleItems->get($line['sale_item_id']) ?? throw SaleReturnException::lineNotOnSale();
             $remaining = $this->remainingQuantity($saleItem, $returnedQuantityBySaleItemId);
-            $disposition = ReturnDisposition::from($line['disposition']);
 
             if ($line['quantity']->isGreaterThan($remaining)) {
                 throw SaleReturnException::exceedsReturnable($saleItem->product_name, $this->quantityText($remaining, $saleItem->unit_name));
@@ -518,25 +516,20 @@ class SaleReturnService
                 'unit_price' => $saleItem->unit_price,
                 'cost_total' => (string) BigDecimal::of($saleItem->cost_total)->multipliedBy($line['quantity'])->dividedBy($saleItem->quantity, 2, RoundingMode::HalfUp),
                 'refund_subtotal' => (string) $line['quantity']->multipliedBy($saleItem->unit_price)->toScale(2, RoundingMode::HalfUp),
-                'disposition' => $disposition,
-                'destination_warehouse_id' => $this->warehouseFor($disposition, $sale),
+                'destination_warehouse_id' => $this->returnsWarehouseFor($sale),
             ];
         })->values();
     }
 
     /**
-     * Goods to be sold again go back where the receipt took them from; dead stock goes to the dead-stock warehouse.
+     * Returned goods wait in the returns warehouse of the warehouse the receipt took them from, until an opname of that
+     * returns warehouse inspects them and sends them on (back to the shelf, to dead stock, or to the DG product).
      *
      * @throws SaleReturnException
      */
-    private function warehouseFor(ReturnDisposition $disposition, Sale $sale): int
+    private function returnsWarehouseFor(Sale $sale): int
     {
-        if ($disposition === ReturnDisposition::Resellable) {
-            return $sale->warehouse_id;
-        }
-
-        return Warehouse::query()->where('type', $disposition->warehouseType())->where('is_active', true)->value('id')
-            ?? throw SaleReturnException::noWarehouseFor($disposition->label());
+        return Warehouse::returnsFor($sale->warehouse_id)?->id ?? throw SaleReturnException::noReturnsWarehouse();
     }
 
     /**

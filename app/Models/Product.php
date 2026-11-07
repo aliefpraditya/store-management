@@ -138,7 +138,8 @@ class Product extends Model implements AuditableContract
         where stocks.product_id = products.id and warehouses.type = ?) < products.min_stock)';
 
     /**
-     * Adds `sellable_stock` and `dead_stock`: the product's total in the warehouses of each type, `sellable_intact_packs` and
+     * Adds `sellable_stock`, `dead_stock` and `returns_stock` (returned goods waiting to be inspected, not for sale): the product's
+     * total in the warehouses of each type, `sellable_intact_packs` and
      * `dead_intact_packs`: how many whole sealed packs of it are in the warehouses of each type, and `is_below_minimum`, see {@see self::BELOW_MINIMUM_SQL}.
      *
      * @param  Builder<Product>  $query
@@ -154,6 +155,7 @@ class Product extends Model implements AuditableContract
             'products.*',
             'sellable_stock' => $totalIn(WarehouseType::Sellable),
             'dead_stock' => $totalIn(WarehouseType::DeadStock),
+            'returns_stock' => $totalIn(WarehouseType::Returns),
             'sellable_intact_packs' => $totalIn(WarehouseType::Sellable, 'intact_packs'),
             'dead_intact_packs' => $totalIn(WarehouseType::DeadStock, 'intact_packs'),
         ])->selectRaw(self::BELOW_MINIMUM_SQL.' as is_below_minimum', [WarehouseType::Sellable->value]);

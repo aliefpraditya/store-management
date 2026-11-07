@@ -45,8 +45,8 @@ class SaleReturnResource extends JsonResource
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,
                 'refund_subtotal' => $item->refund_subtotal,
-                'disposition' => $item->disposition->value,
-                'disposition_label' => $item->disposition->label(),
+                'disposition' => $item->disposition?->value,
+                'disposition_label' => $item->disposition?->label() ?? 'Gudang retur, menunggu pemeriksaan',
             ])->values()->all(),
             'is_pending' => $this->status === SaleReturnStatus::Pending,
         ];

@@ -11,7 +11,6 @@ const props = defineProps({
     /** The receipt chosen on the way in, or null. @type {{id: number, number: string, customer_name: string|null, default_refund_method: string, lines: object[]}|null} */
     sale: { type: Object, default: null },
     refund_methods: { type: Array, required: true },
-    dispositions: { type: Array, required: true },
     resolutions: { type: Array, required: true },
     urls: { type: Object, required: true },
 });
@@ -70,7 +69,7 @@ function chooseSale(sale) {
     chosenSale.value = sale;
     form.sale_id = sale?.id ?? null;
     form.refund_method = sale?.default_refund_method ?? 'cash';
-    form.items = (sale?.lines ?? []).map((line) => ({ sale_item_id: line.id, quantity: 0, disposition: 'resellable' }));
+    form.items = (sale?.lines ?? []).map((line) => ({ sale_item_id: line.id, quantity: 0 }));
 }
 
 if (props.sale) {
@@ -152,7 +151,7 @@ function submit() {
             <template v-if="chosenSale">
                 <section class="card">
                     <h2>Barang yang diretur</h2>
-                    <p class="hint">Isi jumlah yang dikembalikan pelanggan dan pilih ke mana barangnya. Biarkan 0 untuk barang yang tidak diretur.</p>
+                    <p class="hint">Isi jumlah yang dikembalikan pelanggan. Biarkan 0 untuk barang yang tidak diretur. Barangnya masuk ke gudang retur dan baru bisa dijual atau jadi dead stock setelah diperiksa lewat opname.</p>
                     <p v-if="form.errors.items" class="error">{{ form.errors.items }}</p>
 
                     <table class="lines">
@@ -162,7 +161,6 @@ function submit() {
                                 <th class="lines__right">Di nota</th>
                                 <th class="lines__right">Bisa diretur</th>
                                 <th class="lines__qty">Diretur</th>
-                                <th class="lines__where">Barang masuk ke</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -183,22 +181,6 @@ function submit() {
                                         :disable="Number(line.remaining) <= 0"
                                         :error="!!form.errors[`items.${index}.quantity`]"
                                         :aria-label="`Jumlah retur ${line.name}`"
-                                    />
-                                </td>
-                                <td class="lines__where">
-                                    <q-select
-                                        v-model="form.items[index].disposition"
-                                        :options="dispositions"
-                                        option-value="value"
-                                        option-label="label"
-                                        emit-value
-                                        map-options
-                                        behavior="menu"
-                                        outlined
-                                        dense
-                                        hide-bottom-space
-                                        :disable="Number(line.remaining) <= 0"
-                                        :aria-label="`Tujuan ${line.name}`"
                                     />
                                 </td>
                             </tr>
@@ -309,11 +291,6 @@ function submit() {
 }
 
 .lines .lines__qty {
-    width: 150px;
-    padding-left: 14px;
-}
-
-.lines .lines__where {
     width: 150px;
     padding-left: 14px;
 }

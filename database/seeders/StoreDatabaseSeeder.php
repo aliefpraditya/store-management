@@ -10,7 +10,7 @@ use App\Models\Warehouse;
 use Illuminate\Database\Seeder;
 
 /**
- * Data every store database starts with: the two warehouses, the first cash register (K1, selling from the main
+ * Data every store database starts with: the three warehouses (main, dead stock, returns), the first cash register (K1, selling from the main
  * warehouse), the usual expense categories and the reasons of an opname variance. Safe to run again: existing rows are
  * left alone.
  */
@@ -34,6 +34,11 @@ class StoreDatabaseSeeder extends Seeder
         Warehouse::query()->firstOrCreate(
             ['code' => 'DEAD'],
             ['name' => 'Dead Stock', 'type' => WarehouseType::DeadStock, 'is_default' => false, 'is_active' => true],
+        );
+
+        Warehouse::query()->firstOrCreate(
+            ['code' => 'RETUR'],
+            ['name' => 'Retur', 'type' => WarehouseType::Returns, 'returns_for_warehouse_id' => $mainWarehouse->id, 'is_default' => false, 'is_active' => true],
         );
 
         Register::query()->firstOrCreate(

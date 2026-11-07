@@ -19,6 +19,9 @@ enum StockOpnameReason: string
     case InterStoreTransfer = 'inter_store_transfer';
     case Correction = 'correction';
 
+    /** The inspection of a returns warehouse: what is counted there is sent on (shelf, dead stock or DG) when it is posted. */
+    case ReturnsCheck = 'returns_check';
+
     /**
      * With this reason the admin types what arrived, not the total on the shelf, and that quantity is added to the stock.
      */
@@ -28,21 +31,28 @@ enum StockOpnameReason: string
     }
 
     /**
-     * Whether a new opname may be made for this reason.
+     * Whether a new opname may be chosen with this reason. The inspection of a returns warehouse is not chosen: it is what
+     * an opname of a returns warehouse always is.
      */
     public function isSelectable(): bool
     {
         return in_array($this, [self::Routine, self::OpeningBalance, self::StockIncrease], true);
     }
 
+    public function isReturnsCheck(): bool
+    {
+        return $this === self::ReturnsCheck;
+    }
+
     /**
      * A routine count finds variances the admin has to explain and review item by item before posting: why (the item's
-     * reason), and for damaged goods where they go. Arrivals and opening stock are the count itself, and the legacy
-     * reasons were made before this existed.
+     * reason), and for damaged goods where they go. The inspection of returned goods is reviewed the same way, and also
+     * decides where every counted unit goes. Arrivals and opening stock are the count itself, and the legacy reasons were
+     * made before this existed.
      */
     public function requiresVarianceReview(): bool
     {
-        return $this === self::Routine;
+        return in_array($this, [self::Routine, self::ReturnsCheck], true);
     }
 
     /**
@@ -63,6 +73,7 @@ enum StockOpnameReason: string
             self::Lost => 'Hilang',
             self::InterStoreTransfer => 'Transfer antar toko',
             self::Correction => 'Koreksi',
+            self::ReturnsCheck => 'Pemeriksaan Retur',
         };
     }
 }

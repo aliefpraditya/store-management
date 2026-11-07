@@ -70,7 +70,9 @@ class StockOpnameController extends Controller
         return Inertia::render('Tenant/StockOpnames/Create', [
             'store_url' => route('tenant.stock-opnames.store', ['tenant' => tenant('code')]),
             'index_url' => route('tenant.stock-opnames.index', ['tenant' => tenant('code')]),
-            'warehouses' => Warehouse::query()->where('is_active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name']),
+            'warehouses' => Warehouse::query()->where('is_active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name', 'type'])
+                ->map(fn (Warehouse $warehouse): array => ['id' => $warehouse->id, 'name' => $warehouse->name, 'is_returns' => $warehouse->isReturns()])
+                ->all(),
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
             'brands' => Brand::query()->orderBy('name')->get(['id', 'name']),
             'scopes' => collect(StockOpnameScope::cases())->map(fn (StockOpnameScope $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),

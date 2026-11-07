@@ -54,9 +54,9 @@ class SaleReturnException extends Exception
         return new self('Buka shift dulu untuk membuat retur.');
     }
 
-    public static function noWarehouseFor(string $dispositionLabel): self
+    public static function noReturnsWarehouse(): self
     {
-        return new self("Gudang untuk \"{$dispositionLabel}\" belum ada di toko ini.");
+        return new self('Gudang retur untuk gudang nota ini belum ada di toko. Hubungi Admin.');
     }
 
     /**

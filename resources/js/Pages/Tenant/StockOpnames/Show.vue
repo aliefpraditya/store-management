@@ -145,19 +145,30 @@ const editableRow = (item) => (props.opname.can_count ? typedCounts.value[item.i
 const hasVariance = (item) => varianceOf(item) !== null && varianceOf(item) !== 0;
 
 /** Counting lets every item be given a reason; reviewing only the ones that have a variance. */
-const isReasonEditable = (item) => props.opname.can_count || (isReviewing.value && hasVariance(item));
+const isReasonEditable = (item) => props.opname.can_count || (isReviewing.value && (props.opname.is_returns_check || hasVariance(item)));
+
+/** An inspection of returns is always that, so its items are given no reason; only a note and where the goods go. */
+const isReasonPickable = (item) => !props.opname.is_returns_check && isReasonEditable(item);
 
 const reasonOptionsOf = (item) =>
     props.reasons.filter((reason) => reason.is_active || reason.id === editableRow(item)?.reason_id).map((reason) => ({ label: reason.name, value: reason.id }));
 
 const reasonOf = (reasonId) => props.reasons.find((reason) => reason.id === reasonId) ?? null;
 
-const isDamagedReason = (item) => reasonOf(reviews.value[item.id]?.reason_id)?.needs_damage_decision ?? false;
+/**
+ * Whether the item has to be reviewed: one with a variance, or, when inspecting returns, every counted one, since each unit
+ * still has to be sent on to the shelf, dead stock or a DG product.
+ */
+const needsReview = (item) => (props.opname.is_returns_check ? item.counted_quantity !== null : hasVariance(item));
+
+/** A damaged reason asks where the damaged units go; an inspection of returns asks it for everything counted. */
+const isDamagedReason = (item) =>
+    props.opname.is_returns_check ? Number(item.counted_quantity ?? 0) > 0 : (reasonOf(reviews.value[item.id]?.reason_id)?.needs_damage_decision ?? false);
 
 const damageNumber = (value) => (value === '' ? 0 : Number(value));
 
-/** What the damaged reason asks to be split: the shortage, in the base unit. */
-const shortageOf = (item) => Math.abs(Math.min(varianceOf(item) ?? 0, 0));
+/** What the decision has to split, in the base unit: the shortage of a damaged reason, or everything counted when inspecting returns. */
+const shortageOf = (item) => (props.opname.is_returns_check ? Number(item.counted_quantity ?? 0) : Math.abs(Math.min(varianceOf(item) ?? 0, 0)));
 
 /**
  * @returns {boolean} whether the three parts of the damaged decision are filled and add up to the shortage
@@ -174,12 +185,19 @@ function isDamageDecided(item) {
     return sum === shortageOf(item) && (damageNumber(row.dg) === 0 || (row.price !== '' && item.damage?.damaged_goods_problem === null));
 }
 
-/** An item can be marked reviewed once it has a reason and, for damaged goods, a complete decision. */
+/**
+ * An item can be marked reviewed once a variance has a reason and, for damaged goods (or any returned unit), a complete
+ * decision. A returned item without a variance needs no reason.
+ */
 function isReviewable(item) {
     const row = reviews.value[item.id];
 
-    if (!hasVariance(item) || row.reason_id === null) {
+    if (!needsReview(item) || (!props.opname.is_returns_check && row.reason_id === null)) {
         return false;
+    }
+
+    if (props.opname.is_returns_check) {
+        return !isDamagedReason(item) || isDamageDecided(item);
     }
 
     return !isDamagedReason(item) || (varianceOf(item) < 0 && isDamageDecided(item));
@@ -215,6 +233,7 @@ const damageDialogItem = computed(() => {
         productName: item.product.name,
         baseUnit: item.base_unit,
         shortage: shortageOf(item),
+        isReturn: props.opname.is_returns_check,
         damagedGoodsSku: item.damage?.damaged_goods_sku ?? '',
         damagedGoodsProblem: item.damage?.damaged_goods_problem ?? null,
         existingName: item.damage?.existing?.name ?? null,
@@ -238,12 +257,14 @@ function saveDamageDecision(decision) {
 const damageSummary = (item) => {
     const row = reviews.value[item.id];
 
-    return isDamageDecided(item) ? `Dead stock ${row.dead} · DG ${row.dg} · Penuh ${row.full}` : 'Tentukan keputusan';
+    const normalLabel = props.opname.is_returns_check ? 'Normal' : 'Penuh';
+
+    return isDamageDecided(item) ? `Dead stock ${row.dead} · DG ${row.dg} · ${normalLabel} ${row.full}` : 'Tentukan keputusan';
 };
 
 const uncountedCount = computed(() => props.summary.items_count - props.summary.counted_count);
 
-const unreviewedCount = computed(() => props.summary.variance_count - props.summary.reviewed_count);
+const unreviewedCount = computed(() => props.summary.review_count - props.summary.reviewed_count);
 
 /**
  * @returns {number|null} the typed count in the base unit, or null while nothing is typed
@@ -495,8 +516,8 @@ const isPostOpen = ref(false);
 
 const postMessage = computed(() =>
     props.opname.is_counting_arrivals
-        ? `Stok sekitar ${props.summary.variance_count} barang akan bertambah, dengan nilai sekitar ${formatMoney(props.summary.variance_value)}. Angka ini dari tampilan terakhir. Setelah diposting, opname tidak bisa diubah.`
-        : `Stok sekitar ${props.summary.variance_count} barang akan diperbarui, dengan nilai selisih sekitar ${formatMoney(props.summary.variance_value)}. Angka ini dari tampilan terakhir. Setelah diposting, opname tidak bisa diubah.`,
+        ? `Stok sekitar ${props.summary.variance_count} barang akan bertambah, dengan nilai sekitar ${formatMoney(props.summary.variance_value)}. Setelah diposting, opname tidak bisa diubah.`
+        : `Stok sekitar ${props.summary.variance_count} barang akan diperbarui, dengan nilai selisih sekitar ${formatMoney(props.summary.variance_value)}. Setelah diposting, opname tidak bisa diubah.`,
 );
 
 /** How many damaged goods rows the posting confirmation lists before saying how many more there are. */
@@ -609,7 +630,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
             <div class="kpi"><small>{{ opname.is_counting_arrivals ? 'Diisi' : 'Dihitung' }}</small><b>{{ summary.counted_count }} / {{ summary.items_count }}</b></div>
             <div v-if="opname.requires_review && opname.status !== 'counting' && opname.status !== 'draft'" class="kpi">
                 <small>Selisih sudah direview</small>
-                <b :class="{ 'kpi--bad': unreviewedCount > 0 }">{{ summary.reviewed_count }} / {{ summary.variance_count }}</b>
+                <b :class="{ 'kpi--bad': unreviewedCount > 0 }">{{ summary.reviewed_count }} / {{ summary.review_count }}</b>
             </div>
             <div class="kpi"><small>{{ opname.is_counting_arrivals ? 'Barang bertambah' : 'Barang ada selisih' }}</small><b>{{ summary.variance_count }}</b></div>
             <div class="kpi">
@@ -644,7 +665,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                         <th>{{ opname.is_counting_arrivals ? 'Jumlah datang' : 'Hitung fisik' }}</th>
                         <th class="lines__right">{{ opname.is_counting_arrivals ? 'Bertambah' : 'Selisih' }}</th>
                         <th v-if="opname.is_counting_arrivals" class="lines__right">Stok setelah</th>
-                        <th>Alasan</th>
+                        <th>{{ opname.is_returns_check ? 'Tujuan barang' : 'Alasan' }}</th>
                         <th>Catatan</th>
                         <th v-if="opname.requires_review && ['review', 'posted'].includes(opname.status)">Direview</th>
                         <th v-if="opname.can_manage_products"></th>
@@ -734,7 +755,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                         <td>
                             <div class="lines__reason-row">
                             <q-select
-                                v-if="isReasonEditable(item)"
+                                v-if="isReasonPickable(item)"
                                 v-model="editableRow(item).reason_id"
                                 :options="reasonOptionsOf(item)"
                                 emit-value
@@ -750,7 +771,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             />
                             <span v-else>{{ item.reason_name ?? '' }}</span>
                             <q-btn
-                                v-if="isReviewing && hasVariance(item) && isDamagedReason(item)"
+                                v-if="isReviewing && needsReview(item) && isDamagedReason(item)"
                                 :unelevated="!isDamageDecided(item)"
                                 :outline="isDamageDecided(item)"
                                 no-caps
@@ -763,7 +784,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             />
                             </div>
                             <small v-if="!isReviewing && item.needs_damage_decision && item.damage && item.damage.dead_stock_quantity !== null" class="lines__muted">
-                                Dead stock {{ formatQuantity(item.damage.dead_stock_quantity) }} · DG {{ formatQuantity(item.damage.damaged_goods_quantity) }} · Penuh {{ formatQuantity(item.damage.full_price_quantity) }}
+                                Dead stock {{ formatQuantity(item.damage.dead_stock_quantity) }} · DG {{ formatQuantity(item.damage.damaged_goods_quantity) }} · {{ opname.is_returns_check ? 'Normal' : 'Penuh' }} {{ formatQuantity(item.damage.full_price_quantity) }}
                             </small>
                         </td>
                         <td>
@@ -782,13 +803,16 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                         </td>
                         <td v-if="opname.requires_review && ['review', 'posted'].includes(opname.status)">
                             <q-checkbox
-                                v-if="isReviewing && hasVariance(item)"
+                                v-if="isReviewing && needsReview(item)"
                                 v-model="reviews[item.id].is_reviewed"
                                 dense
                                 :disable="!isReviewable(item)"
                                 :aria-label="`Sudah direview ${item.product.name}`"
                             >
-                                <q-tooltip v-if="!isReviewable(item)">Pilih alasan{{ isDamagedReason(item) ? ' dan tentukan keputusan barang rusak' : '' }} dulu.</q-tooltip>
+                                <q-tooltip v-if="!isReviewable(item)">
+                                    <template v-if="opname.is_returns_check">Tentukan ke mana barang retur ini pergi dulu.</template>
+                                    <template v-else>Pilih alasan{{ isDamagedReason(item) ? ' dan tentukan keputusan barang rusak' : '' }} dulu.</template>
+                                </q-tooltip>
                             </q-checkbox>
                             <span v-else-if="item.is_reviewed" class="chip chip--ok">Sudah</span>
                             <span v-else class="lines__muted">—</span>

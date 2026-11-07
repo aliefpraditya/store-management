@@ -310,7 +310,8 @@ class StockOpnameTest extends TestCase
         $this->actingAs($this->admin)->get($this->url('create'))->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Tenant/StockOpnames/Create')
             ->where('warehouses.0.id', $this->warehouse()->id)
-            ->has('warehouses', 2)
+            ->has('warehouses', 3)
+            ->where('warehouses.0.is_returns', false)
             ->has('scopes', 2)
             ->where('scopes.0.label', 'Kategori & merek tertentu')
             ->has('brands')

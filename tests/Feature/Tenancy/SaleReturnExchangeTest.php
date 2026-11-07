@@ -130,7 +130,7 @@ class SaleReturnExchangeTest extends TestCase
         $this->assertSame(['exchange', 'completed', '20000.00', '0.00'], [$saleReturn->resolution->value, $saleReturn->status->value, $saleReturn->credit_amount, $saleReturn->refund_amount]);
         $this->assertSame(['110000.00', '110000.00', $this->admin->id, $this->adminShift->id], [$exchangeSale->total, $exchangeSale->paid_total, $exchangeSale->cashier_id, $exchangeSale->cash_shift_id]);
         $this->assertSame(['return_credit' => '20000.00', 'cash' => '90000.00'], $this->paymentsOf($exchangeSale));
-        $this->assertSame('85.000', $this->stockInPieces($this->brush));
+        $this->assertSame('83.000', $this->stockInPieces($this->brush));
         $this->assertSame('140000.00', $this->expectedCash($this->adminShift));
     }
 
@@ -155,7 +155,7 @@ class SaleReturnExchangeTest extends TestCase
         $exchangeSale = $this->exchangeSaleOf($saleReturn);
         $this->assertSame(['50000.00', '30000.00', 'cash'], [$saleReturn->credit_amount, $saleReturn->refund_amount, $saleReturn->refund_method->value]);
         $this->assertSame(['return_credit' => '20000.00'], $this->paymentsOf($exchangeSale));
-        $this->assertSame('98.000', $this->stockInPieces($this->brush));
+        $this->assertSame('93.000', $this->stockInPieces($this->brush));
         $this->assertSame('20000.00', $this->expectedCash($this->adminShift));
     }
 
@@ -233,7 +233,7 @@ class SaleReturnExchangeTest extends TestCase
         $this->assertSame('completed', $approved->status->value);
         $this->assertSame([$cashier->id, $cashierShift->id, '110000.00'], [$exchangeSale->cashier_id, $exchangeSale->cash_shift_id, $exchangeSale->total]);
         $this->assertSame(['return_credit' => '20000.00', 'qris' => '90000.00'], $this->paymentsOf($exchangeSale));
-        $this->assertSame('85.000', $this->stockInPieces($this->brush));
+        $this->assertSame('83.000', $this->stockInPieces($this->brush));
         $this->assertSame('550000.00', $this->expectedCash($cashierShift), 'the register opens with 500.000, plus the 50.000 of the first sale; the exchange was paid by QRIS');
     }
 

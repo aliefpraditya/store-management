@@ -31,6 +31,11 @@ class StockOpnameException extends Exception
         return new self("{$productName}: jumlah {$packUnitCode} yang dihitung harus bilangan bulat, karena hanya yang utuh dihitung {$packUnitCode}. Tulis potongannya dengan satuan yang lebih kecil.");
     }
 
+    public static function notAReturnsWarehouse(): self
+    {
+        return new self('Gudang ini bukan gudang retur, jadi barangnya tidak bisa dilepas ke gudang asal.');
+    }
+
     public static function noProducts(): self
     {
         return new self('Pilih minimal satu barang sebelum mulai menghitung.');

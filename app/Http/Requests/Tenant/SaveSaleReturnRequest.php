@@ -3,14 +3,13 @@
 namespace App\Http\Requests\Tenant;
 
 use App\Enums\PaymentMethod;
-use App\Enums\ReturnDisposition;
 use App\Enums\ReturnResolution;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * A new return for one receipt: how much of which receipt lines comes back, where the goods go, and how the money
- * is paid back. A line left at zero is simply not part of the return.
+ * A new return for one receipt: how much of which receipt lines comes back and how the money is paid back (the goods wait
+ * in the returns warehouse for an opname to inspect them). A line left at zero is simply not part of the return.
  */
 class SaveSaleReturnRequest extends FormRequest
 {
@@ -36,7 +35,6 @@ class SaveSaleReturnRequest extends FormRequest
             'items' => ['required', 'array', 'min:1'],
             'items.*.sale_item_id' => ['required', 'integer', 'distinct', Rule::exists('sale_items', 'id')],
             'items.*.quantity' => ['required', 'numeric', 'min:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'],
-            'items.*.disposition' => ['required', Rule::enum(ReturnDisposition::class)],
             'exchange_items' => [Rule::requiredIf(fn (): bool => $this->input('resolution') === ReturnResolution::Exchange->value), 'array'],
             'exchange_items.*.product_unit_id' => ['required', 'integer', Rule::exists('product_units', 'id')],
             'exchange_items.*.quantity' => ['required', 'numeric', 'gt:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'],
@@ -73,7 +71,6 @@ class SaveSaleReturnRequest extends FormRequest
             'items.min' => 'Pilih minimal satu barang yang diretur.',
             'items.*.quantity.min' => 'Jumlah tidak boleh negatif.',
             'items.*.quantity.decimal' => 'Jumlah maksimal 3 angka desimal.',
-            'items.*.disposition.required' => 'Pilih tujuan barang: dijual lagi atau dead stock.',
             'exchange_items.required' => 'Pilih barang pengganti.',
             'exchange_items.*.quantity.gt' => 'Jumlah barang pengganti harus lebih dari nol.',
             'exchange_items.*.quantity.decimal' => 'Jumlah maksimal 3 angka desimal.',

@@ -1,4 +1,5 @@
 <script setup>
+import { computed } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -21,6 +22,9 @@ const form = useForm({
     brand_id: null,
     reason_code: 'routine',
 });
+
+/** A returns warehouse is always inspected with its own reason, for the goods waiting in it, so those two are not asked. */
+const isReturnsWarehouse = computed(() => props.warehouses.find((warehouse) => warehouse.id === form.warehouse_id)?.is_returns ?? false);
 
 const scopeHints = {
     category: 'Semua barang dari kategori dan/atau merek yang dipilih masuk daftar hitung saat opname dimulai. Pilih salah satu atau keduanya.',
@@ -59,7 +63,11 @@ function submit() {
                     <DateInput v-model="form.opname_date" label="Tanggal" outlined :error="!!form.errors.opname_date" :error-message="form.errors.opname_date" />
                 </div>
 
-                <div class="field">
+                <p v-if="isReturnsWarehouse" class="field__returns">
+                    Gudang retur diperiksa untuk semua barang yang sedang menunggu di dalamnya. Saat diposting, tiap barang dibagi ke stok jual di gudang asalnya, dead stock, atau barang DG, dan gudang retur jadi kosong.
+                </p>
+
+                <div v-if="!isReturnsWarehouse" class="field">
                     <span class="field__label">Cakupan</span>
                     <q-btn-toggle
                         v-model="form.scope"
@@ -74,7 +82,7 @@ function submit() {
                     <small v-if="form.errors.scope" class="field__error">{{ form.errors.scope }}</small>
                 </div>
 
-                <div v-if="form.scope === 'category'" class="grid grid--two">
+                <div v-if="!isReturnsWarehouse && form.scope === 'category'" class="grid grid--two">
                     <q-select
                         v-model="form.category_id"
                         :options="categories"
@@ -103,7 +111,7 @@ function submit() {
                     />
                 </div>
 
-                <div class="grid grid--two">
+                <div v-if="!isReturnsWarehouse" class="grid grid--two">
                     <q-select
                         v-model="form.reason_code"
                         :options="reasons"
@@ -176,6 +184,12 @@ function submit() {
 
 .field .field__error {
     color: #be123c;
+}
+
+.field__returns {
+    margin: 0 0 14px;
+    color: var(--app-mute);
+    font-size: 12.5px;
 }
 
 .note {

@@ -59,7 +59,7 @@ class StockOpnameService
             $date = Carbon::parse($opnameInput['opname_date']);
             $scope = StockOpnameScope::from($opnameInput['scope']);
 
-            return StockOpname::query()->create([
+            $opname = StockOpname::query()->create([
                 'number' => $this->documentNumbers->next(self::NUMBER_TYPE, $date),
                 'warehouse_id' => $opnameInput['warehouse_id'],
                 'opname_date' => $date,
@@ -70,7 +70,27 @@ class StockOpnameService
                 'reason_code' => $opnameInput['reason_code'],
                 'created_by' => $userId,
             ]);
+
+            if ($opname->reason_code?->isReturnsCheck()) {
+                $this->addProductsWaitingInWarehouse($opname);
+            }
+
+            return $opname;
         });
+    }
+
+    /**
+     * The inspection of a returns warehouse counts what waits there, so its products are the ones that have stock in it
+     * and nobody picks them. Products another active opname of the warehouse already holds are left out.
+     */
+    private function addProductsWaitingInWarehouse(StockOpname $opname): void
+    {
+        $waitingQuantities = DB::table('stocks')->where('warehouse_id', $opname->warehouse_id)->where('quantity', '>', 0)->pluck('quantity', 'product_id');
+        $freeProductIds = array_values(array_diff($waitingQuantities->keys()->map(fn ($productId): int => (int) $productId)->all(), $this->busyProductIds($opname, $waitingQuantities->keys()->map(fn ($productId): int => (int) $productId)->all())));
+
+        foreach ($freeProductIds as $productId) {
+            $opname->items()->create(['product_id' => $productId, 'snapshot_quantity' => (string) $waitingQuantities[$productId]]);
+        }
     }
 
     /**
@@ -199,7 +219,7 @@ class StockOpnameService
                 }
 
                 $reason = $row['reason_id'] === null ? null : $reasonsById->get($row['reason_id']);
-                $isDamaged = $reason?->behavior->needsDamageDecision() ?? false;
+                $isDamaged = ($reason?->behavior->needsDamageDecision() ?? false) || $opname->reason_code?->isReturnsCheck() === true;
 
                 $item->forceFill([
                     'reason_id' => $reason?->id,
@@ -304,6 +324,12 @@ class StockOpnameService
                     'variance' => (string) $variance,
                 ])->save();
 
+                if ($opname->reason_code?->isReturnsCheck()) {
+                    $this->postReturnsItem($opname, $item, $systemQuantity, $variance, $movementType, $userId, $lockedStocks[$item->product_id]['intact_packs']);
+
+                    continue;
+                }
+
                 if ($variance->isZero() && $packChange === 0) {
                     continue;
                 }
@@ -366,7 +392,7 @@ class StockOpnameService
 
         foreach ($countedItems as $item) {
             $variance = $opname->varianceOf($item->counted_quantity, $systemQuantities[$item->product_id]);
-            $problem = $variance->isZero() ? null : $this->reviewProblem($item, $variance, true);
+            $problem = $this->isReviewNeeded($opname, $variance) ? $this->reviewProblem($opname, $item, $variance, true) : null;
 
             if ($problem !== null) {
                 $problems[] = "{$item->product->name} ({$problem})";
@@ -398,7 +424,7 @@ class StockOpnameService
         }
 
         $variance = $opname->varianceOf((string) $item->counted_quantity, $systemQuantity);
-        $problem = $variance->isZero() ? null : $this->reviewProblem($item, $variance, false);
+        $problem = $this->isReviewNeeded($opname, $variance) ? $this->reviewProblem($opname, $item, $variance, false) : null;
 
         if ($problem !== null) {
             throw StockOpnameException::cannotReview($item->product->name, $problem);
@@ -409,26 +435,77 @@ class StockOpnameService
 
     /**
      * What is still missing on an item with a variance before it can be posted, in words for the admin, or null when it
-     * is complete. The reason comes first; for a damaged reason the three parts of the decision must be filled and add up
+     * is complete. The reason comes first (an inspection of returns is its own reason, so it is never asked); for a damaged reason the three parts of the decision must be filled and add up
      * to the shortage, and units that become a DG product need a price and a DG SKU that is free.
      *
      * @param  bool  $needsReviewMark  whether the admin's "reviewed" mark is also required
      */
-    private function reviewProblem(StockOpnameItem $item, BigDecimal $variance, bool $needsReviewMark): ?string
+    private function reviewProblem(StockOpname $opname, StockOpnameItem $item, BigDecimal $variance, bool $needsReviewMark): ?string
     {
-        if ($item->reason === null) {
+        $isReturnsCheck = $opname->reason_code?->isReturnsCheck() === true;
+
+        if ($item->reason === null && ! $isReturnsCheck) {
             return 'alasan belum dipilih';
         }
 
-        if ($item->reason->behavior->needsDamageDecision()) {
-            $problem = $this->damageDecisionProblem($item, $variance);
+        $problem = match (true) {
+            $isReturnsCheck => $this->returnsDecisionProblem($item),
+            $item->reason->behavior->needsDamageDecision() => $this->damageDecisionProblem($item, $variance),
+            default => null,
+        };
 
-            if ($problem !== null) {
-                return $problem;
-            }
+        if ($problem !== null) {
+            return $problem;
         }
 
         return $needsReviewMark && ! $item->isReviewed() ? 'belum ditandai sudah direview' : null;
+    }
+
+    /**
+     * An inspection of returns has to account for every unit counted: how many go back on the shelf, to dead stock and to a DG
+     * product, adding up to what was counted. Nothing counted means nothing to send on.
+     */
+    private function returnsDecisionProblem(StockOpnameItem $item): ?string
+    {
+        $counted = BigDecimal::of((string) $item->counted_quantity);
+
+        if ($counted->isZero()) {
+            return null;
+        }
+
+        if ($item->dead_stock_quantity === null || $item->damaged_goods_quantity === null || $item->full_price_quantity === null) {
+            return 'belum ditentukan ke mana barang pergi';
+        }
+
+        $deadStock = BigDecimal::of($item->dead_stock_quantity);
+        $damagedGoods = BigDecimal::of($item->damaged_goods_quantity);
+
+        if (! $deadStock->plus($damagedGoods)->plus($item->full_price_quantity)->isEqualTo($counted)) {
+            return 'pembagian barang harus berjumlah sama dengan yang dihitung ('.rtrim(rtrim((string) $counted->toScale(3), '0'), '.').')';
+        }
+
+        if ($damagedGoods->isPositive()) {
+            if ($item->damaged_goods_price === null) {
+                return 'harga jual barang DG belum diisi';
+            }
+
+            $skuProblem = $this->damagedGoods->problemFor($item->product);
+
+            if ($skuProblem !== null) {
+                return $skuProblem;
+            }
+        }
+
+        return $deadStock->isPositive() && $this->deadStockWarehouse() === null ? 'gudang dead stock tidak ada' : null;
+    }
+
+    /**
+     * A variance is always reviewed; an inspection of returns is reviewed even when the count matches, since it still has to
+     * be decided where the goods go.
+     */
+    private function isReviewNeeded(StockOpname $opname, BigDecimal $variance): bool
+    {
+        return ! $variance->isZero() || $opname->reason_code?->isReturnsCheck() === true;
     }
 
     private function damageDecisionProblem(StockOpnameItem $item, BigDecimal $variance): ?string
@@ -503,6 +580,59 @@ class StockOpnameService
 
         if ($fullPrice->isPositive()) {
             $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $fullPrice, $opname, $userId, "{$note} (layak jual penuh, kembali ke stok jual)");
+        }
+    }
+
+    /**
+     * Posts the inspection of one product in a returns warehouse. What the count found different from the books is written
+     * first (so the history shows a shortage or an extra), then everything counted leaves the returns warehouse and goes where
+     * the admin decided: back on the shelf of the warehouse the goods were sold from, to the dead-stock warehouse, or to the
+     * DG product (made now when it does not exist) in the warehouse they came from. The returns warehouse ends up empty of it.
+     *
+     * Whole sealed packs counted go back as whole packs on the shelf, as far as the quantity going back on the shelf holds them;
+     * dead stock and DG units are loose.
+     *
+     * @param  numeric-string  $systemQuantity  the locked stock of the item in the returns warehouse
+     * @param  int  $systemPacks  the locked number of whole packs in it
+     *
+     * @throws StockOpnameException
+     */
+    private function postReturnsItem(StockOpname $opname, StockOpnameItem $item, string $systemQuantity, BigDecimal $variance, StockMovementType $movementType, int $userId, int $systemPacks): void
+    {
+        $origin = Warehouse::query()->findOrFail($opname->warehouse_id)->returns_for_warehouse_id
+            ?? throw StockOpnameException::notAReturnsWarehouse();
+
+        $counted = BigDecimal::of($item->counted_quantity);
+        $deadStock = BigDecimal::of($item->dead_stock_quantity ?? '0');
+        $damagedGoods = BigDecimal::of($item->damaged_goods_quantity ?? '0');
+        $fullPrice = BigDecimal::of($item->full_price_quantity ?? '0');
+        $note = $this->movementNote($opname, $item);
+
+        $packUnit = $item->product->sealedPackUnit();
+        $countedPacks = $packUnit === null ? 0 : min($item->counted_packs ?? $systemPacks, $counted->dividedBy($packUnit->conversion_factor, 0, RoundingMode::Down)->toInt());
+        $packsOnShelf = $packUnit === null ? 0 : min($countedPacks, $fullPrice->dividedBy($packUnit->conversion_factor, 0, RoundingMode::Down)->toInt());
+        $packVariance = $countedPacks - $systemPacks;
+
+        if (! $variance->isZero() || $packVariance !== 0) {
+            $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $variance, $opname, $userId, $note, $systemQuantity, $packVariance);
+        }
+
+        if ($counted->isPositive()) {
+            $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $counted->negated(), $opname, $userId, "{$note} (diperiksa, dilepas dari gudang retur)", packChange: -$countedPacks);
+        }
+
+        if ($deadStock->isPositive()) {
+            $this->stockLedger->record($item->product_id, $this->deadStockWarehouse()->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)");
+        }
+
+        if ($damagedGoods->isPositive()) {
+            $twin = $this->damagedGoods->productFor($item->product, (string) $item->damaged_goods_price);
+
+            $this->stockLedger->record($twin->id, $origin, $movementType, (string) $damagedGoods, $opname, $userId, "{$note} (barang DG {$twin->sku})");
+        }
+
+        if ($fullPrice->isPositive()) {
+            $this->stockLedger->record($item->product_id, $origin, $movementType, (string) $fullPrice, $opname, $userId, "{$note} (layak jual, kembali ke stok jual)", packChange: $packsOnShelf);
         }
     }
 

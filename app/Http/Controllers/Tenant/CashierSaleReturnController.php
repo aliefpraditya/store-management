@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ApiErrorCode;
 use App\Enums\PaymentMethod;
-use App\Enums\ReturnDisposition;
 use App\Enums\ReturnResolution;
 use App\Enums\SaleStatus;
 use App\Exceptions\SaleReturnException;
@@ -85,7 +84,6 @@ class CashierSaleReturnController extends Controller
             'default_refund_method' => $this->returnService->defaultRefundMethod($sale)->value,
             'is_approved_at_once' => $this->isAdmin($request),
             'refund_methods' => PaymentMethod::cashierOptions(),
-            'dispositions' => ReturnDisposition::options(),
             'resolutions' => ReturnResolution::options(),
             'lines' => $this->returnService->returnableLines($sale),
             'returns' => SaleReturn::query()

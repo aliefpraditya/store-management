@@ -194,6 +194,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                                 {{ formatStock(product.dead_stock, product.units, product.base_unit, product.sealed_pack?.dead_intact ?? null) }}
                             </span>
                             <span v-else class="items__muted">—</span>
+                            <small v-if="Number(product.returns_stock) > 0" class="items__muted items__returns">+ {{ formatStock(product.returns_stock, product.units, product.base_unit, null) }} retur menunggu</small>
                         </td>
                         <td class="items__right">{{ priceFormat.format(product.cost_price) }}</td>
                         <td class="items__right">
@@ -328,6 +329,10 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 .items__muted {
     color: var(--app-mute);
     font-size: 12px;
+}
+
+.items__returns {
+    display: block;
 }
 
 .items__table .items__right {
