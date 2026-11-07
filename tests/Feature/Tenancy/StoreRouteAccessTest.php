@@ -113,7 +113,7 @@ class StoreRouteAccessTest extends TestCase
         $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.reports.')));
         $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.bulk-prices.')));
         $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.opname-reasons.')));
-        $this->assertCount(69, $adminRoutes);
+        $this->assertCount(71, $adminRoutes);
 
         foreach ($adminRoutes as $route) {
             $this->assertContains(

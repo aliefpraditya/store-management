@@ -520,7 +520,7 @@ class CustomerOrderTest extends TestCase
             ->assertJsonPath('data.0.reserved', '4.000');
     }
 
-    public function test_an_order_keeps_the_address_and_is_delivered_by_cod_without_a_driver_until_it_is_shipped(): void
+    public function test_an_order_keeps_the_address_and_its_cod_note_is_made_without_driver_or_vehicle(): void
     {
         $this->actingAs($this->cashier)->post($this->salesUrl(), [
             'client_uuid' => (string) Str::uuid(),
@@ -552,13 +552,12 @@ class CustomerOrderTest extends TestCase
 
         $admin = $this->storeUser(UserRole::StoreAdmin);
 
-        $this->actingAs($admin)->post(route('tenant.delivery-notes.ship', ['tenant' => $this->store->code, 'delivery_note' => $note->id]), ['driver_name' => 'Pak Joko', 'vehicle_number' => 'L 1234 AB']);
+        $this->actingAs($admin)->post(route('tenant.delivery-notes.ship', ['tenant' => $this->store->code, 'delivery_note' => $note->id]));
 
         $shipped = $this->store->run(fn (): DeliveryNote => DeliveryNote::query()->findOrFail($note->id));
 
         $this->assertSame(DeliveryNoteStatus::Shipped, $shipped->status);
-        $this->assertSame('Pak Joko', $shipped->driver_name);
-        $this->assertSame('L 1234 AB', $shipped->vehicle_number);
+        $this->assertNull($shipped->driver_name);
     }
 
     /**

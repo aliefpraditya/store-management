@@ -20,8 +20,6 @@ const form = useForm({
     recipient_name: '',
     recipient_phone: '',
     recipient_address: '',
-    driver_name: '',
-    vehicle_number: '',
     notes: '',
     items: [],
 });

@@ -13,6 +13,7 @@ use App\Http\Controllers\Tenant\CashierSaleReturnController;
 use App\Http\Controllers\Tenant\DailyClosingController;
 use App\Http\Controllers\Tenant\DashboardController as TenantDashboardController;
 use App\Http\Controllers\Tenant\DeliveryNoteController;
+use App\Http\Controllers\Tenant\DriverController;
 use App\Http\Controllers\Tenant\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\ExpenseController;
 use App\Http\Controllers\Tenant\OpnameReasonController;
@@ -141,6 +142,8 @@ Route::prefix('t/{tenant}')
             Route::get('settings', [StoreSettingController::class, 'index'])->name('tenant.settings.index');
             Route::put('settings', [StoreSettingController::class, 'update'])->name('tenant.settings.update');
             Route::resource('settings/units', UnitController::class)->only(['store', 'update', 'destroy'])->names('tenant.units');
+            Route::post('settings/drivers', [DriverController::class, 'store'])->name('tenant.drivers.store');
+            Route::put('settings/drivers/{driver}', [DriverController::class, 'update'])->name('tenant.drivers.update');
             Route::post('settings/opname-reasons', [OpnameReasonController::class, 'store'])->name('tenant.opname-reasons.store');
             Route::put('settings/opname-reasons/{opname_reason}', [OpnameReasonController::class, 'update'])->name('tenant.opname-reasons.update');
 

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { router, useForm, usePage } from '@inertiajs/vue3';
+import DriversCard from '../../../Components/DriversCard.vue';
 import OpnameReasonsCard from '../../../Components/OpnameReasonsCard.vue';
 import UnitFormDialog from '../../../Components/UnitFormDialog.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
@@ -17,6 +18,8 @@ const props = defineProps({
     unit_per_page_options: { type: Array, required: true },
     /** The reasons an opname variance can be given, with where to change each. */
     opname_reasons: { type: Array, required: true },
+    /** The drivers a delivery note can be shipped with, with where to change each. */
+    drivers: { type: Array, required: true },
     urls: { type: Object, required: true },
 });
 
@@ -133,6 +136,8 @@ function confirmDeleteUnit(unit) {
         </div>
 
         <OpnameReasonsCard :reasons="opname_reasons" :create-url="urls.opname_reason_create" class="opname-reasons" />
+
+        <DriversCard :drivers="drivers" :create-url="urls.driver_create" class="opname-reasons" />
 
         <section class="card units">
             <div class="units__head">

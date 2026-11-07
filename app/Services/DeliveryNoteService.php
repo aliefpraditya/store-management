@@ -8,6 +8,7 @@ use App\Exceptions\DeliveryNoteException;
 use App\Models\CustomerOrder;
 use App\Models\DeliveryNote;
 use App\Models\DeliveryNoteItem;
+use App\Models\Driver;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\User;
@@ -231,21 +232,20 @@ class DeliveryNoteService
     }
 
     /**
-     * Marks the goods as on their way. Who drives and in what vehicle is only known now, so it is given here; a driver or
-     * vehicle already on the note stays unless a new one is given.
+     * Marks the goods as on their way, with the driver who takes them when one is chosen. The note keeps the driver's
+     * name as it was, so renaming or switching off the driver later does not change it.
      *
      * @throws DeliveryNoteException
      */
-    public function ship(DeliveryNote $note, ?string $driverName = null, ?string $vehicleNumber = null): void
+    public function ship(DeliveryNote $note, ?Driver $driver = null): void
     {
-        DB::transaction(function () use ($note, $driverName, $vehicleNumber): void {
+        DB::transaction(function () use ($note, $driver): void {
             $note = $this->lockedWhere($note, 'dikirim', fn (DeliveryNoteStatus $status): bool => $status->canBeShipped());
 
             $note->forceFill([
                 'status' => DeliveryNoteStatus::Shipped,
                 'shipped_at' => now(),
-                'driver_name' => $this->nullIfBlank($driverName) ?? $note->driver_name,
-                'vehicle_number' => $this->nullIfBlank($vehicleNumber) ?? $note->vehicle_number,
+                'driver_name' => $driver?->name ?? $note->driver_name,
             ])->save();
         });
     }

@@ -24,7 +24,7 @@ const printingId = ref(null);
 /** What the server says about the receipt: its lines with what is left to deliver, and the notes already made. @type {import('vue').Ref<{lines: object[], notes: object[]}>} */
 const receiptDeliveryContext = ref({ lines: [], notes: [] });
 
-const form = ref({ recipient_name: '', recipient_phone: '', recipient_address: '', driver_name: '', vehicle_number: '', notes: '' });
+const form = ref({ recipient_name: '', recipient_phone: '', recipient_address: '', notes: '' });
 const quantities = ref({});
 
 const hasAnythingLeft = computed(() => receiptDeliveryContext.value.lines.some((line) => Number(line.remaining) > 0));
@@ -93,7 +93,7 @@ watch(
             return;
         }
 
-        form.value = { recipient_name: props.receipt.customer_name ?? '', recipient_phone: '', recipient_address: '', driver_name: '', vehicle_number: '', notes: '' };
+        form.value = { recipient_name: props.receipt.customer_name ?? '', recipient_phone: '', recipient_address: '', notes: '' };
         receiptDeliveryContext.value = { lines: [], notes: [] };
         noteUuid = newUuid();
         load();

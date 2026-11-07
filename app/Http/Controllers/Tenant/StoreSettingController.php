@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Tenant;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\SaveStoreSettingsRequest;
 use App\Http\Resources\UnitResource;
+use App\Models\Driver;
 use App\Models\OpnameReason;
 use App\Models\Store;
 use App\Models\Unit;
+use App\Services\DriverService;
 use App\Services\OpnameReasonService;
 use App\Services\StoreSettingService;
 use App\Services\UnitService;
@@ -26,6 +28,7 @@ class StoreSettingController extends Controller
         private readonly StoreSettingService $settings,
         private readonly UnitService $units,
         private readonly OpnameReasonService $opnameReasons,
+        private readonly DriverService $drivers,
     ) {}
 
     public function index(Request $request): Response|RedirectResponse
@@ -51,6 +54,12 @@ class StoreSettingController extends Controller
             'units' => $unitPage->through(fn (Unit $unit): array => UnitResource::make($unit)->resolve()),
             'unit_filters' => $unitFilters,
             'unit_per_page_options' => UnitService::PER_PAGE_OPTIONS,
+            'drivers' => $this->drivers->all()->map(fn (Driver $driver): array => [
+                'id' => $driver->id,
+                'name' => $driver->name,
+                'is_active' => $driver->is_active,
+                'update_url' => route('tenant.drivers.update', ['tenant' => $store->code, 'driver' => $driver->id]),
+            ])->all(),
             'opname_reasons' => $this->opnameReasons->all()->map(fn (OpnameReason $reason): array => [
                 'id' => $reason->id,
                 'name' => $reason->name,
@@ -61,6 +70,7 @@ class StoreSettingController extends Controller
             'urls' => [
                 'update' => route('tenant.settings.update', ['tenant' => $store->code]),
                 'unit_create' => route('tenant.units.store', ['tenant' => $store->code]),
+                'driver_create' => route('tenant.drivers.store', ['tenant' => $store->code]),
                 'opname_reason_create' => route('tenant.opname-reasons.store', ['tenant' => $store->code]),
             ],
         ]);

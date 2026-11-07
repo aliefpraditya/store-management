@@ -13,8 +13,10 @@ use App\Http\Requests\Tenant\ShipDeliveryNoteRequest;
 use App\Http\Resources\DeliveryNoteListResource;
 use App\Http\Resources\DeliveryNoteResource;
 use App\Models\DeliveryNote;
+use App\Models\Driver;
 use App\Models\Sale;
 use App\Services\DeliveryNoteService;
+use App\Services\DriverService;
 use App\Services\PrintCounter;
 use Closure;
 use Illuminate\Http\JsonResponse;
@@ -37,6 +39,7 @@ class DeliveryNoteController extends Controller
     public function __construct(
         private readonly DeliveryNoteService $noteService,
         private readonly PrintCounter $printCounter,
+        private readonly DriverService $drivers,
     ) {}
 
     public function index(DateRangeRequest $request): Response
@@ -107,13 +110,17 @@ class DeliveryNoteController extends Controller
     {
         return Inertia::render('Tenant/DeliveryNotes/Show', [
             'note' => DeliveryNoteResource::make($deliveryNote->load(['items', 'sale']))->resolve(),
+            'drivers' => $this->drivers->active()->map(fn (Driver $driver): array => ['id' => $driver->id, 'name' => $driver->name])->all(),
+            'settings_url' => route('tenant.settings.index', ['tenant' => tenant('code')]),
         ]);
     }
 
     public function ship(ShipDeliveryNoteRequest $request, DeliveryNote $deliveryNote): RedirectResponse
     {
         return $this->redirectWithOutcome(function () use ($request, $deliveryNote): string {
-            $this->noteService->ship($deliveryNote, $request->validated('driver_name'), $request->validated('vehicle_number'));
+            $driverId = $request->validated('driver_id');
+
+            $this->noteService->ship($deliveryNote, $driverId === null ? null : Driver::query()->findOrFail($driverId));
 
             return 'Surat jalan ditandai dikirim.';
         });

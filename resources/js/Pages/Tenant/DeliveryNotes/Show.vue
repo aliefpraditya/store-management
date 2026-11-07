@@ -10,6 +10,9 @@ import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
     note: { type: Object, required: true },
+    /** @type {{id: number, name: string}[]} the drivers that can take the goods out */
+    drivers: { type: Array, default: () => [] },
+    settings_url: { type: String, default: null },
 });
 
 const $q = useQuasar();
@@ -56,16 +59,16 @@ function complete() {
 
 const isShipOpen = ref(false);
 const isShipping = ref(false);
-const shipForm = ref({ driver_name: '', vehicle_number: '' });
+const driverId = ref(null);
 
-/** Who drives and in what vehicle is only known when the goods go out, so it is asked here and not when the note is made. */
+/** Who takes the goods out is chosen now, from the drivers kept in the store settings; leaving it empty is allowed. */
 function openShip() {
-    shipForm.value = { driver_name: props.note.driver_name ?? '', vehicle_number: props.note.vehicle_number ?? '' };
+    driverId.value = null;
     isShipOpen.value = true;
 }
 
 function ship() {
-    router.post(props.note.urls.ship, shipForm.value, {
+    router.post(props.note.urls.ship, { driver_id: driverId.value }, {
         preserveScroll: true,
         onStart: () => (isShipping.value = true),
         onFinish: () => (isShipping.value = false),
@@ -158,11 +161,25 @@ async function print() {
             <q-card class="complete">
                 <q-card-section>
                     <div class="complete__title">Tandai dikirim</div>
-                    <p class="complete__hint">Isi sopir dan kendaraan yang mengantar. Boleh dikosongkan.</p>
-                    <div class="ship__fields">
-                        <q-input v-model="shipForm.driver_name" outlined dense autofocus maxlength="255" label="Sopir" />
-                        <q-input v-model="shipForm.vehicle_number" outlined dense maxlength="255" label="No. kendaraan" />
-                    </div>
+                    <p class="complete__hint">Pilih sopir yang mengantar.</p>
+
+                    <q-select
+                        v-model="driverId"
+                        :options="drivers"
+                        option-value="id"
+                        option-label="name"
+                        emit-value
+                        map-options
+                        clearable
+                        outlined
+                        dense
+                        autofocus
+                        label="Sopir"
+                        behavior="menu"
+                    />
+                    <p v-if="drivers.length === 0" class="complete__hint">
+                        Belum ada sopir. Tambahkan di <a :href="settings_url" @click.prevent="router.visit(settings_url)">Pengaturan Toko</a>, atau lanjutkan tanpa sopir.
+                    </p>
                 </q-card-section>
                 <q-card-actions align="right">
                     <q-btn flat no-caps label="Batal" :disable="isShipping" @click="isShipOpen = false" />
@@ -192,12 +209,6 @@ async function print() {
 </template>
 
 <style scoped>
-.ship__fields {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
 .note {
     max-width: 720px;
     padding: 20px;

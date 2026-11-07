@@ -302,7 +302,6 @@ function confirm() {
                     <small v-if="originSaleUndelivered.length > 0 && isOriginSaleIncluded && Number(collectingOrder?.origin_sale_cod_amount) > 0" class="payment__delivery-hint">
                         Nota {{ collectingOrder.origin_sale_number }} masih COD {{ formatRupiah(collectingOrder.origin_sale_cod_amount) }}. Total ditagih di pintu {{ formatRupiah(Number(collectingOrder.origin_sale_cod_amount) + total) }}.
                     </small>
-                    <small class="payment__delivery-hint">Sopir dan kendaraan diisi nanti, saat surat jalan ditandai dikirim.</small>
                 </div>
 
                 </div>

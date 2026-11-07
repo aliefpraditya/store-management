@@ -3,9 +3,10 @@
 namespace App\Http\Requests\Tenant;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
- * Marking a delivery note as shipped: the driver and the vehicle are only known now, and both are optional.
+ * Marking a delivery note as shipped: the driver is chosen now from the store's active drivers, and may be left out.
  */
 class ShipDeliveryNoteRequest extends FormRequest
 {
@@ -20,8 +21,15 @@ class ShipDeliveryNoteRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'driver_name' => ['nullable', 'string', 'max:255'],
-            'vehicle_number' => ['nullable', 'string', 'max:255'],
+            'driver_id' => ['nullable', 'integer', Rule::exists('drivers', 'id')->where('is_active', true)],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return ['driver_id.exists' => 'Sopir tidak ditemukan atau sudah dinonaktifkan. Pilih sopir lain.'];
     }
 }
