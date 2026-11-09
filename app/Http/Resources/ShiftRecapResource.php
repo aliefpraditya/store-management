@@ -37,7 +37,7 @@ class ShiftRecapResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $isClosed = $this->status === CashShiftStatus::Closed;
+        $isClosed = $this->status !== CashShiftStatus::Open;
 
         return [
             'id' => $this->id,
@@ -64,9 +64,6 @@ class ShiftRecapResource extends JsonResource
             'approval_note' => $this->approval_note,
             'is_own_shift' => $this->cashier_id === $request->user()->id,
             'can_decide' => $this->difference_status === ShiftDifferenceStatus::PendingApproval && $this->cashier_id !== $request->user()->id,
-            'is_awaiting_follow_up' => $this->isAwaitingFollowUp(),
-            'followed_up_by_name' => $this->followed_up_by === null ? null : User::query()->find($this->followed_up_by)?->name,
-            'followed_up_at' => $this->followed_up_at?->toIso8601String(),
             'sale_count' => $this->summary['sale_count'],
             'total_sales' => $this->summary['total_sales'],
             'returns_total' => $this->summary['returns_total'],

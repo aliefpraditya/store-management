@@ -70,9 +70,8 @@ class StoreDashboardTest extends TestCase
                 ->where('store.dashboard_url', route('tenant.dashboard', ['tenant' => 'test_dashboard']))
                 ->where('summary.sales', ['gross_total' => '0.00', 'returns_total' => '0.00', 'net_total' => '0.00', 'receipt_count' => 0])
                 ->where('summary.low_stock_count', 0)
-                ->where('summary.pending', ['returns' => 0, 'cash_differences' => 0, 'cash_difference_follow_ups' => 0, 'delivery_notes' => 0, 'total' => 0])
+                ->where('summary.pending', ['returns' => 0, 'cash_differences' => 0, 'delivery_notes' => 0, 'total' => 0])
                 ->has('summary.approvals', 0)
-                ->has('summary.cash_difference_follow_ups', 0)
                 ->has('summary.unfinished_delivery_notes', 0)
                 ->has('summary.open_shifts', 0)
             );
@@ -168,7 +167,6 @@ class StoreDashboardTest extends TestCase
             CashShift::factory()->closedWithPendingDifference(-10000)->create();
             CashShift::factory()->create(['difference_status' => 'approved']);
             CashShift::factory()->closedWithPendingDifference(-2500)->create(['difference_status' => 'rejected', 'cashier_name' => 'Budi']);
-            CashShift::factory()->closedWithPendingDifference(-1000)->create(['difference_status' => 'rejected', 'followed_up_at' => now()]);
 
             foreach ([DeliveryNoteStatus::Draft, DeliveryNoteStatus::Shipped, DeliveryNoteStatus::Delivered, DeliveryNoteStatus::Cancelled] as $status) {
                 DeliveryNote::factory()->withStatus($status)->create(['sale_id' => $sale->id]);
@@ -176,11 +174,8 @@ class StoreDashboardTest extends TestCase
         });
 
         $this->adminDashboard()->assertInertia(fn (Assert $page) => $page
-            ->where('summary.pending', ['returns' => 2, 'cash_differences' => 1, 'cash_difference_follow_ups' => 1, 'delivery_notes' => 2, 'total' => 6])
-            ->has('summary.cash_difference_follow_ups', 1)
-            ->where('summary.cash_difference_follow_ups.0.cashier_name', 'Budi')
-            ->where('summary.cash_difference_follow_ups.0.amount', '-2500.00')
-            ->where('summary.cash_difference_follow_ups.0.show_url', fn (string $url) => str_contains($url, "/{$this->store->code}/shifts/"))
+            ->where('summary.pending', ['returns' => 2, 'cash_differences' => 1, 'delivery_notes' => 2, 'total' => 5])
+            ->missing('summary.cash_difference_follow_ups')
             ->has('summary.approvals', 3)
             ->where('summary.approvals.0', ['kind' => 'return', 'reference' => 'RET/0002', 'amount' => '50000.00'])
             ->where('summary.approvals.1', ['kind' => 'return', 'reference' => 'RET/0001', 'amount' => '450000.00'])

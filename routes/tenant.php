@@ -98,7 +98,6 @@ Route::prefix('t/{tenant}')
                 Route::get('{shift}', [ShiftRecapController::class, 'show'])->name('show');
                 Route::post('{shift}/approve', [ShiftRecapController::class, 'approve'])->name('approve');
                 Route::post('{shift}/reject', [ShiftRecapController::class, 'reject'])->name('reject');
-                Route::post('{shift}/follow-up', [ShiftRecapController::class, 'followUp'])->name('follow-up');
             });
 
             Route::prefix('returns')->name('tenant.returns.')->group(function () {

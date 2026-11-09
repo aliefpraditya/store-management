@@ -62,7 +62,7 @@ class ShiftRecapTest extends TestCase
     }
 
     /**
-     * The cashier sells five brushes (50.000 cash), counts 45.000 and closes: a difference of -5.000 waits for an admin.
+     * The cashier sells five brushes (50.000 cash), counts 45.000 and closes: a difference of -5.000 keeps the shift waiting for an admin's review.
      */
     private function shiftClosedWithShortage(): CashShift
     {
@@ -110,8 +110,8 @@ class ShiftRecapTest extends TestCase
             ->where('shifts.data.1.cash_difference', '-5000.00')
             ->where('shifts.data.1.difference_status_label', 'Menunggu persetujuan')
             ->where('pending_difference_count', 1)
-            ->has('statuses', 2)
-            ->has('differences', 5));
+            ->has('statuses', 3)
+            ->has('differences', 4));
     }
 
     public function test_the_list_can_be_filtered(): void
@@ -135,7 +135,8 @@ class ShiftRecapTest extends TestCase
         $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Tenant/Shifts/Show')
             ->where('shift.label', $shift->label())
-            ->where('shift.status', 'closed')
+            ->where('shift.status', 'pending_review')
+            ->where('shift.status_label', 'Menunggu review')
             ->where('shift.sale_count', 1)
             ->where('shift.total_sales', '50000.00')
             ->where('shift.payments.0', ['method' => 'Tunai', 'amount' => '50000.00'])
@@ -196,6 +197,7 @@ class ShiftRecapTest extends TestCase
         $decided = $this->shift($shift->id);
         $this->assertSame(['approved', $this->admin->id, 'Sudah dicek rekaman'], [$decided->difference_status->value, $decided->difference_approved_by, $decided->approval_note]);
         $this->assertNotNull($decided->difference_approved_at);
+        $this->assertSame('closed', $decided->status->value);
 
         $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
             ->where('shift.can_decide', false)
@@ -204,13 +206,13 @@ class ShiftRecapTest extends TestCase
             ->where('shift.approval_note', 'Sudah dicek rekaman'));
     }
 
-    public function test_an_admin_can_reject_the_difference(): void
+    public function test_an_admin_can_leave_the_difference_to_the_cashier(): void
     {
         $shift = $this->shiftClosedWithShortage();
 
-        $this->actingAs($this->admin)->post($this->url('reject', ['shift' => $shift->id]), ['note' => 'Tagih ke kasir'])->assertSessionHas('success', 'Selisih kas ditolak.');
+        $this->actingAs($this->admin)->post($this->url('reject', ['shift' => $shift->id]), ['note' => 'Tagih ke kasir'])->assertSessionHas('success', 'Selisih kas dicatat ditanggung kasir dan shift ditutup. Berita acara dan penggantian uangnya dicatat di luar sistem.');
 
-        $this->assertSame(['rejected', 'Tagih ke kasir'], [$this->shift($shift->id)->difference_status->value, $this->shift($shift->id)->approval_note]);
+        $this->assertSame(['rejected', 'Tagih ke kasir', 'closed'], [$this->shift($shift->id)->difference_status->value, $this->shift($shift->id)->approval_note, $this->shift($shift->id)->status->value]);
     }
 
     public function test_a_note_is_needed_and_a_decided_difference_cannot_be_decided_again(): void
@@ -224,47 +226,6 @@ class ShiftRecapTest extends TestCase
         $this->actingAs($this->admin)->post($this->url('reject', ['shift' => $shift->id]), ['note' => 'ubah pikiran'])
             ->assertSessionHas('error', 'Selisih kas shift ini berstatus Disetujui, jadi tidak bisa diputuskan lagi.');
         $this->assertSame('approved', $this->shift($shift->id)->difference_status->value);
-    }
-
-    public function test_a_refused_difference_stays_on_the_list_until_it_is_marked_followed_up(): void
-    {
-        $shift = $this->shiftClosedWithShortage();
-        $this->actingAs($this->admin)->post($this->url('reject', ['shift' => $shift->id]), ['note' => 'Tagih ke kasir']);
-
-        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
-            ->where('follow_up_count', 1)
-            ->where('shifts.data.0.is_awaiting_follow_up', true)
-            ->has('differences', 5));
-        $this->actingAs($this->admin)->get($this->url('index', ['difference' => 'awaiting_follow_up']))->assertInertia(fn (Assert $page) => $page->has('shifts.data', 1));
-        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
-            ->where('shift.is_awaiting_follow_up', true)
-            ->where('shift.urls.follow_up', $this->url('follow-up', ['shift' => $shift->id])));
-
-        $this->actingAs($this->admin)->post($this->url('follow-up', ['shift' => $shift->id]))->assertSessionHas('success', 'Selisih kas ditandai sudah ditindaklanjuti.');
-
-        $followedUp = $this->shift($shift->id);
-        $this->assertSame($this->admin->id, $followedUp->followed_up_by);
-        $this->assertNotNull($followedUp->followed_up_at);
-        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('follow_up_count', 0)->where('shifts.data.0.is_awaiting_follow_up', false));
-        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
-            ->where('shift.is_awaiting_follow_up', false)
-            ->where('shift.followed_up_by_name', $this->admin->name));
-    }
-
-    public function test_only_a_refused_difference_not_yet_followed_up_can_be_marked(): void
-    {
-        $pending = $this->shiftClosedWithShortage();
-        $this->actingAs($this->admin)->post($this->url('follow-up', ['shift' => $pending->id]))
-            ->assertSessionHas('error', 'Hanya selisih kas yang ditolak dan belum ditindaklanjuti yang bisa ditandai.');
-
-        $this->actingAs($this->admin)->post($this->url('reject', ['shift' => $pending->id]), ['note' => 'Tagih']);
-        $this->actingAs($this->admin)->post($this->url('follow-up', ['shift' => $pending->id]));
-        $firstTime = $this->shift($pending->id)->followed_up_at;
-
-        $this->actingAs($this->admin)->post($this->url('follow-up', ['shift' => $pending->id]))->assertSessionHas('error');
-        $this->assertEquals($firstTime, $this->shift($pending->id)->followed_up_at);
-
-        $this->actingAs($this->cashier)->post($this->url('follow-up', ['shift' => $pending->id]))->assertForbidden();
     }
 
     public function test_a_shift_without_a_difference_has_nothing_to_decide(): void

@@ -33,7 +33,6 @@ class CashShiftListResource extends JsonResource
             'cash_difference' => $this->cash_difference,
             'difference_status' => $this->difference_status->value,
             'difference_status_label' => $this->difference_status->label(),
-            'is_awaiting_follow_up' => $this->isAwaitingFollowUp(),
             'show_url' => route('tenant.shifts.show', ['tenant' => tenant('code'), 'shift' => $this->id]),
         ];
     }

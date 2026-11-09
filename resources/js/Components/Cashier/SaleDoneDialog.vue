@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../Composables/postJson';
 import { printInNewWindow } from '../../Composables/printInNewWindow';
@@ -26,8 +26,18 @@ const printingId = ref(null);
 const isPrintingOrder = ref(false);
 const isPrintingReceipt = ref(false);
 
+/** Whether the receipt (or the order slip when there is no receipt) of what is shown was printed; the dialog only closes after that. */
+const isDocumentPrinted = ref(false);
+
+const isPrinting = computed(() => isPrintingReceipt.value || isPrintingOrder.value);
+
 /** The document that was printed by itself last, so showing the dialog again does not print it twice. */
 let lastAutoPrintedNumber = null;
+
+watch(
+    () => props.sale?.number ?? props.order?.number,
+    () => (isDocumentPrinted.value = false),
+);
 
 watch(
     () => [props.modelValue, props.sale?.number ?? props.order?.number],
@@ -53,6 +63,7 @@ async function printReceipt() {
 
     try {
         await printInNewWindow(async () => (await postJson(props.sale.print_url)).sheet_url);
+        isDocumentPrinted.value = true;
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
     } finally {
@@ -66,10 +77,45 @@ async function printOrder() {
 
     try {
         await printInNewWindow(async () => (await postJson(props.order.print_url)).sheet_url);
+        isDocumentPrinted.value = true;
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
     } finally {
         isPrintingOrder.value = false;
+    }
+}
+
+/** Printing is the way out; once the paper is out (also by the automatic print) the same button just moves on. */
+const printButtonLabel = computed(() => {
+    if (isDocumentPrinted.value) {
+        return 'Transaksi Baru';
+    }
+
+    return props.sale ? (props.order ? 'Cetak Nota + Pesanan' : 'Cetak Nota') : 'Cetak Nota Pesanan';
+});
+
+/**
+ * The one way out: prints the receipt (the order slip when there is no receipt) unless it already was, and only then closes.
+ * A print that fails keeps the dialog open.
+ */
+async function printAndFinish() {
+    if (!isDocumentPrinted.value) {
+        await (props.sale ? printReceipt() : printOrder());
+    }
+
+    if (isDocumentPrinted.value) {
+        emit('update:modelValue', false);
+    }
+}
+
+/** The delivery note comes after the receipt: it is printed first when it was not yet. */
+async function openDelivery() {
+    if (!isDocumentPrinted.value) {
+        await printReceipt();
+    }
+
+    if (isDocumentPrinted.value) {
+        emit('delivery', props.sale);
     }
 }
 
@@ -88,7 +134,7 @@ async function printNote(note) {
 </script>
 
 <template>
-    <q-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)">
+    <q-dialog :model-value="modelValue" persistent @update:model-value="emit('update:modelValue', $event)">
         <q-card v-if="sale || order" class="done">
             <q-card-section v-if="sale?.is_cod" class="done__cod">
                 <span>COD, ditagih saat barang diantar</span>
@@ -120,7 +166,6 @@ async function printNote(note) {
                 </ul>
                 <span>Total {{ formatRupiah(order.total) }} · uang muka {{ formatRupiah(order.deposit) }} · sisa {{ formatRupiah(order.remaining) }}</span>
                 <small v-if="sale">Pesanan ini ikut tercetak di nota bayar, jadi pelanggan memegang satu lembar.</small>
-                <q-btn v-else color="primary" unelevated dense no-caps icon="print" label="Cetak Nota Pesanan" :loading="isPrintingOrder" @click="printOrder" />
             </q-card-section>
 
             <q-card-section v-if="sale">
@@ -144,9 +189,8 @@ async function printNote(note) {
             </q-card-section>
 
             <q-card-actions align="right">
-                <q-btn v-if="sale" outline no-caps color="primary" icon="print" :label="order ? 'Cetak Nota + Pesanan' : 'Cetak Nota'" :loading="isPrintingReceipt" @click="printReceipt" />
-                <q-btn v-if="sale" outline no-caps color="primary" icon="local_shipping" label="Surat Jalan" @click="emit('delivery', sale)" />
-                <q-btn color="primary" unelevated no-caps label="Transaksi Baru" autofocus v-close-popup />
+                <q-btn v-if="sale" outline no-caps color="primary" icon="local_shipping" label="Surat Jalan" :disable="isPrinting" @click="openDelivery" />
+                <q-btn color="primary" unelevated no-caps icon="print" :label="printButtonLabel" :loading="isPrinting" autofocus @click="printAndFinish" />
             </q-card-actions>
         </q-card>
     </q-dialog>

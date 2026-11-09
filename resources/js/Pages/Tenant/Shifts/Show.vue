@@ -35,11 +35,15 @@ function decide(url, isApproval) {
         return;
     }
 
+    const difference = formatRupiah(props.shift.cash_difference);
+
     $q.dialog({
-        title: isApproval ? 'Setujui selisih kas?' : 'Tolak selisih kas?',
-        message: `Selisih ${formatRupiah(props.shift.cash_difference)} pada ${props.shift.label} akan ${isApproval ? 'disetujui' : 'ditolak'}. Keputusan ini tidak bisa diubah lagi.`,
+        title: isApproval ? 'Setujui selisih kas?' : 'Selisih ditanggung kasir?',
+        message: isApproval
+            ? `Selisih ${difference} pada ${props.shift.label} disetujui dan shift ditutup. Keputusan ini tidak bisa diubah lagi.`
+            : `Selisih ${difference} pada ${props.shift.label} ditanggung kasir dan shift ditutup. Buat berita acara di luar sistem dan minta kasir mengganti uangnya. Keputusan ini tidak bisa diubah lagi.`,
         cancel: { label: 'Kembali', flat: true, noCaps: true },
-        ok: { label: isApproval ? 'Setujui' : 'Tolak', color: isApproval ? 'primary' : 'negative', unelevated: true, noCaps: true },
+        ok: { label: isApproval ? 'Setujui' : 'Ya, ditanggung kasir', color: isApproval ? 'primary' : 'negative', unelevated: true, noCaps: true },
         persistent: true,
     }).onOk(() => sendDecision(url));
 }
@@ -54,16 +58,6 @@ function sendDecision(url) {
     });
 }
 
-/** Marks a refused difference as dealt with, after the admin confirms. */
-function markFollowedUp() {
-    $q.dialog({
-        title: 'Tandai sudah ditindaklanjuti?',
-        message: 'Selisih ini tidak lagi muncul di daftar Perlu tindakan. Pastikan tindak lanjutnya memang sudah dilakukan.',
-        cancel: { label: 'Kembali', flat: true, noCaps: true },
-        ok: { label: 'Sudah ditindaklanjuti', color: 'primary', unelevated: true, noCaps: true },
-        persistent: true,
-    }).onOk(() => router.post(props.shift.urls.follow_up, {}, { preserveScroll: true }));
-}
 </script>
 
 <template>
@@ -82,7 +76,7 @@ function markFollowedUp() {
                         <template v-if="shift.closed_at"> · tutup {{ dateTimeFormat.format(new Date(shift.closed_at)) }}</template>
                     </small>
                 </div>
-                <span class="chip" :class="shift.status === 'open' ? 'chip--ok' : 'chip--off'">{{ shift.status_label }}</span>
+                <span class="chip" :class="{ 'chip--ok': shift.status === 'open', 'chip--warn': shift.status === 'pending_review', 'chip--off': shift.status === 'closed' }">{{ shift.status_label }}</span>
             </header>
 
             <h2>Penjualan</h2>
@@ -107,7 +101,7 @@ function markFollowedUp() {
                 <div v-if="Number(shift.void_cash_refunds) > 0"><dt>DP void dikembalikan tunai</dt><dd class="rows__minus">{{ formatDeduction(shift.void_cash_refunds) }}</dd></div>
                 <div v-if="Number(shift.drawer_expenses) > 0"><dt>Pengeluaran dari laci</dt><dd class="rows__minus">{{ formatDeduction(shift.drawer_expenses) }}</dd></div>
                 <div><dt>Tunai seharusnya di laci</dt><dd>{{ formatRupiah(shift.expected_cash) }}</dd></div>
-                <template v-if="shift.status === 'closed'">
+                <template v-if="shift.status !== 'open'">
                     <div><dt>Tunai dihitung</dt><dd>{{ formatRupiah(shift.counted_cash) }}</dd></div>
                     <div class="rows__strong" :class="{ 'rows__minus': Number(shift.cash_difference) < 0 }">
                         <dt>Selisih</dt><dd>{{ formatRupiah(shift.cash_difference) }}</dd>
@@ -141,7 +135,7 @@ function markFollowedUp() {
                 </ul>
             </template>
 
-            <template v-if="shift.status === 'closed' && shift.difference_status !== 'none'">
+            <template v-if="shift.status !== 'open' && shift.difference_status !== 'none'">
                 <h2>
                     Keputusan selisih
                     <span class="chip" :class="differenceChipClass[shift.difference_status]">{{ shift.difference_status_label }}</span>
@@ -149,10 +143,10 @@ function markFollowedUp() {
 
                 <p v-if="shift.is_own_shift && shift.difference_status === 'pending_approval'" class="decide__own">Selisih ini dari shift Anda sendiri, jadi diputuskan Admin lain atau Super Admin.</p>
                 <div v-else-if="shift.can_decide" class="decide">
-                    <p>Selisih {{ formatRupiah(shift.cash_difference) }}. Isi catatan, lalu setujui atau tolak. Keputusan ini tidak menghalangi shift berikutnya.</p>
-                    <q-input v-model="note" type="textarea" autogrow outlined label="Catatan keputusan" :error="errorMessage !== ''" :error-message="errorMessage" @update:model-value="errorMessage = ''" />
+                    <p>Selisih {{ formatRupiah(shift.cash_difference) }}. Setujui bila selisihnya wajar, atau minta kasir menanggungnya (berita acara dibuat di luar sistem dan uangnya diganti kasir). Shift baru benar-benar tertutup setelah Anda memutuskan.</p>
+                    <q-input v-model="note" type="textarea" autogrow outlined label="Catatan keputusan (mis. nomor berita acara)" :error="errorMessage !== ''" :error-message="errorMessage" @update:model-value="errorMessage = ''" />
                     <div class="decide__actions">
-                        <q-btn outline no-caps color="negative" label="Tolak" :loading="isDeciding" @click="decide(shift.urls.reject, false)" />
+                        <q-btn outline no-caps color="negative" label="Ditanggung kasir" :loading="isDeciding" @click="decide(shift.urls.reject, false)" />
                         <q-btn unelevated no-caps color="primary" label="Setujui" :loading="isDeciding" @click="decide(shift.urls.approve, true)" />
                     </div>
                 </div>
@@ -164,17 +158,7 @@ function markFollowedUp() {
                         <template v-if="shift.decided_at"> · {{ dateTimeFormat.format(new Date(shift.decided_at)) }}</template>
                     </p>
                     <p v-if="shift.approval_note" class="shift__note"><small>Catatan</small>{{ shift.approval_note }}</p>
-
-                    <div v-if="shift.difference_status === 'rejected'" class="follow" :class="{ 'follow--open': shift.is_awaiting_follow_up }">
-                        <template v-if="shift.is_awaiting_follow_up">
-                            <span>Selisih ini ditolak dan <b>belum ditindaklanjuti</b>. Tetap ada di daftar Perlu tindakan sampai Anda menandainya.</span>
-                            <q-btn unelevated no-caps color="primary" label="Tandai sudah ditindaklanjuti" @click="markFollowedUp" />
-                        </template>
-                        <span v-else>
-                            Sudah ditindaklanjuti<template v-if="shift.followed_up_by_name"> oleh {{ shift.followed_up_by_name }}</template>
-                            <template v-if="shift.followed_up_at"> · {{ dateTimeFormat.format(new Date(shift.followed_up_at)) }}</template>
-                        </span>
-                    </div>
+                    <p v-if="shift.difference_status === 'rejected'" class="decided__outside">Berita acara dan penggantian uang oleh kasir dicatat di luar sistem.</p>
                 </div>
             </template>
         </article>
@@ -309,21 +293,10 @@ function markFollowedUp() {
     margin: 0 0 10px;
 }
 
-.follow {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px 12px;
-    border-radius: 6px;
-    background: #f5f6f8;
-}
-
-.follow--open {
-    border: 1px solid #fcd9a8;
-    background: #fff7ec;
-    color: #9a5b00;
+.decided__outside {
+    margin: 8px 0 0;
+    color: var(--app-mute);
+    font-size: 13px;
 }
 
 .decide__own {

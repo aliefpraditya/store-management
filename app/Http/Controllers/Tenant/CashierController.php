@@ -40,16 +40,16 @@ class CashierController extends Controller
 
         return Inertia::render('Tenant/Cashier/Index', [
             'shift' => $shift === null ? null : CashShiftResource::make($shift)->resolve(),
-            'summary' => $shift === null ? null : $this->shiftService->summarize($shift),
+            'summary' => $shift === null ? null : $this->shiftService->summarizeForCashier($shift),
             'registers' => $shift === null ? $this->registersToOpen() : [],
             'payment_methods' => PaymentMethod::saleOptions(),
-            'last_sale' => $request->session()->pull('last_sale'),
-            'last_order' => $request->session()->pull('last_order'),
+            'last_sale' => fn () => $request->session()->pull('last_sale'),
+            'last_order' => fn () => $request->session()->pull('last_order'),
             'best_sellers' => $shift === null ? [] : $this->catalog->bestSellers($shift->register->warehouse_id),
             'is_receipt_printed_automatically' => $this->settings->isReceiptPrintedAutomatically(),
             'order_counts' => $this->customerOrders->badgeCounts(),
             'pending_return_count' => $shift === null ? 0 : SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Pending)->count(),
-            'closed_shift' => $request->session()->pull('closed_shift'),
+            'closed_shift' => fn () => $request->session()->pull('closed_shift'),
             'can_leave_to_dashboard' => $request->user()->isAdminIn($store),
             'urls' => [
                 'open_shift' => route('tenant.cashier.shifts.store', ['tenant' => $code]),

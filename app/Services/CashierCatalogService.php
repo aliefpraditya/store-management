@@ -30,7 +30,10 @@ class CashierCatalogService
 
     private const RESULT_LIMIT = 20;
 
-    private const BEST_SELLER_LIMIT = 12;
+    private const BEST_SELLER_LIMIT = 20;
+
+    /** How many ranked candidates are looked at, so that some can still drop out (reserved for orders, being counted) and the list stays full. */
+    private const BEST_SELLER_CANDIDATES = 60;
 
     private const BEST_SELLER_DAYS = 30;
 
@@ -69,7 +72,8 @@ class CashierCatalogService
 
     /**
      * The items this warehouse sold most often (by number of receipt lines) in the last days, best seller first, for the
-     * empty till: a cashier adds them without typing. Items that cannot be sold any more are left out.
+     * empty till: a cashier adds them without typing. Only items that can be sold right now are offered: sold-out ones,
+     * ones whose stock is all kept for orders, and ones being counted are left out, as are items that cannot be sold any more.
      *
      * @return list<CatalogItem>
      */
@@ -77,12 +81,14 @@ class CashierCatalogService
     {
         $rankedProductIds = SaleItem::query()
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->join('stocks', fn ($join) => $join->on('stocks.product_id', '=', 'sale_items.product_id')->where('stocks.warehouse_id', '=', $warehouseId))
             ->where('sales.status', SaleStatus::Completed)
             ->where('sales.warehouse_id', $warehouseId)
             ->where('sales.sold_at', '>=', now()->subDays(self::BEST_SELLER_DAYS))
+            ->where('stocks.quantity', '>', 0)
             ->groupBy('sale_items.product_id')
             ->orderByRaw('count(*) desc')
-            ->limit(self::BEST_SELLER_LIMIT)
+            ->limit(self::BEST_SELLER_CANDIDATES)
             ->pluck('sale_items.product_id')
             ->all();
 
@@ -94,7 +100,14 @@ class CashierCatalogService
             ->filter(fn (Product $product): bool => $product->productUnits->isNotEmpty())
             ->sortBy(fn (Product $product): int|false => array_search($product->id, $rankedProductIds, true));
 
-        return $this->catalogItems($products, $warehouseId, null);
+        return array_slice(
+            array_values(array_filter(
+                $this->catalogItems($products, $warehouseId, null),
+                fn (array $item): bool => (float) $item['stock'] > 0 && ! $item['is_being_counted'],
+            )),
+            0,
+            self::BEST_SELLER_LIMIT,
+        );
     }
 
     /**

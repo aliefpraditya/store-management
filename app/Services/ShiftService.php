@@ -37,11 +37,15 @@ class ShiftService
         private readonly CodSaleService $codSales,
     ) {}
 
+    /**
+     * The shift the user still holds: running, or counted but waiting for an admin's review (the cashier stays on the till
+     * and cannot sell or leave until the admin has decided).
+     */
     public function openShiftOf(User $user): ?CashShift
     {
         return CashShift::query()
             ->where('cashier_id', $user->id)
-            ->where('status', CashShiftStatus::Open)
+            ->whereIn('status', [CashShiftStatus::Open, CashShiftStatus::PendingReview])
             ->with('register')
             ->first();
     }
@@ -94,6 +98,10 @@ class ShiftService
 
             if ($busyShift !== null) {
                 throw ShiftException::registerInUse($register->name, $busyShift->cashier_name);
+            }
+
+            if (CashShift::query()->where('register_id', $register->id)->where('status', CashShiftStatus::PendingReview)->exists()) {
+                throw ShiftException::registerAwaitingReview($register->name);
             }
 
             $carriedOverCash = $this->carriedOverCash($register);
@@ -183,6 +191,28 @@ class ShiftService
     }
 
     /**
+     * What the cashier may see of the running shift, for the closing screen: how many receipts there are and how many COD
+     * receipts were delivered or not, but no amount at all (no payments by method, sales total, returns or expected cash).
+     * The cashier counts the drawer blind, so the count is not bent to a known figure; the admin sees the figures and the
+     * difference afterwards. The opening cash stays only as the starting value of what is left in the drawer.
+     *
+     * @return array{sale_count: int, cod: array{delivered_count: int, undelivered_count: int}, opening_cash: string}
+     */
+    public function summarizeForCashier(CashShift $shift): array
+    {
+        $summary = $this->summarize($shift);
+
+        return [
+            'sale_count' => $summary['sale_count'],
+            'cod' => [
+                'delivered_count' => $summary['cod']['delivered']['count'],
+                'undelivered_count' => $summary['cod']['undelivered']['count'],
+            ],
+            'opening_cash' => $summary['opening_cash'],
+        ];
+    }
+
+    /**
      * The cash that customer order deposits put into the drawer in this shift, net of deposits given back from it. A
      * deposit is money in the drawer even though it is no sale yet; the receipt that later collects the order carries it
      * as `order_deposit`, which is not counted again.
@@ -200,7 +230,10 @@ class ShiftService
     }
 
     /**
-     * Closes the shift with the cash counted. A difference needs a note and waits for an admin's approval. The cashier
+     * Closes the shift with the cash counted. The cashier does not know the expected cash, so a note is never demanded (it
+     * would give a difference away). When the count matches the shift is closed; when it does not, the shift only goes to
+     * `pending_review` and closes once an admin has decided the difference ({@see ShiftRecapService::decideDifference()}), so
+     * a shift with a shortage is never closed on the cashier's word alone. The cashier
      * says how much stays in the drawer for the next shift, and the rest of the counted cash is the deposit to hand
      * over. Without `$drawerLeftCash` the opening cash stays (or all the counted cash when that is less).
      *
@@ -212,6 +245,10 @@ class ShiftService
     {
         return DB::transaction(function () use ($shift, $countedCash, $note, $drawerLeftCash): CashShift {
             $shift = CashShift::query()->with('register')->lockForUpdate()->findOrFail($shift->id);
+
+            if ($shift->status === CashShiftStatus::PendingReview) {
+                throw ShiftException::alreadyAwaitingReview();
+            }
 
             if ($shift->status !== CashShiftStatus::Open) {
                 throw ShiftException::notOpen();
@@ -227,10 +264,6 @@ class ShiftService
             $counted = BigDecimal::of($countedCash);
             $difference = $counted->minus($expectedCash);
 
-            if (! $difference->isZero() && blank($note)) {
-                throw ShiftException::differenceNeedsNote();
-            }
-
             $left = $drawerLeftCash === null
                 ? BigDecimal::min(BigDecimal::of((string) $shift->opening_cash), $counted)
                 : BigDecimal::of($drawerLeftCash);
@@ -240,8 +273,8 @@ class ShiftService
             }
 
             $shift->forceFill([
-                'status' => CashShiftStatus::Closed,
-                'closed_at' => now(),
+                'status' => $difference->isZero() ? CashShiftStatus::Closed : CashShiftStatus::PendingReview,
+                'closed_at' => $difference->isZero() ? now() : null,
                 'expected_cash' => (string) $expectedCash->toScale(2),
                 'counted_cash' => (string) $counted->toScale(2),
                 'cash_difference' => (string) $difference->toScale(2),

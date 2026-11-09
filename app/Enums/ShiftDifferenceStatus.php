@@ -15,7 +15,7 @@ enum ShiftDifferenceStatus: string
             self::None => 'Tidak ada selisih',
             self::PendingApproval => 'Menunggu persetujuan',
             self::Approved => 'Disetujui',
-            self::Rejected => 'Ditolak',
+            self::Rejected => 'Ditanggung kasir',
         };
     }
 }

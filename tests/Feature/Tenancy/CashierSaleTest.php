@@ -17,6 +17,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\SaleService;
+use App\Services\ShiftService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -355,19 +356,24 @@ class CashierSaleTest extends TestCase
         $this->assertSame('INV/TCS/K2/'.now()->format('ym').'/0001', $this->store->run(fn () => Sale::query()->sole()->number));
     }
 
-    public function test_the_shift_summary_counts_sales_by_method_and_expected_cash(): void
+    public function test_the_shift_summary_counts_sales_by_method_and_expected_cash_and_the_cashier_sees_only_the_count(): void
     {
         $unit = $this->unitOf($this->sellableProduct(), 'PCS');
         $this->sell([[$unit, 13]], [['cash', 200000]]);
         $this->sell([[$unit, 5]], [['qris', 50000]]);
 
+        $shift = $this->store->run(fn () => CashShift::query()->sole());
+        $summary = $this->store->run(fn (): array => app(ShiftService::class)->summarize($shift));
+        $this->assertSame(
+            [2, '180000.00', '130000.00', '50000.00', '0.00', '130000.00'],
+            [$summary['sale_count'], $summary['total_sales'], $summary['payments']['cash'], $summary['payments']['qris'], $summary['payments']['transfer'], $summary['expected_cash']],
+        );
+
         $this->actingAs($this->cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
             ->where('summary.sale_count', 2)
-            ->where('summary.total_sales', '180000.00')
-            ->where('summary.payments.cash', '130000.00')
-            ->where('summary.payments.qris', '50000.00')
-            ->where('summary.payments.transfer', '0.00')
-            ->where('summary.expected_cash', '130000.00'));
+            ->missing('summary.total_sales')
+            ->missing('summary.payments')
+            ->missing('summary.expected_cash'));
     }
 
     public function test_closing_a_shift_after_sales_compares_the_cash_with_what_the_receipts_say(): void
@@ -377,7 +383,24 @@ class CashierSaleTest extends TestCase
         $shift = $this->store->run(fn () => CashShift::query()->sole());
 
         $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '130000', 'drawer_left_cash' => '0'])
-            ->assertSessionHas('closed_shift', ['expected_cash' => '130000.00', 'counted_cash' => '130000.00', 'cash_difference' => '0.00', 'deposit_amount' => '130000.00', 'drawer_left_cash' => '0.00']);
+            ->assertSessionHas('closed_shift', ['counted_cash' => '130000.00', 'deposit_amount' => '130000.00', 'drawer_left_cash' => '0.00']);
+    }
+
+    public function test_a_background_refresh_of_the_badges_does_not_eat_the_receipt_waiting_to_be_shown(): void
+    {
+        $receipt = ['number' => 'TCS/0001', 'items' => []];
+        $version = $this->actingAs($this->cashier)->get($this->url('index'))->viewData('page')['version'];
+        $partialReload = [
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => (string) $version,
+            'X-Inertia-Partial-Component' => 'Tenant/Cashier/Index',
+            'X-Inertia-Partial-Data' => 'order_counts,pending_return_count',
+        ];
+
+        $this->actingAs($this->cashier)->withSession(['last_sale' => $receipt])->get($this->url('index'), $partialReload)->assertOk();
+
+        $this->actingAs($this->cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('last_sale.number', 'TCS/0001'));
+        $this->actingAs($this->cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('last_sale', null));
     }
 
     public function test_a_closed_shift_can_no_longer_sell(): void

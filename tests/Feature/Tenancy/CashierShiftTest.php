@@ -7,11 +7,14 @@ use App\Enums\ShiftDifferenceStatus;
 use App\Enums\UserRole;
 use App\Models\CashShift;
 use App\Models\Register;
+use App\Models\Sale;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\ShiftRecapService;
 use App\Services\ShiftService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsCashierFixtures;
@@ -107,7 +110,13 @@ class CashierShiftTest extends TestCase
             ->where('shift.id', $shift->id)
             ->where('shift.register.code', 'K1')
             ->where('shift.opening_cash', '500000.00')
-            ->where('summary.expected_cash', '500000.00')
+            ->where('summary.sale_count', 0)
+            ->missing('summary.expected_cash')
+            ->missing('summary.total_sales')
+            ->missing('summary.returns_total')
+            ->missing('summary.payments')
+            ->where('summary.cod.delivered_count', 0)
+            ->where('summary.cod.undelivered_count', 0)
             ->has('registers', 0));
     }
 
@@ -152,7 +161,7 @@ class CashierShiftTest extends TestCase
         $this->closeShift($cashier, $shift, '500000')
             ->assertRedirect($this->url('index'))
             ->assertSessionHas('success', 'Shift ditutup.')
-            ->assertSessionHas('closed_shift', ['expected_cash' => '500000.00', 'counted_cash' => '500000.00', 'cash_difference' => '0.00', 'deposit_amount' => '0.00', 'drawer_left_cash' => '500000.00']);
+            ->assertSessionHas('closed_shift', ['counted_cash' => '500000.00', 'deposit_amount' => '0.00', 'drawer_left_cash' => '500000.00']);
 
         $closed = $this->shiftOf($cashier);
         $this->assertSame([CashShiftStatus::Closed, ShiftDifferenceStatus::None], [$closed->status, $closed->difference_status]);
@@ -160,19 +169,71 @@ class CashierShiftTest extends TestCase
         $this->assertNull($this->store->run(fn () => app(ShiftService::class)->openShiftOf($cashier)));
     }
 
-    public function test_a_difference_needs_a_note_and_waits_for_approval(): void
+    public function test_a_difference_needs_no_note_and_waits_for_approval(): void
     {
         $cashier = $this->storeUser();
         $this->openShift($cashier);
         $shift = $this->shiftOf($cashier);
 
-        $this->closeShift($cashier, $shift, '490000')->assertSessionHas('error', 'Ada selisih kas, isi catatan penutupan.');
-        $this->assertSame(CashShiftStatus::Open, $this->shiftOf($cashier)->status);
-
-        $this->closeShift($cashier, $shift, '490000', 'uang kembalian kurang')->assertSessionHas('success');
+        $this->closeShift($cashier, $shift, '490000')
+            ->assertRedirect($this->url('index'))
+            ->assertSessionHas('success', 'Hitungan tercatat. Shift belum ditutup: menunggu review Admin.')
+            ->assertSessionMissing('closed_shift');
 
         $closed = $this->shiftOf($cashier);
-        $this->assertSame(['-10000.00', ShiftDifferenceStatus::PendingApproval, 'uang kembalian kurang'], [$closed->cash_difference, $closed->difference_status, $closed->closing_note]);
+        $this->assertSame(['-10000.00', CashShiftStatus::PendingReview, ShiftDifferenceStatus::PendingApproval, null], [$closed->cash_difference, $closed->status, $closed->difference_status, $closed->closing_note]);
+        $this->assertNull($closed->closed_at);
+        $this->assertSame($closed->id, $this->store->run(fn () => app(ShiftService::class)->openShiftOf($cashier))?->id);
+    }
+
+    public function test_a_shift_waiting_for_review_keeps_its_register_until_an_admin_decides(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+        $this->closeShift($cashier, $this->shiftOf($cashier), '490000');
+        $next = $this->storeUser();
+
+        $this->openShift($next)->assertSessionHas('error', 'Shift sebelumnya di Kasir 1 masih menunggu review Admin karena kasnya tidak cocok. Minta Admin memutuskannya dulu, atau pakai kasir lain.');
+        $this->assertNull($this->shiftOf($next));
+
+        $admin = $this->storeUser(UserRole::StoreAdmin);
+        $this->store->run(fn () => app(ShiftRecapService::class)->decideDifference($this->shiftOf($cashier), $admin, true, 'Sudah dicek'));
+
+        $this->assertSame(CashShiftStatus::Closed, $this->shiftOf($cashier)->status);
+        $this->openShift($next, null, '490000')->assertSessionHas('success', 'Shift dibuka.');
+    }
+
+    public function test_a_shift_waiting_for_review_stays_on_the_till_locked_and_cannot_be_closed_again(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+        $shift = $this->shiftOf($cashier);
+        $this->closeShift($cashier, $shift, '490000');
+
+        $this->actingAs($cashier)->get($this->url('index'))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('shift.id', $shift->id)
+            ->where('shift.is_awaiting_review', true));
+
+        $this->closeShift($cashier, $shift, '500000')->assertSessionHas('error', 'Hitungan shift ini sudah tercatat dan menunggu review Admin.');
+        $this->assertSame('-10000.00', $this->shiftOf($cashier)->cash_difference);
+
+        $unit = $this->unitOf($this->sellableProduct(), 'PCS');
+        $this->actingAs($cashier)->post($this->url('sales.store'), [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_unit_id' => $unit->id, 'quantity' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 10000]],
+        ])->assertSessionHas('error');
+        $this->assertSame(0, $this->store->run(fn () => Sale::query()->count()));
+    }
+
+    public function test_a_note_written_with_a_difference_is_kept_for_the_admin(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+
+        $this->closeShift($cashier, $this->shiftOf($cashier), '490000', 'uang kembalian kurang')->assertSessionHas('success');
+
+        $this->assertSame('uang kembalian kurang', $this->shiftOf($cashier)->closing_note);
     }
 
     public function test_the_deposit_is_the_counted_cash_minus_what_the_cashier_leaves_in_the_drawer(): void
@@ -222,6 +283,7 @@ class CashierShiftTest extends TestCase
         $shifts = $this->store->run(fn (): ShiftService => app(ShiftService::class));
         $first = $this->openShiftFor($this->storeUser(), null, '500000');
         $closedFirst = $this->store->run(fn () => $shifts->close($first, '650000', 'lebih'));
+        $this->store->run(fn () => app(ShiftRecapService::class)->decideDifference($closedFirst, $this->storeUser(UserRole::StoreAdmin), true, 'Sudah dicek'));
 
         $second = $this->openShiftFor($this->storeUser());
         $closedSecond = $this->store->run(fn () => $shifts->close($second, '120000', 'kurang'));
@@ -250,7 +312,7 @@ class CashierShiftTest extends TestCase
         $this->openShift($first);
         $this->closeShift($first, $this->shiftOf($first), '500000', null, '300000');
         $this->openShift($first, null, '300000');
-        $this->closeShift($first, $this->shiftOf($first), '450000', 'kurang', '100000');
+        $this->closeShift($first, $this->shiftOf($first), '300000', null, '100000');
 
         $shifts = $this->store->run(fn (): ShiftService => app(ShiftService::class));
 

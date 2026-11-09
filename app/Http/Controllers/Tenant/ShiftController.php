@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\CashShiftStatus;
 use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\CloseShiftRequest;
@@ -54,14 +55,17 @@ class ShiftController extends Controller
             return back()->with('error', $exception->getMessage());
         }
 
-        return redirect()->route('tenant.cashier.index', ['tenant' => $store->code])
-            ->with('success', 'Shift ditutup.')
-            ->with('closed_shift', [
-                'expected_cash' => $closedShift->expected_cash,
-                'counted_cash' => $closedShift->counted_cash,
-                'cash_difference' => $closedShift->cash_difference,
-                'deposit_amount' => $closedShift->deposit_amount,
-                'drawer_left_cash' => $closedShift->drawer_left_cash,
-            ]);
+        $redirect = redirect()->route('tenant.cashier.index', ['tenant' => $store->code]);
+
+        // A shift with a difference stays on the till, locked, until an admin decides: nothing to show as closed yet.
+        if ($closedShift->status === CashShiftStatus::PendingReview) {
+            return $redirect->with('success', 'Hitungan tercatat. Shift belum ditutup: menunggu review Admin.');
+        }
+
+        return $redirect->with('success', 'Shift ditutup.')->with('closed_shift', [
+            'counted_cash' => $closedShift->counted_cash,
+            'deposit_amount' => $closedShift->deposit_amount,
+            'drawer_left_cash' => $closedShift->drawer_left_cash,
+        ]);
     }
 }

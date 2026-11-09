@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\CashShiftStatus;
 use App\Models\CashShift;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -20,6 +21,7 @@ class CashShiftResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'is_awaiting_review' => $this->status === CashShiftStatus::PendingReview,
             'register' => ['id' => $this->register->id, 'code' => $this->register->code, 'name' => $this->register->name],
             'cashier_name' => $this->cashier_name,
             'opened_at' => $this->opened_at->toIso8601String(),

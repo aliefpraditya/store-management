@@ -11,7 +11,6 @@ const props = defineProps({
     statuses: { type: Array, required: true },
     differences: { type: Array, required: true },
     pending_difference_count: { type: Number, required: true },
-    follow_up_count: { type: Number, required: true },
 });
 
 const page = usePage();
@@ -51,12 +50,6 @@ watch([status, difference, from, to], () => applyFilters());
             <q-icon name="hourglass_top" />
             <span><b>{{ pending_difference_count }}</b> selisih kas menunggu keputusan Anda.</span>
             <q-btn flat no-caps dense color="primary" label="Lihat" @click="difference = 'pending_approval'" />
-        </div>
-
-        <div v-if="follow_up_count > 0" class="waiting">
-            <q-icon name="assignment_late" />
-            <span><b>{{ follow_up_count }}</b> selisih kas yang ditolak belum ditindaklanjuti.</span>
-            <q-btn flat no-caps dense color="primary" label="Lihat" @click="difference = 'awaiting_follow_up'" />
         </div>
 
         <div class="filters">
@@ -107,8 +100,7 @@ watch([status, difference, from, to], () => applyFilters());
                             <template v-else>–</template>
                         </td>
                         <td>
-                            <span v-if="shift.status === 'closed'" class="chip" :class="differenceChipClass[shift.difference_status]">{{ shift.difference_status_label }}</span>
-                            <small v-if="shift.is_awaiting_follow_up" class="shifts__follow">perlu tindak lanjut</small>
+                            <span v-if="shift.status !== 'open'" class="chip" :class="differenceChipClass[shift.difference_status]">{{ shift.difference_status_label }}</span>
                         </td>
                     </tr>
                 </tbody>
@@ -211,14 +203,6 @@ watch([status, difference, from, to], () => applyFilters());
     display: block;
     color: var(--app-mute);
     font-size: 12.5px;
-}
-
-.shifts__follow {
-    display: block;
-    margin-top: 2px;
-    color: #c2710c;
-    font-size: 12px;
-    font-weight: 600;
 }
 
 .shifts__minus {

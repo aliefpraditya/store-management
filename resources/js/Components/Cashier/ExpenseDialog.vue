@@ -11,8 +11,6 @@ const props = defineProps({
     listUrl: { type: String, required: true },
     /** Where a new expense is posted. */
     storeUrl: { type: String, required: true },
-    /** The cash that should be in the drawer now, to warn about an amount above it; null while unknown. */
-    expectedCash: { type: String, default: null },
 });
 
 const emit = defineEmits(['update:modelValue', 'saved']);
@@ -32,9 +30,6 @@ const timeFormat = new Intl.DateTimeFormat('id-ID', { timeStyle: 'short' });
 const recordedExpenses = computed(() => expenseDialogContext.value.expenses.filter((expense) => expense.status === 'recorded'));
 
 const takenTotal = computed(() => recordedExpenses.value.reduce((sum, expense) => sum + Number(expense.amount), 0));
-
-/** More than the drawer should hold is most often a typed zero too many, and would only show up as a shortage at closing. */
-const isAboveDrawerCash = computed(() => props.expectedCash !== null && Number(form.value.amount) > Number(props.expectedCash));
 
 const canSave = computed(() => form.value.expense_category_id !== null && Number(form.value.amount) > 0 && form.value.description.trim() !== '' && !isSaving.value);
 
@@ -79,23 +74,6 @@ watch(
         load();
     },
 );
-
-/** Asks first when the amount is above the cash in the drawer; otherwise saves at once. */
-function confirmAndSave() {
-    if (!isAboveDrawerCash.value) {
-        save();
-
-        return;
-    }
-
-    $q.dialog({
-        title: 'Nominal melebihi tunai di laci',
-        message: `Tunai yang seharusnya ada di laci ${formatRupiah(props.expectedCash)}, sedangkan yang dicatat ${formatRupiah(form.value.amount)}. Periksa angkanya, lalu tetap catat?`,
-        cancel: { label: 'Periksa lagi', flat: true, noCaps: true },
-        ok: { label: 'Tetap catat', color: 'primary', unelevated: true, noCaps: true },
-        persistent: true,
-    }).onOk(save);
-}
 
 /** Takes the money out of this shift's drawer; the close-shift figures are fetched again by whoever listens. */
 async function save() {
@@ -161,7 +139,7 @@ async function save() {
 
             <q-card-actions align="right">
                 <q-btn flat no-caps label="Tutup" v-close-popup />
-                <q-btn color="primary" unelevated no-caps label="Catat Pengeluaran" :disable="!canSave" :loading="isSaving" @click="confirmAndSave" />
+                <q-btn color="primary" unelevated no-caps label="Catat Pengeluaran" :disable="!canSave" :loading="isSaving" @click="save" />
             </q-card-actions>
         </q-card>
     </q-dialog>

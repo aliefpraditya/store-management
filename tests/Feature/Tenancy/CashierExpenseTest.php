@@ -100,13 +100,16 @@ class CashierExpenseTest extends TestCase
         $this->assertSame(['25000.00', '75000.00'], [$this->summary()['drawer_expenses'], $this->summary()['expected_cash']]);
     }
 
-    public function test_the_cashier_screen_shows_the_drawer_expenses_in_the_shift_summary(): void
+    public function test_drawer_expenses_lower_the_expected_cash_but_the_cashier_screen_does_not_show_it(): void
     {
         $this->actingAs($this->cashier)->postJson($this->url('expenses.store'), $this->body())->assertCreated();
 
+        $summary = $this->store->run(fn (): array => app(ShiftService::class)->summarize($this->shift));
+        $this->assertSame(['25000.00', '75000.00'], [$summary['drawer_expenses'], $summary['expected_cash']]);
+
         $this->actingAs($this->cashier)->get($this->url('index'))->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->where('summary.drawer_expenses', '25000.00')
-            ->where('summary.expected_cash', '75000.00')
+            ->missing('summary.drawer_expenses')
+            ->missing('summary.expected_cash')
             ->where('urls.expenses', $this->url('expenses.index'))
             ->where('urls.expenses_store', $this->url('expenses.store')));
     }

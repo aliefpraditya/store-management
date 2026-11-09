@@ -92,6 +92,37 @@ class CashierQuickAccessTest extends TestCase
         $this->cashierScreen()->assertInertia(fn (Assert $page) => $page->where('best_sellers', []));
     }
 
+    public function test_only_items_in_stock_are_offered_even_when_a_sold_out_one_sold_best(): void
+    {
+        $soldOut = $this->sellableProduct('Habis', '2');
+        $inStock = $this->sellableProduct('Ada', '100');
+
+        $this->sell($soldOut, 1);
+        $this->sell($soldOut, 1);
+        $this->sell($inStock, 1);
+
+        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page
+            ->has('best_sellers', 1)
+            ->where('best_sellers.0.name', 'Ada')
+            ->where('best_sellers.0.stock', '99.000'));
+    }
+
+    public function test_at_most_twenty_best_sellers_are_offered_most_sold_first(): void
+    {
+        $products = collect(range(1, 22))->map(fn (int $number): Product => $this->sellableProduct(sprintf('Barang %02d', $number), '100'));
+
+        foreach ($products as $index => $product) {
+            foreach (range(1, 23 - $index) as $ignored) {
+                $this->sell($product, 1);
+            }
+        }
+
+        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page
+            ->has('best_sellers', 20)
+            ->where('best_sellers.0.name', 'Barang 01')
+            ->where('best_sellers.19.name', 'Barang 20'));
+    }
+
     public function test_an_item_that_cannot_be_sold_any_more_is_left_out(): void
     {
         $brush = $this->sellableProduct('Kuas', '100');

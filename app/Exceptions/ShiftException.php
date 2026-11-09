@@ -39,6 +39,16 @@ class ShiftException extends Exception
         return new self("Masih ada {$count} retur yang menunggu persetujuan Admin. Selesaikan dulu sebelum menutup shift.");
     }
 
+    public static function alreadyAwaitingReview(): self
+    {
+        return new self('Hitungan shift ini sudah tercatat dan menunggu review Admin.');
+    }
+
+    public static function registerAwaitingReview(string $registerName): self
+    {
+        return new self("Shift sebelumnya di {$registerName} masih menunggu review Admin karena kasnya tidak cocok. Minta Admin memutuskannya dulu, atau pakai kasir lain.");
+    }
+
     public static function differenceNotPending(string $statusLabel): self
     {
         return new self("Selisih kas shift ini berstatus {$statusLabel}, jadi tidak bisa diputuskan lagi.");
@@ -49,19 +59,9 @@ class ShiftException extends Exception
         return new self('Selisih kas shift Anda sendiri harus diputuskan Admin lain atau Super Admin.');
     }
 
-    public static function notAwaitingFollowUp(): self
-    {
-        return new self('Hanya selisih kas yang ditolak dan belum ditindaklanjuti yang bisa ditandai.');
-    }
-
     public static function dayClosed(string $dateText): self
     {
         return new self("Hari {$dateText} sudah ditutup. Minta Super Admin membuka kembali hari itu sebelum membuka shift.");
-    }
-
-    public static function differenceNeedsNote(): self
-    {
-        return new self('Ada selisih kas, isi catatan penutupan.');
     }
 
     public static function openingCashNeedsNote(string $carriedOverCash): self

@@ -16,7 +16,6 @@ use App\Services\ExpenseService;
 use App\Services\ShiftRecapService;
 use App\Services\ShiftService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -48,12 +47,8 @@ class ShiftRecapController extends Controller
                 ->through(fn (CashShift $shift): array => CashShiftListResource::make($shift)->resolve()),
             'filters' => $filters,
             'statuses' => collect(CashShiftStatus::cases())->map(fn (CashShiftStatus $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
-            'differences' => [
-                ...collect(ShiftDifferenceStatus::cases())->map(fn (ShiftDifferenceStatus $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
-                ['value' => ShiftRecapService::AWAITING_FOLLOW_UP, 'label' => 'Ditolak, perlu tindak lanjut'],
-            ],
+            'differences' => collect(ShiftDifferenceStatus::cases())->map(fn (ShiftDifferenceStatus $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
             'pending_difference_count' => $this->shiftRecapService->pendingDifferenceCount(),
-            'follow_up_count' => $this->shiftRecapService->followUpCount(),
         ]);
     }
 
@@ -70,7 +65,6 @@ class ShiftRecapController extends Controller
                     'index' => route('tenant.shifts.index', ['tenant' => tenant('code')]),
                     'approve' => route('tenant.shifts.approve', ['tenant' => tenant('code'), 'shift' => $shift->id]),
                     'reject' => route('tenant.shifts.reject', ['tenant' => tenant('code'), 'shift' => $shift->id]),
-                    'follow_up' => route('tenant.shifts.follow-up', ['tenant' => tenant('code'), 'shift' => $shift->id]),
                 ],
             ],
         ]);
@@ -83,18 +77,7 @@ class ShiftRecapController extends Controller
 
     public function reject(DecideShiftDifferenceRequest $request, CashShift $shift): RedirectResponse
     {
-        return $this->decide($request, $shift, false, 'Selisih kas ditolak.');
-    }
-
-    public function followUp(Request $request, CashShift $shift): RedirectResponse
-    {
-        try {
-            $this->shiftRecapService->markFollowedUp($shift, $request->user());
-        } catch (ShiftException $exception) {
-            return back()->with('error', $exception->getMessage());
-        }
-
-        return back()->with('success', 'Selisih kas ditandai sudah ditindaklanjuti.');
+        return $this->decide($request, $shift, false, 'Selisih kas dicatat ditanggung kasir dan shift ditutup. Berita acara dan penggantian uangnya dicatat di luar sistem.');
     }
 
     private function decide(DecideShiftDifferenceRequest $request, CashShift $shift, bool $isApproved, string $successMessage): RedirectResponse

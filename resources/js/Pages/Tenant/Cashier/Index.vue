@@ -105,6 +105,11 @@ const timeFormat = new Intl.DateTimeFormat('id-ID', { timeStyle: 'short' });
 
 const shiftSince = computed(() => (props.shift ? timeFormat.format(new Date(props.shift.opened_at)) : ''));
 
+/** The count of the drawer did not match, so the shift is held for an admin's review: the till is locked and the shift cannot be left. */
+const isAwaitingReview = computed(() => props.shift?.is_awaiting_review === true);
+
+const isTillWorking = computed(() => props.shift !== null && !isAwaitingReview.value);
+
 /** The clock the running time of the shift is read from; it moves every half minute, which is enough for minutes. */
 const now = ref(Date.now());
 let clockTimer;
@@ -524,7 +529,11 @@ function openReturn(receipt) {
 }
 
 /** A finished return or an expense changes the drawer, so the figures of the close-shift dialog are fetched again. */
-const refreshShiftSummary = () => router.reload({ only: ['summary', 'order_counts', 'pending_return_count'] });
+/**
+ * Fetches the figures again in the background. It is async so it never cancels the visit of a payment in flight (a new
+ * Inertia visit cancels the running one on the client, and the receipt that comes back would be thrown away).
+ */
+const refreshShiftSummary = () => router.reload({ only: ['summary', 'order_counts', 'pending_return_count'], async: true });
 
 /**
  * F4 puts the cart on hold, or, when the cart is empty, brings a held one back. The cart being worked on goes on hold
@@ -573,7 +582,7 @@ function collectPaidOrder(order) {
 
 /** F9 pays, F8 empties the cart, F4 holds or recalls a cart, F7 opens the orders, F2 goes to the search box, Alt and 1 to 9 add a best seller. */
 function onKeydown(event) {
-    if (!props.shift || isAnyDialogOpen.value) {
+    if (!isTillWorking.value || isAnyDialogOpen.value) {
         return;
     }
 
@@ -634,6 +643,21 @@ async function refreshCart() {
 const BADGE_REFRESH_MS = 60000;
 let badgeTimer;
 
+/**
+ * While the shift waits for an admin's review the till has nothing else to do but wait, so the shift is fetched again every
+ * few seconds; once the admin has decided the shift is gone from the screen and the way to open a new one is shown.
+ */
+const REVIEW_REFRESH_MS = 15000;
+let reviewTimer;
+
+function startReviewWatch() {
+    reviewTimer = setInterval(() => {
+        if (isAwaitingReview.value) {
+            router.reload({ only: ['shift', 'summary', 'registers'], async: true });
+        }
+    }, REVIEW_REFRESH_MS);
+}
+
 onMounted(() => {
     window.addEventListener('keydown', onKeydown);
     searchInput.value?.focus();
@@ -641,7 +665,12 @@ onMounted(() => {
 
     if (props.shift) {
         refreshCart();
-        badgeTimer = setInterval(() => router.reload({ only: ['order_counts', 'pending_return_count'] }), BADGE_REFRESH_MS);
+        startReviewWatch();
+        badgeTimer = setInterval(() => {
+            if (!isPaying.value) {
+                router.reload({ only: ['order_counts', 'pending_return_count'], async: true });
+            }
+        }, BADGE_REFRESH_MS);
     }
 });
 
@@ -649,6 +678,7 @@ onBeforeUnmount(() => {
     window.removeEventListener('keydown', onKeydown);
     clearTimeout(searchTimer);
     clearInterval(badgeTimer);
+    clearInterval(reviewTimer);
     clearInterval(clockTimer);
 });
 </script>
@@ -662,17 +692,17 @@ onBeforeUnmount(() => {
                 <header class="till__bar">
                     <div class="till__who">
                         <b>{{ page.props.store.name }}</b>
-                        <small v-if="shift">{{ shift.register.code }} · {{ shift.register.name }} · {{ shift.cashier_name }} · shift sejak {{ shiftSince }}, berjalan {{ shiftRunningFor }}</small>
+                        <small v-if="shift">{{ isAwaitingReview ? 'Menunggu review Admin · ' : '' }}{{ shift.register.code }} · {{ shift.register.name }} · {{ shift.cashier_name }} · shift sejak {{ shiftSince }}, berjalan {{ shiftRunningFor }}</small>
                         <small v-else>Belum ada shift</small>
                     </div>
                     <div class="till__bar-actions">
-                        <q-btn v-if="shift" flat no-caps dense icon="receipt_long" label="Riwayat Nota" @click="isReceiptsOpen = true" />
-                        <q-btn v-if="shift" flat no-caps dense icon="undo" label="Retur" @click="isReturnLookupOpen = true">
+                        <q-btn v-if="isTillWorking" flat no-caps dense icon="receipt_long" label="Riwayat Nota" @click="isReceiptsOpen = true" />
+                        <q-btn v-if="isTillWorking" flat no-caps dense icon="undo" label="Retur" @click="isReturnLookupOpen = true">
                             <q-badge v-if="pending_return_count > 0" color="negative" floating :label="pending_return_count" />
                             <q-tooltip v-if="pending_return_count > 0">{{ pending_return_count }} retur shift ini menunggu persetujuan Admin. Shift belum bisa ditutup sebelum itu.</q-tooltip>
                         </q-btn>
-                        <q-btn v-if="shift" flat no-caps dense icon="local_shipping" label="COD" @click="isCodOpen = true" />
-                        <q-btn v-if="shift" flat no-caps dense icon="assignment" @click="isOrdersOpen = true">
+                        <q-btn v-if="isTillWorking" flat no-caps dense icon="local_shipping" label="COD" @click="isCodOpen = true" />
+                        <q-btn v-if="isTillWorking" flat no-caps dense icon="assignment" @click="isOrdersOpen = true">
                             <span>Pesanan</span><kbd class="till__key">F7</kbd>
                             <q-badge v-if="order_counts.arrived > 0" color="negative" floating :label="order_counts.arrived" />
                             <q-badge v-else-if="order_counts.ready > 0" color="positive" floating :label="order_counts.ready" />
@@ -683,8 +713,8 @@ onBeforeUnmount(() => {
                                 <div v-if="order_counts.ready > 0">{{ order_counts.ready }} siap diambil pelanggan</div>
                             </q-tooltip>
                         </q-btn>
-                        <q-btn v-if="shift" flat no-caps dense icon="remove_circle_outline" label="Pengeluaran" @click="isExpenseOpen = true" />
-                        <q-btn v-if="shift" flat no-caps dense color="negative" icon="lock_clock" label="Tutup Shift" @click="openClose">
+                        <q-btn v-if="isTillWorking" flat no-caps dense icon="remove_circle_outline" label="Pengeluaran" @click="isExpenseOpen = true" />
+                        <q-btn v-if="isTillWorking" flat no-caps dense color="negative" icon="lock_clock" label="Tutup Shift" @click="openClose">
                             <q-tooltip>Tutup shift dulu untuk keluar</q-tooltip>
                         </q-btn>
                         <q-btn v-if="can_leave_to_dashboard" flat no-caps dense icon="space_dashboard" label="Dashboard" @click="router.visit(urls.dashboard)" />
@@ -693,6 +723,13 @@ onBeforeUnmount(() => {
                 </header>
 
                 <ShiftOpenPanel v-if="!shift" :registers="registers" :open-url="urls.open_shift" :store-name="page.props.store.name" />
+
+                <section v-else-if="isAwaitingReview" class="till__locked">
+                    <q-icon name="hourglass_top" size="40px" color="warning" />
+                    <h2>Shift menunggu review Admin</h2>
+                    <p>Kas yang Anda hitung belum cocok dengan catatan sistem. Hitungan Anda sudah tercatat dan tidak bisa diubah.</p>
+                    <p>Jangan ubah isi laci dan jangan transaksi dulu. Shift ditutup setelah Admin memutuskan; halaman ini diperbarui sendiri.</p>
+                </section>
 
                 <div v-else class="till__main">
                     <section class="finder">
@@ -720,7 +757,7 @@ onBeforeUnmount(() => {
                                     <kbd v-if="index < 9" class="best__key">Alt+{{ index + 1 }}</kbd>
                                     <b>{{ item.name }}</b>
                                     <small>{{ formatRupiah(defaultUnitOf(item).price) }} / {{ defaultUnitOf(item).code }}</small>
-                                    <small :class="{ item__empty: Number(item.stock) <= 0 }">{{ Number(item.stock) <= 0 ? 'stok habis, bisa dipesan' : `stok ${formatStock(item.stock, item.units, item.base_unit, item.intact_packs)}` }}</small>
+                                    <small>stok {{ formatStock(item.stock, item.units, item.base_unit, item.intact_packs) }}</small>
                                 </button>
                             </div>
                         </section>
@@ -812,7 +849,7 @@ onBeforeUnmount(() => {
         </q-page-container>
 
         <PaymentDialog v-model="isPaymentOpen" :total="paymentTotal" :payment-methods="payment_methods" :is-processing="isPaying" :split="splitForPayment" :collecting-order="collectingOrder" @confirm="submitSale" />
-        <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :payment-methods="payment_methods.filter((method) => method.value !== 'cod')" :is-processing="isClosing" @confirm="closeShift" />
+        <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :is-processing="isClosing" @confirm="closeShift" />
         <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" :order="last_order" :is-printed-automatically="is_receipt_printed_automatically" @delivery="openDelivery" />
         <HeldCartsDialog v-model="isHeldOpen" :held-carts="heldCarts.held.value" @resume="resumeHeldCart" @discard="heldCarts.discard" />
         <ShiftClosedDialog v-model="isShiftClosedOpen" :shift-totals="closed_shift" />
@@ -822,7 +859,7 @@ onBeforeUnmount(() => {
         <ReturnDialog v-model="isReturnOpen" :receipt="returnReceipt" :products-url="urls.products" @saved="refreshShiftSummary" />
         <CodDialog v-if="shift" v-model="isCodOpen" :list-url="urls.cod" @changed="refreshShiftSummary" />
         <OrderListDialog v-if="shift" v-model="isOrdersOpen" :list-url="urls.orders" @changed="refreshShiftSummary" @collect="startCollecting" @collect-paid="collectPaidOrder" />
-        <ExpenseDialog v-if="shift" v-model="isExpenseOpen" :list-url="urls.expenses" :store-url="urls.expenses_store" :expected-cash="summary?.expected_cash ?? null" @saved="refreshShiftSummary" />
+        <ExpenseDialog v-if="shift" v-model="isExpenseOpen" :list-url="urls.expenses" :store-url="urls.expenses_store" @saved="refreshShiftSummary" />
     </q-layout>
 </template>
 
@@ -933,6 +970,30 @@ onBeforeUnmount(() => {
     border-color: var(--q-primary);
     outline: 2px solid var(--q-primary);
     outline-offset: -1px;
+}
+
+.till__locked {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 24px;
+    color: var(--app-ink-soft);
+    text-align: center;
+}
+
+.till__locked h2 {
+    margin: 0;
+    color: var(--app-ink);
+    font-size: 20px;
+}
+
+.till__locked p {
+    margin: 0;
 }
 
 .till__main {
