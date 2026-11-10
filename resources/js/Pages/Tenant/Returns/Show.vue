@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../../Composables/postJson';
-import { printInNewWindow } from '../../../Composables/printInNewWindow';
+import { printSheet } from '../../../Composables/printSheet';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import { returnStatusChipClass } from '../../../Composables/useReturnStatus';
@@ -46,7 +46,7 @@ async function printReplacement() {
     isPrintingReplacement.value = true;
 
     try {
-        await printInNewWindow(async () => (await postJson(props.saleReturn.exchange.print_url)).sheet_url);
+        await printSheet(async () => (await postJson(props.saleReturn.exchange.print_url)).sheet_url);
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
     } finally {
@@ -59,7 +59,7 @@ async function print() {
     isPrinting.value = true;
 
     try {
-        await printInNewWindow(async () => props.saleReturn.urls.sheet);
+        await printSheet(async () => props.saleReturn.urls.sheet);
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
     } finally {

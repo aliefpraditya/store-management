@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../Composables/postJson';
-import { printInNewWindow } from '../../Composables/printInNewWindow';
+import { printSheet } from '../../Composables/printSheet';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 
@@ -57,12 +57,12 @@ watch(
     { immediate: true },
 );
 
-/** Counts the print on the server and opens the receipt in a window of its own. */
+/** Counts the print on the server and prints the receipt. */
 async function printReceipt() {
     isPrintingReceipt.value = true;
 
     try {
-        await printInNewWindow(async () => (await postJson(props.sale.print_url)).sheet_url);
+        await printSheet(async () => (await postJson(props.sale.print_url)).sheet_url);
         isDocumentPrinted.value = true;
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
@@ -71,12 +71,12 @@ async function printReceipt() {
     }
 }
 
-/** Counts the print on the server and opens the order slip in a window of its own. */
+/** Counts the print on the server and prints the order slip. */
 async function printOrder() {
     isPrintingOrder.value = true;
 
     try {
-        await printInNewWindow(async () => (await postJson(props.order.print_url)).sheet_url);
+        await printSheet(async () => (await postJson(props.order.print_url)).sheet_url);
         isDocumentPrinted.value = true;
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
@@ -119,12 +119,12 @@ async function openDelivery() {
     }
 }
 
-/** Counts the print on the server and opens the delivery note sheet in a window of its own. */
+/** Counts the print on the server and prints the delivery note sheet. */
 async function printNote(note) {
     printingId.value = note.id;
 
     try {
-        await printInNewWindow(async () => (await postJson(note.print_url)).sheet_url);
+        await printSheet(async () => (await postJson(note.print_url)).sheet_url);
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
     } finally {

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../Composables/postJson';
-import { printInNewWindow } from '../../Composables/printInNewWindow';
+import { printSheet } from '../../Composables/printSheet';
 import { newUuid } from '../../Composables/useCart';
 import { deliveryNoteStatusChipClass } from '../../Composables/useDeliveryNoteStatus';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
@@ -121,15 +121,14 @@ async function saveNote() {
 }
 
 /**
- * Makes the note; with `shouldPrintAfter` it is printed straight away. The print window opens first, from the click:
- * browsers block a pop-up opened after the note has been saved.
+ * Makes the note; with `shouldPrintAfter` it is printed straight away.
  */
 async function create(shouldPrintAfter) {
     isSaving.value = true;
 
     try {
         if (shouldPrintAfter) {
-            await printInNewWindow(async () => countPrint(await saveNote()));
+            await printSheet(async () => countPrint(await saveNote()));
         } else {
             await saveNote();
         }
@@ -160,7 +159,7 @@ async function print(note) {
     printingId.value = note.id;
 
     try {
-        await printInNewWindow(() => countPrint(note));
+        await printSheet(() => countPrint(note));
     } catch (error) {
         fail(error);
     } finally {

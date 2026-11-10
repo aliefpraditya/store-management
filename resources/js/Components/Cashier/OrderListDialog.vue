@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../Composables/postJson';
-import { printInNewWindow } from '../../Composables/printInNewWindow';
+import { printSheet } from '../../Composables/printSheet';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 
@@ -137,10 +137,10 @@ async function submitCancel() {
     }
 }
 
-/** Counts the print on the server and opens the order slip in a window of its own. */
+/** Counts the print on the server and prints the order slip. */
 async function printOrder(order) {
     try {
-        await printInNewWindow(async () => (await postJson(order.print_url)).sheet_url);
+        await printSheet(async () => (await postJson(order.print_url)).sheet_url);
     } catch (error) {
         fail(error);
     }

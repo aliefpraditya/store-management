@@ -3,7 +3,7 @@ import { ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../Composables/postJson';
-import { printInNewWindow } from '../../Composables/printInNewWindow';
+import { printSheet } from '../../Composables/printSheet';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
 
@@ -81,7 +81,7 @@ async function print(receipt) {
     printingId.value = receipt.id;
 
     try {
-        await printInNewWindow(async () => {
+        await printSheet(async () => {
             const { print_count: printCount, sheet_url: sheetUrl } = await postJson(receipt.print_url);
             receipt.print_count = printCount;
 

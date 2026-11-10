@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import ExchangeEditor from '../ExchangeEditor.vue';
 import { postJson } from '../../Composables/postJson';
-import { PopupBlockedError, printInNewWindow } from '../../Composables/printInNewWindow';
+import { printSheet } from '../../Composables/printSheet';
 import { newUuid } from '../../Composables/useCart';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
@@ -107,8 +107,7 @@ watch(
 
 /**
  * Sends the return. A cashier's waits for an admin; an admin's is done at once, and the stock is back. The return
- * slip opens in a new window to be printed unless the cashier turned that off; a browser that blocks the pop-up
- * does not stop the return, it is saved and the cashier is told the slip can be printed from the list.
+ * slip is printed unless the cashier turned that off.
  */
 async function save() {
     isSaving.value = true;
@@ -131,16 +130,7 @@ async function save() {
         };
 
         if (shouldPrint.value) {
-            try {
-                await printInNewWindow(send);
-            } catch (error) {
-                if (!(error instanceof PopupBlockedError)) {
-                    throw error;
-                }
-
-                await send();
-                $q.notify({ type: 'warning', position: 'top', message: 'Retur tersimpan, tapi jendela cetak diblokir browser. Cetak bukti dari daftar retur nota ini.' });
-            }
+            await printSheet(send);
         } else {
             await send();
         }
@@ -168,7 +158,7 @@ async function print(saleReturn) {
     printingId.value = saleReturn.id;
 
     try {
-        await printInNewWindow(async () => saleReturn.sheet_url);
+        await printSheet(async () => saleReturn.sheet_url);
     } catch (error) {
         fail(error);
     } finally {
@@ -181,7 +171,7 @@ async function printReplacement(saleReturn) {
     printingId.value = `receipt-${saleReturn.id}`;
 
     try {
-        await printInNewWindow(async () => (await postJson(saleReturn.exchange.print_url)).sheet_url);
+        await printSheet(async () => (await postJson(saleReturn.exchange.print_url)).sheet_url);
     } catch (error) {
         fail(error);
     } finally {

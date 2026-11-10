@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import DateInput from '../../../Components/DateInput.vue';
+import { printSheet } from '../../../Composables/printSheet';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
@@ -97,8 +98,8 @@ function confirmReopen() {
     }).onOk((reason) => router.post(props.urls.reopen, { reason }, { preserveScroll: true }));
 }
 
-/** The report opens in a window of its own and prints itself there. */
-const printReport = () => window.open(props.closing.sheet_url, '_blank');
+/** The report prints itself from a hidden frame. */
+const printReport = () => printSheet(() => props.closing.sheet_url);
 </script>
 
 <template>

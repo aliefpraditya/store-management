@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../../Composables/postJson';
-import { printInNewWindow } from '../../../Composables/printInNewWindow';
+import { printSheet } from '../../../Composables/printSheet';
 import { deliveryNoteStatusChipClass } from '../../../Composables/useDeliveryNoteStatus';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -94,7 +94,7 @@ async function print() {
     isPrinting.value = true;
 
     try {
-        await printInNewWindow(async () => (await postJson(props.note.urls.print)).sheet_url);
+        await printSheet(async () => (await postJson(props.note.urls.print)).sheet_url);
         router.reload({ only: ['note'] });
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
