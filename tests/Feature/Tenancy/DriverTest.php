@@ -58,40 +58,77 @@ class DriverTest extends TestCase
         return $this->store->run(fn (): Driver => Driver::factory()->create(['name' => $name, 'is_active' => $isActive]));
     }
 
-    public function test_an_admin_adds_renames_and_switches_off_drivers_on_the_settings_page(): void
+    /**
+     * The settings page as the one Save sends it: the required settings, and the drivers as the whole list.
+     *
+     * @param  list<array{id?: int|null, name: string, is_active: bool}>  $drivers
+     * @return array<string, mixed>
+     */
+    private function pageWith(array $drivers): array
     {
-        $this->actingAs($this->admin)->post($this->url('tenant.drivers.store'), ['name' => 'Pak Joko'])->assertSessionHasNoErrors();
+        return ['paper_width' => 80, 'lock_sales_during_opname' => false, 'auto_print_receipt' => false, 'drivers' => $drivers];
+    }
+
+    private function save(array $drivers)
+    {
+        return $this->actingAs($this->admin)->put($this->url('tenant.settings.update'), $this->pageWith($drivers));
+    }
+
+    public function test_an_admin_adds_renames_and_switches_off_drivers_with_the_one_save_of_the_settings_page(): void
+    {
+        $this->save([['id' => null, 'name' => '  Pak Joko ', 'is_active' => true]])->assertSessionHasNoErrors();
 
         $joko = $this->store->run(fn (): Driver => Driver::query()->sole());
-        $this->assertTrue($joko->is_active);
+        $this->assertSame(['Pak Joko', true], [$joko->name, $joko->is_active]);
 
-        $this->actingAs($this->admin)->put($this->url('tenant.drivers.update', ['driver' => $joko->id]), ['name' => 'Joko S.', 'is_active' => false])->assertSessionHasNoErrors();
+        $this->save([['id' => $joko->id, 'name' => 'Joko S.', 'is_active' => false]])->assertSessionHasNoErrors();
 
         $this->actingAs($this->admin)->get($this->url('tenant.settings.index'))->assertInertia(fn (Assert $page) => $page
             ->where('drivers.0.name', 'Joko S.')
-            ->where('drivers.0.is_active', false));
+            ->where('drivers.0.is_active', false)
+            ->missing('drivers.0.update_url')
+            ->missing('urls.driver_create'));
+    }
+
+    public function test_a_driver_that_is_left_out_of_the_list_stays(): void
+    {
+        $this->driver('Pak Joko');
+        $this->driver('Pak Budi');
+
+        $this->save([['id' => null, 'name' => 'Pak Adi', 'is_active' => true]])->assertSessionHasNoErrors();
+
+        $this->assertSame(3, $this->store->run(fn (): int => Driver::query()->count()));
     }
 
     public function test_a_driver_name_must_be_filled_and_cannot_be_used_twice(): void
     {
-        $this->driver('Pak Joko');
+        $joko = $this->driver('Pak Joko');
 
-        $this->actingAs($this->admin)->post($this->url('tenant.drivers.store'), ['name' => 'Pak Joko'])->assertSessionHasErrors(['name' => 'Nama sopir sudah ada.']);
-        $this->actingAs($this->admin)->post($this->url('tenant.drivers.store'), ['name' => ''])->assertSessionHasErrors(['name' => 'Nama sopir wajib diisi.']);
+        $this->save([['id' => $joko->id, 'name' => 'Pak Joko', 'is_active' => true], ['id' => null, 'name' => 'pak joko', 'is_active' => true]])->assertSessionHasErrors(['drivers.1.name' => 'Nama sopir sudah ada.']);
+        $this->save([['id' => null, 'name' => 'Pak Joko', 'is_active' => true]])->assertSessionHasErrors(['drivers.0.name' => 'Nama sopir sudah ada.']);
+        $this->save([['id' => null, 'name' => '', 'is_active' => true]])->assertSessionHasErrors(['drivers.0.name' => 'Nama sopir wajib diisi.']);
+        $this->save([['id' => null, 'name' => str_repeat('a', 101), 'is_active' => true]])->assertSessionHasErrors('drivers.0.name');
 
         $this->assertSame(1, $this->store->run(fn (): int => Driver::query()->count()));
     }
 
-    public function test_a_driver_can_keep_their_own_name_when_edited(): void
+    public function test_a_driver_can_keep_their_own_name_when_the_page_is_saved(): void
     {
         $joko = $this->driver('Pak Joko');
 
-        $this->actingAs($this->admin)->put($this->url('tenant.drivers.update', ['driver' => $joko->id]), ['name' => 'Pak Joko', 'is_active' => true])->assertSessionHasNoErrors();
+        $this->save([['id' => $joko->id, 'name' => 'Pak Joko', 'is_active' => true]])->assertSessionHasNoErrors();
+    }
+
+    public function test_a_driver_that_does_not_exist_cannot_be_changed(): void
+    {
+        $this->save([['id' => 999, 'name' => 'Hantu', 'is_active' => true]])->assertSessionHasErrors('drivers.0.id');
     }
 
     public function test_a_cashier_cannot_manage_drivers(): void
     {
-        $this->actingAs($this->cashier)->post($this->url('tenant.drivers.store'), ['name' => 'Pak Joko'])->assertForbidden();
+        $this->actingAs($this->cashier)->put($this->url('tenant.settings.update'), $this->pageWith([['id' => null, 'name' => 'Pak Joko', 'is_active' => true]]))->assertForbidden();
+
+        $this->assertSame(0, $this->store->run(fn (): int => Driver::query()->count()));
     }
 
     public function test_the_delivery_note_page_offers_only_active_drivers(): void
@@ -123,7 +160,7 @@ class DriverTest extends TestCase
         $note = $this->draftNote();
         $this->actingAs($this->admin)->post($this->url('tenant.delivery-notes.ship', ['delivery_note' => $note->id]), ['driver_id' => $joko->id]);
 
-        $this->actingAs($this->admin)->put($this->url('tenant.drivers.update', ['driver' => $joko->id]), ['name' => 'Joko Baru', 'is_active' => false]);
+        $this->save([['id' => $joko->id, 'name' => 'Joko Baru', 'is_active' => false]]);
 
         $this->assertSame('Pak Joko', $this->store->run(fn (): ?string => DeliveryNote::query()->findOrFail($note->id)->driver_name));
     }

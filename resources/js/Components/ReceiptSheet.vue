@@ -1,25 +1,19 @@
 <script setup>
+import { formatFigure as figure } from '../Composables/useMoneyFormat';
 import { formatQuantity } from '../Composables/useQuantityFormat';
 import Code39Barcode from './Code39Barcode.vue';
 import ThermalPageSize from './ThermalPageSize.vue';
 
 defineProps({
-    /** `order` is the customer order made in the same checkout, printed on the same paper (null when there is none). @type {{order: object|null, number: string, sold_at: string, cashier_name: string, customer_name: string|null, status: string, is_copy: boolean, store: {name: string, address: string|null, phone: string|null}, footer: string, paper_width: number, items: object[], payments: object[], total: string, change_amount: string}} */
+    /** `order` is the customer order made in the same checkout, printed on the same paper (null when there is none). The server has named the payments as they are printed. The receipt shows plain figures ("1.280.000"); only a unit price carries "Rp.". @type {{order: object|null, number: string, sold_at: string, cashier_name: string, customer_name: string|null, status: string, is_copy: boolean, store: {name: string, address: string|null, phone: string|null}, footer: string, paper_width: number, items: object[], payments: object[], total: string, change_amount: string}} */
     receipt: { type: Object, required: true },
 });
 
 const dateFormat = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const timeFormat = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' });
-const numberFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
 
 /** Longer than any paper is wide; the line is cut at the edge and ends with a plus. */
 const rule = '- '.repeat(60);
-
-/** The receipt shows plain figures ("1.280.000"); only a unit price carries "Rp.". */
-const figure = (amount) => numberFormat.format(Number(amount));
-
-/** What is left to pay on delivery is the receipt's "kekurangan", so a COD line is named that way. */
-const paymentLabel = (payment) => (payment.method === 'COD' ? 'Kekurangan (COD)' : payment.method);
 </script>
 
 <template>
@@ -54,7 +48,7 @@ const paymentLabel = (payment) => (payment.method === 'COD' ? 'Kekurangan (COD)'
         <div class="receipt-print__totals">
             <span>Total : {{ figure(receipt.total) }}</span>
             <template v-if="!receipt.order">
-                <span v-for="(payment, index) in receipt.payments" :key="index">{{ paymentLabel(payment) }} : {{ figure(payment.amount) }}</span>
+                <span v-for="(payment, index) in receipt.payments" :key="index">{{ payment.method }} : {{ figure(payment.amount) }}</span>
                 <span>Kembalian : {{ figure(receipt.change_amount) }}</span>
             </template>
         </div>
@@ -83,7 +77,7 @@ const paymentLabel = (payment) => (payment.method === 'COD' ? 'Kekurangan (COD)'
             <div class="receipt-print__totals">
                 <span>Uang muka pesanan : {{ figure(receipt.order.deposit) }}</span>
                 <span>Total dibayar : {{ figure(Number(receipt.total) + Number(receipt.order.deposit)) }}</span>
-                <span v-for="(payment, index) in receipt.payments" :key="index">{{ paymentLabel(payment) }} : {{ figure(payment.amount) }}</span>
+                <span v-for="(payment, index) in receipt.payments" :key="index">{{ payment.method }} : {{ figure(payment.amount) }}</span>
                 <span>Kembalian : {{ figure(receipt.change_amount) }}</span>
             </div>
         </template>
@@ -96,15 +90,7 @@ const paymentLabel = (payment) => (payment.method === 'COD' ? 'Kekurangan (COD)'
 </template>
 
 <style>
-/*
- * The paper margin is zero so the browser has no room for its own header and footer (date, address, page number) on
- * the roll; the space around the text is padding instead.
- */
-@page {
-    size: 80mm auto;
-    margin: 0;
-}
-
+/* The paper size is written by ThermalPageSize, from the store's setting; the space around the text is padding because that component's paper margin is zero. */
 .receipt-print {
     box-sizing: border-box;
     padding: 4mm;

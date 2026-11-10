@@ -52,13 +52,13 @@ function searchItems(typed, update, abort) {
         .then(({ data }) => (searchId === latestSearchId ? update(() => (productOptions.value = data)) : abort()));
 }
 
-/** Adds the item in the unit that was scanned or, failing that, its first unit; the same unit twice adds up. */
+/** Adds the item in its first unit; the same unit twice adds up. */
 function addItem(item) {
     if (!item) {
         return;
     }
 
-    const unit = item.units.find((candidate) => candidate.id === item.matched_unit_id) ?? item.units[0];
+    const unit = item.units[0];
     const existing = lines.value.find((line) => line.productId === item.id && line.unitId === unit.id);
 
     if (existing) {

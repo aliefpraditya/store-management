@@ -9,6 +9,7 @@ use App\Enums\SellingChangeMethod;
 use App\Exceptions\ProductHasTransactionsException;
 use App\Exceptions\ProductSaveException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Tenant\BarcodeLabelSheetRequest;
 use App\Http\Requests\Tenant\SaveProductRequest;
 use App\Http\Resources\ProductFormResource;
 use App\Http\Resources\ProductListResource;
@@ -16,6 +17,7 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Unit;
+use App\Services\BarcodeLabelService;
 use App\Services\BulkPriceService;
 use App\Services\ProductService;
 use Illuminate\Http\RedirectResponse;
@@ -50,6 +52,21 @@ class ProductController extends Controller
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
             'brands' => Brand::query()->orderBy('name')->get(['id', 'name']),
             'create_url' => route('tenant.products.create', ['tenant' => tenant('code')]),
+            'barcode_label' => [
+                'limits' => [
+                    'max_copies_per_product' => BarcodeLabelService::MAX_COPIES_PER_PRODUCT,
+                    'max_labels' => BarcodeLabelService::MAX_LABELS,
+                    'min_width' => BarcodeLabelSheetRequest::MIN_WIDTH_MM,
+                    'max_width' => BarcodeLabelSheetRequest::MAX_WIDTH_MM,
+                    'min_height' => BarcodeLabelSheetRequest::MIN_HEIGHT_MM,
+                    'max_height' => BarcodeLabelSheetRequest::MAX_HEIGHT_MM,
+                    'max_columns' => BarcodeLabelSheetRequest::MAX_COLUMNS,
+                ],
+                'urls' => [
+                    'products' => route('tenant.barcode-labels.products', ['tenant' => tenant('code')]),
+                    'sheet' => route('tenant.barcode-labels.sheet', ['tenant' => tenant('code')]),
+                ],
+            ],
             'bulk_price' => [
                 'units' => Unit::query()->orderBy('code')->pluck('code'),
                 'cost_methods' => collect(CostChangeMethod::cases())->map(fn (CostChangeMethod $method): array => ['value' => $method->value, 'label' => $method->label()])->all(),

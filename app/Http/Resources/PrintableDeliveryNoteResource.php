@@ -11,11 +11,16 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * What the browser prints for a delivery note: the note itself plus the store's letterhead and whether this print
  * is a copy. Expects `items` and `sale` to be loaded.
  *
+ * @phpstan-import-type Letterhead from StoreSettingService
+ *
  * @mixin DeliveryNote
  */
 class PrintableDeliveryNoteResource extends JsonResource
 {
-    public function __construct(DeliveryNote $resource, private readonly bool $isCopy)
+    /**
+     * @param  Letterhead  $letterhead
+     */
+    public function __construct(DeliveryNote $resource, private readonly bool $isCopy, private readonly array $letterhead)
     {
         parent::__construct($resource);
     }
@@ -29,7 +34,7 @@ class PrintableDeliveryNoteResource extends JsonResource
             ...DeliveryNoteResource::make($this->resource)->resolve($request),
             'created_at' => $this->created_at->toIso8601String(),
             'is_copy' => $this->isCopy,
-            'store' => app(StoreSettingService::class)->letterhead(),
+            'store' => $this->letterhead,
         ];
     }
 }

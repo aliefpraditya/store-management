@@ -15,9 +15,12 @@ use App\Models\SaleReturn;
 use App\Services\ExpenseService;
 use App\Services\ShiftRecapService;
 use App\Services\ShiftService;
+use App\Services\StoreSettingService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Arr;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 /**
  * The shift recap (rekap shift) for admins: every shift with how it ended, and the decision on a cash difference.
@@ -54,20 +57,47 @@ class ShiftRecapController extends Controller
 
     public function show(CashShift $shift): Response
     {
-        $shift->load('register');
-
-        $returns = SaleReturn::query()->where('cash_shift_id', $shift->id)->orderBy('id')->get();
-
         return Inertia::render('Tenant/Shifts/Show', [
             'shift' => [
-                ...ShiftRecapResource::make($shift, $this->shiftService->summarize($shift), $returns, $this->expenseService->drawerExpensesOf($shift))->resolve(),
+                ...$this->recapOf($shift),
                 'urls' => [
                     'index' => route('tenant.shifts.index', ['tenant' => tenant('code')]),
                     'approve' => route('tenant.shifts.approve', ['tenant' => tenant('code'), 'shift' => $shift->id]),
                     'reject' => route('tenant.shifts.reject', ['tenant' => tenant('code'), 'shift' => $shift->id]),
+                    'sheet' => route('tenant.shifts.sheet', ['tenant' => tenant('code'), 'shift' => $shift->id]),
                 ],
             ],
         ]);
+    }
+
+    /**
+     * The end-of-shift report with every figure, for the Admin. A shift still running has none: its expected cash is not
+     * for printing before the drawer has been counted.
+     */
+    public function sheet(CashShift $shift, StoreSettingService $settings): Response
+    {
+        abort_if($shift->status === CashShiftStatus::Open, HttpResponse::HTTP_NOT_FOUND);
+
+        return Inertia::render('Tenant/Print/ShiftReport', [
+            'report' => [
+                ...Arr::except($this->recapOf($shift), ['can_decide', 'is_own_shift']),
+                'is_blind' => false,
+                'store' => $settings->letterhead(),
+                'paper_width' => $settings->paperWidth(),
+            ],
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function recapOf(CashShift $shift): array
+    {
+        $shift->load('register');
+
+        $returns = SaleReturn::query()->where('cash_shift_id', $shift->id)->orderBy('id')->get();
+
+        return ShiftRecapResource::make($shift, $this->shiftService->summarize($shift), $returns, $this->expenseService->drawerExpensesOf($shift))->resolve();
     }
 
     public function approve(DecideShiftDifferenceRequest $request, CashShift $shift): RedirectResponse

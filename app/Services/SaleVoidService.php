@@ -22,7 +22,9 @@ use Illuminate\Support\Facades\DB;
  * Voiding a COD sale: the customer did not take the goods (or would not pay when they came), so the receipt is
  * cancelled and the goods go back on the shelf. Only COD sales can be voided, and only while none of the goods were
  * delivered; later returns go through Retur. A cashier or an admin may do it, always with a reason, and on any day:
- * the sale may have been made yesterday and delivered today. The void is booked on the day it is done.
+ * the sale may have been made yesterday and delivered today. The void is booked on the business day of the voider's
+ * running shift (the same day the cash it gives back is booked on, even when the shift runs past midnight), or on the
+ * day it is done when the voider has no shift.
  *
  * A deposit paid in advance goes back to the customer. A cash deposit comes out of the drawer of the voider's running
  * shift (so it lowers the cash that should be there); a deposit by transfer, QRIS or EDC goes back to the account given.
@@ -52,6 +54,7 @@ class SaleVoidService
             $nonCashDeposit = $lockedSale->nonCashDeposit();
 
             $refundShift = $cashDeposit->isPositive() ? $this->runningShiftOf($voider) : null;
+            $voidBusinessDate = ($refundShift ?? $this->shifts->openShiftOf($voider))?->business_date ?? today();
 
             if ($nonCashDeposit->isPositive() && blank($refundAccount)) {
                 throw CodSaleException::refundAccountNeeded();
@@ -69,6 +72,7 @@ class SaleVoidService
                 'voided_by' => $voider->id,
                 'voided_by_name' => $voider->name,
                 'voided_at' => now(),
+                'void_business_date' => $voidBusinessDate->toDateString(),
                 'void_cash_shift_id' => $refundShift?->id,
                 'void_cash_refund' => (string) $cashDeposit->toScale(2),
                 'void_refund_account' => $nonCashDeposit->isPositive() ? trim((string) $refundAccount) : null,

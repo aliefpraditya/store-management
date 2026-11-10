@@ -435,6 +435,7 @@ class SaleReturnTest extends TestCase
             ->where('saleReturn.number', $saleReturn->number)
             ->where('saleReturn.store.name', $this->store->name)
             ->where('saleReturn.store.address', 'Jl. Uji 1')
+            ->where('saleReturn.paper_width', 80)
             ->where('saleReturn.refund_amount', '20000.00')
             ->where('saleReturn.items.0.name', 'Kuas'));
     }

@@ -113,7 +113,6 @@ class DamagedGoodsService
                 'unit_code' => $unit->unit_code,
                 'conversion_factor' => $unit->conversion_factor,
                 'is_base' => $unit->is_base,
-                'barcode' => null,
                 'sort_order' => $unit->sort_order,
                 'is_sellable' => $unit->is_sellable,
                 'cost_price' => $unit->cost_price,

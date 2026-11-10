@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Tenant\BarcodeLabelController;
 use App\Http\Controllers\Tenant\BulkPriceController;
 use App\Http\Controllers\Tenant\CashierCodController;
 use App\Http\Controllers\Tenant\CashierController;
@@ -13,10 +14,8 @@ use App\Http\Controllers\Tenant\CashierSaleReturnController;
 use App\Http\Controllers\Tenant\DailyClosingController;
 use App\Http\Controllers\Tenant\DashboardController as TenantDashboardController;
 use App\Http\Controllers\Tenant\DeliveryNoteController;
-use App\Http\Controllers\Tenant\DriverController;
 use App\Http\Controllers\Tenant\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\ExpenseController;
-use App\Http\Controllers\Tenant\OpnameReasonController;
 use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\ProductSearchController;
 use App\Http\Controllers\Tenant\ReportController;
@@ -55,6 +54,7 @@ Route::prefix('t/{tenant}')
             Route::get('products', CashierProductController::class)->name('products');
             Route::post('shifts', [ShiftController::class, 'store'])->name('shifts.store');
             Route::post('shifts/{shift}/close', [ShiftController::class, 'close'])->name('shifts.close');
+            Route::get('shifts/{shift}/report', [ShiftController::class, 'report'])->name('shifts.report');
             Route::post('sales', [SaleController::class, 'store'])->name('sales.store');
             Route::get('receipts', [ShiftReceiptController::class, 'index'])->name('receipts');
             Route::post('receipts/{sale}/print', [ShiftReceiptController::class, 'print'])->name('receipts.print');
@@ -96,6 +96,7 @@ Route::prefix('t/{tenant}')
             Route::prefix('shifts')->name('tenant.shifts.')->group(function () {
                 Route::get('/', [ShiftRecapController::class, 'index'])->name('index');
                 Route::get('{shift}', [ShiftRecapController::class, 'show'])->name('show');
+                Route::get('{shift}/sheet', [ShiftRecapController::class, 'sheet'])->name('sheet');
                 Route::post('{shift}/approve', [ShiftRecapController::class, 'approve'])->name('approve');
                 Route::post('{shift}/reject', [ShiftRecapController::class, 'reject'])->name('reject');
             });
@@ -111,6 +112,7 @@ Route::prefix('t/{tenant}')
                 Route::get('{sale_return}/sheet', [SaleReturnController::class, 'sheet'])->name('sheet');
             });
 
+            // A sheet is `signed` only when a POST first counts its print and hands out the address (receipts, orders, delivery notes); report sheets that anyone with this access may open again need no signature.
             Route::get('reports/sales', [ReportController::class, 'sales'])->name('tenant.reports.sales');
             Route::get('reports/sales/sheet', [ReportController::class, 'salesSheet'])->name('tenant.reports.sales.sheet');
 
@@ -137,14 +139,12 @@ Route::prefix('t/{tenant}')
             Route::get('products/search', ProductSearchController::class)->name('tenant.products.search');
             Route::post('products/bulk-prices/preview', [BulkPriceController::class, 'preview'])->name('tenant.bulk-prices.preview');
             Route::post('products/bulk-prices', [BulkPriceController::class, 'apply'])->name('tenant.bulk-prices.apply');
+            Route::post('products/barcode-labels/products', [BarcodeLabelController::class, 'products'])->name('tenant.barcode-labels.products');
+            Route::get('products/barcode-labels/sheet', [BarcodeLabelController::class, 'sheet'])->name('tenant.barcode-labels.sheet');
             Route::resource('products', ProductController::class)->except(['show'])->names('tenant.products');
             Route::get('settings', [StoreSettingController::class, 'index'])->name('tenant.settings.index');
             Route::put('settings', [StoreSettingController::class, 'update'])->name('tenant.settings.update');
             Route::resource('settings/units', UnitController::class)->only(['store', 'update', 'destroy'])->names('tenant.units');
-            Route::post('settings/drivers', [DriverController::class, 'store'])->name('tenant.drivers.store');
-            Route::put('settings/drivers/{driver}', [DriverController::class, 'update'])->name('tenant.drivers.update');
-            Route::post('settings/opname-reasons', [OpnameReasonController::class, 'store'])->name('tenant.opname-reasons.store');
-            Route::put('settings/opname-reasons/{opname_reason}', [OpnameReasonController::class, 'update'])->name('tenant.opname-reasons.update');
 
             Route::prefix('stock-opnames')->name('tenant.stock-opnames.')->scopeBindings()->group(function () {
                 Route::get('/', [StockOpnameController::class, 'index'])->name('index');

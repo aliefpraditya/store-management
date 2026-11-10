@@ -62,7 +62,8 @@ class StoreDashboardService
     }
 
     /**
-     * Net sales are completed receipts of the day minus the value of returns completed that day.
+     * Net sales are completed receipts of the business day minus the value of returns completed in the shifts of that
+     * business day (the day closing and the sales report count them the same way).
      *
      * @return array{gross_total: string, returns_total: string, net_total: string, receipt_count: int}
      */
@@ -75,7 +76,7 @@ class StoreDashboardService
         $gross = BigDecimal::of((string) $completedSales->sum('total'))->toScale(2);
         $returns = BigDecimal::of((string) SaleReturn::query()
             ->where('status', SaleReturnStatus::Completed)
-            ->whereDate('returned_at', $day->toDateString())
+            ->whereIn('cash_shift_id', CashShift::query()->where('business_date', $day->toDateString())->select('id'))
             ->sum('credit_amount'))->toScale(2);
 
         return [

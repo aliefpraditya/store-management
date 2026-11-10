@@ -53,7 +53,7 @@ class DemoProductSeederTest extends TestCase
         return $this->inStore(fn () => (string) (Stock::query()->where('product_id', Product::query()->where('sku', $sku)->value('id'))->value('quantity') ?? '0.000'));
     }
 
-    public function test_it_adds_items_sold_in_several_units_with_a_barcode_per_unit(): void
+    public function test_it_adds_items_sold_in_several_units(): void
     {
         $this->runDemoSeeder();
 
@@ -65,10 +65,6 @@ class DemoProductSeederTest extends TestCase
             $this->assertSame(['PCS', 'PAK', 'DUS'], $product->productUnits->pluck('unit_code')->all());
             $this->assertSame(['1.000', '100.000', '2000.000'], $product->productUnits->pluck('conversion_factor')->all());
             $this->assertSame('PCS', $product->base_unit_code);
-
-            $barcodes = ProductUnit::query()->whereNotNull('barcode')->pluck('barcode');
-            $this->assertCount(ProductUnit::query()->count(), $barcodes);
-            $this->assertSame($barcodes->count(), $barcodes->unique()->count());
 
             $this->assertSame(1, ProductUnit::query()->where('product_id', $product->id)->where('is_default_sale', true)->count());
         });

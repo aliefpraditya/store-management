@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Product;
-use App\Models\ProductUnit;
 use App\Models\Unit;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
@@ -22,7 +21,7 @@ use Illuminate\Support\Str;
  *   system left it at 1 almost everywhere, so a 1 is only believed when the unit name says so ("50 METER" over
  *   METER, LUSIN = 12). Any other unit is left out and listed in the review rows, because a wrong factor would
  *   take the wrong quantity off the stock.
- * - A blank brand becomes no brand. A barcode of 0, a short one, or one already used is dropped.
+ * - A blank brand becomes no brand. The old barcodes are not imported: an item's barcode is its SKU.
  * - The SKU is the old code without spaces ("MU 2409" -> "MU2409"); when that clashes with another code the
  *   spaces become dashes.
  *
@@ -36,8 +35,6 @@ class LegacyProductImporter
     public const CONNECTION = 'legacy';
 
     private const MITRA_UTAMA_OWNER_ID = 1;
-
-    private const MIN_BARCODE_LENGTH = 6;
 
     private const FACTOR_TOLERANCE = 0.0000001;
 
@@ -57,9 +54,6 @@ class LegacyProductImporter
 
     /** The old data holds 0 or 1 where an item has no purchase price; anything above is a real price. */
     private const PLACEHOLDER_PRICE = 1;
-
-    /** The old data holds 0 or 1 where an item has no barcode. */
-    private const PLACEHOLDER_BARCODES = ['0', '1'];
 
     public function __construct(private readonly ProductService $productService) {}
 
@@ -82,7 +76,6 @@ class LegacyProductImporter
         $items = $legacy->table('barangs')->where('owners_id', self::MITRA_UTAMA_OWNER_ID)->orderBy('id')->get();
         $skus = $this->skusByLegacyId($items->pluck('id'));
         $existingSkus = Product::withTrashed()->pluck('sku')->map(fn (string $sku): string => Str::lower($sku))->flip();
-        $usedBarcodes = ProductUnit::query()->whereNotNull('barcode')->pluck('barcode')->map(fn (string $barcode): string => Str::lower($barcode))->flip();
 
         $importSummary = ['created' => 0, 'existing' => 0, 'extra_units' => 0, 'new_units' => $newUnitCount, 'review' => []];
 
@@ -95,7 +88,7 @@ class LegacyProductImporter
                 continue;
             }
 
-            $importOutcome = $this->importItem($legacyItem, $sku, $lookups, $usedBarcodes);
+            $importOutcome = $this->importItem($legacyItem, $sku, $lookups);
             $importSummary['review'] = [...$importSummary['review'], ...$importOutcome['review']];
 
             if (! $importOutcome['is_created']) {
@@ -103,10 +96,6 @@ class LegacyProductImporter
             }
 
             $existingSkus->put(Str::lower($sku), 0);
-
-            if ($importOutcome['barcode'] !== null) {
-                $usedBarcodes->put(Str::lower($importOutcome['barcode']), 0);
-            }
 
             $importSummary['created']++;
             $importSummary['extra_units'] += $importOutcome['extra_unit_count'];
@@ -133,10 +122,9 @@ class LegacyProductImporter
     /**
      * Creates one product from an old item, unless it has no unit at all.
      *
-     * @param  Collection<string, int>  $usedBarcodes  lower-case barcodes already taken, as keys
-     * @return array{is_created: bool, barcode: string|null, extra_unit_count: int, review: list<ReviewRow>}
+     * @return array{is_created: bool, extra_unit_count: int, review: list<ReviewRow>}
      */
-    private function importItem(object $legacyItem, string $sku, LegacyCatalogLookups $lookups, Collection $usedBarcodes): array
+    private function importItem(object $legacyItem, string $sku, LegacyCatalogLookups $lookups): array
     {
         $name = trim((string) $legacyItem->nama);
         $itemPriceRows = $lookups->priceRows[$legacyItem->id] ?? collect();
@@ -147,7 +135,6 @@ class LegacyProductImporter
         if ($baseUnitId === null) {
             return [
                 'is_created' => false,
-                'barcode' => null,
                 'extra_unit_count' => 0,
                 'review' => [$this->reviewRow($sku, $name, 'Satuan', '-', 'Barang tidak punya satuan aktif, tidak diimpor')],
             ];
@@ -156,13 +143,7 @@ class LegacyProductImporter
         $reviewRows = [];
         $baseName = trim((string) $lookups->unitNames[$baseUnitId]);
         $baseCost = $buyRow !== null && $buyRow->harga > self::PLACEHOLDER_PRICE ? BigDecimal::of((string) $buyRow->harga) : BigDecimal::zero();
-        $barcode = $this->usableBarcode($legacyItem->barcode, $usedBarcodes);
-
-        if ($barcode === null && $this->isRealBarcode($legacyItem->barcode)) {
-            $reviewRows[] = $this->reviewRow($sku, $name, 'Barcode', (string) $legacyItem->barcode, 'Barcode tidak valid atau sudah dipakai barang lain, dikosongkan');
-        }
-
-        $baseUnitRow = $this->unitRow($baseName, 1.0, $baseCost, $this->priceOf($sellRows->firstWhere('satuans_id', $baseUnitId)), $barcode, true);
+        $baseUnitRow = $this->unitRow($baseName, 1.0, $baseCost, $this->priceOf($sellRows->firstWhere('satuans_id', $baseUnitId)), true);
         $extraUnits = $this->extraUnitRows($sellRows->where('satuans_id', '!=', $baseUnitId), $baseName, $baseCost, $baseUnitRow['unit']['code'], $lookups->unitNames);
 
         foreach ($extraUnits['skipped'] as $skippedUnit) {
@@ -179,7 +160,7 @@ class LegacyProductImporter
             'units' => [$baseUnitRow, ...$extraUnits['unit_rows']],
         ]);
 
-        return ['is_created' => true, 'barcode' => $barcode, 'extra_unit_count' => count($extraUnits['unit_rows']), 'review' => $reviewRows];
+        return ['is_created' => true, 'extra_unit_count' => count($extraUnits['unit_rows']), 'review' => $reviewRows];
     }
 
     /**
@@ -199,7 +180,7 @@ class LegacyProductImporter
         foreach ($extraSellRows as $sellRow) {
             $extraName = trim((string) $unitNames[$sellRow->satuans_id]);
             $factor = $this->extraUnitFactor($extraName, $baseName, (float) $sellRow->konversi);
-            $unitRow = $factor === null ? null : $this->unitRow($extraName, $factor, $baseCost->multipliedBy((string) $factor)->toScale(2, RoundingMode::HalfUp), $this->priceOf($sellRow), null, false);
+            $unitRow = $factor === null ? null : $this->unitRow($extraName, $factor, $baseCost->multipliedBy((string) $factor)->toScale(2, RoundingMode::HalfUp), $this->priceOf($sellRow), false);
 
             if ($unitRow === null || in_array($unitRow['unit']['code'], $usedUnitCodes, true)) {
                 $skipped[] = ['unit_name' => $extraName, 'price' => (string) $this->priceOf($sellRow)];
@@ -276,12 +257,11 @@ class LegacyProductImporter
     /**
      * @return array<string, mixed> a unit row as {@see ProductService} takes it
      */
-    private function unitRow(string $oldUnitName, float $factor, BigDecimal $cost, BigDecimal $price, ?string $barcode, bool $isBase): array
+    private function unitRow(string $oldUnitName, float $factor, BigDecimal $cost, BigDecimal $price, bool $isBase): array
     {
         return [
             'unit' => ['code' => $this->unitFor($oldUnitName)->code],
             'conversion_factor' => $factor,
-            'barcode' => $barcode,
             'is_sellable' => true,
             'cost_price' => (string) $cost,
             'selling_price' => (string) $price,
@@ -317,25 +297,6 @@ class LegacyProductImporter
     private function brandOf(?string $name): ?array
     {
         return filled(trim((string) $name)) ? ['name' => trim($name)] : null;
-    }
-
-    private function isRealBarcode(mixed $barcode): bool
-    {
-        return filled($barcode) && ! in_array(trim((string) $barcode), self::PLACEHOLDER_BARCODES, true);
-    }
-
-    /**
-     * @param  Collection<string, int>  $usedBarcodes  lower-case barcodes already taken, as keys
-     */
-    private function usableBarcode(mixed $barcode, Collection $usedBarcodes): ?string
-    {
-        $barcode = trim((string) $barcode);
-
-        if (! $this->isRealBarcode($barcode) || ! preg_match('/^[0-9A-Za-z-]+$/', $barcode) || strlen($barcode) < self::MIN_BARCODE_LENGTH) {
-            return null;
-        }
-
-        return $usedBarcodes->has(Str::lower($barcode)) ? null : $barcode;
     }
 
     /**

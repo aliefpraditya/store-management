@@ -163,7 +163,7 @@ class LegacyProductImportTest extends TestCase
 
         $paint = $this->product('MU0001');
         $this->assertSame(['CAT TEMBOK', 'Cat', 'Avian', '5.000', true], [$paint->name, $paint->category->name, $paint->brand?->name, $paint->min_stock, $paint->is_active]);
-        $this->assertSame(['PCS', '10000.00', '15000.00', '8991234567890'], [$paint->productUnits[0]->unit_code, $paint->productUnits[0]->cost_price, $paint->productUnits[0]->selling_price, $paint->productUnits[0]->barcode]);
+        $this->assertSame(['PCS', '10000.00', '15000.00'], [$paint->productUnits[0]->unit_code, $paint->productUnits[0]->cost_price, $paint->productUnits[0]->selling_price]);
     }
 
     public function test_a_blank_brand_means_no_brand_and_a_missing_minimum_stock_means_zero(): void
@@ -254,16 +254,11 @@ class LegacyProductImportTest extends TestCase
         $this->assertSame('0.00', $this->product('MU-2409')->cost_price);
     }
 
-    public function test_a_barcode_already_used_by_another_item_is_dropped_and_reported(): void
+    public function test_the_old_barcodes_are_not_reported_because_they_are_not_imported(): void
     {
         $result = $this->import();
 
-        $this->assertSame('8991234567890', $this->product('MU0001')->productUnits[0]->barcode);
-        $this->assertNull($this->product('MU0003')->productUnits[0]->barcode);
-        $this->assertNull($this->product('MU2409')->productUnits[0]->barcode);
-
-        $barcodeRows = collect($result['review'])->where('subject', 'Barcode')->pluck('sku')->sort()->values()->all();
-        $this->assertSame(['MU0003', 'MU2409'], $barcodeRows);
+        $this->assertSame([], collect($result['review'])->where('subject', 'Barcode')->all());
     }
 
     public function test_no_stock_is_imported(): void

@@ -162,7 +162,7 @@ class Product extends Model implements AuditableContract
     }
 
     /**
-     * Matches the name, the SKU, or the barcode of any of the product's units.
+     * Matches the name or the SKU.
      *
      * @param  Builder<Product>  $query
      */
@@ -179,8 +179,7 @@ class Product extends Model implements AuditableContract
 
         $query->where(function (Builder $query) use ($contains): void {
             $query->where('products.name', 'like', $contains)
-                ->orWhere('products.sku', 'like', $contains)
-                ->orWhereHas('productUnits', fn (Builder $units) => $units->where('barcode', 'like', $contains));
+                ->orWhere('products.sku', 'like', $contains);
         });
     }
 

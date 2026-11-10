@@ -1,4 +1,5 @@
 <script setup>
+import { formatFigure as figure } from '../Composables/useMoneyFormat';
 import { formatQuantity } from '../Composables/useQuantityFormat';
 import Code39Barcode from './Code39Barcode.vue';
 import ThermalPageSize from './ThermalPageSize.vue';
@@ -10,12 +11,9 @@ defineProps({
 
 const dateFormat = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const timeFormat = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' });
-const numberFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
 
 /** Longer than any paper is wide; the line is cut at the edge and ends with a plus. */
 const rule = '- '.repeat(60);
-
-const figure = (amount) => numberFormat.format(Number(amount));
 </script>
 
 <template>

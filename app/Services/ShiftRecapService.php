@@ -63,7 +63,7 @@ class ShiftRecapService
                 throw ShiftException::differenceNotPending($shift->difference_status->label());
             }
 
-            if ($shift->cashier_id === $admin->id) {
+            if (! $admin->canDecideDifferenceOf($shift)) {
                 throw ShiftException::cannotDecideOwnShift();
             }
 

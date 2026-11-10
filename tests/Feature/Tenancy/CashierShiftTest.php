@@ -161,7 +161,7 @@ class CashierShiftTest extends TestCase
         $this->closeShift($cashier, $shift, '500000')
             ->assertRedirect($this->url('index'))
             ->assertSessionHas('success', 'Shift ditutup.')
-            ->assertSessionHas('closed_shift', ['counted_cash' => '500000.00', 'deposit_amount' => '0.00', 'drawer_left_cash' => '500000.00']);
+            ->assertSessionHas('closed_shift', ['counted_cash' => '500000.00', 'deposit_amount' => '0.00', 'drawer_left_cash' => '500000.00', 'report_url' => $this->url('shifts.report', ['shift' => $shift->id])]);
 
         $closed = $this->shiftOf($cashier);
         $this->assertSame([CashShiftStatus::Closed, ShiftDifferenceStatus::None], [$closed->status, $closed->difference_status]);

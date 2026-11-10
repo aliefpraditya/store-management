@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Sample items for trying out the cashier: each is sold in several units (loose and by the box, dozen,
- * roll...), most have a barcode per unit, and their stock comes in through a posted opening-balance opname
+ * roll...), and their stock comes in through a posted opening-balance opname
  * counted in mixed units, the same way a real store would enter it. Development data only; it is not part of
  * store provisioning. Safe to run again: products whose SKU exists are skipped.
  *
@@ -32,8 +32,6 @@ class DemoProductSeeder extends Seeder
         'MTR' => 'Meter', 'ROL' => 'Roll', 'LSN' => 'Lusin', 'LTR' => 'Liter', 'JRG' => 'Jerigen', 'PAIL' => 'Pail',
         'DUS' => 'Dus', 'BOX' => 'Box', 'PAK' => 'Pak', 'LBR' => 'Lembar',
     ];
-
-    private const BARCODE_PREFIX = '8990';
 
     /**
      * Each unit is [code, conversion into the base unit, cost price, selling price, is it a sealed pack]; the first is the
@@ -88,7 +86,6 @@ class DemoProductSeeder extends Seeder
         }
 
         $createdSpecs = [];
-        $barcodeNumber = 0;
 
         foreach ($this->products() as $spec) {
             $unitRows = [];
@@ -100,7 +97,6 @@ class DemoProductSeeder extends Seeder
                 $unitRows[] = [
                     'unit' => ['code' => $unitCode],
                     'conversion_factor' => $conversion,
-                    'barcode' => sprintf('%s%09d', self::BARCODE_PREFIX, ++$barcodeNumber),
                     'is_sellable' => true,
                     'cost_price' => $cost,
                     'selling_price' => $price,

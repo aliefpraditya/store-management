@@ -12,6 +12,7 @@ use App\Models\Sale;
 use App\Models\Store;
 use App\Services\DeliveryNoteService;
 use App\Services\PrintCounter;
+use App\Services\StoreSettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Response as InertiaResponse;
@@ -68,11 +69,11 @@ class CashierDeliveryNoteController extends Controller
         return $this->recordPrintOf($this->printCounter, $deliveryNote, 'tenant.cashier.delivery-notes.sheet');
     }
 
-    public function sheet(Request $request, DeliveryNote $deliveryNote): InertiaResponse
+    public function sheet(Request $request, DeliveryNote $deliveryNote, StoreSettingService $settings): InertiaResponse
     {
         $this->authorizeFor($request, $deliveryNote->sale);
 
-        return $this->sheetOf($request, $deliveryNote);
+        return $this->sheetOf($request, $deliveryNote, $settings->letterhead());
     }
 
     private function authorizeFor(Request $request, Sale $sale): void

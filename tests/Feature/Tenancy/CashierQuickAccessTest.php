@@ -9,6 +9,7 @@ use App\Models\SalePayment;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\SaleService;
+use App\Services\StoreSettingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -154,7 +155,8 @@ class CashierQuickAccessTest extends TestCase
 
     public function test_the_receipt_prints_by_itself_only_when_the_store_chooses_so(): void
     {
-        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page->where('is_receipt_printed_automatically', false));
+        // Read through the service, not the till: the router keeps the till's controller (and the settings it read) alive between requests of one test, which a real request never does.
+        $this->assertFalse($this->store->run(fn (): bool => app(StoreSettingService::class)->isReceiptPrintedAutomatically()));
 
         $this->actingAs($this->admin)->put(route('tenant.settings.update', ['tenant' => $this->store->code]), [
             'paper_width' => 80,

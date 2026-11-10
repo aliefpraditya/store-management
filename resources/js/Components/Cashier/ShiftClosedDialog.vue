@@ -1,13 +1,17 @@
 <script setup>
+import { printSheet } from '../../Composables/printSheet';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 
-defineProps({
+const props = defineProps({
     modelValue: { type: Boolean, required: true },
-    /** @type {{counted_cash: string, deposit_amount: string, drawer_left_cash: string}|null} */
+    /** @type {{counted_cash: string, deposit_amount: string, drawer_left_cash: string, report_url: string}|null} */
     shiftTotals: { type: Object, default: null },
 });
 
 const emit = defineEmits(['update:modelValue']);
+
+/** The end-of-shift report prints from a hidden frame, so the dialog stays for the cashier to hand over the deposit. */
+const printReport = () => printSheet(() => props.shiftTotals.report_url);
 </script>
 
 <template>
@@ -25,7 +29,8 @@ const emit = defineEmits(['update:modelValue']);
             </q-card-section>
 
             <q-card-actions align="right">
-                <q-btn color="primary" unelevated no-caps label="Selesai" autofocus v-close-popup />
+                <q-btn flat no-caps label="Selesai" v-close-popup />
+                <q-btn color="primary" unelevated no-caps icon="print" label="Cetak Laporan Shift" autofocus @click="printReport" />
             </q-card-actions>
         </q-card>
     </q-dialog>

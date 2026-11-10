@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
+import BarcodeLabelDialog from '../../../Components/BarcodeLabelDialog.vue';
 import BulkPriceDialog from '../../../Components/BulkPriceDialog.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
@@ -18,6 +19,8 @@ const props = defineProps({
     /** The normal / damaged goods (DG) choices of the condition filter. */
     conditions: { type: Array, required: true },
     create_url: { type: String, required: true },
+    /** What the window that prints barcode stickers for the ticked items needs. */
+    barcode_label: { type: Object, required: true },
     /** What the window that changes prices of many items at once needs. */
     bulk_price: { type: Object, required: true },
 });
@@ -47,6 +50,7 @@ const isPageAllSelected = computed(() => pageIds.value.length > 0 && pageIds.val
 const isPageSomeSelected = computed(() => pageIds.value.some((id) => selectedSet.value.has(id)));
 
 const isBulkOpen = ref(false);
+const isBarcodeOpen = ref(false);
 
 /**
  * Adds items to the selection, unless that would pass the most one bulk change takes.
@@ -118,13 +122,13 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 <template>
     <StoreLayout title="Daftar Barang">
         <template #actions>
-
+            <q-btn v-if="selectedIds.length > 0" outline no-caps color="primary" icon="qr_code_2" :label="`Cetak Barcode (${selectedIds.length})`" class="q-mr-sm" @click="isBarcodeOpen = true" />
             <q-btn v-if="selectedIds.length > 0" outline no-caps color="primary" icon="price_change" :label="`Ubah Harga (${selectedIds.length})`" class="q-mr-sm" @click="isBulkOpen = true" />
             <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Barang" @click="router.visit(create_url)" />
         </template>
 
         <div class="filters">
-            <q-input v-model="search" outlined dense clearable placeholder="Cari nama, SKU, atau barcode" class="filters__search">
+            <q-input v-model="search" outlined dense clearable placeholder="Cari nama atau SKU" class="filters__search">
                 <template #prepend><q-icon name="search" /></template>
             </q-input>
             <q-select
@@ -221,6 +225,8 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                 </tbody>
             </table>
         </div>
+
+        <BarcodeLabelDialog v-model="isBarcodeOpen" :product-ids="selectedIds" :urls="barcode_label.urls" :limits="barcode_label.limits" />
 
         <BulkPriceDialog
             v-model="isBulkOpen"

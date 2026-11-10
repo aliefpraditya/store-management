@@ -33,18 +33,23 @@ const asLocalDate = (isoDay) => new Date(`${isoDay}T00:00:00`);
                 <tr><td>Retur</td><td>{{ formatDeduction(report.totals.returns_total) }}</td></tr>
                 <tr class="sales-print__total"><td>Penjualan bersih</td><td>{{ formatRupiah(report.totals.net_total) }}</td></tr>
                 <tr><td>Jumlah nota (tanpa nota void)</td><td>{{ report.totals.receipt_count }}</td></tr>
+                <tr v-if="report.totals.voids_count > 0"><td>Nota void pada periode ini (tidak termasuk di atas), {{ report.totals.voids_count }} nota</td><td>{{ formatRupiah(report.totals.voids_total) }}</td></tr>
                 <tr><td>Laba kotor (estimasi, modal = harga beli terakhir)</td><td>{{ formatRupiah(report.totals.gross_profit) }}</td></tr>
+                <tr v-if="report.products_without_cost > 0"><td colspan="2">{{ report.products_without_cost }} barang belum punya harga beli, jadi labanya sama dengan penjualannya.</td></tr>
             </tbody>
         </table>
 
-        <h2>Per metode bayar</h2>
+        <h2>Per metode bayar (penjualan, sebelum retur)</h2>
         <table class="sales-print__rows">
             <tbody>
-                <tr v-for="method in report.methods" :key="method.method"><td>{{ method.label }}<template v-if="method.method === 'cod'"> (ditagih saat diantar)</template></td><td>{{ formatRupiah(method.amount) }}</td></tr>
+                <tr v-for="method in report.methods" :key="method.method"><td>{{ method.label }}</td><td>{{ formatRupiah(method.amount) }}</td></tr>
+                <tr class="sales-print__total"><td>Penjualan</td><td>{{ formatRupiah(report.totals.gross_total) }}</td></tr>
+                <tr><td>Retur disetujui (tidak dipecah per metode)</td><td>{{ formatDeduction(report.totals.returns_total) }}</td></tr>
+                <tr class="sales-print__total"><td>Penjualan bersih</td><td>{{ formatRupiah(report.totals.net_total) }}</td></tr>
             </tbody>
         </table>
 
-        <h2>Per kasir</h2>
+        <h2>Per kasir (penjualan, sebelum retur)</h2>
         <table class="sales-print__rows">
             <tbody>
                 <tr v-for="cashier in report.cashiers" :key="cashier.cashier_name"><td>{{ cashier.cashier_name }} · {{ cashier.receipt_count }} nota</td><td>{{ formatRupiah(cashier.total) }}</td></tr>
@@ -54,7 +59,7 @@ const asLocalDate = (isoDay) => new Date(`${isoDay}T00:00:00`);
 
         <h2>Per hari</h2>
         <table class="sales-print__grid">
-            <thead><tr><th>Tanggal</th><th>Nota</th><th>Penjualan</th><th>Retur</th><th>Bersih</th></tr></thead>
+            <thead><tr><th>Tanggal</th><th>Nota</th><th>Penjualan</th><th>Retur</th><th>Bersih</th><th v-if="report.totals.voids_count > 0">Void</th></tr></thead>
             <tbody>
                 <tr v-for="day in report.days" :key="day.date">
                     <td>{{ dayFormat.format(asLocalDate(day.date)) }}</td>
@@ -62,11 +67,12 @@ const asLocalDate = (isoDay) => new Date(`${isoDay}T00:00:00`);
                     <td>{{ formatRupiah(day.gross_total) }}</td>
                     <td>{{ Number(day.returns_total) > 0 ? formatDeduction(day.returns_total) : '-' }}</td>
                     <td>{{ formatRupiah(day.net_total) }}</td>
+                    <td v-if="report.totals.voids_count > 0">{{ day.voids_count > 0 ? `${day.voids_count} · ${formatRupiah(day.voids_total)}` : '-' }}</td>
                 </tr>
             </tbody>
         </table>
 
-        <h2>Laba kotor per barang (30 teratas, setelah retur)</h2>
+        <h2>Laba kotor per barang ({{ report.product_count > report.products.length ? `${report.product_limit} teratas dari ${report.product_count} barang` : `${report.product_count} barang` }}, setelah retur)</h2>
         <table class="sales-print__grid">
             <thead><tr><th>Barang</th><th>Terjual</th><th>Penjualan</th><th>Modal</th><th>Laba</th><th>Margin</th></tr></thead>
             <tbody>

@@ -56,6 +56,15 @@ enum StockOpnameReason: string
     }
 
     /**
+     * Whether a variance worth more than the store's limit needs a note on its row. Not for opening stock and arrivals:
+     * there the whole count is the variance, and the opname's own reason already says why.
+     */
+    public function needsNoteForLargeVariance(): bool
+    {
+        return ! in_array($this, [self::OpeningBalance, self::StockIncrease], true);
+    }
+
+    /**
      * @return list<self>
      */
     public static function selectable(): array

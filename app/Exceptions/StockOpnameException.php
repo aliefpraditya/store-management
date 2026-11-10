@@ -51,9 +51,11 @@ class StockOpnameException extends Exception
      */
     public static function largeVarianceNeedsNote(array $productNames, string $thresholdText): self
     {
-        $names = implode(', ', $productNames);
+        $names = implode(', ', array_slice($productNames, 0, self::PROBLEMS_SHOWN));
+        $others = count($productNames) - self::PROBLEMS_SHOWN;
+        $namesText = $others > 0 ? "{$names} dan {$others} barang lain" : $names;
 
-        return new self("Selisih {$names} bernilai di atas Rp {$thresholdText}, jadi wajib diberi catatan. Isi catatannya di baris barang itu, lalu posting lagi.");
+        return new self("Selisih {$namesText} bernilai di atas Rp {$thresholdText}, jadi wajib diberi catatan. Klik Hitung Ulang, isi catatannya di baris barang itu, lalu selesaikan hitung dan posting lagi.");
     }
 
     /**

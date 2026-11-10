@@ -174,9 +174,9 @@
 <section class="scr" id="blist" data-group="Barang & Stok" data-nav="Daftar Barang" data-title="Daftar Barang" data-sub="Barang milik toko ini. Stok jual dan dead stock dipisah." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/products">
 <div class="bd shell">
   <aside class="sb" data-side="store" data-on="Daftar Barang" data-who="Andi|Admin Toko"></aside>
-  <div class="mn"><div class="tb"><h3>Daftar Barang</h3><span class="b"><svg class="ic s"><use href="#i-upload"/></svg>Import Excel</span><span class="b">Ubah Harga (2)</span><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Barang</span></div>
+  <div class="mn"><div class="tb"><h3>Daftar Barang</h3><span class="b"><svg class="ic s"><use href="#i-upload"/></svg>Import Excel</span><span class="b">Cetak Barcode (2)</span><span class="b">Ubah Harga (2)</span><span class="b p"><svg class="ic s"><use href="#i-plus"/></svg>Tambah Barang</span></div>
   <div class="pg">
-    <div class="row" style="margin-bottom:14px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cari nama, SKU, atau barcode</div><div class="in sel grow">Semua kategori</div><div class="in sel grow">Semua merek</div><div class="in sel grow">Semua status</div><div class="in sel grow">Semua kondisi</div></div>
+    <div class="row" style="margin-bottom:14px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cari nama atau SKU</div><div class="in sel grow">Semua kategori</div><div class="in sel grow">Semua merek</div><div class="in sel grow">Semua status</div><div class="in sel grow">Semua kondisi</div></div>
     <div class="row" style="justify-content:space-between;margin-bottom:8px"><span><b>2</b> barang dipilih</span><span><span class="b s">Pilih semua 1.759 hasil</span> <span class="b s">Kosongkan pilihan</span></span></div>
     <div class="tbl"><table class="t"><tr><th class="ct"><span class="ck"></span></th><th>Barang</th><th class="r">Stok jual</th><th class="r">Dead stock</th><th class="r">Modal</th><th class="r">Harga jual</th><th>Status</th><th></th></tr>
       <tr><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td><b>Cat Tembok Putih 5kg</b><small>MU0001 · Cat · Dulux</small></td><td class="r">7 DUS + 2 PAIL</td><td class="r"><span class="c warn">1 PAIL</span></td><td class="r">72.875</td><td class="r">PAIL 116.600</td><td><span class="c ok">Aktif</span></td><td class="r"><span class="b s">Edit</span></td></tr>
@@ -186,7 +186,7 @@
     <div class="row mt2 mute" style="justify-content:space-between"><span>1–4 dari 1.759 barang</span><span>‹ 1 2 3 … ›</span></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Barang dibuat langsung di toko; tidak ada katalog pusat. Satuan ditampilkan dengan kodenya.</li><li>Tombol Hapus hanya muncul untuk barang tanpa stok dan tanpa transaksi (hapus permanen). Barang lain cukup dinonaktifkan.</li><li>Tombol Ubah Harga muncul di bilah atas setelah ada barang yang dicentang, jadi tetap terjangkau saat daftar di-scroll jauh. Dead stock tidak muncul di kasir. Filter Kondisi memisahkan barang normal dari barang DG (barang rusak yang dijual dengan harga sendiri, dibuat dari opname).</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Barang dibuat langsung di toko; tidak ada katalog pusat. Satuan ditampilkan dengan kodenya.</li><li>Tombol Hapus hanya muncul untuk barang tanpa stok dan tanpa transaksi (hapus permanen). Barang lain cukup dinonaktifkan.</li><li>Tombol Ubah Harga dan Cetak Barcode muncul di bilah atas setelah ada barang yang dicentang, jadi tetap terjangkau saat daftar di-scroll jauh. Cetak Barcode membuka jendela: jumlah label per barang (satu baris per barang, bukan per satuan), ukuran stok (bawaan 99 x 15 mm), dan label ke samping (bawaan 3), lalu dicetak dari jendela tersendiri. Label berisi nama barang, barcode Code 39 dari SKU, dan SKU; tanpa harga dan satuan. Maks 200 barang, 500 label per barang, 500 label per cetak; SKU berkarakter di luar Code 39 tidak bisa dicetak. Dead stock tidak muncul di kasir. Filter Kondisi memisahkan barang normal dari barang DG (barang rusak yang dijual dengan harga sendiri, dibuat dari opname).</li></ul></details>
 </section>
 
 <!-- 7 FORM BARANG -->
@@ -201,9 +201,9 @@
     <div class="card mt"><h4>Satuan &amp; harga</h4>
       <div class="tip warn" style="margin-bottom:12px"><svg class="ic s"><use href="#i-alert"/></svg><span>Satuan dan konversi terkunci karena barang ini sudah punya stok. Satuan baru tetap bisa ditambah.</span></div>
       <div class="g2"><div class="f"><span>Satuan dasar</span><div class="in sel">PAIL</div></div><div class="ink2" style="font-size:12.5px;align-self:center">Modal adalah harga beli per satuan, jadi tiap satuan bisa berbeda. Satuan lain otomatis mengikuti modal dasar × konversi sampai modalnya diisi sendiri.</div></div>
-      <table class="t"><tr><th>Satuan</th><th>Konversi</th><th>Barcode</th><th>Modal</th><th>Margin (%)</th><th>Harga jual</th><th class="ct">Dijual</th><th class="ct">Default</th><th></th></tr>
-        <tr><td><b>PAIL</b> <span class="c pri">dasar</span></td><td>1</td><td class="mute">8991234567890</td><td><span class="in mini">72.875</span></td><td><span class="in mini">37,5</span></td><td><span class="in mini">116.600</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd on"></span></td><td></td></tr>
-        <tr><td><span class="in mini sel">DUS</span></td><td style="white-space:nowrap"><span class="in mini">4</span> <span class="b s" style="padding:3px 8px">Hitung</span></td><td class="mute">18991234567897</td><td><span class="in mini">280.000</span></td><td><span class="in mini">35,96</span></td><td><span class="in mini">437.250</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd"></span></td><td></td></tr></table>
+      <table class="t"><tr><th>Satuan</th><th>Konversi</th><th>Modal</th><th>Margin (%)</th><th>Harga jual</th><th class="ct">Dijual</th><th class="ct">Default</th><th></th></tr>
+        <tr><td><b>PAIL</b> <span class="c pri">dasar</span></td><td>1</td><td><span class="in mini">72.875</span></td><td><span class="in mini">37,5</span></td><td><span class="in mini">116.600</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd on"></span></td><td></td></tr>
+        <tr><td><span class="in mini sel">DUS</span></td><td style="white-space:nowrap"><span class="in mini">4</span> <span class="b s" style="padding:3px 8px">Hitung</span></td><td><span class="in mini">280.000</span></td><td><span class="in mini">35,96</span></td><td><span class="in mini">437.250</span></td><td class="ct"><span class="ck on"><svg class="ic"><use href="#i-check"/></svg></span></td><td class="ct"><span class="rd"></span></td><td></td></tr></table>
       <div class="row mt2"><span class="b s"><svg class="ic s"><use href="#i-plus"/></svg>Tambah satuan</span><span class="sp"></span><span class="tip warn" style="padding:6px 12px"><svg class="ic s"><use href="#i-alert"/></svg>Harga di bawah modal meminta konfirmasi</span></div></div>
   </div></div>
 </div>
@@ -289,7 +289,7 @@
       <tr><td><b>Thinner 1L</b></td><td class="r">12 KALENG</td><td>14 KALENG</td><td class="r"><span class="c warn">+2 KALENG</span></td><td><span class="in mini sel">Pembelian</span></td><td><span class="in mini ph">catatan</span></td><td class="ct"><span class="ck"></span></td></tr></table></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Pada Opname Rutin, tiap barang yang selisih wajib punya alasan dan dicentang sudah direview sebelum posting. Centang baru bisa bila alasan dan keputusan barang rusak lengkap.</li><li>Alasan Rusak memunculkan tombol Tentukan keputusan di sebelah alasan, yang membuka keputusan barang rusak (setelah diisi, tombolnya berisi ringkasannya: Dead stock 1 · DG 1 · Penuh 1). Pemeriksaan diulang saat posting terhadap stok terbaru; Hitung Ulang menghapus semua tanda review.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Pada Opname Rutin, tiap barang yang selisih wajib punya alasan dan dicentang sudah direview sebelum posting. Centang baru bisa bila alasan dan keputusan barang rusak lengkap, dan otomatis tercentang begitu alasan dipilih atau keputusan barang rusak disimpan (bisa dilepas lagi).</li><li>Alasan Rusak memunculkan tombol Tentukan keputusan di sebelah alasan, yang membuka keputusan barang rusak (setelah diisi, tombolnya berisi ringkasannya: Dead stock 1 · DG 1 · Penuh 1). Pemeriksaan diulang saat posting terhadap stok terbaru; Hitung Ulang menghapus semua tanda review.</li></ul></details>
 </section>
 
 <!-- 9c KEPUTUSAN BARANG RUSAK -->
@@ -311,16 +311,16 @@
 </section>
 
 <!-- 9d KONFIRMASI POSTING OPNAME -->
-<section class="scr" id="opnamepost" data-group="Barang & Stok" data-nav="Konfirmasi Posting Opname" data-title="Konfirmasi Posting Opname" data-sub="Sebelum posting: apa yang terjadi pada barang rusak dan kemungkinan kerugiannya." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/stock-opnames/3">
+<section class="scr" id="opnamepost" data-group="Barang & Stok" data-nav="Konfirmasi Posting Opname" data-title="Konfirmasi Posting Opname" data-sub="Sebelum posting: apa yang terjadi pada barang rusak, rugi, dan loss profitnya." data-rel="r1" data-url="pos.contoh.id/t/mitra_utama/stock-opnames/3">
 <div class="bd full" style="background:var(--bg)">
   <div class="scrim"><div class="modal" style="max-width:760px">
     <h3>Posting opname?</h3>
     <p class="ink2" style="margin:8px 0 0">Stok sekitar 2 barang akan diperbarui, dengan nilai selisih sekitar −Rp 91.875. Angka ini dari tampilan terakhir; penjualan yang masuk sebelum posting ikut menggeser selisihnya. Setelah diposting, opname tidak bisa diubah.</p>
     <p style="margin:14px 0 6px"><b>Barang rusak</b></p>
-    <table class="t"><tr><th>Barang</th><th class="r">Dead stock</th><th class="r">Barang DG</th><th class="r">Layak jual penuh</th><th class="r">Kemungkinan rugi</th></tr>
-      <tr><td><b>Kuas 3"</b></td><td class="r">1 PCS</td><td class="r">1 PCS<small>dijual Rp 7.500, asli Rp 10.000<br>harga DG sekarang Rp 7.000, jadi Rp 7.500</small></td><td class="r">1 PCS</td><td class="r" style="color:var(--bad)"><b>Rp 12.500</b></td></tr></table>
-    <div class="tip bad" style="margin-top:12px"><span><b>Kemungkinan kerugian: Rp 12.500</b><br>Dead stock Rp 10.000 + selisih harga barang DG Rp 2.500</span></div>
-    <p class="mute" style="font-size:12.5px;margin:6px 0 0">Dihitung dari harga jual: dead stock tidak bisa dijual lagi (rugi sebesar harga jual aslinya), barang DG rugi sebesar selisih harga jual asli dan harga DG. Yang layak jual penuh tidak rugi.</p>
+    <table class="t"><tr><th>Barang</th><th class="r">Dead stock</th><th class="r">Barang DG</th><th class="r">Layak jual penuh</th><th class="r">Rugi</th><th class="r">Loss profit</th></tr>
+      <tr><td><b>Kuas 3"</b></td><td class="r">1 PCS</td><td class="r">1 PCS<small>dijual Rp 7.500, asli Rp 10.000, beli Rp 6.000<br>harga DG sekarang Rp 7.000, jadi Rp 7.500</small></td><td class="r">1 PCS</td><td class="r" style="color:var(--bad)"><b>Rp 6.000</b></td><td class="r">Rp 6.500</td></tr></table>
+    <div class="tip bad" style="margin-top:12px"><span><b>Rugi: Rp 6.000</b><br>Dead stock Rp 6.000 + barang DG dijual di bawah harga beli Rp 0<br><b>Loss profit: Rp 6.500</b></span></div>
+    <p class="mute" style="font-size:12.5px;margin:6px 0 0">Rugi dihitung dari harga beli: dead stock tidak bisa dijual lagi (rugi sebesar harga beli), barang DG baru rugi bila dijual di bawah harga beli (selisihnya ke harga beli). Selisih harga yang masih di atas harga beli dihitung loss profit, juga pada barang yang rugi (dead stock: harga asli dikurangi harga beli).</p>
     <div class="row mt"><span class="sp"></span><span class="b bad">Batal</span><span class="b ok">Posting</span></div>
   </div></div>
 </div>
@@ -385,7 +385,7 @@
     </div>
   </div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Bar atas: Riwayat Nota (nota shift ini, cetak ulang, surat jalan, retur), Retur (cari nota lewat nomor lengkap), dan Tutup Shift. Admin juga punya tombol Dashboard. Pengeluaran mencatat uang yang diambil dari laci shift ini.</li><li>Enter pada barcode memasukkan satuan default; barcode satuan langsung memilih satuannya.</li><li>Stok kurang → diblokir. Hanya satuan "dijual" yang tampil.</li><li>Batal sebelum bayar langsung, dicatat. Tanpa kredit atau hutang.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Bar atas: Riwayat Nota (nota shift ini, cetak ulang, surat jalan, retur), Retur (cari nota lewat nomor lengkap), dan Tutup Shift. Admin juga punya tombol Dashboard. Pengeluaran mencatat uang yang diambil dari laci shift ini.</li><li>Scan barcode berarti scan SKU: SKU yang cocok persis masuk dalam satuan default; scan tidak memilih satuan, kasir memilihnya sesudahnya.</li><li>Stok kurang → diblokir. Hanya satuan "dijual" yang tampil.</li><li>Batal sebelum bayar langsung, dicatat. Tanpa kredit atau hutang.</li></ul></details>
 </section>
 
 <!-- 13 PEMBAYARAN -->

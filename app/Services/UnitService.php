@@ -7,6 +7,9 @@ use App\Models\Product;
 use App\Models\Unit;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Manages the units of one store. A unit is identified by its code, which is stored in upper case; a blank
@@ -22,6 +25,9 @@ class UnitService
 
     /** How many units a page of the list can hold, as the settings page offers them. */
     public const PER_PAGE_OPTIONS = [10, 25, 50, 100];
+
+    /** MySQL's error number for deleting a row that another table's foreign key still points at. */
+    private const MYSQL_PARENT_ROW_IN_USE = 1451;
 
     /**
      * The list as asked for, made safe: a sort column or page size that is not on offer, or a direction that is not
@@ -51,11 +57,13 @@ class UnitService
      */
     public function paginate(array $filters): LengthAwarePaginator
     {
+        $contains = '%'.addcslashes($filters['search'], '%_\\').'%';
+
         return Unit::query()
             ->withCount('productUnits')
             ->when($filters['search'] !== '', fn (Builder $query) => $query->where(fn (Builder $query) => $query
-                ->where('code', 'like', "%{$filters['search']}%")
-                ->orWhere('name', 'like', "%{$filters['search']}%")))
+                ->where('code', 'like', $contains)
+                ->orWhere('name', 'like', $contains)))
             ->orderBy($filters['sort'] === 'products_count' ? 'product_units_count' : $filters['sort'], $filters['direction'])
             ->orderBy('code')
             ->paginate($filters['per_page'], pageName: 'unit_page')
@@ -73,20 +81,29 @@ class UnitService
     }
 
     /**
-     * Changing the code is safe even while products use the unit: the references follow it.
+     * Changing the code is safe even while products use the unit: the references follow it. The audit trail cannot hold
+     * a text key (it stores numeric ids), so a changed code is written to the log, which is the only trace of what the
+     * rows of `product_units` and `products` were called before.
      *
      * @param  UnitInput  $unitInput
      */
     public function update(Unit $unit, array $unitInput): Unit
     {
         $code = Unit::normalizeCode($unitInput['code']);
+        $previousCode = $unit->code;
 
         $unit->forceFill(['code' => $code, 'name' => $this->nameOrCode($unitInput, $code)])->save();
+
+        if ($code !== $previousCode) {
+            Log::info('Unit code changed.', ['store_code' => tenant('code'), 'previous_code' => $previousCode, 'new_code' => $code, 'user_id' => Auth::id()]);
+        }
 
         return $unit;
     }
 
     /**
+     * A product that takes the unit between the check and the delete is stopped by the database, and told the same way.
+     *
      * @throws UnitInUseException
      */
     public function delete(Unit $unit): void
@@ -95,7 +112,15 @@ class UnitService
             throw UnitInUseException::forUnit($unit->code);
         }
 
-        $unit->delete();
+        try {
+            $unit->delete();
+        } catch (QueryException $exception) {
+            if (($exception->errorInfo[1] ?? null) === self::MYSQL_PARENT_ROW_IN_USE) {
+                throw UnitInUseException::forUnit($unit->code);
+            }
+
+            throw $exception;
+        }
     }
 
     public function isInUse(Unit $unit): bool

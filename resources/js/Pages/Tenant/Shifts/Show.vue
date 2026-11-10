@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
+import { printSheet } from '../../../Composables/printSheet';
 import { formatDeduction, formatRupiah } from '../../../Composables/useMoneyFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
@@ -48,6 +49,9 @@ function decide(url, isApproval) {
     }).onOk(() => sendDecision(url));
 }
 
+/** The end-of-shift report with every figure, from a hidden frame; a shift still running has none. */
+const printReport = () => printSheet(() => props.shift.urls.sheet);
+
 function sendDecision(url) {
     router.post(url, { note: note.value }, {
         preserveScroll: true,
@@ -64,6 +68,10 @@ function sendDecision(url) {
     <StoreLayout :title="shift.label">
         <template #back>
             <q-btn flat no-caps dense icon="arrow_back" label="Rekap Shift" class="q-ml-sm" @click="router.visit(shift.urls.index)" />
+        </template>
+
+        <template #actions>
+            <q-btn v-if="shift.status !== 'open'" outline no-caps icon="print" label="Cetak Laporan Shift" @click="printReport" />
         </template>
 
         <article class="shift">
@@ -87,6 +95,7 @@ function sendDecision(url) {
                     <dt>{{ payment.method }}<small v-if="payment.method === 'Tunai'"> (setelah kembalian)</small></dt>
                     <dd>{{ formatRupiah(payment.amount) }}</dd>
                 </div>
+                <div v-if="Number(shift.void_deposits) > 0"><dt>Sudah termasuk DP nota void<small> (uang yang sempat masuk, nota kemudian di-void)</small></dt><dd>{{ formatRupiah(shift.void_deposits) }}</dd></div>
                 <div v-if="Number(shift.returns_total) > 0"><dt>Retur disetujui</dt><dd>{{ formatRupiah(shift.returns_total) }}</dd></div>
                 <template v-if="shift.cod.delivered.count + shift.cod.undelivered.count > 0">
                     <div><dt>COD sudah diantar ({{ shift.cod.delivered.count }} nota)<small> (tidak masuk laci)</small></dt><dd>{{ formatRupiah(shift.cod.delivered.amount) }}</dd></div>
@@ -97,6 +106,7 @@ function sendDecision(url) {
             <h2>Kas</h2>
             <dl class="rows">
                 <div><dt>Modal kas awal</dt><dd>{{ formatRupiah(shift.opening_cash) }}</dd></div>
+                <div v-if="Number(shift.order_deposit_cash) !== 0"><dt>DP pesanan tunai<small> (setelah DP yang dikembalikan)</small></dt><dd>{{ formatRupiah(shift.order_deposit_cash) }}</dd></div>
                 <div v-if="Number(shift.cash_refunds) > 0"><dt>Retur tunai</dt><dd class="rows__minus">{{ formatDeduction(shift.cash_refunds) }}</dd></div>
                 <div v-if="Number(shift.void_cash_refunds) > 0"><dt>DP void dikembalikan tunai</dt><dd class="rows__minus">{{ formatDeduction(shift.void_cash_refunds) }}</dd></div>
                 <div v-if="Number(shift.drawer_expenses) > 0"><dt>Pengeluaran dari laci</dt><dd class="rows__minus">{{ formatDeduction(shift.drawer_expenses) }}</dd></div>
@@ -141,7 +151,7 @@ function sendDecision(url) {
                     <span class="chip" :class="differenceChipClass[shift.difference_status]">{{ shift.difference_status_label }}</span>
                 </h2>
 
-                <p v-if="shift.is_own_shift && shift.difference_status === 'pending_approval'" class="decide__own">Selisih ini dari shift Anda sendiri, jadi diputuskan Admin lain atau Super Admin.</p>
+                <p v-if="shift.is_own_shift && !shift.can_decide && shift.difference_status === 'pending_approval'" class="decide__own">Selisih ini dari shift Anda sendiri, jadi diputuskan Admin lain atau Super Admin.</p>
                 <div v-else-if="shift.can_decide" class="decide">
                     <p>Selisih {{ formatRupiah(shift.cash_difference) }}. Setujui bila selisihnya wajar, atau minta kasir menanggungnya (berita acara dibuat di luar sistem dan uangnya diganti kasir). Shift baru benar-benar tertutup setelah Anda memutuskan.</p>
                     <q-input v-model="note" type="textarea" autogrow outlined label="Catatan keputusan (mis. nomor berita acara)" :error="errorMessage !== ''" :error-message="errorMessage" @update:model-value="errorMessage = ''" />

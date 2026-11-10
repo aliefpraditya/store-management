@@ -28,7 +28,7 @@ use Illuminate\Support\Str;
  *
  * @phpstan-import-type CodTotals from CodSaleService
  *
- * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, void_cash_refunds: string, cod: CodTotals, drawer_expenses: string, order_deposit_cash: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
+ * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, void_cash_refunds: string, void_deposits: string, cod: CodTotals, drawer_expenses: string, order_deposit_cash: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
  */
 class ShiftService
 {
@@ -176,6 +176,7 @@ class ShiftService
         $orderDepositCash = $this->orderDepositCashOf($shift);
 
         return [
+            'void_deposits' => (string) $this->voidedDepositsOf($shift)->toScale(2),
             'sale_count' => (clone $completedSalesQuery)->count(),
             'total_sales' => (string) BigDecimal::of((string) (clone $completedSalesQuery)->sum('total'))->toScale(2),
             'returns_total' => (string) BigDecimal::of((string) (clone $completedReturnsQuery)->sum('credit_amount'))->toScale(2),
@@ -210,6 +211,25 @@ class ShiftService
             ],
             'opening_cash' => $summary['opening_cash'],
         ];
+    }
+
+    /**
+     * The money that receipts of this shift took in before they were voided (the deposit of a COD receipt, minus the
+     * change given). The payments of the methods above still hold it, while the sales total leaves the receipt out; the
+     * report names this amount so the two can be told apart.
+     */
+    private function voidedDepositsOf(CashShift $shift): BigDecimal
+    {
+        $voidedSalesQuery = Sale::query()->where('cash_shift_id', $shift->id)->where('status', SaleStatus::Voided);
+
+        $received = SalePayment::query()
+            ->join('sales', 'sales.id', '=', 'sale_payments.sale_id')
+            ->where('sales.cash_shift_id', $shift->id)
+            ->where('sales.status', SaleStatus::Voided)
+            ->whereIn('sale_payments.method', array_map(fn (PaymentMethod $method): string => $method->value, PaymentMethod::forCashier()))
+            ->sum('sale_payments.amount');
+
+        return BigDecimal::of((string) $received)->minus((string) $voidedSalesQuery->sum('change_amount'));
     }
 
     /**

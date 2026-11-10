@@ -9,6 +9,7 @@ use App\Models\Store;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\PreparesStoreDatabase;
@@ -270,6 +271,22 @@ class UnitManagementTest extends TestCase
             ->assertSessionHasNoErrors();
     }
 
+    public function test_a_changed_code_is_logged_because_the_audit_trail_cannot_hold_it_and_a_changed_name_is_not(): void
+    {
+        Log::spy();
+        $dus = $this->makeUnit('DUS', 'Karton');
+
+        $this->actingAs($this->admin)->put($this->url('update', ['unit' => 'DUS']), ['code' => 'DUS', 'name' => 'Kardus'])->assertSessionHasNoErrors();
+        Log::shouldNotHaveReceived('info');
+
+        $this->actingAs($this->admin)->put($this->url('update', ['unit' => $dus->code]), ['code' => 'BOX', 'name' => 'Kardus'])->assertSessionHasNoErrors();
+
+        Log::shouldHaveReceived('info')->once()->withArgs(fn (string $message, array $context): bool => $message === 'Unit code changed.'
+            && $context['previous_code'] === 'DUS'
+            && $context['new_code'] === 'BOX'
+            && $context['user_id'] === $this->admin->id);
+    }
+
     public function test_renaming_a_code_follows_through_to_the_products_that_use_it(): void
     {
         $dus = $this->makeUnit('DUS', 'Karton');
@@ -343,5 +360,29 @@ class UnitManagementTest extends TestCase
             ->assertSessionHas('error');
 
         $this->assertSame(1, $this->inStore(fn () => Unit::query()->count()));
+    }
+
+    public function test_a_search_for_a_percent_or_an_underscore_matches_only_those_characters(): void
+    {
+        $this->makeUnit('PCS', 'Pieces');
+        $this->makeUnit('DUS', 'Karton_besar');
+        $this->makeUnit('ROL', 'Rol 100%');
+
+        $this->listWith(['unit_search' => '_'])->assertInertia(fn (Assert $page) => $page->has('units.data', 1)->where('units.data.0.code', 'DUS'));
+        $this->listWith(['unit_search' => '%'])->assertInertia(fn (Assert $page) => $page->has('units.data', 1)->where('units.data.0.code', 'ROL'));
+    }
+
+    public function test_a_product_that_takes_the_unit_just_before_it_is_deleted_gets_the_unit_in_use_message_not_an_error_page(): void
+    {
+        $pcs = $this->makeUnit('PCS', 'Pieces');
+        $kg = $this->makeUnit('KG', 'Kilogram');
+        $product = $this->inStore(fn () => Product::factory()->create(['base_unit_code' => $kg->code]));
+        Unit::deleting(fn () => ProductUnit::factory()->create(['product_id' => $product->id, 'unit_code' => $pcs->code]));
+
+        $this->actingAs($this->admin)
+            ->delete($this->url('destroy', ['unit' => 'PCS']))
+            ->assertSessionHas('error');
+
+        $this->assertSame(2, $this->inStore(fn () => Unit::query()->count()));
     }
 }

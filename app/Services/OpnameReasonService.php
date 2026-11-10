@@ -23,9 +23,28 @@ class OpnameReasonService
         return OpnameReason::query()->orderByDesc('is_system')->orderBy('id')->get();
     }
 
-    public function create(string $name): OpnameReason
+    public function create(string $name, bool $isActive = true): OpnameReason
     {
-        return OpnameReason::query()->create(['name' => trim($name), 'behavior' => OpnameReasonBehavior::Plain, 'is_system' => false, 'is_active' => true]);
+        return OpnameReason::query()->create(['name' => trim($name), 'behavior' => OpnameReasonBehavior::Plain, 'is_system' => false, 'is_active' => $isActive]);
+    }
+
+    /**
+     * Brings the reasons to what the settings page sent: a row with an id is renamed or switched, a row without one is
+     * added. A reason left out of the rows is left as it is, since a reason is never deleted.
+     *
+     * @param  list<array{id?: int|null, name: string, is_active: bool}>  $rows
+     */
+    public function sync(array $rows): void
+    {
+        foreach ($rows as $row) {
+            if (filled($row['id'] ?? null)) {
+                $this->update(OpnameReason::query()->findOrFail($row['id']), ['name' => $row['name'], 'is_active' => (bool) $row['is_active']]);
+
+                continue;
+            }
+
+            $this->create($row['name'], (bool) $row['is_active']);
+        }
     }
 
     /**

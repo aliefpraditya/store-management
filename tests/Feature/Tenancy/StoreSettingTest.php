@@ -6,17 +6,22 @@ use App\Enums\StockOpnameReason;
 use App\Enums\StockOpnameScope;
 use App\Enums\StockOpnameStatus;
 use App\Enums\UserRole;
+use App\Exceptions\StockOpnameException;
 use App\Models\CashShift;
 use App\Models\DeliveryNote;
+use App\Models\Driver;
+use App\Models\OpnameReason;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
 use App\Models\Store;
+use App\Models\StoreSetting;
 use App\Models\User;
 use App\Services\SaleService;
 use App\Services\StoreSettingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsCashierFixtures;
@@ -65,6 +70,7 @@ class StoreSettingTest extends TestCase
             'paper_width' => 80,
             'large_variance_threshold' => '',
             'lock_sales_during_opname' => false,
+            'auto_print_receipt' => false,
             ...$overrides,
         ];
     }
@@ -86,12 +92,12 @@ class StoreSettingTest extends TestCase
     /**
      * An opname of the brushes in the given status, with the count typed in (the stock is 100).
      */
-    private function opnameWithCount(StockOpnameStatus $status, ?string $counted = '98', ?string $note = null): StockOpname
+    private function opnameWithCount(StockOpnameStatus $status, ?string $counted = '98', ?string $note = null, StockOpnameReason $reason = StockOpnameReason::Correction): StockOpname
     {
-        return $this->store->run(function () use ($status, $counted, $note): StockOpname {
+        return $this->store->run(function () use ($status, $counted, $note, $reason): StockOpname {
             $opname = StockOpname::factory()->create([
                 'warehouse_id' => $this->mainWarehouse()->id,
-                'reason_code' => StockOpnameReason::Correction,
+                'reason_code' => $reason,
                 'scope' => StockOpnameScope::Selected,
                 'status' => $status,
                 'snapshot_at' => now(),
@@ -161,8 +167,11 @@ class StoreSettingTest extends TestCase
         $put = fn (array $overrides) => $this->actingAs($this->admin)->put($this->url('update'), $this->body($overrides));
 
         $put(['paper_width' => 70])->assertSessionHasErrors(['paper_width' => 'Lebar kertas nota hanya 58 atau 80 mm.']);
-        $put(['large_variance_threshold' => -1])->assertSessionHasErrors(['large_variance_threshold' => 'Ambang selisih tidak boleh negatif.']);
+        $put(['large_variance_threshold' => -1])->assertSessionHasErrors(['large_variance_threshold' => 'Ambang selisih harus lebih dari 0. Kosongkan untuk tanpa batas.']);
+        $put(['large_variance_threshold' => 0])->assertSessionHasErrors(['large_variance_threshold' => 'Ambang selisih harus lebih dari 0. Kosongkan untuk tanpa batas.']);
+        $put(['large_variance_threshold' => '1500.5'])->assertSessionHasErrors(['large_variance_threshold' => 'Ambang selisih harus bilangan bulat rupiah.']);
         $put(['large_variance_threshold' => 'banyak'])->assertSessionHasErrors('large_variance_threshold');
+        $put(['auto_print_receipt' => null])->assertSessionHasErrors('auto_print_receipt');
         $put(['receipt_footer' => str_repeat('a', 1001)])->assertSessionHasErrors('receipt_footer');
     }
 
@@ -212,7 +221,7 @@ class StoreSettingTest extends TestCase
         $this->save(['large_variance_threshold' => '10000']);
         $opname = $this->opnameWithCount(StockOpnameStatus::Review, '98');
 
-        $this->postOpname($opname)->assertSessionHas('error', 'Selisih Kuas bernilai di atas Rp 10.000, jadi wajib diberi catatan. Isi catatannya di baris barang itu, lalu posting lagi.');
+        $this->postOpname($opname)->assertSessionHas('error', 'Selisih Kuas bernilai di atas Rp 10.000, jadi wajib diberi catatan. Klik Hitung Ulang, isi catatannya di baris barang itu, lalu selesaikan hitung dan posting lagi.');
 
         $this->assertSame('100.000', $this->stockInPieces($this->brush));
         $this->assertSame(StockOpnameStatus::Review, $this->store->run(fn (): StockOpnameStatus => $opname->fresh()->status));
@@ -304,5 +313,120 @@ class StoreSettingTest extends TestCase
         ]));
 
         $this->assertSame('49.000', $this->stockInPieces($paint));
+    }
+
+    public function test_a_large_variance_needs_no_note_in_an_opening_stock_count(): void
+    {
+        $this->save(['large_variance_threshold' => '10000']);
+        $opname = $this->opnameWithCount(StockOpnameStatus::Review, '98', null, StockOpnameReason::OpeningBalance);
+
+        $this->postOpname($opname)->assertSessionHasNoErrors();
+
+        $this->assertSame('98.000', $this->stockInPieces($this->brush));
+    }
+
+    public function test_the_note_message_names_five_products_and_counts_the_rest(): void
+    {
+        $names = array_map(fn (int $number): string => "Barang {$number}", range(1, 7));
+
+        $message = StockOpnameException::largeVarianceNeedsNote($names, '10.000')->getMessage();
+
+        $this->assertStringContainsString('Selisih Barang 1, Barang 2, Barang 3, Barang 4, Barang 5 dan 2 barang lain bernilai di atas Rp 10.000', $message);
+        $this->assertStringNotContainsString('Barang 6', $message);
+    }
+
+    public function test_a_limit_that_was_stored_with_decimals_still_shows_the_page(): void
+    {
+        $this->store->run(fn () => app(StoreSettingService::class)->update(['paper_width' => 80, 'lock_sales_during_opname' => false, 'large_variance_threshold' => '1500.5']));
+
+        $this->actingAs($this->admin)->get($this->url('index'))->assertOk()->assertInertia(fn (Assert $page) => $page->where('settings.large_variance_threshold', '1501'));
+    }
+
+    public function test_one_save_writes_the_settings_the_opname_reasons_and_the_drivers_together(): void
+    {
+        $stockCheck = $this->store->run(fn (): OpnameReason => OpnameReason::query()->where('name', 'Cek stok')->firstOrFail());
+        $joko = $this->store->run(fn (): Driver => Driver::factory()->create(['name' => 'Pak Joko']));
+
+        $this->save([
+            'paper_width' => 58,
+            'opname_reasons' => [['id' => $stockCheck->id, 'name' => 'Cek stok rutin', 'is_active' => true], ['id' => null, 'name' => 'Kadaluarsa', 'is_active' => true]],
+            'drivers' => [['id' => $joko->id, 'name' => 'Pak Joko', 'is_active' => false], ['id' => null, 'name' => 'Pak Adi', 'is_active' => true]],
+        ]);
+
+        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
+            ->where('settings.paper_width', 58)
+            ->where('opname_reasons.1.name', 'Cek stok rutin')
+            ->where('opname_reasons.4.name', 'Kadaluarsa')
+            ->where('drivers.0.name', 'Pak Adi')
+            ->where('drivers.1', ['id' => $joko->id, 'name' => 'Pak Joko', 'is_active' => false]));
+    }
+
+    public function test_a_list_that_is_left_out_of_the_save_is_left_as_it_is(): void
+    {
+        $this->store->run(fn () => Driver::factory()->create(['name' => 'Pak Joko']));
+
+        $this->save(['paper_width' => 58]);
+
+        $this->assertSame(['Pak Joko'], $this->store->run(fn (): array => Driver::query()->pluck('name')->all()));
+        $this->assertSame(4, $this->store->run(fn (): int => OpnameReason::query()->count()));
+    }
+
+    public function test_nothing_is_saved_when_two_names_swap_places_and_meet_at_the_unique_name(): void
+    {
+        $joko = $this->store->run(fn (): Driver => Driver::factory()->create(['name' => 'Pak Joko']));
+        $budi = $this->store->run(fn (): Driver => Driver::factory()->create(['name' => 'Pak Budi']));
+
+        $this->actingAs($this->admin)->put($this->url('update'), $this->body([
+            'paper_width' => 58,
+            'drivers' => [['id' => $joko->id, 'name' => 'Pak Budi', 'is_active' => true], ['id' => $budi->id, 'name' => 'Pak Joko', 'is_active' => true]],
+        ]))->assertSessionHas('error', 'Ada nama yang bentrok saat disimpan, sehingga tidak ada yang tersimpan. Ubah nama satu per satu, lalu simpan lagi.');
+
+        $this->assertSame(['Pak Joko', 'Pak Budi'], $this->store->run(fn (): array => [$joko->fresh()->name, $budi->fresh()->name]));
+        $this->assertSame(80, $this->store->run(fn (): int => app(StoreSettingService::class)->paperWidth()));
+    }
+
+    public function test_a_first_save_creates_every_setting_once_even_when_one_row_already_exists(): void
+    {
+        $this->store->run(fn () => StoreSetting::query()->create(['key' => 'paper_width', 'value' => '58']));
+
+        $this->save(['receipt_name' => 'Toko Baru', 'paper_width' => 80]);
+        $this->save(['receipt_name' => 'Toko Baru 2', 'paper_width' => 80]);
+
+        $this->store->run(function (): void {
+            $this->assertSame(8, StoreSetting::query()->count());
+            $this->assertSame(1, StoreSetting::query()->where('key', 'paper_width')->count());
+            $this->assertSame('80', StoreSetting::query()->where('key', 'paper_width')->value('value'));
+            $this->assertSame('Toko Baru 2', StoreSetting::query()->where('key', 'receipt_name')->value('value'));
+        });
+    }
+
+    public function test_a_change_of_the_settings_is_audited(): void
+    {
+        config(['audit.console' => true]);
+        $this->save(['paper_width' => 80]);
+
+        $this->save(['paper_width' => 58]);
+
+        $audit = $this->store->run(fn () => StoreSetting::query()->where('key', 'paper_width')->sole()->audits()->latest('id')->first());
+        $this->assertSame(['updated', '58'], [$audit->event, $audit->new_values['value']]);
+    }
+
+    public function test_the_service_reads_the_settings_once_and_sees_a_save_made_through_it(): void
+    {
+        [$reads, $widthAfterSave] = $this->store->run(function (): array {
+            $service = app(StoreSettingService::class);
+            DB::enableQueryLog();
+
+            $service->letterhead();
+            $service->receiptFooter();
+            $service->paperWidth();
+            $reads = count(array_filter(DB::getQueryLog(), fn (array $query): bool => str_contains($query['query'], 'from `settings`')));
+
+            $service->update(['paper_width' => 58, 'lock_sales_during_opname' => false]);
+
+            return [$reads, $service->paperWidth()];
+        });
+
+        $this->assertSame([1, 58], [$reads, $widthAfterSave]);
     }
 }

@@ -48,14 +48,14 @@ section:last-of-type{break-after:auto}
 <section id="d0"><div class="sh"><h2>5.4b BPMN-3b — Form Harga: Margin &amp; Histori Harga (R2)</h2><span class="tag r2">R2</span></div><pre class="mermaid">flowchart TD
     subgraph ADM["Admin Toko"]
         A1(["Tambah / ubah barang"]) --&gt; A2["Isi info: sku, nama, kategori, merek"]
-        A2 --&gt; A3["Pilih satuan dasar, tambah satuan lain + konversi + barcode satuan"]
+        A2 --&gt; A3["Pilih satuan dasar, tambah satuan lain + konversi"]
         A3 --&gt; A4["Tandai satuan boleh dibeli dan boleh dijual"]
         A4 --&gt; A5["Isi harga beli terakhir per satuan dasar, lalu harga jual per satuan: nominal atau persen margin"]
         A5 --&gt; A6["Simpan"]
         A12(["Selesai: barang + histori harga + persen untung (margin)"])
     end
     subgraph SYS["Sistem"]
-        S1{"Validasi: sku/barcode unik, 1 satuan dasar, konversi lebih dari 0 maks 3 desimal, minimal satu satuan jual dan satu satuan beli"}
+        S1{"Validasi: sku unik, 1 satuan dasar, konversi lebih dari 0 maks 3 desimal, minimal satu satuan jual dan satu satuan beli"}
         S4["Hitung harga persen margin = modal / (1 - margin), tanpa pembulatan"]
         S5{"Harga jual di bawah modal?"}
         S6["Peringatan, butuh konfirmasi"]
@@ -142,11 +142,11 @@ section:last-of-type{break-after:auto}
     S6 --&gt; A9 --&gt; S7</pre></section>
 <section id="d4"><div class="sh"><h2>5.14 BPMN-13 — Cek Stok Barang di Semua Toko (Master) (R2)</h2><span class="tag r2">R2</span></div><pre class="mermaid">flowchart TD
     subgraph SA["Super Admin"]
-        A1(["Buka Cek Stok Barang di Dashboard Pusat"]) --&gt; A2["Cari barang: sku / barcode / nama"]
+        A1(["Buka Cek Stok Barang di Dashboard Pusat"]) --&gt; A2["Cari barang: sku / nama"]
         A9(["Lihat stok per toko dan gudang"])
     end
     subgraph SYS["Sistem Pusat"]
-        S1["Ambil sku / barcode dari kotak cari"]
+        S1["Ambil sku dari kotak cari"]
         S2["Untuk setiap toko aktif: buka koneksi toko dengan timeout pendek"]
         S3{"Toko terjangkau dan punya barang dengan sku itu?"}
         S4["Baca stocks per gudang, harga jual default, stok minimum"]

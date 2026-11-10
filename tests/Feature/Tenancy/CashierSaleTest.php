@@ -414,16 +414,14 @@ class CashierSaleTest extends TestCase
 
     public function test_the_item_lookup_finds_items_with_their_sellable_units_and_stock(): void
     {
-        $brush = $this->sellableProduct('Kuas Cat', '30');
+        $this->sellableProduct('Kuas Cat', '30');
         $this->sellableProduct('Paku', '5', ['is_active' => false]);
-        $this->store->run(fn () => $this->unitOf($brush, 'DUS')->update(['barcode' => '8990000000012']));
 
         $this->actingAs($this->cashier)->getJson($this->url('products', ['q' => 'kuas']))->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'Kuas Cat')
             ->assertJsonPath('data.0.stock', '30.000')
             ->assertJsonPath('data.0.base_unit', 'PCS')
-            ->assertJsonPath('data.0.matched_unit_id', null)
             ->assertJsonPath('data.0.units.0.code', 'PCS')
             ->assertJsonPath('data.0.units.0.price', '10000.00')
             ->assertJsonPath('data.0.units.1.conversion_factor', '12.000');
@@ -432,17 +430,14 @@ class CashierSaleTest extends TestCase
         $this->actingAs($this->cashier)->getJson($this->url('products', ['q' => '']))->assertJsonCount(0, 'data');
     }
 
-    public function test_scanning_a_barcode_finds_that_item_and_the_scanned_unit(): void
+    public function test_scanning_a_sku_barcode_finds_that_item(): void
     {
-        $brush = $this->sellableProduct('Kuas Cat', '30');
-        $this->sellableProduct('Kuas Lain', '30');
-        $dozen = $this->unitOf($brush, 'DUS');
-        $this->store->run(fn () => $dozen->update(['barcode' => '8990000000012']));
+        $this->sellableProduct('Kuas Cat', '30', ['sku' => 'MU0496']);
+        $this->sellableProduct('Kuas Lain', '30', ['sku' => 'MU0497']);
 
-        $this->actingAs($this->cashier)->getJson($this->url('products', ['q' => '8990000000012']))
+        $this->actingAs($this->cashier)->getJson($this->url('products', ['q' => 'MU0496']))
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.name', 'Kuas Cat')
-            ->assertJsonPath('data.0.matched_unit_id', $dozen->id);
+            ->assertJsonPath('data.0.name', 'Kuas Cat');
     }
 
     public function test_a_unit_not_for_sale_is_left_out_of_the_lookup(): void

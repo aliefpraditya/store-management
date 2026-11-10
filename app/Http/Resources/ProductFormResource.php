@@ -36,7 +36,6 @@ class ProductFormResource extends JsonResource
                     'name' => $productUnit->unit->name,
                 ],
                 'conversion_factor' => $productUnit->conversion_factor,
-                'barcode' => $productUnit->barcode,
                 'is_sellable' => $productUnit->is_sellable,
                 'cost_price' => $productUnit->cost_price,
                 'selling_price' => $productUnit->selling_price,

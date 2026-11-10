@@ -8,25 +8,27 @@ use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\SaleItem;
 use App\Models\Stock;
-use App\Models\StockOpnameItem;
 use Brick\Math\BigDecimal;
 use Illuminate\Support\Collection;
 
 /**
  * The item lookup of the cashier screen: active products with the units they can be sold in, their price, and
  * how much is in the register's warehouse. Items in stock are listed before sold-out ones, so a broad term such as
- * "cat" does not open with empty shelves; a specific term whose matches are all sold out still shows them. A term
- * that is exactly a unit's barcode finds that product alone and tells which unit was scanned.
+ * "cat" does not open with empty shelves; a specific term whose matches are all sold out still shows them. A scanned
+ * barcode is the item's SKU, so it is found like any typed SKU.
  *
  * A product with a sealed pack unit (a roll of wire) also tells how many whole packs are left (`intact_packs`, null for other
  * products), because the stock in the base unit alone does not say how many packs can still be sold whole.
  *
- * @phpstan-type CatalogUnit array{id: int, code: string, conversion_factor: string, price: string, barcode: string|null, is_sealed_pack: bool, is_default_sale: bool}
- * @phpstan-type CatalogItem array{id: int, sku: string, name: string, base_unit: string, stock: string, reserved: string, intact_packs: int|null, units: list<CatalogUnit>, matched_unit_id: int|null, is_being_counted: bool}
+ * @phpstan-type CatalogUnit array{id: int, code: string, conversion_factor: string, price: string, is_sealed_pack: bool, is_default_sale: bool}
+ * @phpstan-type CatalogItem array{id: int, sku: string, name: string, base_unit: string, stock: string, reserved: string, intact_packs: int|null, units: list<CatalogUnit>, is_being_counted: bool}
  */
 class CashierCatalogService
 {
-    public function __construct(private readonly StoreSettingService $settings) {}
+    public function __construct(
+        private readonly StoreSettingService $settings,
+        private readonly StockOpnameService $stockOpnames,
+    ) {}
 
     private const RESULT_LIMIT = 20;
 
@@ -51,23 +53,17 @@ class CashierCatalogService
             return [];
         }
 
-        $scannedUnit = ProductUnit::query()->where('barcode', $term)->where('is_sellable', true)->first();
-
         $products = Product::query()
             ->where('is_active', true)
             ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)])
-            ->when(
-                $scannedUnit,
-                fn ($query, ProductUnit $unit) => $query->whereKey($unit->product_id),
-                fn ($query) => $query->search($term),
-            )
+            ->search($term)
             ->orderByRaw(self::IN_STOCK_FIRST_SQL.' desc', [$warehouseId])
             ->orderBy('name')
             ->limit(self::RESULT_LIMIT)
             ->get()
             ->filter(fn (Product $product): bool => $product->productUnits->isNotEmpty());
 
-        return $this->catalogItems($products, $warehouseId, $scannedUnit);
+        return $this->catalogItems($products, $warehouseId);
     }
 
     /**
@@ -102,7 +98,7 @@ class CashierCatalogService
 
         return array_slice(
             array_values(array_filter(
-                $this->catalogItems($products, $warehouseId, null),
+                $this->catalogItems($products, $warehouseId),
                 fn (array $item): bool => (float) $item['stock'] > 0 && ! $item['is_being_counted'],
             )),
             0,
@@ -130,18 +126,18 @@ class CashierCatalogService
             ->get()
             ->filter(fn (Product $product): bool => $product->productUnits->isNotEmpty());
 
-        return $this->catalogItems($products, $warehouseId, null);
+        return $this->catalogItems($products, $warehouseId);
     }
 
     /**
      * @param  Collection<int, Product>  $products
      * @return list<CatalogItem>
      */
-    private function catalogItems(Collection $products, int $warehouseId, ?ProductUnit $scannedUnit): array
+    private function catalogItems(Collection $products, int $warehouseId): array
     {
         $stocks = $this->stockOf($products, $warehouseId);
         $reserved = CustomerOrderItem::reservedQuantities($warehouseId, $products->modelKeys());
-        $countedProductIds = $this->settings->isSalesLockedDuringOpname() ? StockOpnameItem::productIdsBeingCounted($warehouseId, $products->modelKeys()) : [];
+        $countedProductIds = $this->settings->isSalesLockedDuringOpname() ? $this->stockOpnames->productIdsBeingCounted($warehouseId, $products->modelKeys()) : [];
 
         return $products->map(fn (Product $product): array => [
             'id' => $product->id,
@@ -156,11 +152,9 @@ class CashierCatalogService
                 'code' => $unit->unit_code,
                 'conversion_factor' => $unit->conversion_factor,
                 'price' => $unit->selling_price,
-                'barcode' => $unit->barcode,
                 'is_sealed_pack' => $unit->is_sealed_pack,
                 'is_default_sale' => (bool) $unit->is_default_sale,
             ])->values()->all(),
-            'matched_unit_id' => $scannedUnit?->product_id === $product->id ? $scannedUnit->id : null,
             'is_being_counted' => in_array($product->id, $countedProductIds, true),
         ])->values()->all();
     }

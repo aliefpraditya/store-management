@@ -1,13 +1,17 @@
 <script setup>
-import { formatRupiah } from '../Composables/useMoneyFormat';
+import { formatDeduction, formatRupiah } from '../Composables/useMoneyFormat';
 
 defineProps({
-    /** @type {{business_date: string, closed_by_name: string|null, closed_at: string, notes: string|null, figures: Record<string, string|number>, store: {name: string, address: string|null, phone: string|null}, shifts: {label: string, register_name: string, cashier_name: string, expected_cash: string|null, counted_cash: string|null, cash_difference: string|null, deposit_amount: string|null}[]}} */
+    /** `voids` are the receipts voided on the day, whatever day they were sold. @type {{business_date: string, closed_by_name: string|null, closed_at: string, notes: string|null, figures: Record<string, string|number>, store: {name: string, address: string|null, phone: string|null}, shifts: {label: string, register_name: string, cashier_name: string, expected_cash: string|null, counted_cash: string|null, cash_difference: string|null, deposit_amount: string|null}[], voids: {number: string, sold_on: string, reason: string|null, total: string}[]}} */
     report: { type: Object, required: true },
 });
 
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'full' });
+const shortDateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' });
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+
+/** @param {string} isoDay e.g. `2026-11-02`, read as that day in the browser's own time zone */
+const asLocalDate = (isoDay) => new Date(`${isoDay}T00:00:00`);
 </script>
 
 <template>
@@ -36,15 +40,16 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
                 <tr class="daily-print__total"><td>Total penjualan</td><td>{{ formatRupiah(report.figures.total_sales) }}</td></tr>
             </tbody>
         </table>
+        <p class="daily-print__note">Baris metode bayar memuat uang yang sempat masuk, termasuk DP nota yang kemudian di-void, jadi jumlahnya bisa lebih besar dari total penjualan.</p>
 
         <h2>Retur dan pengeluaran</h2>
         <table class="daily-print__rows">
             <tbody>
                 <tr><td>Retur disetujui</td><td>{{ formatRupiah(report.figures.total_returns) }}</td></tr>
-                <tr><td>Void ({{ report.figures.voids_count }} nota)</td><td>{{ formatRupiah(report.figures.total_voids) }}</td></tr>
-                <tr><td>Pengembalian tunai (retur dan DP void)</td><td>{{ formatRupiah(report.figures.refunds_cash) }}</td></tr>
-                <tr><td>Pengeluaran dari laci</td><td>{{ formatRupiah(report.figures.expenses_drawer) }}</td></tr>
+                <tr><td>Pengembalian tunai (retur dan DP void)</td><td>{{ formatDeduction(report.figures.refunds_cash) }}</td></tr>
+                <tr><td>Pengeluaran dari laci</td><td>{{ formatDeduction(report.figures.expenses_drawer) }}</td></tr>
                 <tr><td>Pengeluaran sumber lain</td><td>{{ formatRupiah(report.figures.expenses_other) }}</td></tr>
+                <tr class="daily-print__info"><td>Nota void hari ini ({{ report.figures.voids_count }} nota, sudah di luar total penjualan)</td><td>{{ formatRupiah(report.figures.total_voids) }}</td></tr>
             </tbody>
         </table>
 
@@ -80,7 +85,7 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
             <table class="daily-print__rows">
                 <tbody>
                     <tr v-for="sale in report.voids" :key="sale.number">
-                        <td>{{ sale.number }} · dijual {{ sale.sold_on }}<template v-if="sale.reason"> · {{ sale.reason }}</template></td>
+                        <td>{{ sale.number }} · dijual {{ shortDateFormat.format(asLocalDate(sale.sold_on)) }}<template v-if="sale.reason"> · {{ sale.reason }}</template></td>
                         <td>{{ formatRupiah(sale.total) }}</td>
                     </tr>
                 </tbody>
@@ -184,6 +189,17 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
 
 .daily-print .daily-print__empty {
     text-align: center;
+}
+
+.daily-print .daily-print__info td {
+    color: #444;
+    font-style: italic;
+}
+
+.daily-print .daily-print__note {
+    margin: 4px 0 0;
+    color: #444;
+    font-size: 11px;
 }
 
 .daily-print__notes {

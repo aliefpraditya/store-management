@@ -53,6 +53,7 @@ class CashierController extends Controller
             'can_leave_to_dashboard' => $request->user()->isAdminIn($store),
             'urls' => [
                 'open_shift' => route('tenant.cashier.shifts.store', ['tenant' => $code]),
+                'shift_report' => $shift === null ? null : route('tenant.cashier.shifts.report', ['tenant' => $code, 'shift' => $shift->id]),
                 'products' => route('tenant.cashier.products', ['tenant' => $code]),
                 'sales' => route('tenant.cashier.sales.store', ['tenant' => $code]),
                 'dashboard' => route('tenant.dashboard', ['tenant' => $code]),

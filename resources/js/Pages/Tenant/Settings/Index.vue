@@ -1,8 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { router, useForm, usePage } from '@inertiajs/vue3';
-import DriversCard from '../../../Components/DriversCard.vue';
-import OpnameReasonsCard from '../../../Components/OpnameReasonsCard.vue';
+import NamedListCard from '../../../Components/NamedListCard.vue';
 import UnitFormDialog from '../../../Components/UnitFormDialog.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -16,24 +15,38 @@ const props = defineProps({
     units: { type: Object, required: true },
     unit_filters: { type: Object, required: true },
     unit_per_page_options: { type: Array, required: true },
-    /** The reasons an opname variance can be given, with where to change each. */
+    /** The reasons an opname variance can be given. */
     opname_reasons: { type: Array, required: true },
-    /** The drivers a delivery note can be shipped with, with where to change each. */
+    /** The drivers a delivery note can be shipped with. */
     drivers: { type: Array, required: true },
     urls: { type: Object, required: true },
 });
 
 const page = usePage();
 
-const form = useForm({ ...props.settings });
+/** Everything the single Save sends, as the server has it now. The units are not part of it: they are edited one at a time. */
+const savedData = () => ({
+    ...props.settings,
+    opname_reasons: props.opname_reasons.map(({ id, name, is_system, is_active }) => ({ id, name, is_system, is_active })),
+    drivers: props.drivers.map(({ id, name, is_active }) => ({ id, name, is_active })),
+});
+
+const form = useForm(savedData());
 
 const deleteWithConfirmation = useConfirmDelete();
 
 const isUnitDialogOpen = ref(false);
 const editedUnit = ref(null);
 
+/** Saves the paper, the opname rules, the reasons and the drivers together; rows added on the page get their ids from the answer. */
 function save() {
-    form.put(props.urls.update, { preserveScroll: true });
+    form.put(props.urls.update, {
+        preserveScroll: true,
+        onSuccess: () => {
+            form.defaults(savedData());
+            form.reset();
+        },
+    });
 }
 
 const unitSearch = ref(props.unit_filters.search);
@@ -90,7 +103,7 @@ function confirmDeleteUnit(unit) {
 <template>
     <StoreLayout title="Pengaturan Toko">
         <template #actions>
-            <q-btn color="primary" unelevated no-caps label="Simpan" :loading="form.processing" @click="save" />
+            <q-btn color="primary" unelevated no-caps label="Simpan" :loading="form.processing" :disable="!form.isDirty" @click="save" />
         </template>
 
         <div class="settings">
@@ -110,7 +123,7 @@ function confirmDeleteUnit(unit) {
                 </div>
 
                 <q-toggle v-model="form.auto_print_receipt" label="Cetak nota otomatis setelah bayar" />
-                <p class="hint">Nota langsung terbuka untuk dicetak begitu transaksi selesai. Browser kasir harus mengizinkan pop-up untuk situs ini.</p>
+                <p class="hint">Nota langsung terbuka untuk dicetak begitu transaksi selesai.</p>
             </section>
 
             <section class="card">
@@ -119,13 +132,13 @@ function confirmDeleteUnit(unit) {
                 <q-input
                     v-model="form.large_variance_threshold"
                     type="number"
-                    min="0"
-                    step="any"
+                    min="1"
+                    step="1"
                     outlined
                     dense
                     prefix="Rp"
                     label="Ambang selisih besar"
-                    hint="Selisih yang nilainya di atas ini wajib diberi catatan saat opname diposting. Kosongkan untuk tanpa batas."
+                    hint="Selisih yang nilainya di atas ini wajib diberi catatan saat opname diposting (kecuali stok awal dan penambahan stok). Bilangan bulat; kosongkan untuk tanpa batas."
                     :error="!!form.errors.large_variance_threshold"
                     :error-message="form.errors.large_variance_threshold"
                 />
@@ -135,9 +148,28 @@ function confirmDeleteUnit(unit) {
             </section>
         </div>
 
-        <OpnameReasonsCard :reasons="opname_reasons" :create-url="urls.opname_reason_create" class="opname-reasons" />
+        <div class="settings">
+            <NamedListCard
+                v-model="form.opname_reasons"
+                title="Alasan selisih opname"
+                hint="Dipilih di tiap barang yang selisih saat opname. Alasan tidak dihapus, hanya dinonaktifkan, supaya opname lama tetap punya alasannya. Rusak meminta keputusan barang rusak; alasan yang Anda tambah hanya dicatat."
+                add-label="Alasan baru"
+                error-key="opname_reasons"
+                :errors="form.errors"
+            />
 
-        <DriversCard :drivers="drivers" :create-url="urls.driver_create" class="opname-reasons" />
+            <NamedListCard
+                v-model="form.drivers"
+                title="Sopir"
+                hint="Dipilih saat surat jalan ditandai dikirim. Sopir tidak dihapus, hanya dinonaktifkan, supaya surat jalan lama tetap memuat namanya."
+                add-label="Nama sopir baru"
+                empty-text="Belum ada sopir."
+                error-key="drivers"
+                :errors="form.errors"
+            />
+        </div>
+
+        <p class="hint save-hint">Perubahan di atas disimpan bersama dengan tombol Simpan. Satuan di bawah disimpan satu per satu di dialognya.</p>
 
         <section class="card units">
             <div class="units__head">
@@ -259,7 +291,7 @@ function confirmDeleteUnit(unit) {
     color: #be123c;
 }
 
-.opname-reasons {
+.save-hint {
     margin-bottom: 16px;
 }
 

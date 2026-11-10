@@ -37,7 +37,7 @@ class ShiftRecapResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $isClosed = $this->status !== CashShiftStatus::Open;
+        $isCounted = $this->status !== CashShiftStatus::Open;
 
         return [
             'id' => $this->id,
@@ -51,7 +51,7 @@ class ShiftRecapResource extends JsonResource
             'status_label' => $this->status->label(),
             'opening_cash' => $this->opening_cash,
             'opening_cash_note' => $this->opening_cash_note,
-            'expected_cash' => $isClosed ? $this->expected_cash : $this->summary['expected_cash'],
+            'expected_cash' => $isCounted ? $this->expected_cash : $this->summary['expected_cash'],
             'counted_cash' => $this->counted_cash,
             'cash_difference' => $this->cash_difference,
             'deposit_amount' => $this->deposit_amount,
@@ -63,13 +63,15 @@ class ShiftRecapResource extends JsonResource
             'decided_at' => $this->difference_approved_at?->toIso8601String(),
             'approval_note' => $this->approval_note,
             'is_own_shift' => $this->cashier_id === $request->user()->id,
-            'can_decide' => $this->difference_status === ShiftDifferenceStatus::PendingApproval && $this->cashier_id !== $request->user()->id,
+            'can_decide' => $this->difference_status === ShiftDifferenceStatus::PendingApproval && $request->user()->canDecideDifferenceOf($this->resource),
             'sale_count' => $this->summary['sale_count'],
             'total_sales' => $this->summary['total_sales'],
             'returns_total' => $this->summary['returns_total'],
             'cash_refunds' => $this->summary['cash_refunds'],
             'void_cash_refunds' => $this->summary['void_cash_refunds'],
+            'void_deposits' => $this->summary['void_deposits'],
             'cod' => $this->summary['cod'],
+            'order_deposit_cash' => $this->summary['order_deposit_cash'],
             'drawer_expenses' => $this->summary['drawer_expenses'],
             'payments' => collect($this->summary['payments'])
                 ->map(fn (string $amount, string $method): array => ['method' => PaymentMethod::from($method)->label(), 'amount' => $amount])

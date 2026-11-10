@@ -54,13 +54,6 @@ class SaveProductRequest extends FormRequest
             'units.*.is_sealed_pack' => ['sometimes', 'boolean'],
         ];
 
-        foreach (array_keys((array) $this->input('units', [])) as $index) {
-            $rules["units.{$index}.barcode"] = [
-                'nullable', 'string', 'max:64',
-                Rule::unique('product_units', 'barcode')->ignore($this->input("units.{$index}.id")),
-            ];
-        }
-
         return $rules;
     }
 
@@ -130,12 +123,11 @@ class SaveProductRequest extends FormRequest
     }
 
     /**
-     * A product may list each unit (by code, any letter case) and each barcode once.
+     * A product may list each unit (by code, any letter case) once.
      */
     private function validateUnitsAreDistinct(Validator $validator): void
     {
         $seenUnits = [];
-        $seenBarcodes = [];
 
         foreach ($this->unitRows() as $index => $row) {
             $unitKey = $this->unitKey($row);
@@ -144,17 +136,6 @@ class SaveProductRequest extends FormRequest
                 $validator->errors()->add("units.{$index}.unit.code", 'Satuan ini sudah dipakai di baris lain.');
             }
             $seenUnits[$unitKey] = true;
-
-            $barcode = trim((string) data_get($row, 'barcode'));
-
-            if ($barcode === '') {
-                continue;
-            }
-
-            if (isset($seenBarcodes[$barcode])) {
-                $validator->errors()->add("units.{$index}.barcode", 'Barcode sama dengan baris lain.');
-            }
-            $seenBarcodes[$barcode] = true;
         }
     }
 

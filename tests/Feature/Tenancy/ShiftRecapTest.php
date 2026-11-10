@@ -261,6 +261,23 @@ class ShiftRecapTest extends TestCase
         $this->assertSame('approved', $this->shift($closed->id)->difference_status->value);
     }
 
+    public function test_a_super_admin_can_decide_the_difference_of_a_shift_they_worked_themselves(): void
+    {
+        $superAdmin = User::factory()->create(['is_super_admin' => true]);
+        $shift = $this->openShiftFor($superAdmin);
+        $closed = $this->store->run(fn (): CashShift => app(ShiftService::class)->close($shift, '5000', 'Uang lebih'));
+
+        $this->assertSame('pending_approval', $this->shift($closed->id)->difference_status->value);
+        $this->actingAs($superAdmin)->get($this->url('show', ['shift' => $closed->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.is_own_shift', true)
+            ->where('shift.can_decide', true));
+
+        $this->actingAs($superAdmin)->post($this->url('approve', ['shift' => $closed->id]), ['note' => 'Dicek Super Admin'])->assertSessionHas('success', 'Selisih kas disetujui.');
+
+        $decided = $this->shift($closed->id);
+        $this->assertSame(['approved', $superAdmin->id, 'closed'], [$decided->difference_status->value, $decided->difference_approved_by, $decided->status->value]);
+    }
+
     public function test_the_date_filters_leave_out_a_date_that_is_not_one_and_cut_at_the_day(): void
     {
         $this->shiftClosedWithShortage();

@@ -351,7 +351,6 @@ class SealedPackStockTest extends TestCase
                 'id' => $unit->id,
                 'unit' => ['code' => $unit->unit_code],
                 'conversion_factor' => $unit->conversion_factor,
-                'barcode' => null,
                 'is_sellable' => true,
                 'cost_price' => $unit->cost_price,
                 'selling_price' => $unit->selling_price,

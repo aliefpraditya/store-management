@@ -28,12 +28,14 @@ trait PrintsDeliveryNotes
     }
 
     /**
-     * The printable sheet, opened in its own window and printed there. From the second print on it says SALINAN.
+     * The printable sheet, printed from a hidden frame. From the second print on it says SALINAN.
+     *
+     * @param  array{name: string, address: string|null, phone: string|null}  $letterhead  the store's letterhead, as the paper prints it
      */
-    protected function sheetOf(Request $request, DeliveryNote $deliveryNote): InertiaResponse
+    protected function sheetOf(Request $request, DeliveryNote $deliveryNote, array $letterhead): InertiaResponse
     {
         return Inertia::render('Tenant/Print/DeliveryNote', [
-            'note' => PrintableDeliveryNoteResource::make($deliveryNote->load(['items', 'sale']), $this->printNumberOf($request) > 1)->resolve(),
+            'note' => PrintableDeliveryNoteResource::make($deliveryNote->load(['items', 'sale']), $this->printNumberOf($request) > 1, $letterhead)->resolve(),
         ]);
     }
 }

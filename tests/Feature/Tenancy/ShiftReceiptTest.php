@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Enums\ApiErrorCode;
+use App\Enums\PaymentMethod;
 use App\Enums\UserRole;
 use App\Models\CashShift;
 use App\Models\Register;
@@ -152,6 +153,28 @@ class ShiftReceiptTest extends TestCase
         $secondSheetUrl = $this->actingAs($this->cashier)->postJson($printUrl)->json('data.sheet_url');
         $this->actingAs($this->cashier)->get($secondSheetUrl)->assertInertia(fn (Assert $page) => $page->where('receipt.is_copy', true));
         $this->actingAs($this->cashier)->get($firstSheetUrl)->assertInertia(fn (Assert $page) => $page->where('receipt.is_copy', false));
+    }
+
+    public function test_the_sheet_holds_what_the_paper_shows_and_nothing_more(): void
+    {
+        $sale = $this->makeSale($this->shift, $this->cashier, ['number' => 'INV/1', 'status' => 'voided', 'void_reason' => 'Ditolak', 'void_refund_account' => 'BCA 1234567 a.n. Budi', 'voided_by_name' => 'Admin']);
+        $sheetUrl = $this->actingAs($this->cashier)->postJson($this->url('tenant.cashier.receipts.print', ['sale' => $sale->id]))->json('data.sheet_url');
+
+        $props = Assert::fromTestResponse($this->actingAs($this->cashier)->get($sheetUrl)->assertOk())->toArray()['props'];
+
+        $this->assertEqualsCanonicalizing(
+            ['number', 'sold_at', 'cashier_name', 'customer_name', 'status', 'total', 'change_amount', 'items', 'payments', 'order', 'is_copy', 'store', 'footer', 'paper_width'],
+            array_keys($props['receipt']),
+        );
+    }
+
+    public function test_a_cod_line_is_named_kekurangan_on_the_paper(): void
+    {
+        $sale = $this->makeSale($this->shift, $this->cashier);
+        $this->store->run(fn () => SalePayment::query()->where('sale_id', $sale->id)->update(['method' => PaymentMethod::Cod]));
+        $sheetUrl = $this->actingAs($this->cashier)->postJson($this->url('tenant.cashier.receipts.print', ['sale' => $sale->id]))->json('data.sheet_url');
+
+        $this->actingAs($this->cashier)->get($sheetUrl)->assertInertia(fn (Assert $page) => $page->where('receipt.payments.0.method', 'Kekurangan (COD)'));
     }
 
     public function test_the_sheet_cannot_be_opened_without_the_address_a_print_gave(): void

@@ -1,6 +1,16 @@
 const rupiahFormat = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
 
 /**
+ * An amount as plain figures, for paper that prints the currency on its own (a roll receipt).
+ *
+ * @param {string|number} amount
+ * @returns {string} e.g. "1.280.000"
+ */
+export function formatFigure(amount) {
+    return rupiahFormat.format(Number(amount));
+}
+
+/**
  * @param {string|number} amount
  * @returns {string} e.g. "Rp 130.000"; a negative amount keeps its minus sign in front of the Rp
  */

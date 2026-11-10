@@ -203,15 +203,19 @@ function isReviewable(item) {
     return !isDamagedReason(item) || (varianceOf(item) < 0 && isDamageDecided(item));
 }
 
-/** A new reason is a new thing to review, and a reason that is not damaged goods has no decision to keep. */
+/**
+ * A new reason is a new thing to review, and a reason that is not damaged goods has no decision to keep. Picking the reason
+ * is the admin's action, so the item is marked reviewed on its own once nothing else is missing (a damaged reason still
+ * waits for its decision); the admin can untick it again.
+ */
 function changeReason(item) {
     const row = reviews.value[item.id];
-
-    row.is_reviewed = false;
 
     if (!isDamagedReason(item)) {
         Object.assign(row, { dead: '', dg: '', full: '', price: '' });
     }
+
+    row.is_reviewed = isReviewable(item);
 }
 
 function markAllReviewed() {
@@ -248,10 +252,13 @@ function openDamageDialog(item) {
     damageDialog.value = { isOpen: true, itemId: item.id };
 }
 
+/** Deciding where the damaged units go is the last thing a damaged item waits for, so a complete decision marks it reviewed. */
 function saveDamageDecision(decision) {
-    const row = reviews.value[damageDialog.value.itemId];
+    const item = props.items.data.find((candidate) => candidate.id === damageDialog.value.itemId);
+    const row = reviews.value[item.id];
 
-    Object.assign(row, decision, { is_reviewed: false });
+    Object.assign(row, decision);
+    row.is_reviewed = isReviewable(item);
 }
 
 const damageSummary = (item) => {
@@ -829,7 +836,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
             <q-card class="add-dialog">
                 <q-card-section>
                     <div class="add-dialog__title">Tambah barang yang dihitung</div>
-                    <ProductSearchSelect v-model="productToAdd" :search-url="opname.urls.product_search" label="Cari nama, SKU, atau barcode" autofocus @update:model-value="addProduct" />
+                    <ProductSearchSelect v-model="productToAdd" :search-url="opname.urls.product_search" label="Cari nama atau SKU" autofocus @update:model-value="addProduct" />
                 </q-card-section>
                 <q-card-actions align="right">
                     <q-btn flat no-caps label="Tutup" v-close-popup />
@@ -863,7 +870,8 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                                     <th class="post__right">Dead stock</th>
                                     <th class="post__right">Barang DG</th>
                                     <th class="post__right">Layak jual penuh</th>
-                                    <th class="post__right">Kemungkinan rugi</th>
+                                    <th class="post__right">Rugi</th>
+                                    <th class="post__right">Loss profit</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -873,22 +881,24 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                                     <td class="post__right">
                                         {{ formatQuantity(row.damaged_goods_quantity) }} {{ row.base_unit }}
                                         <small v-if="Number(row.damaged_goods_quantity) > 0">
-                                            dijual {{ rupiah(row.damaged_goods_price) }}, asli {{ rupiah(row.original_price) }}
+                                            dijual {{ rupiah(row.damaged_goods_price) }}, asli {{ rupiah(row.original_price) }}, beli {{ rupiah(row.cost_price) }}
                                             <template v-if="row.existing_price !== null && Number(row.existing_price) !== Number(row.damaged_goods_price)"><br />harga DG sekarang {{ rupiah(row.existing_price) }}, jadi {{ rupiah(row.damaged_goods_price) }}</template>
                                         </small>
                                     </td>
                                     <td class="post__right">{{ formatQuantity(row.full_price_quantity) }} {{ row.base_unit }}</td>
                                     <td class="post__right post__loss">{{ rupiah(row.loss) }}</td>
+                                    <td class="post__right">{{ rupiah(row.loss_profit) }}</td>
                                 </tr>
                             </tbody>
                         </table>
                         <p v-if="damage_summary.items.length > damageRows.length" class="post__more">Dan {{ damage_summary.items.length - damageRows.length }} barang rusak lain, ikut dihitung di total.</p>
 
                         <div class="post__total">
-                            <b>Kemungkinan kerugian: {{ rupiah(damage_summary.total_loss) }}</b>
-                            <small>Dead stock {{ rupiah(damage_summary.dead_stock_loss) }} + selisih harga barang DG {{ rupiah(damage_summary.damaged_goods_loss) }}</small>
+                            <b>Rugi: {{ rupiah(damage_summary.total_loss) }}</b>
+                            <small>Dead stock {{ rupiah(damage_summary.dead_stock_loss) }} + barang DG dijual di bawah harga beli {{ rupiah(damage_summary.damaged_goods_loss) }}</small>
+                            <b>Loss profit: {{ rupiah(damage_summary.loss_profit) }}</b>
                         </div>
-                        <small class="post__note">Dihitung dari harga jual: dead stock tidak bisa dijual lagi (rugi sebesar harga jual aslinya), barang DG rugi sebesar selisih harga jual asli dan harga DG. Yang layak jual penuh tidak rugi.</small>
+                        <small class="post__note">Rugi dihitung dari harga beli: dead stock tidak bisa dijual lagi (rugi sebesar harga beli), barang DG baru rugi bila dijual di bawah harga beli (selisihnya ke harga beli). Selisih harga yang masih di atas harga beli dihitung loss profit, juga pada barang yang rugi (dead stock: harga asli dikurangi harga beli).</small>
                     </template>
                 </q-card-section>
 

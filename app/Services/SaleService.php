@@ -13,7 +13,6 @@ use App\Models\CashShift;
 use App\Models\CustomerOrder;
 use App\Models\CustomerOrderItem;
 use App\Models\Sale;
-use App\Models\StockOpnameItem;
 use App\Models\User;
 use Brick\Math\BigDecimal;
 use Illuminate\Support\Collection;
@@ -46,6 +45,7 @@ class SaleService
         private readonly StoreSettingService $settings,
         private readonly CartPricer $cartPricer,
         private readonly CustomerOrderService $customerOrders,
+        private readonly StockOpnameService $stockOpnames,
     ) {}
 
     /**
@@ -295,7 +295,7 @@ class SaleService
             return;
         }
 
-        $countedProductIds = StockOpnameItem::productIdsBeingCounted($warehouseId, $lines->pluck('product_id')->all());
+        $countedProductIds = $this->stockOpnames->productIdsBeingCounted($warehouseId, $lines->pluck('product_id')->all());
         $countedLine = $lines->first(fn (array $line): bool => in_array($line['product_id'], $countedProductIds, true));
 
         if ($countedLine !== null) {

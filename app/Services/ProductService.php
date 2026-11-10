@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\DB;
  * refused), and once a product has stock or history its units and conversions are locked.
  *
  * @phpstan-type NamedOrExisting array{id?: int|string|null, name?: string|null}
- * @phpstan-type UnitRow array{id?: int|null, unit: array{code: string, name?: string|null}, conversion_factor: numeric-string|float|int, barcode?: string|null, is_sellable: bool, cost_price: numeric-string|float|int, selling_price: numeric-string|float|int, is_default_sale: bool, is_sealed_pack?: bool}
+ * @phpstan-type UnitRow array{id?: int|null, unit: array{code: string, name?: string|null}, conversion_factor: numeric-string|float|int, is_sellable: bool, cost_price: numeric-string|float|int, selling_price: numeric-string|float|int, is_default_sale: bool, is_sealed_pack?: bool}
  * @phpstan-type ProductInput array{name: string, sku: string, category: NamedOrExisting, brand?: NamedOrExisting|null, min_stock: numeric-string|float|int, is_active: bool, version?: int|null, units: list<UnitRow>}
  * @phpstan-type UnitProblem array{field: string, message: string}
  */
@@ -130,8 +130,8 @@ class ProductService
     }
 
     /**
-     * Removes a product that never had stock or history. The deletion is permanent so its SKU and
-     * barcodes can be reused; the audit trail keeps what it looked like. Its empty stock rows go with it.
+     * Removes a product that never had stock or history. The deletion is permanent so its SKU
+     * can be reused; the audit trail keeps what it looked like. Its empty stock rows go with it.
      * Locking the product row first holds off a sale that is just being rung up for it.
      *
      * @throws ProductHasTransactionsException
@@ -295,7 +295,6 @@ class ProductService
                 'unit_code' => $row['resolved_unit']->code,
                 'conversion_factor' => $index === 0 ? 1 : $row['conversion_factor'],
                 'is_base' => $index === 0,
-                'barcode' => filled($row['barcode'] ?? null) ? trim($row['barcode']) : null,
                 'sort_order' => $index,
                 'is_sellable' => $row['is_sellable'],
                 'cost_price' => $row['cost_price'],

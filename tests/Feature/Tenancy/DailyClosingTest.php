@@ -4,6 +4,7 @@ namespace Tests\Feature\Tenancy;
 
 use App\Enums\DailyClosingStatus;
 use App\Enums\DeliveryNoteStatus;
+use App\Enums\SaleStatus;
 use App\Enums\UserRole;
 use App\Models\CashShift;
 use App\Models\DailyClosing;
@@ -135,6 +136,7 @@ class DailyClosingTest extends TestCase
     public function test_a_day_that_is_not_real_or_has_not_come_yet_is_not_found(): void
     {
         $this->actingAs($this->admin)->get($this->url('show', '2026-13-45'))->assertNotFound();
+        $this->actingAs($this->admin)->get($this->url('show', '2026-02-30'))->assertNotFound();
         $this->actingAs($this->admin)->get($this->url('show', today()->addDay()->toDateString()))->assertNotFound();
         $this->actingAs($this->admin)->post($this->url('store', today()->addDay()->toDateString()))->assertNotFound();
         $this->assertNull($this->closing());
@@ -358,6 +360,29 @@ class DailyClosingTest extends TestCase
             ->has('report.shifts', 1)
             ->where('report.shifts.0.cashier_name', $this->cashier->name)
             ->where('report.shifts.0.expected_cash', '20000.00'));
+    }
+
+    public function test_the_daily_report_lists_the_receipts_voided_on_the_day_and_none_when_there_are_no_voids(): void
+    {
+        $this->settledDay();
+        $this->closeToday();
+        $this->actingAs($this->admin)->get($this->url('sheet', $this->today()))->assertInertia(fn (Assert $page) => $page->where('report.voids', []));
+
+        $sale = $this->store->run(function (): Sale {
+            $sale = Sale::query()->firstOrFail();
+            $sale->forceFill(['status' => SaleStatus::Voided, 'voided_at' => now(), 'void_business_date' => today(), 'void_reason' => 'Salah catat', 'voided_by_name' => $this->admin->name])->save();
+
+            return $sale;
+        });
+        $this->actingAs($this->superAdmin)->post($this->url('reopen', $this->today()), ['reason' => 'Koreksi']);
+        $this->closeToday();
+
+        $this->actingAs($this->admin)->get($this->url('sheet', $this->today()))->assertInertia(fn (Assert $page) => $page
+            ->has('report.voids', 1)
+            ->where('report.voids.0.number', $sale->number)
+            ->where('report.voids.0.sold_on', $this->today())
+            ->where('report.voids.0.reason', 'Salah catat')
+            ->where('report.figures.voids_count', 1));
     }
 
     public function test_only_a_closed_day_has_a_report(): void

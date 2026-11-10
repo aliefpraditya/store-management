@@ -37,6 +37,7 @@ class Sale extends Model implements AuditableContract
             'sold_at' => 'datetime',
             'business_date' => 'date',
             'voided_at' => 'datetime',
+            'void_business_date' => 'date',
             'void_cash_refund' => 'decimal:2',
             'subtotal' => 'decimal:2',
             'discount_total' => 'decimal:2',

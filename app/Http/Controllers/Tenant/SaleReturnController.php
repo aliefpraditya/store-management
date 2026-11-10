@@ -16,6 +16,7 @@ use App\Models\Sale;
 use App\Models\SaleReturn;
 use App\Services\SaleReturnService;
 use App\Services\ShiftService;
+use App\Services\StoreSettingService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -152,10 +153,10 @@ class SaleReturnController extends Controller
     /**
      * The return slip, opened in its own window and printed there.
      */
-    public function sheet(SaleReturn $saleReturn): Response
+    public function sheet(SaleReturn $saleReturn, StoreSettingService $settings): Response
     {
         return Inertia::render('Tenant/Print/SaleReturn', [
-            'saleReturn' => PrintableSaleReturnResource::make($saleReturn->load(['sale', 'cashShift', 'items.saleItem']))->resolve(),
+            'saleReturn' => PrintableSaleReturnResource::make($saleReturn->load(['sale', 'cashShift', 'items.saleItem']), $settings->letterhead(), $settings->paperWidth())->resolve(),
         ]);
     }
 

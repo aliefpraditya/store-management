@@ -283,6 +283,17 @@ class SaleVoidTest extends TestCase
         $this->assertSame(['20000.00', 'BCA 1234567 a.n. Budi', $this->shift->id], [$sale->void_cash_refund, $sale->void_refund_account, $sale->void_cash_shift_id]);
     }
 
+    public function test_the_shift_names_the_money_a_voided_receipt_took_in_apart_from_the_sales(): void
+    {
+        $voided = $this->sellCod([['method' => 'cash', 'amount' => 20000], ['method' => 'transfer', 'amount' => 30000], ['method' => 'cod', 'amount' => 50000]]);
+        $this->sellCod();
+        $this->actingAs($this->cashier)->postJson($this->voidUrl($voided), ['reason' => 'Ditolak', 'refund_account' => 'BCA 1234567 a.n. Budi'])->assertOk();
+
+        $summary = $this->summaryOf($this->shift);
+
+        $this->assertSame(['50000.00', '100000.00', '20000.00', '30000.00', 1], [$summary['void_deposits'], $summary['total_sales'], $summary['payments']['cash'], $summary['payments']['transfer'], $summary['sale_count']]);
+    }
+
     public function test_the_receipt_page_tells_which_kinds_of_deposit_the_sale_holds(): void
     {
         $sale = $this->sellCod([['method' => 'cash', 'amount' => 20000], ['method' => 'transfer', 'amount' => 30000], ['method' => 'cod', 'amount' => 50000]]);
@@ -322,20 +333,33 @@ class SaleVoidTest extends TestCase
         $this->assertSame(1, $this->store->run(fn (): int => app(DailyClosingService::class)->summarize(today())['voids_count']));
     }
 
-    public function test_a_void_belongs_to_the_day_it_was_made_from_its_first_second_to_its_last(): void
+    public function test_a_void_belongs_to_the_business_day_of_the_shift_of_the_voider_even_after_midnight(): void
     {
-        $lastSecond = $this->sellCod();
-        $nextDay = $this->sellCod();
-        $this->actingAs($this->cashier)->postJson($this->voidUrl($lastSecond), ['reason' => 'Batal'])->assertOk();
-        $this->actingAs($this->cashier)->postJson($this->voidUrl($nextDay), ['reason' => 'Batal'])->assertOk();
-        $this->store->run(function () use ($lastSecond, $nextDay): void {
-            Sale::query()->whereKey($lastSecond->id)->update(['voided_at' => today()->setTime(23, 59, 59)]);
-            Sale::query()->whereKey($nextDay->id)->update(['voided_at' => today()->addDay()->startOfDay()]);
-        });
+        $sale = $this->sellCod([['method' => 'cash', 'amount' => 40000], ['method' => 'cod', 'amount' => 60000]]);
+        $shiftDay = today();
 
-        $this->assertSame([1, 1], $this->store->run(fn (): array => [
+        $this->travelTo($shiftDay->copy()->addDay()->setTime(0, 30));
+        $this->actingAs($this->cashier)->postJson($this->voidUrl($sale), ['reason' => 'Batal'])->assertOk();
+
+        $this->assertSame($shiftDay->toDateString(), $this->reloaded($sale)->void_business_date->toDateString());
+        $this->store->run(function () use ($shiftDay): void {
+            $closing = app(DailyClosingService::class);
+            $this->assertSame([1, '40000.00'], [$closing->summarize($shiftDay)['voids_count'], $closing->summarize($shiftDay)['refunds_cash']]);
+            $this->assertSame([0, '0.00'], [$closing->summarize($shiftDay->copy()->addDay())['voids_count'], $closing->summarize($shiftDay->copy()->addDay())['refunds_cash']]);
+        });
+    }
+
+    public function test_a_void_by_an_admin_without_a_shift_belongs_to_the_day_it_was_done(): void
+    {
+        $sale = $this->sellCod();
+
+        $this->travelTo(today()->addDay()->setTime(10, 0));
+        $this->actingAs($this->admin)->post($this->adminVoidUrl($sale), ['reason' => 'Ditolak'])->assertSessionHasNoErrors()->assertSessionHas('success');
+
+        $this->assertSame(today()->toDateString(), $this->reloaded($sale)->void_business_date->toDateString());
+        $this->assertSame([0, 1], $this->store->run(fn (): array => [
+            app(DailyClosingService::class)->summarize(today()->subDay())['voids_count'],
             app(DailyClosingService::class)->summarize(today())['voids_count'],
-            app(DailyClosingService::class)->summarize(today()->addDay())['voids_count'],
         ]));
     }
 

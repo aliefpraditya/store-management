@@ -4,7 +4,7 @@ import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import DateInput from '../../../Components/DateInput.vue';
 import { printSheet } from '../../../Composables/printSheet';
-import { formatRupiah } from '../../../Composables/useMoneyFormat';
+import { formatDeduction, formatRupiah } from '../../../Composables/useMoneyFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -53,13 +53,16 @@ const salesRows = computed(() => [
     { label: 'Total penjualan', value: formatRupiah(props.figures.total_sales), isTotal: true },
 ]);
 
+/** What goes out of the cash is shown with its minus sign, as the shift report does. */
 const otherRows = computed(() => [
     { label: 'Retur disetujui', value: formatRupiah(props.figures.total_returns) },
-    { label: `Void (${props.figures.voids_count} nota)`, value: formatRupiah(props.figures.total_voids) },
-    { label: 'Pengembalian tunai (retur dan DP void)', value: formatRupiah(props.figures.refunds_cash) },
-    { label: 'Pengeluaran dari laci', value: formatRupiah(props.figures.expenses_drawer) },
+    { label: 'Pengembalian tunai (retur dan DP void)', value: formatDeduction(props.figures.refunds_cash) },
+    { label: 'Pengeluaran dari laci', value: formatDeduction(props.figures.expenses_drawer) },
     { label: 'Pengeluaran sumber lain', value: formatRupiah(props.figures.expenses_other) },
 ]);
+
+/** Information, not a deduction: a voided receipt is already left out of the sales above. */
+const voidRow = computed(() => ({ label: `Nota void hari ini (${props.figures.voids_count} nota)`, value: formatRupiah(props.figures.total_voids) }));
 
 const cashRows = computed(() => [
     { label: `Shift (${props.figures.shifts_count})`, value: '' },
@@ -180,8 +183,12 @@ const printReport = () => printSheet(() => props.closing.sheet_url);
                     <dl class="rows">
                         <div v-for="row in salesRows" :key="row.label" :class="{ rows__total: row.isTotal }"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
                     </dl>
+                    <small class="closed__hint">Baris metode bayar memuat uang yang sempat masuk, termasuk DP nota yang kemudian di-void, jadi jumlahnya bisa lebih besar dari total penjualan.</small>
                     <dl class="rows rows--gap">
                         <div v-for="row in otherRows" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
+                    </dl>
+                    <dl class="rows rows--gap rows--info">
+                        <div><dt>{{ voidRow.label }}</dt><dd>{{ voidRow.value }}</dd></div>
                     </dl>
                     <dl class="rows rows--gap">
                         <div v-for="row in cashRows" :key="row.label" :class="{ rows__total: row.isTotal, rows__minus: row.isTotal && Number(figures.total_cash_difference) < 0 }"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
@@ -334,6 +341,11 @@ const printReport = () => printSheet(() => props.closing.sheet_url);
     flex-direction: column;
     gap: 6px;
     margin: 0;
+}
+
+.rows--info {
+    color: var(--app-mute);
+    font-style: italic;
 }
 
 .rows--gap {

@@ -80,7 +80,7 @@ class HandleInertiaRequests extends Middleware
     /**
      * The store of the current page, for every page under /t/{code}; null on central pages.
      *
-     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, units_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string, expenses_url: string, daily_closings_url: string, settings_url: string, reports_url: string}|null
+     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, unit_create_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string, expenses_url: string, daily_closings_url: string, settings_url: string, reports_url: string}|null
      */
     private function currentStore(): ?array
     {
@@ -97,7 +97,7 @@ class HandleInertiaRequests extends Middleware
             'receipt_prefix' => $store->receipt_prefix,
             'dashboard_url' => route('tenant.dashboard', ['tenant' => $store->code]),
             'products_url' => route('tenant.products.index', ['tenant' => $store->code]),
-            'units_url' => route('tenant.units.store', ['tenant' => $store->code]),
+            'unit_create_url' => route('tenant.units.store', ['tenant' => $store->code]),
             'stock_opnames_url' => route('tenant.stock-opnames.index', ['tenant' => $store->code]),
             'stock_history_url' => route('tenant.stock-history.index', ['tenant' => $store->code]),
             'cashier_url' => route('tenant.cashier.index', ['tenant' => $store->code]),

@@ -32,7 +32,6 @@ const emptyUnitRow = (isDefaultSale = false) => ({
     id: null,
     unit: null,
     conversion_factor: 1,
-    barcode: '',
     is_sellable: true,
     cost_price: 0,
     cost_is_manual: false,
@@ -326,7 +325,6 @@ function submit() {
                             <tr>
                                 <th>Satuan</th>
                                 <th>Konversi</th>
-                                <th>Barcode</th>
                                 <th>Modal</th>
                                 <th>Margin (%)</th>
                                 <th>Harga jual</th>
@@ -382,9 +380,6 @@ function submit() {
                                                 @click="openCalculator(index)"
                                             />
                                         </div>
-                                    </td>
-                                    <td class="units__wide">
-                                        <q-input v-model="row.barcode" dense outlined placeholder="Opsional" />
                                     </td>
                                     <td class="units__price">
                                         <q-input
@@ -474,7 +469,7 @@ function submit() {
             </section>
         </q-form>
 
-        <UnitFormDialog v-model="unitDialog.isOpen" :create-url="page.props.store.units_url" @saved="selectCreatedUnit" />
+        <UnitFormDialog v-model="unitDialog.isOpen" :create-url="page.props.store.unit_create_url" @saved="selectCreatedUnit" />
         <ConversionCalculatorDialog
             v-if="form.units[calculator.rowIndex]?.unit && form.units[0].unit"
             v-model="calculator.isOpen"
@@ -585,10 +580,6 @@ function submit() {
 
 .units__narrow {
     width: 220px;
-}
-
-.units__wide {
-    min-width: 140px;
 }
 
 .units__price {

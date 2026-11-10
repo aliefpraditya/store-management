@@ -348,7 +348,8 @@ class StockOpnameService
     }
 
     /**
-     * A variance worth more than the store's limit (the variance times the last cost price) needs a note on its row.
+     * A variance worth more than the store's limit (the variance times the last cost price) needs a note on its row,
+     * except in an opening-stock or arrival count ({@see StockOpnameReason::needsNoteForLargeVariance()}).
      * Checked before anything is written, against the stock as it is locked now, so nothing is half posted.
      *
      * @param  Collection<int, StockOpnameItem>  $countedItems
@@ -360,7 +361,7 @@ class StockOpnameService
     {
         $threshold = $this->settings->largeVarianceThreshold();
 
-        if ($threshold === null) {
+        if ($threshold === null || $opname->reason_code?->needsNoteForLargeVariance() === false) {
             return;
         }
 
@@ -778,6 +779,25 @@ class StockOpnameService
         }
 
         return $lockedOpname;
+    }
+
+    /**
+     * The given products that an opname of the warehouse is counting right now (status Menghitung or Review).
+     *
+     * @param  list<int>  $productIds
+     * @return list<int>
+     */
+    public function productIdsBeingCounted(int $warehouseId, array $productIds): array
+    {
+        return array_map('intval', StockOpnameItem::query()
+            ->join('stock_opnames', 'stock_opnames.id', '=', 'stock_opname_items.stock_opname_id')
+            ->where('stock_opnames.warehouse_id', $warehouseId)
+            ->whereIn('stock_opnames.status', StockOpnameStatus::countingValues())
+            ->whereNull('stock_opnames.deleted_at')
+            ->whereIn('stock_opname_items.product_id', $productIds)
+            ->distinct()
+            ->pluck('stock_opname_items.product_id')
+            ->all());
     }
 
     /**

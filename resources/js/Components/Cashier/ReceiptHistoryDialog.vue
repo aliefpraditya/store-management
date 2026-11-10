@@ -137,7 +137,7 @@ async function print(receipt) {
                             <q-btn outline no-caps dense color="primary" icon="print" :label="receipt.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="printingId === receipt.id" @click="print(receipt)" />
                             <q-btn v-if="receipt.status === 'completed'" outline no-caps dense color="primary" icon="local_shipping" label="Surat jalan" @click="emit('delivery', receipt)" />
                             <q-btn v-if="receipt.status === 'completed'" outline no-caps dense color="primary" icon="undo" label="Retur" @click="emit('return', receipt)" />
-                            <q-btn outline no-caps dense color="grey-7" icon="block" label="Void" disable><q-tooltip>Segera</q-tooltip></q-btn>
+                            <q-btn outline no-caps dense color="grey-7" icon="block" label="Void" disable><q-tooltip>Nota COD di-void lewat tombol COD di bar atas. Nota lain dikoreksi lewat Retur.</q-tooltip></q-btn>
                             <q-btn v-if="canOpenHistory && receipt.show_url" flat no-caps dense icon="open_in_new" label="Lihat detail" class="receipt__more" @click="router.visit(receipt.show_url)" />
                         </div>
                     </div>

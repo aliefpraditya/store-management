@@ -133,6 +133,8 @@ class DailyClosingController extends Controller
 
         $day = CarbonImmutable::createFromFormat('!'.self::DATE_FORMAT, $date);
 
+        // hasFormat lets a day that does not exist roll over (2026-02-30 becomes 2 March), so the day must read back the same.
+        abort_unless($day->format(self::DATE_FORMAT) === $date, 404);
         abort_if($day->toDateString() > today()->toDateString(), 404);
 
         return $day;

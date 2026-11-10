@@ -129,14 +129,14 @@ section:last-of-type{break-after:auto}
 <section id="d3"><div class="sh"><h2>5.4 BPMN-3 — Input / Ubah Barang (R1, sederhana)</h2><span class="tag r1">R1</span></div><pre class="mermaid">flowchart TD
     subgraph ADM["Admin Toko"]
         A1(["Tambah / ubah barang"]) --&gt; A2["Isi info: sku, nama, kategori, merek, stok minimum"]
-        A2 --&gt; A3["Pilih satuan dasar, tambah satuan lain + konversi + barcode satuan"]
+        A2 --&gt; A3["Pilih satuan dasar, tambah satuan lain + konversi"]
         A3 --&gt; A4["Isi harga beli per satuan dasar dan harga jual nominal per satuan"]
         A4 --&gt; A5["Tandai satuan boleh dijual dan satuan default"]
         A5 --&gt; A6["Simpan"]
         A12(["Selesai: barang tampil di daftar dan kasir"])
     end
     subgraph SYS["Sistem"]
-        S1{"Validasi: sku/barcode unik, 1 satuan dasar, konversi lebih dari 0 maks 3 desimal, harga tidak negatif, default jual boleh dijual"}
+        S1{"Validasi: sku unik, 1 satuan dasar, konversi lebih dari 0 maks 3 desimal, harga tidak negatif, default jual boleh dijual"}
         S2{"Harga jual di bawah modal satuan?"}
         S3["Peringatan, butuh konfirmasi"]
         S4["Simpan barang + satuan, audit mencatat perubahan harga"]
@@ -201,9 +201,9 @@ section:last-of-type{break-after:auto}
         K0(["Awal shift: Buka Shift"]) --&gt; K0b["Cek modal terisi dari sisa laci; ubah bila beda dan isi alasan"]
         K1(["Akhir shift: Tutup Shift"]) --&gt; K2["Lihat ringkasan: tunai, transfer, QRIS, EDC, retur, pengeluaran laci"]
         K3["Hitung uang tunai di laci, input"]
-        K5["Isi catatan selisih"]
+        K5["Isi catatan (opsional; selisih tidak diberitahukan)"]
         K7["Tentukan uang yang ditinggal di laci; sisanya disetor ke Admin"]
-        K8["Terima laporan Z"]
+        K8["Cetak Laporan Akhir Shift (versi buta: tanpa nominal sistem)"]
     end
     subgraph SYS["Sistem"]
         S0["Simpan cash_shifts open dengan opening_cash = sisa laci shift terakhir register (atau isian kasir + alasan)"]
@@ -211,7 +211,7 @@ section:last-of-type{break-after:auto}
         S3{"Selisih tidak nol?"}
         S4["Simpan closed + setoran, difference_status pending_approval"]
         S4b["Simpan closed + setoran, difference_status none"]
-        S5["Cetak laporan Z"]
+        S5["Sediakan Laporan Akhir Shift (buta untuk kasir, lengkap untuk Admin)"]
     end
     subgraph ADM["Admin Toko"]
         A1{"Setujui selisih kas?"}
@@ -414,7 +414,6 @@ section:last-of-type{break-after:auto}
         string unit_code FK "units.code, e.g. PCS"
         decimal conversion_factor "base units per 1 of this unit, 3 decimals"
         boolean is_base
-        string barcode "unique, identifies this unit when scanned"
         smallint sort_order "display order of unit chips"
         boolean is_sellable "may appear in POS"
         decimal cost_price "purchase price of this unit, 2 decimals; may differ per unit, defaults to base cost x conversion"

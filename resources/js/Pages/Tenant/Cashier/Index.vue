@@ -19,6 +19,7 @@ import ShiftOpenPanel from '../../../Components/Cashier/ShiftOpenPanel.vue';
 import { newUuid, useCart } from '../../../Composables/useCart';
 import { useFlashMessages } from '../../../Composables/useFlashMessages';
 import { useHeldCarts } from '../../../Composables/useHeldCarts';
+import { printSheet } from '../../../Composables/printSheet';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
 
@@ -107,6 +108,9 @@ const shiftSince = computed(() => (props.shift ? timeFormat.format(new Date(prop
 
 /** The count of the drawer did not match, so the shift is held for an admin's review: the till is locked and the shift cannot be left. */
 const isAwaitingReview = computed(() => props.shift?.is_awaiting_review === true);
+
+/** The report of a counted shift that waits for the Admin's decision (a shift that closed on its own prints it from its closing dialog). */
+const printShiftReport = () => printSheet(() => props.urls.shift_report);
 
 const isTillWorking = computed(() => props.shift !== null && !isAwaitingReview.value);
 
@@ -295,8 +299,8 @@ function onSearchKeydown(event) {
 }
 
 /**
- * Enter: the highlighted result is added in its chosen unit; a scanned barcode adds the scanned unit at once; a single
- * result adds its default unit. Anything else leaves the results for the cashier to pick.
+ * Enter: the highlighted result is added in its chosen unit; a scanned barcode (the item's SKU) or a single result adds
+ * the item in its default unit. Anything else leaves the results for the cashier to pick.
  */
 async function submitSearch() {
     const term = searchTerm.value.trim();
@@ -323,14 +327,10 @@ async function submitSearch() {
 
     searchResults.value = foundItems;
 
-    const scannedItem = foundItems.find((item) => item.matched_unit_id !== null);
-
     // A typed or scanned SKU that is exactly one item's SKU is that item, even when other items' SKUs contain it.
     const itemOfExactSku = foundItems.find((item) => item.sku.toLowerCase() === term.toLowerCase());
 
-    if (scannedItem) {
-        addAndShow(scannedItem, scannedItem.matched_unit_id);
-    } else if (itemOfExactSku && !isItemHeldBack(itemOfExactSku)) {
+    if (itemOfExactSku && !isItemHeldBack(itemOfExactSku)) {
         addAndShow(itemOfExactSku, defaultUnitOf(itemOfExactSku).id);
     } else if (foundItems.length === 1) {
         addAndShow(foundItems[0], defaultUnitOf(foundItems[0]).id);
@@ -729,6 +729,7 @@ onBeforeUnmount(() => {
                     <h2>Shift menunggu review Admin</h2>
                     <p>Kas yang Anda hitung belum cocok dengan catatan sistem. Hitungan Anda sudah tercatat dan tidak bisa diubah.</p>
                     <p>Jangan ubah isi laci dan jangan transaksi dulu. Shift ditutup setelah Admin memutuskan; halaman ini diperbarui sendiri.</p>
+                    <q-btn outline no-caps color="primary" icon="print" label="Cetak Laporan Shift" @click="printShiftReport" />
                 </section>
 
                 <div v-else class="till__main">
@@ -738,7 +739,7 @@ onBeforeUnmount(() => {
                             v-model="searchTerm"
                             outlined
                             clearable
-                            placeholder="Cari nama, SKU, atau scan barcode (Enter)"
+                            placeholder="Cari nama atau SKU, atau scan barcode (Enter)"
                             class="finder__input"
                             @keydown.enter.prevent="submitSearch"
                             @keydown="onSearchKeydown"

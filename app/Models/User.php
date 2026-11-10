@@ -91,6 +91,15 @@ class User extends Authenticatable implements AuditableContract
     }
 
     /**
+     * An admin cannot rule on the cash difference of a shift they worked themselves; a super admin can, because nobody
+     * stands above them to take it over. The difference still goes through the review, they just decide it.
+     */
+    public function canDecideDifferenceOf(CashShift $shift): bool
+    {
+        return $this->is_super_admin || $shift->cashier_id !== $this->id;
+    }
+
+    /**
      * Null only for a non-super-admin who has no store yet.
      *
      * @return Attribute<UserRole|null, never>

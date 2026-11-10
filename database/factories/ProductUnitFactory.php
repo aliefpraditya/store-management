@@ -22,7 +22,6 @@ class ProductUnitFactory extends Factory
             'unit_code' => Unit::factory(),
             'conversion_factor' => 1,
             'is_base' => true,
-            'barcode' => null,
             'sort_order' => 0,
             'is_sellable' => true,
             'cost_price' => 1000,

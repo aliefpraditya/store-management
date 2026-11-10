@@ -15,7 +15,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
  * The variance is worked out in SQL here ({@see self::varianceSql()}) with the same rule as
  * {@see StockOpname::varianceOf()}, which posting uses; change both together.
  *
- * @phpstan-type DamagedGoodsRow array{product_name: string, base_unit: string, dead_stock_quantity: string, damaged_goods_quantity: string, full_price_quantity: string, original_price: string, damaged_goods_price: string|null, existing_price: string|null, loss: string}
+ * @phpstan-type DamagedGoodsRow array{product_name: string, base_unit: string, dead_stock_quantity: string, damaged_goods_quantity: string, full_price_quantity: string, cost_price: string, original_price: string, damaged_goods_price: string|null, existing_price: string|null, loss: string, loss_profit: string}
  * @phpstan-type OpnameSummary array{items_count: int, counted_count: int, variance_count: int, reviewed_count: int, review_count: int, variance_value: string}
  */
 class StockOpnameReport
@@ -147,11 +147,13 @@ class StockOpnameReport
 
     /**
      * What the damaged-goods decisions of an opname add up to, for the confirmation before posting: for every item with a
-     * complete decision the units going to dead stock, to a DG product and back on the shelf at full price, and the loss
-     * of selling value that follows. Dead stock can no longer be sold, so it loses the full selling price; units sold as
-     * DG lose the difference between the original selling price and the DG price. Prices are per base unit.
+     * complete decision the units going to dead stock, to a DG product and back on the shelf at full price, and what that
+     * costs. A real loss (rugi) is measured against the purchase price: only the part of the price drop that takes the
+     * selling price below cost is a loss, and the part that stays above cost is profit given up (loss profit). Both are
+     * counted, so a DG unit sold below cost has a loss and the margin it gave up. Dead stock is sold for nothing, so it
+     * loses its whole cost and the margin on top of it is loss profit. Prices are per base unit.
      *
-     * @return array{items: list<DamagedGoodsRow>, dead_stock_loss: string, damaged_goods_loss: string, total_loss: string}
+     * @return array{items: list<DamagedGoodsRow>, dead_stock_loss: string, damaged_goods_loss: string, total_loss: string, loss_profit: string}
      */
     public function damagedGoodsSummary(StockOpname $opname): array
     {
@@ -170,16 +172,29 @@ class StockOpnameReport
         $items = [];
         $deadStockLoss = BigDecimal::zero();
         $damagedGoodsLoss = BigDecimal::zero();
+        $totalLossProfit = BigDecimal::zero();
+        $zero = BigDecimal::zero();
 
         foreach ($rows as $item) {
             $originalPrice = BigDecimal::of((string) ($item->product->productUnits->firstWhere('is_base', true)?->selling_price ?? 0));
             $damagedGoodsPrice = BigDecimal::of((string) ($item->damaged_goods_price ?? 0));
-            $deadLoss = BigDecimal::of($item->dead_stock_quantity)->multipliedBy($originalPrice);
-            $priceDrop = BigDecimal::max($originalPrice->minus($damagedGoodsPrice), BigDecimal::zero());
-            $dgLoss = BigDecimal::of($item->damaged_goods_quantity)->multipliedBy($priceDrop);
+            $costPrice = BigDecimal::of((string) $item->product->cost_price);
+
+            $deadQuantity = BigDecimal::of($item->dead_stock_quantity);
+            $deadLoss = $deadQuantity->multipliedBy($costPrice);
+            $deadLossProfit = $deadQuantity->multipliedBy(BigDecimal::max($originalPrice->minus($costPrice), $zero));
+
+            $priceDrop = BigDecimal::max($originalPrice->minus($damagedGoodsPrice), $zero);
+            $belowCost = BigDecimal::max($costPrice->minus($damagedGoodsPrice), $zero);
+            $lossPerUnit = BigDecimal::min($priceDrop, $belowCost);
+            $damagedQuantity = BigDecimal::of($item->damaged_goods_quantity);
+            $dgLoss = $damagedQuantity->multipliedBy($lossPerUnit);
+            $dgLossProfit = $damagedQuantity->multipliedBy($priceDrop->minus($lossPerUnit));
 
             $deadStockLoss = $deadStockLoss->plus($deadLoss);
             $damagedGoodsLoss = $damagedGoodsLoss->plus($dgLoss);
+            $rowLossProfit = $deadLossProfit->plus($dgLossProfit);
+            $totalLossProfit = $totalLossProfit->plus($rowLossProfit);
 
             $items[] = [
                 'product_name' => $item->product->name,
@@ -187,10 +202,12 @@ class StockOpnameReport
                 'dead_stock_quantity' => $item->dead_stock_quantity,
                 'damaged_goods_quantity' => $item->damaged_goods_quantity,
                 'full_price_quantity' => $item->full_price_quantity,
+                'cost_price' => (string) $costPrice->toScale(2, RoundingMode::HalfUp),
                 'original_price' => (string) $originalPrice->toScale(2, RoundingMode::HalfUp),
                 'damaged_goods_price' => $item->damaged_goods_price,
                 'existing_price' => $this->damagedGoods->existingOf($item->product)['price'] ?? null,
                 'loss' => (string) $deadLoss->plus($dgLoss)->toScale(2, RoundingMode::HalfUp),
+                'loss_profit' => (string) $rowLossProfit->toScale(2, RoundingMode::HalfUp),
             ];
         }
 
@@ -199,6 +216,7 @@ class StockOpnameReport
             'dead_stock_loss' => (string) $deadStockLoss->toScale(2, RoundingMode::HalfUp),
             'damaged_goods_loss' => (string) $damagedGoodsLoss->toScale(2, RoundingMode::HalfUp),
             'total_loss' => (string) $deadStockLoss->plus($damagedGoodsLoss)->toScale(2, RoundingMode::HalfUp),
+            'loss_profit' => (string) $totalLossProfit->toScale(2, RoundingMode::HalfUp),
         ];
     }
 

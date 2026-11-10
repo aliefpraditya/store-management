@@ -107,7 +107,7 @@ class StoreDashboardTest extends TestCase
 
             $returnOf(['credit_amount' => 50000])->forceFill(['status' => 'completed'])->save();
             $returnOf(['credit_amount' => 70000]);
-            $returnOf(['credit_amount' => 30000, 'returned_at' => now()->subDay()])->forceFill(['status' => 'completed'])->save();
+            $returnOf(['credit_amount' => 30000, 'returned_at' => now()->subDay(), 'cash_shift_id' => CashShift::factory()->create(['business_date' => today()->subDay()])->id])->forceFill(['status' => 'completed'])->save();
         });
 
         $this->adminDashboard()->assertInertia(fn (Assert $page) => $page

@@ -17,6 +17,7 @@ use App\Models\SaleReturn;
 use App\Models\Store;
 use App\Services\SaleReturnService;
 use App\Services\ShiftService;
+use App\Services\StoreSettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -118,12 +119,12 @@ class CashierSaleReturnController extends Controller
     /**
      * The return slip, opened in its own window and printed there. A cashier prints the returns they asked for.
      */
-    public function sheet(Request $request, SaleReturn $saleReturn): InertiaResponse
+    public function sheet(Request $request, SaleReturn $saleReturn, StoreSettingService $settings): InertiaResponse
     {
         abort_unless($this->isAdmin($request) || $saleReturn->requested_by === $request->user()->id, 403);
 
         return Inertia::render('Tenant/Print/SaleReturn', [
-            'saleReturn' => PrintableSaleReturnResource::make($saleReturn->load(['sale', 'cashShift', 'items.saleItem']))->resolve(),
+            'saleReturn' => PrintableSaleReturnResource::make($saleReturn->load(['sale', 'cashShift', 'items.saleItem']), $settings->letterhead(), $settings->paperWidth())->resolve(),
         ]);
     }
 

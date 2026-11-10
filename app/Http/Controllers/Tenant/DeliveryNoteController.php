@@ -18,6 +18,7 @@ use App\Models\Sale;
 use App\Services\DeliveryNoteService;
 use App\Services\DriverService;
 use App\Services\PrintCounter;
+use App\Services\StoreSettingService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -152,9 +153,9 @@ class DeliveryNoteController extends Controller
         return $this->recordPrintOf($this->printCounter, $deliveryNote, 'tenant.delivery-notes.sheet');
     }
 
-    public function sheet(Request $request, DeliveryNote $deliveryNote): Response
+    public function sheet(Request $request, DeliveryNote $deliveryNote, StoreSettingService $settings): Response
     {
-        return $this->sheetOf($request, $deliveryNote);
+        return $this->sheetOf($request, $deliveryNote, $settings->letterhead());
     }
 
     /**

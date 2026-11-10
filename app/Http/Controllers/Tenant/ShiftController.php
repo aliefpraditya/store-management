@@ -7,11 +7,16 @@ use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\CloseShiftRequest;
 use App\Http\Requests\Tenant\OpenShiftRequest;
+use App\Http\Resources\BlindShiftReportResource;
 use App\Models\CashShift;
 use App\Models\Register;
 use App\Models\Store;
 use App\Services\ShiftService;
+use App\Services\StoreSettingService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response as InertiaResponse;
 use Symfony\Component\HttpFoundation\Response;
 
 class ShiftController extends Controller
@@ -66,6 +71,27 @@ class ShiftController extends Controller
             'counted_cash' => $closedShift->counted_cash,
             'deposit_amount' => $closedShift->deposit_amount,
             'drawer_left_cash' => $closedShift->drawer_left_cash,
+            'report_url' => route('tenant.cashier.shifts.report', ['tenant' => $store->code, 'shift' => $closedShift->id]),
+        ]);
+    }
+
+    /**
+     * The end-of-shift report of the cashier's own shift, printed from a hidden frame once the drawer has been counted.
+     * It is the blind version (counts and the cashier's own count only): the Admin prints the full one from the shift
+     * recap, so even an admin who was the cashier of this shift gets the blind report here.
+     */
+    public function report(Request $request, CashShift $shift, StoreSettingService $settings): InertiaResponse
+    {
+        abort_unless($shift->cashier_id === $request->user()->id, Response::HTTP_FORBIDDEN);
+        abort_if($shift->status === CashShiftStatus::Open, Response::HTTP_NOT_FOUND);
+
+        return Inertia::render('Tenant/Print/ShiftReport', [
+            'report' => BlindShiftReportResource::make(
+                $shift->load('register'),
+                $this->shiftService->summarizeForCashier($shift),
+                $settings->letterhead(),
+                $settings->paperWidth(),
+            )->resolve(),
         ]);
     }
 }

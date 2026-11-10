@@ -280,7 +280,7 @@ class StockOpnameReviewTest extends TestCase
         $this->assertSame('1.000', $this->stockOf($twin));
         $this->assertSame(['5000.00', '60000.00'], $this->store->run(fn (): array => $twin->productUnits()->orderBy('sort_order')->pluck('selling_price')->all()));
         $this->assertSame(['PCS', 'DUS'], $this->store->run(fn (): array => $twin->productUnits()->orderBy('sort_order')->pluck('unit_code')->all()));
-        $this->assertSame(['12.000', null], $this->store->run(fn (): array => [$twin->productUnits()->where('unit_code', 'DUS')->value('conversion_factor'), $twin->productUnits()->where('unit_code', 'DUS')->value('barcode')]));
+        $this->assertSame('12.000', $this->store->run(fn (): string => $twin->productUnits()->where('unit_code', 'DUS')->value('conversion_factor')));
         $item = $this->store->run(fn () => $item->fresh());
         $this->assertSame('-3.000', $item->variance);
     }
@@ -440,7 +440,7 @@ class StockOpnameReviewTest extends TestCase
         $this->store->run(fn () => app(StoreSettingService::class)->update(['large_variance_threshold' => '10000']));
         $this->review($opname, $item, ['reason_id' => $this->reasonId('Hilang'), 'is_reviewed' => true]);
 
-        $this->postOpname($opname)->assertSessionHas('error', 'Selisih Kuas KUAS-1 bernilai di atas Rp 10.000, jadi wajib diberi catatan. Isi catatannya di baris barang itu, lalu posting lagi.');
+        $this->postOpname($opname)->assertSessionHas('error', 'Selisih Kuas KUAS-1 bernilai di atas Rp 10.000, jadi wajib diberi catatan. Klik Hitung Ulang, isi catatannya di baris barang itu, lalu selesaikan hitung dan posting lagi.');
     }
 
     public function test_the_show_page_gives_the_reasons_the_review_state_and_the_damaged_decision(): void
@@ -470,20 +470,37 @@ class StockOpnameReviewTest extends TestCase
             ->where('items.data.0.damage.damaged_goods_problem', null));
     }
 
-    public function test_the_show_page_adds_up_the_damaged_goods_and_what_they_may_cost(): void
+    public function test_the_show_page_measures_the_loss_against_the_purchase_price_and_the_rest_is_loss_profit(): void
     {
         $product = $this->brush();
         [$opname, $item] = $this->opnameCounting($product, '7');
         $this->review($opname, $item, $this->shortageDecision(['is_reviewed' => false]));
 
+        // Cost 6.000, selling 10.000, DG sold at 5.000: dead stock loses its cost (6.000) and 4.000 of margin; the DG unit
+        // loses 1.000 below cost and 4.000 of margin above it.
         $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertInertia(fn (Assert $page) => $page
             ->where('damage_summary.items.0', [
                 'product_name' => 'Kuas KUAS-1', 'base_unit' => 'PCS', 'dead_stock_quantity' => '1.000', 'damaged_goods_quantity' => '1.000', 'full_price_quantity' => '1.000',
-                'original_price' => '10000.00', 'damaged_goods_price' => '5000.00', 'existing_price' => null, 'loss' => '15000.00',
+                'cost_price' => '6000.00', 'original_price' => '10000.00', 'damaged_goods_price' => '5000.00', 'existing_price' => null,
+                'loss' => '7000.00', 'loss_profit' => '8000.00',
             ])
-            ->where('damage_summary.dead_stock_loss', '10000.00')
-            ->where('damage_summary.damaged_goods_loss', '5000.00')
-            ->where('damage_summary.total_loss', '15000.00'));
+            ->where('damage_summary.dead_stock_loss', '6000.00')
+            ->where('damage_summary.damaged_goods_loss', '1000.00')
+            ->where('damage_summary.total_loss', '7000.00')
+            ->where('damage_summary.loss_profit', '8000.00'));
+    }
+
+    public function test_a_dg_price_still_above_the_purchase_price_is_only_loss_profit(): void
+    {
+        $product = $this->brush();
+        [$opname, $item] = $this->opnameCounting($product, '7');
+        $this->review($opname, $item, $this->shortageDecision(['dead_stock_quantity' => 0, 'damaged_goods_quantity' => 1, 'full_price_quantity' => 0, 'damaged_goods_price' => 8000, 'is_reviewed' => false]));
+
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('damage_summary.items.0.loss', '0.00')
+            ->where('damage_summary.items.0.loss_profit', '2000.00')
+            ->where('damage_summary.total_loss', '0.00')
+            ->where('damage_summary.loss_profit', '2000.00'));
     }
 
     public function test_a_damaged_decision_that_is_not_complete_is_left_out_of_the_summary(): void
@@ -494,7 +511,8 @@ class StockOpnameReviewTest extends TestCase
 
         $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertInertia(fn (Assert $page) => $page
             ->has('damage_summary.items', 0)
-            ->where('damage_summary.total_loss', '0.00'));
+            ->where('damage_summary.total_loss', '0.00')
+            ->where('damage_summary.loss_profit', '0.00'));
     }
 
     public function test_there_is_no_damaged_goods_summary_outside_the_review_of_a_routine_opname(): void

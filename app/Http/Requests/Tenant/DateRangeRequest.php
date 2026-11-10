@@ -45,6 +45,9 @@ class DateRangeRequest extends FormRequest
             return null;
         }
 
-        return CarbonImmutable::createFromFormat('!'.self::DATE_FORMAT, $value);
+        $day = CarbonImmutable::createFromFormat('!'.self::DATE_FORMAT, $value);
+
+        // hasFormat lets a day that does not exist roll over (2026-02-30 becomes 2 March), so the day must read back the same.
+        return $day->format(self::DATE_FORMAT) === $value ? $day : null;
     }
 }

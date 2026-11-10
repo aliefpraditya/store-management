@@ -257,8 +257,8 @@ class DailyClosingService
     }
 
     /**
-     * The receipts voided on the day, whatever day they were sold: a COD sale made yesterday and refused at the door
-     * today is a void of today. The sales figures of the day it was sold no longer hold it.
+     * The receipts voided on the business day, whatever day they were sold: a COD sale made yesterday and refused at the
+     * door today is a void of today. The sales figures of the day it was sold no longer hold it.
      *
      * @return array{voids_count: int, total_voids: string}
      */
@@ -293,7 +293,8 @@ class DailyClosingService
     }
 
     /**
-     * A range on `voided_at` rather than `DATE(voided_at)`, so the index on that column is used.
+     * The receipts of the business day of the void, which is the day of the shift that gave the deposit back (see
+     * {@see SaleVoidService}), so the count and the refund of a void always land on the same day.
      *
      * @return Builder<Sale>
      */
@@ -301,7 +302,7 @@ class DailyClosingService
     {
         return Sale::query()
             ->where('status', SaleStatus::Voided)
-            ->whereBetween('voided_at', [$date->copy()->startOfDay(), $date->copy()->endOfDay()]);
+            ->where('void_business_date', $date->toDateString());
     }
 
     /**
