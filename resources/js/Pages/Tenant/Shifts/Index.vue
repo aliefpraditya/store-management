@@ -89,7 +89,7 @@ watch([status, difference, from, to], () => applyFilters());
                         <td>
                             {{ timeFormat.format(new Date(shift.opened_at)) }}
                             <template v-if="shift.closed_at">– {{ timeFormat.format(new Date(shift.closed_at)) }}</template>
-                            <span v-else class="chip chip--ok">{{ shift.status_label }}</span>
+                            <span v-else class="chip" :class="shift.status === 'open' ? 'chip--ok' : 'chip--warn'">{{ shift.status_label }}</span>
                         </td>
                         <td class="shifts__right">
                             {{ formatRupiah(shift.sales_total) }}

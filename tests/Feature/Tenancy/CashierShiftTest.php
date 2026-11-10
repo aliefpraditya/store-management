@@ -5,11 +5,17 @@ namespace Tests\Feature\Tenancy;
 use App\Enums\CashShiftStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Enums\UserRole;
+use App\Exceptions\SaleReturnException;
+use App\Exceptions\ShiftException;
 use App\Models\CashShift;
+use App\Models\Expense;
+use App\Models\ExpenseCategory;
 use App\Models\Register;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\SaleReturnService;
+use App\Services\SaleService;
 use App\Services\ShiftRecapService;
 use App\Services\ShiftService;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -224,6 +230,98 @@ class CashierShiftTest extends TestCase
             'payments' => [['method' => 'cash', 'amount' => 10000]],
         ])->assertSessionHas('error');
         $this->assertSame(0, $this->store->run(fn () => Sale::query()->count()));
+    }
+
+    public function test_a_shift_waiting_for_review_shows_who_reviews_it_and_keeps_its_register_marked_busy(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+        $this->closeShift($cashier, $this->shiftOf($cashier), '490000');
+
+        $this->actingAs($cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.reviewer_label', 'Admin Toko')
+            ->where('summary', null));
+
+        $admin = $this->storeUser(UserRole::StoreAdmin);
+        $this->actingAs($admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
+            ->where('shift', null)
+            ->where('registers.0.busy_with', $cashier->name)
+            ->where('registers.0.busy_note', "menunggu review, shift {$cashier->name}"));
+
+        $this->openShift($admin, null, '490000')->assertSessionHas('error');
+        $this->assertNull($this->shiftOf($admin));
+    }
+
+    public function test_the_reviewer_shown_to_an_admin_and_a_super_admin_waiting_for_review_is_the_super_admin(): void
+    {
+        $second = $this->store->run(fn () => Register::factory()->create(['code' => 'K2', 'name' => 'Kasir 2', 'warehouse_id' => $this->mainWarehouse()->id]));
+        $admin = $this->storeUser(UserRole::StoreAdmin);
+        $superAdmin = User::factory()->create(['is_super_admin' => true]);
+
+        $this->openShift($admin);
+        $this->closeShift($admin, $this->shiftOf($admin), '1');
+        $this->openShift($superAdmin, $second->id);
+        $this->closeShift($superAdmin, $this->shiftOf($superAdmin), '1');
+
+        $this->actingAs($admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('shift.reviewer_label', 'Super Admin'));
+        $this->actingAs($superAdmin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('shift.reviewer_label', 'Super Admin (Anda sendiri bisa memutuskannya di Rekap Shift)'));
+    }
+
+    public function test_nothing_that_needs_a_running_shift_goes_through_while_the_shift_waits_for_review(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+        $shift = $this->shiftOf($cashier);
+        $this->closeShift($cashier, $shift, '490000');
+        $hint = ShiftException::AWAITING_REVIEW_HINT;
+
+        $categoryId = $this->store->run(fn () => ExpenseCategory::query()->where('name', 'Operasional')->value('id'));
+        $unit = $this->unitOf($this->sellableProduct(), 'PCS');
+
+        $this->actingAs($cashier)->postJson($this->url('expenses.store'), ['client_uuid' => (string) Str::uuid(), 'expense_category_id' => $categoryId, 'description' => 'Galon', 'paid_to' => 'Toko Air', 'amount' => 10000])
+            ->assertStatus(422)->assertJsonPath('message', 'Buka shift dulu untuk mencatat pengeluaran dari laci kasir. '.$hint);
+        $this->actingAs($cashier)->post($this->url('sales.store'), [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_unit_id' => $unit->id, 'quantity' => 1]],
+            'payments' => [['method' => 'cash', 'amount' => 10000]],
+        ])->assertSessionHas('error', 'Buka shift dulu sebelum berjualan. '.$hint);
+        $this->assertSame([0, 0], $this->store->run(fn (): array => [Sale::query()->count(), Expense::query()->count()]));
+    }
+
+    public function test_a_return_cannot_be_made_in_a_shift_that_waits_for_review(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+        $shift = $this->shiftOf($cashier);
+        $unit = $this->unitOf($this->sellableProduct(), 'PCS');
+        $sale = $this->store->run(fn (): Sale => app(SaleService::class)->create($shift, $cashier, [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_unit_id' => $unit->id, 'quantity' => 2]],
+            'payments' => [['method' => 'cash', 'amount' => 20000]],
+        ]));
+        $this->closeShift($cashier, $shift, '490000');
+
+        $this->expectException(SaleReturnException::class);
+        $this->expectExceptionMessage('Buka shift dulu untuk membuat retur. '.ShiftException::AWAITING_REVIEW_HINT);
+
+        $this->store->run(fn () => app(SaleReturnService::class)->create($sale, $this->shiftOf($cashier), $cashier, [
+            'client_uuid' => (string) Str::uuid(),
+            'refund_method' => 'cash',
+            'items' => [['sale_item_id' => $sale->items[0]->id, 'quantity' => 1, 'disposition' => 'resellable']],
+        ]));
+    }
+
+    public function test_the_shift_closed_by_the_cashier_keeps_who_counted_it_and_when(): void
+    {
+        $cashier = $this->storeUser();
+        $this->openShift($cashier);
+
+        $this->closeShift($cashier, $this->shiftOf($cashier), '500000');
+
+        $closed = $this->shiftOf($cashier);
+        $this->assertSame([$cashier->id, CashShiftStatus::Closed], [$closed->closed_by, $closed->status]);
+        $this->assertNotNull($closed->counted_at);
+        $this->assertEquals($closed->counted_at, $closed->closed_at);
     }
 
     public function test_a_note_written_with_a_difference_is_kept_for_the_admin(): void

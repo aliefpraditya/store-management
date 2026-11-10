@@ -7,7 +7,7 @@ const props = defineProps({
     /**
      * The blind report (`is_blind`) holds what the cashier counted and the number of receipts only; the full one adds
      * the sales, payments, cash movements, expected cash and difference.
-     * @type {{is_blind: boolean, label: string, register_name: string, cashier_name: string, business_date: string, opened_at: string, closed_at: string|null, status: string, status_label: string, opening_cash: string, sale_count: number, cod: object, counted_cash: string|null, deposit_amount: string|null, drawer_left_cash: string|null, closing_note: string|null, store: {name: string, address: string|null, phone: string|null}, paper_width: number}}
+     * @type {{is_blind: boolean, label: string, register_name: string, cashier_name: string, business_date: string, opened_at: string, counted_at: string|null, closed_at: string|null, status: string, status_label: string, opening_cash: string, sale_count: number, cod: object, counted_cash: string|null, deposit_amount: string|null, drawer_left_cash: string|null, closing_note: string|null, store: {name: string, address: string|null, phone: string|null}, paper_width: number}}
      */
     report: { type: Object, required: true },
 });
@@ -53,6 +53,7 @@ const codRows = computed(() => {
             <span>Kasir : {{ report.cashier_name }}</span>
             <span>Tanggal : {{ dateFormat.format(new Date(`${report.business_date}T00:00:00`)) }}</span>
             <span>Buka : {{ dateTimeFormat.format(new Date(report.opened_at)) }}</span>
+            <span v-if="report.counted_at">Dihitung : {{ dateTimeFormat.format(new Date(report.counted_at)) }}</span>
             <span v-if="report.closed_at">Tutup : {{ dateTimeFormat.format(new Date(report.closed_at)) }}</span>
             <span v-else>Status : {{ report.status_label }}</span>
         </div>

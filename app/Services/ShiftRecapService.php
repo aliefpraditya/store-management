@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\CashShiftStatus;
 use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
+use App\Enums\UserRole;
 use App\Exceptions\ShiftException;
 use App\Models\CashShift;
 use App\Models\User;
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * The admin's view of the shifts: looking them up, and deciding on the cash difference of a shift waiting for review.
  * A shift whose count did not match only closes once the difference is decided: accepted, or left to the cashier (the report and
- * the cashier paying the money back are kept outside the system). Nobody decides the difference of a shift they worked themselves: it is for another admin or the Super Admin.
+ * the cashier paying the money back are kept outside the system). The review goes one level up: a cashier's shift is decided by the\n * store's admin, a store admin's shift by the Super Admin, and a Super Admin decides their own. Nobody else decides the difference of a\n * shift they worked or closed themselves (the Super Admin excepted, since nobody stands above them).
  *
  * @phpstan-type RecapFilters array{from: string|null, to: string|null, status: string|null, difference: string|null, search: string|null}
  */
@@ -49,6 +50,21 @@ class ShiftRecapService
     }
 
     /**
+     * Why the user may not decide the difference of the shift, or null when they may. The one place this rule lives, for the page's
+     * buttons and for the decision itself.
+     */
+    public function decisionBlocker(User $user, CashShift $shift): ?ShiftException
+    {
+        return match (true) {
+            $user->is_super_admin => null,
+            $shift->cashier_id === $user->id => ShiftException::cannotDecideOwnShift(),
+            $shift->closed_by === $user->id => ShiftException::cannotDecideShiftYouClosed(),
+            $shift->cashierRole() !== UserRole::Cashier => ShiftException::onlySuperAdminDecidesAnAdminShift(),
+            default => null,
+        };
+    }
+
+    /**
      * Accepts the cash difference of a shift waiting for review, or leaves it to the cashier (`$isApproved` false, stored as
      * rejected), with the admin's note, and closes the shift either way.
      *
@@ -63,8 +79,10 @@ class ShiftRecapService
                 throw ShiftException::differenceNotPending($shift->difference_status->label());
             }
 
-            if (! $admin->canDecideDifferenceOf($shift)) {
-                throw ShiftException::cannotDecideOwnShift();
+            $decisionBlocker = $this->decisionBlocker($admin, $shift);
+
+            if ($decisionBlocker !== null) {
+                throw $decisionBlocker;
             }
 
             $shift->forceFill([

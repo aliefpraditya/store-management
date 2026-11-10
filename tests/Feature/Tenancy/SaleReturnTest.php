@@ -268,7 +268,7 @@ class SaleReturnTest extends TestCase
         $sale = $this->sellBrushes($this->admin, $this->adminShift, 5);
         $this->store->run(fn () => $this->adminShift->forceFill(['status' => 'closed'])->save());
 
-        $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 1))->assertSessionHas('error', 'Buka shift dulu untuk membuat retur.');
+        $this->actingAs($this->admin)->post($this->url('store'), $this->payload($sale, 1))->assertSessionHas('error', 'Buka shift dulu untuk membuat retur. Bila shift Anda sudah dihitung, tunggu keputusan Admin.');
 
         $this->assertSame(0, $this->store->run(fn () => SaleReturn::query()->count()));
     }

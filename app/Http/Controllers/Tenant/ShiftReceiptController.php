@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ApiErrorCode;
 use App\Enums\OrderStatus;
+use App\Exceptions\ShiftException;
 use App\Http\Controllers\Concerns\AnswersPrints;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PrintableSaleResource;
@@ -46,7 +47,7 @@ class ShiftReceiptController extends Controller
         if ($shift === null) {
             return response()->json([
                 'code' => ApiErrorCode::ShiftNotOpen->value,
-                'message' => 'Buka shift dulu untuk melihat nota shift ini.',
+                'message' => 'Buka shift dulu untuk melihat nota shift ini. '.ShiftException::AWAITING_REVIEW_HINT,
                 'more_info' => 'Daftar ini berisi nota dari shift yang sedang terbuka.',
             ], Response::HTTP_CONFLICT);
         }

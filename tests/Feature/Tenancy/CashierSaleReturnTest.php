@@ -144,7 +144,7 @@ class CashierSaleReturnTest extends TestCase
 
         $this->actingAs($this->cashier)->postJson($this->signedUrl('receipts.returns.store', ['sale' => $sale->id]), $this->body($sale, 1))
             ->assertStatus(409)
-            ->assertJsonPath('message', 'Buka shift dulu untuk membuat retur.');
+            ->assertJsonPath('message', 'Buka shift dulu untuk membuat retur. Bila shift Anda sudah dihitung, tunggu keputusan Admin.');
 
         $this->assertSame(0, $this->returnCount());
     }

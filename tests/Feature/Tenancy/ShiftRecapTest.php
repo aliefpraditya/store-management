@@ -158,9 +158,10 @@ class ShiftRecapTest extends TestCase
             'refund_method' => 'cash',
             'items' => [['sale_item_id' => $sale->items[0]->id, 'quantity' => 2, 'disposition' => 'resellable']],
         ]));
+        $this->store->run(fn () => app(ShiftService::class)->close($shift, '30000', null, '0'));
 
         $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
-            ->where('shift.status', 'open')
+            ->where('shift.status', 'closed')
             ->where('shift.expected_cash', '30000.00')
             ->where('shift.returns_total', '20000.00')
             ->where('shift.can_decide', false)
@@ -176,6 +177,7 @@ class ShiftRecapTest extends TestCase
         $this->store->run(function () use ($shift): void {
             $category = ExpenseCategory::query()->where('name', 'Operasional')->firstOrFail();
             app(ExpenseService::class)->recordFromDrawer($this->cashier, $shift, ['client_uuid' => (string) Str::uuid(), 'expense_category_id' => $category->id, 'description' => 'Beli galon', 'amount' => 15000]);
+            app(ShiftService::class)->close($shift, '35000', null, '0');
         });
 
         $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
@@ -244,21 +246,113 @@ class ShiftRecapTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('store.shifts_url', $this->url('index')));
     }
 
-    public function test_an_admin_cannot_decide_the_difference_of_a_shift_they_worked_themselves(): void
+    public function test_a_store_admin_cannot_decide_their_own_shift_nor_that_of_another_store_admin_only_the_super_admin_can(): void
     {
         $shift = $this->openShiftFor($this->admin);
         $closed = $this->store->run(fn (): CashShift => app(ShiftService::class)->close($shift, '5000', 'Uang lebih'));
 
         $this->actingAs($this->admin)->post($this->url('approve', ['shift' => $closed->id]), ['note' => 'Saya cek sendiri'])
-            ->assertSessionHas('error', 'Selisih kas shift Anda sendiri harus diputuskan Admin lain atau Super Admin.');
+            ->assertSessionHas('error', 'Selisih kas shift Anda sendiri harus diputuskan oleh yang berwenang: Admin Toko untuk shift kasir, Super Admin untuk shift Admin Toko.');
         $this->actingAs($this->admin)->get($this->url('show', ['shift' => $closed->id]))->assertInertia(fn (Assert $page) => $page
             ->where('shift.is_own_shift', true)
-            ->where('shift.can_decide', false));
-        $this->assertSame('pending_approval', $this->shift($closed->id)->difference_status->value);
+            ->where('shift.can_decide', false)
+            ->where('shift.reviewer_label', 'Super Admin'));
 
         $otherAdmin = $this->storeUser(UserRole::StoreAdmin);
-        $this->actingAs($otherAdmin)->post($this->url('approve', ['shift' => $closed->id]), ['note' => 'Sudah dicek'])->assertSessionHas('success');
+        $this->actingAs($otherAdmin)->post($this->url('approve', ['shift' => $closed->id]), ['note' => 'Sudah dicek'])
+            ->assertSessionHas('error', 'Selisih kas shift Admin Toko hanya bisa diputuskan Super Admin.');
+        $this->actingAs($otherAdmin)->get($this->url('show', ['shift' => $closed->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.can_decide', false)
+            ->where('shift.decision_blocked_reason', 'Selisih kas shift Admin Toko hanya bisa diputuskan Super Admin.'));
+        $this->assertSame('pending_approval', $this->shift($closed->id)->difference_status->value);
+
+        $superAdmin = User::factory()->create(['is_super_admin' => true]);
+        $this->actingAs($superAdmin)->post($this->url('approve', ['shift' => $closed->id]), ['note' => 'Dicek Super Admin'])->assertSessionHas('success');
         $this->assertSame('approved', $this->shift($closed->id)->difference_status->value);
+    }
+
+    public function test_a_cashier_shift_is_decided_by_a_store_admin_whoever_it_is_but_not_by_the_cashier(): void
+    {
+        $shift = $this->shiftClosedWithShortage();
+        $otherAdmin = $this->storeUser(UserRole::StoreAdmin);
+
+        $this->actingAs($this->cashier)->post($this->url('approve', ['shift' => $shift->id]), ['note' => 'ok'])->assertForbidden();
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.reviewer_label', 'Admin Toko')
+            ->where('shift.can_decide', true)
+            ->where('shift.decision_blocked_reason', null));
+        $this->actingAs($otherAdmin)->post($this->url('reject', ['shift' => $shift->id]), ['note' => 'Tagih'])->assertSessionHas('success');
+    }
+
+    public function test_a_cashier_who_became_an_admin_before_the_decision_is_reviewed_by_the_super_admin(): void
+    {
+        $shift = $this->shiftClosedWithShortage();
+        $this->cashier->stores()->updateExistingPivot($this->store->getKey(), ['role' => UserRole::StoreAdmin->value]);
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['shift' => $shift->id]), ['note' => 'ok'])
+            ->assertSessionHas('error', 'Selisih kas shift Admin Toko hanya bisa diputuskan Super Admin.');
+    }
+
+    public function test_a_super_admin_decides_the_difference_of_a_store_admin_shift(): void
+    {
+        $superAdmin = User::factory()->create(['is_super_admin' => true]);
+        $shift = $this->openShiftFor($this->admin);
+        $closed = $this->store->run(fn (): CashShift => app(ShiftService::class)->close($shift, '5000', null));
+
+        $this->actingAs($superAdmin)->get($this->url('show', ['shift' => $closed->id]))->assertInertia(fn (Assert $page) => $page->where('shift.can_decide', true));
+        $this->actingAs($superAdmin)->post($this->url('reject', ['shift' => $closed->id]), ['note' => 'BA no. 7'])->assertSessionHas('success');
+        $this->assertSame([$superAdmin->id, 'closed'], [$this->shift($closed->id)->difference_approved_by, $this->shift($closed->id)->status->value]);
+    }
+
+    public function test_the_expected_cash_and_money_of_a_running_shift_are_not_given_to_the_admin(): void
+    {
+        $shift = $this->openShiftFor($this->cashier);
+        $this->sellBrushes($shift, 5);
+
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('shift.status', 'open')
+            ->where('shift.is_cash_hidden', true)
+            ->where('shift.sale_count', 1)
+            ->where('shift.payments', [])
+            ->where('shift.returns', [])
+            ->where('shift.expenses', [])
+            ->missing('shift.expected_cash')
+            ->missing('shift.total_sales')
+            ->missing('shift.drawer_expenses')
+            ->missing('shift.cash_refunds'));
+        $this->actingAs($this->admin)->get($this->url('sheet', ['shift' => $shift->id]))->assertNotFound();
+    }
+
+    public function test_an_admin_can_close_a_shift_the_cashier_forgot_but_cannot_decide_its_difference(): void
+    {
+        $shift = $this->openShiftFor($this->cashier);
+        $this->sellBrushes($shift, 5);
+
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shift.can_close', true)
+            ->where('shift.urls.close', route('tenant.cashier.shifts.close', ['tenant' => $this->store->code, 'shift' => $shift->id])));
+
+        $this->actingAs($this->admin)->post(route('tenant.cashier.shifts.close', ['tenant' => $this->store->code, 'shift' => $shift->id]), ['counted_cash' => 45000, 'drawer_left_cash' => 0])
+            ->assertRedirect($this->url('show', ['shift' => $shift->id]))
+            ->assertSessionHas('success', 'Hitungan tercatat. Selisihnya menunggu keputusan.');
+
+        $closed = $this->shift($shift->id);
+        $this->assertSame([$this->admin->id, 'pending_review'], [$closed->closed_by, $closed->status->value]);
+        $this->assertNotNull($closed->counted_at);
+        $this->assertNull($closed->closed_at);
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['shift' => $shift->id]), ['note' => 'ok'])
+            ->assertSessionHas('error', 'Anda yang menutup shift ini, jadi selisih kasnya diputuskan Admin lain atau Super Admin.');
+        $this->actingAs($this->storeUser(UserRole::StoreAdmin))->post($this->url('approve', ['shift' => $shift->id]), ['note' => 'Dicek'])->assertSessionHas('success');
+    }
+
+    public function test_the_own_running_shift_of_an_admin_is_closed_from_the_till_not_from_the_recap(): void
+    {
+        $shift = $this->openShiftFor($this->admin);
+
+        $this->actingAs($this->admin)->get($this->url('show', ['shift' => $shift->id]))->assertInertia(fn (Assert $page) => $page->where('shift.can_close', false));
+        $this->actingAs($this->admin)->post(route('tenant.cashier.shifts.close', ['tenant' => $this->store->code, 'shift' => $shift->id]), ['counted_cash' => 0, 'drawer_left_cash' => 0])
+            ->assertRedirect(route('tenant.cashier.index', ['tenant' => $this->store->code]));
     }
 
     public function test_a_super_admin_can_decide_the_difference_of_a_shift_they_worked_themselves(): void

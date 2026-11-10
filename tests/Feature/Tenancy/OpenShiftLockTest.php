@@ -65,6 +65,17 @@ class OpenShiftLockTest extends TestCase
         $response->assertRedirect($this->url('tenant.cashier.index'))->assertSessionHas('error', self::LOCKED_MESSAGE);
     }
 
+    public function test_a_shift_waiting_for_review_keeps_the_user_in_but_the_message_says_to_wait_not_to_close(): void
+    {
+        $this->openShiftThroughTheScreen($this->admin);
+        $shift = $this->store->run(fn () => CashShift::query()->where('cashier_id', $this->admin->id)->firstOrFail());
+        $this->actingAs($this->admin)->post($this->url('tenant.cashier.shifts.close', ['shift' => $shift->id]), ['counted_cash' => '100', 'drawer_left_cash' => '0'])->assertSessionHas('success');
+
+        $awaitingMessage = 'Shift Anda sudah dihitung dan menunggu keputusan Admin. Anda bisa keluar setelah shift ditutup.';
+        $this->actingAs($this->admin)->post(route('logout'))->assertRedirect($this->url('tenant.cashier.index'))->assertSessionHas('error', $awaitingMessage);
+        $this->actingAs($this->admin)->postJson(route('logout'))->assertStatus(423)->assertJsonPath('message', $awaitingMessage);
+    }
+
     public function test_store_pages_stay_open_while_a_shift_is_open_so_an_admin_can_check_stock(): void
     {
         $this->openShiftThroughTheScreen($this->admin);

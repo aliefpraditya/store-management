@@ -294,6 +294,16 @@ class SaleVoidTest extends TestCase
         $this->assertSame(['50000.00', '100000.00', '20000.00', '30000.00', 1], [$summary['void_deposits'], $summary['total_sales'], $summary['payments']['cash'], $summary['payments']['transfer'], $summary['sale_count']]);
     }
 
+    public function test_a_cash_deposit_cannot_be_given_back_from_a_shift_that_waits_for_review(): void
+    {
+        $sale = $this->sellCod([['method' => 'cash', 'amount' => 40000], ['method' => 'cod', 'amount' => 60000]]);
+        $this->store->run(fn () => app(ShiftService::class)->close($this->shift, '1', null, '0'));
+
+        $this->actingAs($this->cashier)->postJson($this->voidUrl($sale), ['reason' => 'Ditolak'])
+            ->assertJsonPath('message', 'Nota ini sudah menerima DP tunai. Buka shift dulu untuk mengembalikannya dari laci. Bila shift Anda sudah dihitung, tunggu keputusan Admin.');
+        $this->assertSame(SaleStatus::Completed, $this->reloaded($sale)->status);
+    }
+
     public function test_the_receipt_page_tells_which_kinds_of_deposit_the_sale_holds(): void
     {
         $sale = $this->sellCod([['method' => 'cash', 'amount' => 20000], ['method' => 'transfer', 'amount' => 30000], ['method' => 'cod', 'amount' => 50000]]);
@@ -390,7 +400,7 @@ class SaleVoidTest extends TestCase
         $sale = $this->sellCod([['method' => 'cash', 'amount' => 40000], ['method' => 'cod', 'amount' => 60000]]);
 
         $this->actingAs($this->admin)->post($this->adminVoidUrl($sale), ['reason' => 'Ditolak'])
-            ->assertSessionHas('error', 'Nota ini sudah menerima DP tunai. Buka shift dulu untuk mengembalikannya dari laci.');
+            ->assertSessionHas('error', 'Nota ini sudah menerima DP tunai. Buka shift dulu untuk mengembalikannya dari laci. Bila shift Anda sudah dihitung, tunggu keputusan Admin.');
 
         $this->assertSame(SaleStatus::Completed, $this->reloaded($sale)->status);
         $this->assertSame('90.000', $this->stockInPieces($this->brush));

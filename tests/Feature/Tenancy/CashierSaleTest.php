@@ -232,7 +232,7 @@ class CashierSaleTest extends TestCase
     {
         $unit = $this->unitOf($this->sellableProduct(), 'PCS');
 
-        $this->sell([[$unit, 1]], [['cash', 10000]], as: $this->storeUser())->assertSessionHas('error', 'Buka shift dulu sebelum berjualan.');
+        $this->sell([[$unit, 1]], [['cash', 10000]], as: $this->storeUser())->assertSessionHas('error', 'Buka shift dulu sebelum berjualan. Bila shift Anda sudah dihitung, tunggu keputusan Admin.');
 
         $this->assertSame(0, $this->salesCount());
     }
@@ -383,7 +383,7 @@ class CashierSaleTest extends TestCase
         $shift = $this->store->run(fn () => CashShift::query()->sole());
 
         $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '130000', 'drawer_left_cash' => '0'])
-            ->assertSessionHas('closed_shift', ['counted_cash' => '130000.00', 'deposit_amount' => '130000.00', 'drawer_left_cash' => '0.00']);
+            ->assertSessionHas('closed_shift', ['counted_cash' => '130000.00', 'deposit_amount' => '130000.00', 'drawer_left_cash' => '0.00', 'report_url' => $this->url('shifts.report', ['shift' => $shift->id])]);
     }
 
     public function test_a_background_refresh_of_the_badges_does_not_eat_the_receipt_waiting_to_be_shown(): void
@@ -409,7 +409,7 @@ class CashierSaleTest extends TestCase
         $shift = $this->store->run(fn () => CashShift::query()->sole());
         $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'drawer_left_cash' => '0', 'closing_note' => 'kosong']);
 
-        $this->sell([[$unit, 1]], [['cash', 10000]])->assertSessionHas('error', 'Buka shift dulu sebelum berjualan.');
+        $this->sell([[$unit, 1]], [['cash', 10000]])->assertSessionHas('error', 'Buka shift dulu sebelum berjualan. Bila shift Anda sudah dihitung, tunggu keputusan Admin.');
     }
 
     public function test_the_item_lookup_finds_items_with_their_sellable_units_and_stock(): void

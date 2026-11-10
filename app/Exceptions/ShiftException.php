@@ -2,6 +2,8 @@
 
 namespace App\Exceptions;
 
+use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Exception;
 
 /**
@@ -9,6 +11,9 @@ use Exception;
  */
 class ShiftException extends Exception
 {
+    /** Added to the messages that ask for an open shift: a shift that was counted but not yet decided is not open either. */
+    public const AWAITING_REVIEW_HINT = 'Bila shift Anda sudah dihitung, tunggu keputusan Admin.';
+
     public static function registerInUse(string $registerName, string $cashierName): self
     {
         return new self("{$registerName} sedang dipakai {$cashierName}. Tutup shift itu dulu.");
@@ -56,7 +61,17 @@ class ShiftException extends Exception
 
     public static function cannotDecideOwnShift(): self
     {
-        return new self('Selisih kas shift Anda sendiri harus diputuskan Admin lain atau Super Admin.');
+        return new self('Selisih kas shift Anda sendiri harus diputuskan oleh yang berwenang: Admin Toko untuk shift kasir, Super Admin untuk shift Admin Toko.');
+    }
+
+    public static function cannotDecideShiftYouClosed(): self
+    {
+        return new self('Anda yang menutup shift ini, jadi selisih kasnya diputuskan Admin lain atau Super Admin.');
+    }
+
+    public static function onlySuperAdminDecidesAnAdminShift(): self
+    {
+        return new self('Selisih kas shift Admin Toko hanya bisa diputuskan Super Admin.');
     }
 
     public static function dayClosed(string $dateText): self
@@ -66,7 +81,7 @@ class ShiftException extends Exception
 
     public static function openingCashNeedsNote(string $carriedOverCash): self
     {
-        return new self('Modal awal berbeda dari sisa laci shift sebelumnya (Rp '.number_format((float) $carriedOverCash, 0, ',', '.').'). Isi alasannya.');
+        return new self('Modal awal berbeda dari sisa laci shift sebelumnya (Rp '.number_format((int) (string) BigDecimal::of($carriedOverCash)->toScale(0, RoundingMode::HalfUp), 0, ',', '.').'). Isi alasannya.');
     }
 
     public static function drawerLeftExceedsCounted(): self

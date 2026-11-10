@@ -13,7 +13,7 @@ class SaleException extends Exception
 {
     public static function shiftNotOpen(): self
     {
-        return new self('Buka shift dulu sebelum berjualan.');
+        return new self('Buka shift dulu sebelum berjualan. '.ShiftException::AWAITING_REVIEW_HINT);
     }
 
     public static function notSellable(string $productName): self

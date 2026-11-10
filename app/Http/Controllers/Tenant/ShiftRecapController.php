@@ -12,11 +12,13 @@ use App\Http\Resources\CashShiftListResource;
 use App\Http\Resources\ShiftRecapResource;
 use App\Models\CashShift;
 use App\Models\SaleReturn;
+use App\Models\User;
 use App\Services\ExpenseService;
 use App\Services\ShiftRecapService;
 use App\Services\ShiftService;
 use App\Services\StoreSettingService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -55,16 +57,17 @@ class ShiftRecapController extends Controller
         ]);
     }
 
-    public function show(CashShift $shift): Response
+    public function show(Request $request, CashShift $shift): Response
     {
         return Inertia::render('Tenant/Shifts/Show', [
             'shift' => [
-                ...$this->recapOf($shift),
+                ...$this->recapOf($shift, $request->user()),
                 'urls' => [
                     'index' => route('tenant.shifts.index', ['tenant' => tenant('code')]),
                     'approve' => route('tenant.shifts.approve', ['tenant' => tenant('code'), 'shift' => $shift->id]),
                     'reject' => route('tenant.shifts.reject', ['tenant' => tenant('code'), 'shift' => $shift->id]),
                     'sheet' => route('tenant.shifts.sheet', ['tenant' => tenant('code'), 'shift' => $shift->id]),
+                    'close' => route('tenant.cashier.shifts.close', ['tenant' => tenant('code'), 'shift' => $shift->id]),
                 ],
             ],
         ]);
@@ -74,13 +77,13 @@ class ShiftRecapController extends Controller
      * The end-of-shift report with every figure, for the Admin. A shift still running has none: its expected cash is not
      * for printing before the drawer has been counted.
      */
-    public function sheet(CashShift $shift, StoreSettingService $settings): Response
+    public function sheet(Request $request, CashShift $shift, StoreSettingService $settings): Response
     {
         abort_if($shift->status === CashShiftStatus::Open, HttpResponse::HTTP_NOT_FOUND);
 
         return Inertia::render('Tenant/Print/ShiftReport', [
             'report' => [
-                ...Arr::except($this->recapOf($shift), ['can_decide', 'is_own_shift']),
+                ...Arr::except($this->recapOf($shift, $request->user()), ['can_decide', 'decision_blocked_reason', 'can_close', 'is_own_shift']),
                 'is_blind' => false,
                 'store' => $settings->letterhead(),
                 'paper_width' => $settings->paperWidth(),
@@ -91,13 +94,14 @@ class ShiftRecapController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function recapOf(CashShift $shift): array
+    private function recapOf(CashShift $shift, User $viewer): array
     {
         $shift->load('register');
 
         $returns = SaleReturn::query()->where('cash_shift_id', $shift->id)->orderBy('id')->get();
+        $decisionBlocker = $this->shiftRecapService->decisionBlocker($viewer, $shift);
 
-        return ShiftRecapResource::make($shift, $this->shiftService->summarize($shift), $returns, $this->expenseService->drawerExpensesOf($shift))->resolve();
+        return ShiftRecapResource::make($shift, $this->shiftService->summarize($shift), $returns, $this->expenseService->drawerExpensesOf($shift), $decisionBlocker?->getMessage())->resolve();
     }
 
     public function approve(DecideShiftDifferenceRequest $request, CashShift $shift): RedirectResponse

@@ -119,7 +119,7 @@ class CashierProductLookupTest extends TestCase
         $this->lookup('kuas', as: $this->storeUser())
             ->assertStatus(409)
             ->assertJsonStructure(['code', 'message', 'more_info'])
-            ->assertJsonPath('message', 'Buka shift dulu sebelum mencari barang.');
+            ->assertJsonPath('message', 'Buka shift dulu sebelum mencari barang. Bila shift Anda sudah dihitung, tunggu keputusan Admin.');
     }
 
     public function test_the_current_state_of_units_already_in_the_cart_is_found_by_their_ids(): void

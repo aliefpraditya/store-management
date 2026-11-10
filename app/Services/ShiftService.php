@@ -26,6 +26,10 @@ use Illuminate\Support\Str;
  * drawer: closing records what the cashier leaves in it, and the next shift on that register opens with that amount (or
  * another one, with a reason). Closing compares the counted cash with what the receipts say should be in the drawer.
  *
+ * A register is held by one shift at a time, open or waiting for review. Only an open shift fills the unique `open_register_id`
+ * and `open_cashier_id` columns of the database; a shift waiting for review is kept apart by the register lock and the status
+ * check in {@see self::open()}, so it is the code, not the database, that stops a second shift on its register.
+ *
  * @phpstan-import-type CodTotals from CodSaleService
  *
  * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, void_cash_refunds: string, void_deposits: string, cod: CodTotals, drawer_expenses: string, order_deposit_cash: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
@@ -255,15 +259,17 @@ class ShiftService
      * `pending_review` and closes once an admin has decided the difference ({@see ShiftRecapService::decideDifference()}), so
      * a shift with a shortage is never closed on the cashier's word alone. The cashier
      * says how much stays in the drawer for the next shift, and the rest of the counted cash is the deposit to hand
-     * over. Without `$drawerLeftCash` the opening cash stays (or all the counted cash when that is less).
+     * over. Without `$drawerLeftCash` the opening cash stays (or all the counted cash when that is less). `$closedBy` is who
+     * counted the drawer: an admin closing a forgotten shift must not decide its difference as well, so it is kept (the
+     * cashier when not told).
      *
      * @param  numeric-string|null  $drawerLeftCash
      *
      * @throws ShiftException
      */
-    public function close(CashShift $shift, string $countedCash, ?string $note, ?string $drawerLeftCash = null): CashShift
+    public function close(CashShift $shift, string $countedCash, ?string $note, ?string $drawerLeftCash = null, ?User $closedBy = null): CashShift
     {
-        return DB::transaction(function () use ($shift, $countedCash, $note, $drawerLeftCash): CashShift {
+        return DB::transaction(function () use ($shift, $countedCash, $note, $drawerLeftCash, $closedBy): CashShift {
             $shift = CashShift::query()->with('register')->lockForUpdate()->findOrFail($shift->id);
 
             if ($shift->status === CashShiftStatus::PendingReview) {
@@ -295,6 +301,8 @@ class ShiftService
             $shift->forceFill([
                 'status' => $difference->isZero() ? CashShiftStatus::Closed : CashShiftStatus::PendingReview,
                 'closed_at' => $difference->isZero() ? now() : null,
+                'closed_by' => $closedBy?->id ?? $shift->cashier_id,
+                'counted_at' => now(),
                 'expected_cash' => (string) $expectedCash->toScale(2),
                 'counted_cash' => (string) $counted->toScale(2),
                 'cash_difference' => (string) $difference->toScale(2),

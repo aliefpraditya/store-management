@@ -22,6 +22,7 @@ class CashShiftResource extends JsonResource
         return [
             'id' => $this->id,
             'is_awaiting_review' => $this->status === CashShiftStatus::PendingReview,
+            'reviewer_label' => $this->status === CashShiftStatus::PendingReview ? $this->cashierRole()->reviewerLabel() : null,
             'register' => ['id' => $this->register->id, 'code' => $this->register->code, 'name' => $this->register->name],
             'cashier_name' => $this->cashier_name,
             'opened_at' => $this->opened_at->toIso8601String(),

@@ -55,9 +55,16 @@ class ShiftController extends Controller
                 (string) $request->validated('counted_cash'),
                 $request->validated('closing_note'),
                 (string) $request->validated('drawer_left_cash'),
+                $user,
             );
         } catch (ShiftException $exception) {
             return back()->with('error', $exception->getMessage());
+        }
+
+        // An admin closing a shift the cashier forgot works from the recap, and goes back to it.
+        if ($closedShift->cashier_id !== $user->id) {
+            return redirect()->route('tenant.shifts.show', ['tenant' => $store->code, 'shift' => $closedShift->id])
+                ->with('success', $closedShift->status === CashShiftStatus::PendingReview ? 'Hitungan tercatat. Selisihnya menunggu keputusan.' : 'Shift ditutup.');
         }
 
         $redirect = redirect()->route('tenant.cashier.index', ['tenant' => $store->code]);

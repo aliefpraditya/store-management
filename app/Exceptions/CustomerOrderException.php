@@ -11,7 +11,7 @@ class CustomerOrderException extends Exception
 {
     public static function shiftNotOpen(): self
     {
-        return new self('Buka shift dulu sebelum mencatat pesanan.');
+        return new self('Buka shift dulu sebelum mencatat pesanan. '.ShiftException::AWAITING_REVIEW_HINT);
     }
 
     public static function orderIdInUse(): self
@@ -49,7 +49,7 @@ class CustomerOrderException extends Exception
 
     public static function shiftNeededForRefund(): self
     {
-        return new self('Pesanan ini sudah menerima uang muka. Buka shift dulu untuk mengembalikannya.');
+        return new self('Pesanan ini sudah menerima uang muka. Buka shift dulu untuk mengembalikannya. '.ShiftException::AWAITING_REVIEW_HINT);
     }
 
     public static function refundAccountNeeded(): self

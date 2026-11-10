@@ -41,6 +41,7 @@ class BlindShiftReportResource extends JsonResource
             'cashier_name' => $this->cashier_name,
             'business_date' => $this->business_date->toDateString(),
             'opened_at' => $this->opened_at->toIso8601String(),
+            'counted_at' => $this->counted_at?->toIso8601String(),
             'closed_at' => $this->closed_at?->toIso8601String(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),

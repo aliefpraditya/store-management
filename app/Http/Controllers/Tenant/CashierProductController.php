@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ApiErrorCode;
+use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
 use App\Services\CashierCatalogService;
 use App\Services\ShiftService;
@@ -22,7 +23,7 @@ class CashierProductController extends Controller
         if ($shift === null) {
             return response()->json([
                 'code' => ApiErrorCode::ShiftNotOpen->value,
-                'message' => 'Buka shift dulu sebelum mencari barang.',
+                'message' => 'Buka shift dulu sebelum mencari barang. '.ShiftException::AWAITING_REVIEW_HINT,
                 'more_info' => 'Pencarian barang kasir memakai gudang dari shift yang sedang terbuka.',
             ], Response::HTTP_CONFLICT);
         }

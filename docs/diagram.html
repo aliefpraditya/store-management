@@ -207,9 +207,9 @@ section:last-of-type{break-after:auto}
     end
     subgraph SYS["Sistem"]
         S0["Simpan cash_shifts open dengan opening_cash = sisa laci shift terakhir register (atau isian kasir + alasan)"]
-        S2["Tunai seharusnya = modal + tunai masuk - refund tunai - pengeluaran laci"]
+        S2["Tunai seharusnya = modal + tunai masuk + DP pesanan tunai - refund tunai - DP void tunai - pengeluaran laci"]
         S3{"Selisih tidak nol?"}
-        S4["Simpan closed + setoran, difference_status pending_approval"]
+        S4["Simpan pending_review + setoran, difference_status pending_approval; shift menunggu review"]
         S4b["Simpan closed + setoran, difference_status none"]
         S5["Sediakan Laporan Akhir Shift (buta untuk kasir, lengkap untuk Admin)"]
     end

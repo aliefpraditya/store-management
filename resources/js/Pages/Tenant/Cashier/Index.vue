@@ -19,7 +19,7 @@ import ShiftOpenPanel from '../../../Components/Cashier/ShiftOpenPanel.vue';
 import { newUuid, useCart } from '../../../Composables/useCart';
 import { useFlashMessages } from '../../../Composables/useFlashMessages';
 import { useHeldCarts } from '../../../Composables/useHeldCarts';
-import { printSheet } from '../../../Composables/printSheet';
+import { printSheet, SHEET_PRINTED_EVENT } from '../../../Composables/printSheet';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
 
@@ -653,13 +653,27 @@ let reviewTimer;
 function startReviewWatch() {
     reviewTimer = setInterval(() => {
         if (isAwaitingReview.value) {
-            router.reload({ only: ['shift', 'summary', 'registers'], async: true });
+            router.reload({ only: ['shift', 'registers'], async: true });
         }
     }, REVIEW_REFRESH_MS);
 }
 
+/**
+ * Puts the keyboard back on the search box for the next customer, unless a dialog is still being worked in. It runs
+ * after the dialog has left (the dialog hands focus back to the button that opened it) and after a sheet was printed
+ * (the print dialog leaves the focus in the hidden frame).
+ */
+function focusSearchWhenFree() {
+    setTimeout(() => {
+        if (isTillWorking.value && !isAnyDialogOpen.value) {
+            searchInput.value?.focus();
+        }
+    }, 0);
+}
+
 onMounted(() => {
     window.addEventListener('keydown', onKeydown);
+    window.addEventListener(SHEET_PRINTED_EVENT, focusSearchWhenFree);
     searchInput.value?.focus();
     clockTimer = setInterval(() => (now.value = Date.now()), 30000);
 
@@ -676,6 +690,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     window.removeEventListener('keydown', onKeydown);
+    window.removeEventListener(SHEET_PRINTED_EVENT, focusSearchWhenFree);
     clearTimeout(searchTimer);
     clearInterval(badgeTimer);
     clearInterval(reviewTimer);
@@ -692,7 +707,7 @@ onBeforeUnmount(() => {
                 <header class="till__bar">
                     <div class="till__who">
                         <b>{{ page.props.store.name }}</b>
-                        <small v-if="shift">{{ isAwaitingReview ? 'Menunggu review Admin · ' : '' }}{{ shift.register.code }} · {{ shift.register.name }} · {{ shift.cashier_name }} · shift sejak {{ shiftSince }}, berjalan {{ shiftRunningFor }}</small>
+                        <small v-if="shift">{{ isAwaitingReview ? `Menunggu review ${shift.reviewer_label} · ` : '' }}{{ shift.register.code }} · {{ shift.register.name }} · {{ shift.cashier_name }} · shift sejak {{ shiftSince }}, berjalan {{ shiftRunningFor }}</small>
                         <small v-else>Belum ada shift</small>
                     </div>
                     <div class="till__bar-actions">
@@ -726,9 +741,9 @@ onBeforeUnmount(() => {
 
                 <section v-else-if="isAwaitingReview" class="till__locked">
                     <q-icon name="hourglass_top" size="40px" color="warning" />
-                    <h2>Shift menunggu review Admin</h2>
+                    <h2>Shift menunggu review {{ shift.reviewer_label }}</h2>
                     <p>Kas yang Anda hitung belum cocok dengan catatan sistem. Hitungan Anda sudah tercatat dan tidak bisa diubah.</p>
-                    <p>Jangan ubah isi laci dan jangan transaksi dulu. Shift ditutup setelah Admin memutuskan; halaman ini diperbarui sendiri.</p>
+                    <p>Jangan ubah isi laci dan jangan transaksi dulu. Shift ditutup setelah {{ shift.reviewer_label }} memutuskan; halaman ini diperbarui sendiri.</p>
                     <q-btn outline no-caps color="primary" icon="print" label="Cetak Laporan Shift" @click="printShiftReport" />
                 </section>
 
@@ -851,7 +866,7 @@ onBeforeUnmount(() => {
 
         <PaymentDialog v-model="isPaymentOpen" :total="paymentTotal" :payment-methods="payment_methods" :is-processing="isPaying" :split="splitForPayment" :collecting-order="collectingOrder" @confirm="submitSale" />
         <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :is-processing="isClosing" @confirm="closeShift" />
-        <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" :order="last_order" :is-printed-automatically="is_receipt_printed_automatically" @delivery="openDelivery" />
+        <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" :order="last_order" :is-printed-automatically="is_receipt_printed_automatically" @delivery="openDelivery" @hidden="focusSearchWhenFree" />
         <HeldCartsDialog v-model="isHeldOpen" :held-carts="heldCarts.held.value" @resume="resumeHeldCart" @discard="heldCarts.discard" />
         <ShiftClosedDialog v-model="isShiftClosedOpen" :shift-totals="closed_shift" />
         <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" @return="openReturn" />

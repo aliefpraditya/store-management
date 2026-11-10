@@ -4,7 +4,7 @@ import { router } from '@inertiajs/vue3';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 
 const props = defineProps({
-    /** @type {{id: number, code: string, name: string, carried_over_cash: string|null, busy_with: string|null}[]} */
+    /** @type {{id: number, code: string, name: string, carried_over_cash: string|null, busy_with: string|null, busy_note: string|null}[]} */
     registers: { type: Array, required: true },
     openUrl: { type: String, required: true },
     storeName: { type: String, required: true },
@@ -66,7 +66,7 @@ function openShift() {
                 <q-select
                     v-if="registers.length > 1"
                     v-model="registerId"
-                    :options="registers.map((candidate) => ({ label: `${candidate.code} · ${candidate.name}${candidate.busy_with ? ` (dipakai ${candidate.busy_with})` : ''}`, value: candidate.id }))"
+                    :options="registers.map((candidate) => ({ label: `${candidate.code} · ${candidate.name}${candidate.busy_note ? ` (${candidate.busy_note})` : ''}`, value: candidate.id }))"
                     emit-value
                     map-options
                     outlined

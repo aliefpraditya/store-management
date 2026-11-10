@@ -51,7 +51,7 @@ class SaleReturnException extends Exception
 
     public static function shiftNotOpen(): self
     {
-        return new self('Buka shift dulu untuk membuat retur.');
+        return new self('Buka shift dulu untuk membuat retur. '.ShiftException::AWAITING_REVIEW_HINT);
     }
 
     public static function noReturnsWarehouse(): self

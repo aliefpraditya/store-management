@@ -186,7 +186,7 @@ class ExpenseTest extends TestCase
         $this->closeShift($shift, '100000');
 
         $this->actingAs($this->admin)->post($this->url('store'), $this->body(['source' => 'drawer', 'cash_shift_id' => $shift->id]))
-            ->assertSessionHas('error', 'Buka shift dulu untuk mencatat pengeluaran dari laci kasir.');
+            ->assertSessionHas('error', 'Buka shift dulu untuk mencatat pengeluaran dari laci kasir. Bila shift Anda sudah dihitung, tunggu keputusan Admin.');
 
         $this->assertSame(0, $this->expenseCount());
     }

@@ -52,7 +52,7 @@ class CodSaleException extends Exception
 
     public static function shiftNeededForRefund(): self
     {
-        return new self('Nota ini sudah menerima DP tunai. Buka shift dulu untuk mengembalikannya dari laci.');
+        return new self('Nota ini sudah menerima DP tunai. Buka shift dulu untuk mengembalikannya dari laci. '.ShiftException::AWAITING_REVIEW_HINT);
     }
 
     public static function refundAccountNeeded(): self

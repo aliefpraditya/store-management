@@ -11,7 +11,7 @@ class ExpenseException extends Exception
 {
     public static function shiftNotOpen(): self
     {
-        return new self('Buka shift dulu untuk mencatat pengeluaran dari laci kasir.');
+        return new self('Buka shift dulu untuk mencatat pengeluaran dari laci kasir. '.ShiftException::AWAITING_REVIEW_HINT);
     }
 
     public static function categoryInactive(): self

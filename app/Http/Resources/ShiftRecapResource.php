@@ -18,6 +18,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * taken from its drawer. Expects `register`, and the `summary`, `returns` and `expenses` that the controller works out
  * and hands in (the expenses with their `category`). The cashier screen has its own, smaller {@see CashShiftResource}.
  *
+ * A shift that is still running shows its receipt counts and nothing in money (`is_cash_hidden`): the drawer is counted
+ * blind, and an admin who can read the expected cash of a running shift could type it in as the count of their own.
+ *
  * @mixin CashShift
  */
 class ShiftRecapResource extends JsonResource
@@ -26,9 +29,15 @@ class ShiftRecapResource extends JsonResource
      * @param  array<string, mixed>  $summary  {@see ShiftService::summarize()}
      * @param  iterable<SaleReturn>  $returns
      * @param  iterable<Expense>  $expenses
+     * @param  string|null  $decisionBlockedReason  why the viewer may not decide the difference, null when they may
      */
-    public function __construct(CashShift $resource, private readonly array $summary, private readonly iterable $returns, private readonly iterable $expenses)
-    {
+    public function __construct(
+        CashShift $resource,
+        private readonly array $summary,
+        private readonly iterable $returns,
+        private readonly iterable $expenses,
+        private readonly ?string $decisionBlockedReason = null,
+    ) {
         parent::__construct($resource);
     }
 
@@ -37,7 +46,8 @@ class ShiftRecapResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $isCounted = $this->status !== CashShiftStatus::Open;
+        $isCashHidden = $this->status === CashShiftStatus::Open;
+        $isDifferencePending = $this->difference_status === ShiftDifferenceStatus::PendingApproval;
 
         return [
             'id' => $this->id,
@@ -46,12 +56,12 @@ class ShiftRecapResource extends JsonResource
             'register_name' => $this->register->name,
             'cashier_name' => $this->cashier_name,
             'opened_at' => $this->opened_at->toIso8601String(),
+            'counted_at' => $this->counted_at?->toIso8601String(),
             'closed_at' => $this->closed_at?->toIso8601String(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
             'opening_cash' => $this->opening_cash,
             'opening_cash_note' => $this->opening_cash_note,
-            'expected_cash' => $isCounted ? $this->expected_cash : $this->summary['expected_cash'],
             'counted_cash' => $this->counted_cash,
             'cash_difference' => $this->cash_difference,
             'deposit_amount' => $this->deposit_amount,
@@ -62,9 +72,39 @@ class ShiftRecapResource extends JsonResource
             'decided_by_name' => $this->difference_approved_by === null ? null : User::query()->find($this->difference_approved_by)?->name,
             'decided_at' => $this->difference_approved_at?->toIso8601String(),
             'approval_note' => $this->approval_note,
+            'reviewer_label' => $this->cashierRole()->reviewerLabel(),
             'is_own_shift' => $this->cashier_id === $request->user()->id,
-            'can_decide' => $this->difference_status === ShiftDifferenceStatus::PendingApproval && $request->user()->canDecideDifferenceOf($this->resource),
+            'can_decide' => $isDifferencePending && $this->decisionBlockedReason === null,
+            'decision_blocked_reason' => $isDifferencePending ? $this->decisionBlockedReason : null,
+            'can_close' => $this->status === CashShiftStatus::Open && $this->cashier_id !== $request->user()->id,
+            'is_cash_hidden' => $isCashHidden,
             'sale_count' => $this->summary['sale_count'],
+            ...($isCashHidden ? $this->hiddenCashFigures() : $this->cashFigures()),
+        ];
+    }
+
+    /**
+     * What a running shift gives away: the number of its COD receipts, and no list or amount of money.
+     *
+     * @return array<string, mixed>
+     */
+    private function hiddenCashFigures(): array
+    {
+        return [
+            'cod' => ['delivered' => ['count' => $this->summary['cod']['delivered']['count']], 'undelivered' => ['count' => $this->summary['cod']['undelivered']['count']]],
+            'payments' => [],
+            'returns' => [],
+            'expenses' => [],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function cashFigures(): array
+    {
+        return [
+            'expected_cash' => $this->expected_cash,
             'total_sales' => $this->summary['total_sales'],
             'returns_total' => $this->summary['returns_total'],
             'cash_refunds' => $this->summary['cash_refunds'],

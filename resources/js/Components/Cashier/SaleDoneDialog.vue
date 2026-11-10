@@ -16,7 +16,7 @@ const props = defineProps({
     isPrintedAutomatically: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['update:modelValue', 'delivery']);
+const emit = defineEmits(['update:modelValue', 'delivery', 'hidden']);
 
 const $q = useQuasar();
 
@@ -134,7 +134,7 @@ async function printNote(note) {
 </script>
 
 <template>
-    <q-dialog :model-value="modelValue" persistent @update:model-value="emit('update:modelValue', $event)">
+    <q-dialog :model-value="modelValue" persistent @update:model-value="emit('update:modelValue', $event)" @hide="emit('hidden')">
         <q-card v-if="sale || order" class="done">
             <q-card-section v-if="sale?.is_cod" class="done__cod">
                 <span>COD, ditagih saat barang diantar</span>

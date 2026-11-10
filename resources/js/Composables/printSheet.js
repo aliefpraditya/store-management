@@ -1,6 +1,21 @@
 /** The hidden frame of the sheet being printed; the next print replaces it. */
 let printFrame = null;
 
+/** Fired on the window once a sheet has been printed (or its print dialog closed), for a screen that wants its focus back. */
+export const SHEET_PRINTED_EVENT = 'sheet-printed';
+
+/**
+ * The print dialog leaves the keyboard focus in the hidden frame, so the frame goes and the page takes the focus back
+ * before the screen is told.
+ *
+ * @param {HTMLIFrameElement} frame
+ */
+function finishPrint(frame) {
+    frame.remove();
+    window.focus();
+    window.dispatchEvent(new Event(SHEET_PRINTED_EVENT));
+}
+
 /**
  * Prints a sheet from a hidden frame of the page the user is on, so the screen stays where it is.
  *
@@ -25,7 +40,7 @@ export async function printSheet(prepareSheetUrl) {
     frame.tabIndex = -1;
     frame.setAttribute('aria-hidden', 'true');
     frame.style.cssText = 'position: fixed; right: 0; bottom: 0; width: 1px; height: 1px; border: 0; opacity: 0; pointer-events: none;';
-    frame.addEventListener('load', () => frame.contentWindow?.addEventListener('afterprint', () => frame.remove()), { once: true });
+    frame.addEventListener('load', () => frame.contentWindow?.addEventListener('afterprint', () => finishPrint(frame)), { once: true });
 
     document.body.appendChild(frame);
     printFrame = frame;

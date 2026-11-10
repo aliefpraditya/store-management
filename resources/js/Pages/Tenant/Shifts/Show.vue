@@ -1,7 +1,8 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
+import CloseShiftDialog from '../../../Components/Cashier/CloseShiftDialog.vue';
 import { printSheet } from '../../../Composables/printSheet';
 import { formatDeduction, formatRupiah } from '../../../Composables/useMoneyFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -52,6 +53,26 @@ function decide(url, isApproval) {
 /** The end-of-shift report with every figure, from a hidden frame; a shift still running has none. */
 const printReport = () => printSheet(() => props.shift.urls.sheet);
 
+const isCloseOpen = ref(false);
+const isClosing = ref(false);
+
+/** What the closing dialog needs (counts only, as at the till): the drawer of a shift the cashier forgot is counted blind too. */
+const closeSummary = computed(() => ({
+    sale_count: props.shift.sale_count,
+    cod: { delivered_count: props.shift.cod.delivered.count, undelivered_count: props.shift.cod.undelivered.count },
+    opening_cash: props.shift.opening_cash,
+}));
+
+/** Closes a shift the cashier forgot, with the drawer counted by this admin. The deciding of a difference then falls to someone else. */
+function closeShift(closing) {
+    router.post(props.shift.urls.close, closing, {
+        preserveScroll: true,
+        onStart: () => (isClosing.value = true),
+        onFinish: () => (isClosing.value = false),
+        onSuccess: () => (isCloseOpen.value = false),
+    });
+}
+
 function sendDecision(url) {
     router.post(url, { note: note.value }, {
         preserveScroll: true,
@@ -71,6 +92,7 @@ function sendDecision(url) {
         </template>
 
         <template #actions>
+            <q-btn v-if="shift.can_close" outline no-caps color="negative" icon="lock" label="Tutup Shift" class="q-mr-sm" @click="isCloseOpen = true" />
             <q-btn v-if="shift.status !== 'open'" outline no-caps icon="print" label="Cetak Laporan Shift" @click="printReport" />
         </template>
 
@@ -81,6 +103,7 @@ function sendDecision(url) {
                     <small>{{ shift.register_name }} · {{ shift.cashier_name }} · {{ dateFormat.format(new Date(shift.business_date)) }}</small>
                     <small>
                         Buka {{ dateTimeFormat.format(new Date(shift.opened_at)) }}
+                        <template v-if="shift.counted_at"> · dihitung {{ dateTimeFormat.format(new Date(shift.counted_at)) }}</template>
                         <template v-if="shift.closed_at"> · tutup {{ dateTimeFormat.format(new Date(shift.closed_at)) }}</template>
                     </small>
                 </div>
@@ -90,21 +113,28 @@ function sendDecision(url) {
             <h2>Penjualan</h2>
             <dl class="rows">
                 <div><dt>Jumlah nota</dt><dd>{{ shift.sale_count }}</dd></div>
-                <div><dt>Total penjualan</dt><dd>{{ formatRupiah(shift.total_sales) }}</dd></div>
-                <div v-for="payment in shift.payments" :key="payment.method">
-                    <dt>{{ payment.method }}<small v-if="payment.method === 'Tunai'"> (setelah kembalian)</small></dt>
-                    <dd>{{ formatRupiah(payment.amount) }}</dd>
-                </div>
-                <div v-if="Number(shift.void_deposits) > 0"><dt>Sudah termasuk DP nota void<small> (uang yang sempat masuk, nota kemudian di-void)</small></dt><dd>{{ formatRupiah(shift.void_deposits) }}</dd></div>
-                <div v-if="Number(shift.returns_total) > 0"><dt>Retur disetujui</dt><dd>{{ formatRupiah(shift.returns_total) }}</dd></div>
-                <template v-if="shift.cod.delivered.count + shift.cod.undelivered.count > 0">
-                    <div><dt>COD sudah diantar ({{ shift.cod.delivered.count }} nota)<small> (tidak masuk laci)</small></dt><dd>{{ formatRupiah(shift.cod.delivered.amount) }}</dd></div>
-                    <div><dt>COD belum diantar ({{ shift.cod.undelivered.count }} nota)<small> (tidak masuk laci)</small></dt><dd>{{ formatRupiah(shift.cod.undelivered.amount) }}</dd></div>
+                <template v-if="!shift.is_cash_hidden">
+                    <div><dt>Total penjualan</dt><dd>{{ formatRupiah(shift.total_sales) }}</dd></div>
+                    <div v-for="payment in shift.payments" :key="payment.method">
+                        <dt>{{ payment.method }}<small v-if="payment.method === 'Tunai'"> (setelah kembalian)</small></dt>
+                        <dd>{{ formatRupiah(payment.amount) }}</dd>
+                    </div>
+                    <div v-if="Number(shift.void_deposits) > 0"><dt>Sudah termasuk DP nota void<small> (uang yang sempat masuk, nota kemudian di-void)</small></dt><dd>{{ formatRupiah(shift.void_deposits) }}</dd></div>
+                    <div v-if="Number(shift.returns_total) > 0"><dt>Retur disetujui</dt><dd>{{ formatRupiah(shift.returns_total) }}</dd></div>
+                    <template v-if="shift.cod.delivered.count + shift.cod.undelivered.count > 0">
+                        <div><dt>COD sudah diantar ({{ shift.cod.delivered.count }} nota)<small> (tidak masuk laci)</small></dt><dd>{{ formatRupiah(shift.cod.delivered.amount) }}</dd></div>
+                        <div><dt>COD belum diantar ({{ shift.cod.undelivered.count }} nota)<small> (tidak masuk laci)</small></dt><dd>{{ formatRupiah(shift.cod.undelivered.amount) }}</dd></div>
+                    </template>
+                </template>
+                <template v-else-if="shift.cod.delivered.count + shift.cod.undelivered.count > 0">
+                    <div><dt>Nota COD sudah diantar</dt><dd>{{ shift.cod.delivered.count }}</dd></div>
+                    <div><dt>Nota COD belum diantar</dt><dd>{{ shift.cod.undelivered.count }}</dd></div>
                 </template>
             </dl>
+            <p v-if="shift.is_cash_hidden" class="shift__note">Shift ini masih berjalan. Angka penjualan dan kas baru tampil setelah kasir menghitung laci, supaya hitungan tetap buta.</p>
 
-            <h2>Kas</h2>
-            <dl class="rows">
+            <h2 v-if="!shift.is_cash_hidden">Kas</h2>
+            <dl v-if="!shift.is_cash_hidden" class="rows">
                 <div><dt>Modal kas awal</dt><dd>{{ formatRupiah(shift.opening_cash) }}</dd></div>
                 <div v-if="Number(shift.order_deposit_cash) !== 0"><dt>DP pesanan tunai<small> (setelah DP yang dikembalikan)</small></dt><dd>{{ formatRupiah(shift.order_deposit_cash) }}</dd></div>
                 <div v-if="Number(shift.cash_refunds) > 0"><dt>Retur tunai</dt><dd class="rows__minus">{{ formatDeduction(shift.cash_refunds) }}</dd></div>
@@ -151,9 +181,9 @@ function sendDecision(url) {
                     <span class="chip" :class="differenceChipClass[shift.difference_status]">{{ shift.difference_status_label }}</span>
                 </h2>
 
-                <p v-if="shift.is_own_shift && !shift.can_decide && shift.difference_status === 'pending_approval'" class="decide__own">Selisih ini dari shift Anda sendiri, jadi diputuskan Admin lain atau Super Admin.</p>
+                <p v-if="shift.decision_blocked_reason" class="decide__own">{{ shift.decision_blocked_reason }}</p>
                 <div v-else-if="shift.can_decide" class="decide">
-                    <p>Selisih {{ formatRupiah(shift.cash_difference) }}. Setujui bila selisihnya wajar, atau minta kasir menanggungnya (berita acara dibuat di luar sistem dan uangnya diganti kasir). Shift baru benar-benar tertutup setelah Anda memutuskan.</p>
+                    <p>Selisih {{ formatRupiah(shift.cash_difference) }}. Setujui bila selisihnya wajar, atau minta kasir menanggungnya (berita acara dibuat di luar sistem dan uangnya diganti kasir). Shift baru benar-benar tertutup setelah Anda memutuskan.<template v-if="shift.is_own_shift"> Shift ini milik Anda sendiri; sebagai Super Admin Anda memutuskannya sendiri.</template></p>
                     <q-input v-model="note" type="textarea" autogrow outlined label="Catatan keputusan (mis. nomor berita acara)" :error="errorMessage !== ''" :error-message="errorMessage" @update:model-value="errorMessage = ''" />
                     <div class="decide__actions">
                         <q-btn outline no-caps color="negative" label="Ditanggung kasir" :loading="isDeciding" @click="decide(shift.urls.reject, false)" />
@@ -172,6 +202,8 @@ function sendDecision(url) {
                 </div>
             </template>
         </article>
+
+        <CloseShiftDialog v-if="shift.can_close" v-model="isCloseOpen" :summary="closeSummary" :is-processing="isClosing" @confirm="closeShift" />
     </StoreLayout>
 </template>
 

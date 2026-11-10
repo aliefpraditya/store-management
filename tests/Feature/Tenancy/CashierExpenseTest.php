@@ -129,7 +129,7 @@ class CashierExpenseTest extends TestCase
 
         $this->actingAs($this->cashier)->postJson($this->url('expenses.store'), $this->body())->assertStatus(409)
             ->assertJsonPath('code', ApiErrorCode::ShiftNotOpen->value)
-            ->assertJsonPath('message', 'Buka shift dulu untuk mencatat pengeluaran dari laci kasir.')
+            ->assertJsonPath('message', 'Buka shift dulu untuk mencatat pengeluaran dari laci kasir. Bila shift Anda sudah dihitung, tunggu keputusan Admin.')
             ->assertJsonStructure(['code', 'message', 'more_info']);
         $this->actingAs($this->cashier)->getJson($this->url('expenses.index'))->assertStatus(409)->assertJsonPath('code', ApiErrorCode::ShiftNotOpen->value);
 

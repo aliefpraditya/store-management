@@ -40,15 +40,15 @@ class CashierController extends Controller
 
         return Inertia::render('Tenant/Cashier/Index', [
             'shift' => $shift === null ? null : CashShiftResource::make($shift)->resolve(),
-            'summary' => $shift === null ? null : $this->shiftService->summarizeForCashier($shift),
-            'registers' => $shift === null ? $this->registersToOpen() : [],
+            'summary' => fn () => $shift === null || $shift->status === CashShiftStatus::PendingReview ? null : $this->shiftService->summarizeForCashier($shift),
+            'registers' => fn () => $shift === null ? $this->registersToOpen() : [],
             'payment_methods' => PaymentMethod::saleOptions(),
             'last_sale' => fn () => $request->session()->pull('last_sale'),
             'last_order' => fn () => $request->session()->pull('last_order'),
-            'best_sellers' => $shift === null ? [] : $this->catalog->bestSellers($shift->register->warehouse_id),
+            'best_sellers' => fn () => $shift === null ? [] : $this->catalog->bestSellers($shift->register->warehouse_id),
             'is_receipt_printed_automatically' => $this->settings->isReceiptPrintedAutomatically(),
-            'order_counts' => $this->customerOrders->badgeCounts(),
-            'pending_return_count' => $shift === null ? 0 : SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Pending)->count(),
+            'order_counts' => fn () => $this->customerOrders->badgeCounts(),
+            'pending_return_count' => fn () => $shift === null ? 0 : SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Pending)->count(),
             'closed_shift' => fn () => $request->session()->pull('closed_shift'),
             'can_leave_to_dashboard' => $request->user()->isAdminIn($store),
             'urls' => [
@@ -69,19 +69,31 @@ class CashierController extends Controller
     }
 
     /**
-     * @return list<array{id: int, code: string, name: string, carried_over_cash: string|null, busy_with: string|null}>
+     * A register is busy while a shift on it is open or counted and waiting for review: `busy_with` is that cashier and
+     * `busy_note` says which of the two it is.
+     *
+     * @return list<array{id: int, code: string, name: string, carried_over_cash: string|null, busy_with: string|null, busy_note: string|null}>
      */
     private function registersToOpen(): array
     {
-        $openShifts = CashShift::query()->where('status', CashShiftStatus::Open)->pluck('cashier_name', 'register_id');
+        $heldShifts = CashShift::query()->whereIn('status', [CashShiftStatus::Open, CashShiftStatus::PendingReview])->get()->keyBy('register_id');
 
         return Register::query()->where('is_active', true)->orderBy('code')->get()
-            ->map(fn (Register $register): array => [
-                'id' => $register->id,
-                'code' => $register->code,
-                'name' => $register->name,
-                'carried_over_cash' => $this->shiftService->carriedOverCash($register),
-                'busy_with' => $openShifts[$register->id] ?? null,
-            ])->all();
+            ->map(function (Register $register) use ($heldShifts): array {
+                $heldShift = $heldShifts->get($register->id);
+
+                return [
+                    'id' => $register->id,
+                    'code' => $register->code,
+                    'name' => $register->name,
+                    'carried_over_cash' => $this->shiftService->carriedOverCash($register),
+                    'busy_with' => $heldShift?->cashier_name,
+                    'busy_note' => match ($heldShift?->status) {
+                        CashShiftStatus::Open => "dipakai {$heldShift->cashier_name}",
+                        CashShiftStatus::PendingReview => "menunggu review, shift {$heldShift->cashier_name}",
+                        default => null,
+                    },
+                ];
+            })->all();
     }
 }
