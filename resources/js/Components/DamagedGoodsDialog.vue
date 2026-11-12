@@ -1,46 +1,85 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { marginFromPrice } from '../Composables/usePriceMargin';
-import { formatQuantity } from '../Composables/useQuantityFormat';
+import { formatQuantity, formatStock } from '../Composables/useQuantityFormat';
+import { baseQuantityOf, sealedPacksOf, splitIntoParts } from '../Composables/useUnitParts';
+import UnitPartsInput from './UnitPartsInput.vue';
 
 const props = defineProps({
     modelValue: { type: Boolean, required: true },
     /**
-     * The item being decided: its product, base unit, the shortage found (positive) and what the server knows about its
-     * DG product: the SKU it would take, a reason it cannot have one, and the price it has now.
-     * @type {{productName: string, baseUnit: string, shortage: number, damagedGoodsSku: string, damagedGoodsProblem: string|null, existingName: string|null, existingSku: string|null, existingPrice: string|null, originalCost: string|null, originalPrice: string|null, isReturn?: boolean}|null}
+     * The item being decided: its product, units, the shortage found (positive, in the base unit) and what the server knows
+     * about its DG product: the SKU it would take, a reason it cannot have one, and the price it has now. `countedPacks` is
+     * how many whole sealed packs (rolls) the shortage holds, for a product that has such a unit, and `maxPacks` how many whole
+     * packs the decision can divide in all (null for a product without a sealed pack unit).
+     * @type {{productName: string, baseUnit: string, units: {code: string, conversion_factor: string, is_sealed_pack?: boolean}[], shortage: number, countedPacks?: number|null, maxPacks?: number|null, damagedGoodsSku: string, damagedGoodsProblem: string|null, existingName: string|null, existingSku: string|null, existingPrice: string|null, originalCost: string|null, originalPrice: string|null, isReturn?: boolean}|null}
      */
     item: { type: Object, default: null },
-    /** The decision typed so far, to start from. @type {{dead: string, dg: string, full: string, price: string}} */
+    /**
+     * The decision typed so far, to start from; the `...Packs` are how many whole sealed packs each part holds ('' when not said).
+     * @type {{dead: string, dg: string, full: string, price: string, deadPacks?: string, dgPacks?: string, fullPacks?: string}}
+     */
     decision: { type: Object, default: () => ({ dead: '', dg: '', full: '', price: '' }) },
 });
 
 const emit = defineEmits(['update:modelValue', 'save']);
 
-const dead = ref('');
-const dg = ref('');
-const full = ref('');
+/**
+ * Each place the units can go is typed in any of the product's units (1 ROL + 30 MTR). The decision is sent as the quantity in
+ * the base unit and how many of it are whole sealed packs, so a roll sent to dead stock or DG stays a roll there.
+ */
+const deadParts = ref([]);
+const dgParts = ref([]);
+const fullParts = ref([]);
 const price = ref('');
+
+const isSealedPackProduct = computed(() => props.item?.units.some((unit) => unit.is_sealed_pack) ?? false);
+
+/** @param {string|undefined} packs the saved number of whole packs, '' or undefined when it was not said */
+const packsOrNull = (packs) => (packs === undefined || packs === '' || !isSealedPackProduct.value ? null : Number(packs));
+
+const partsOf = (baseQuantity, packs = null) => splitIntoParts(baseQuantity, props.item.units, props.item.baseUnit, packs);
 
 watch(
     () => props.modelValue,
     (isOpen) => {
         if (isOpen) {
-            dead.value = props.decision.dead;
-            dg.value = props.decision.dg;
-            full.value = props.decision.full;
+            deadParts.value = partsOf(props.decision.dead, packsOrNull(props.decision.deadPacks));
+            dgParts.value = partsOf(props.decision.dg, packsOrNull(props.decision.dgPacks));
+            fullParts.value = partsOf(props.decision.full, packsOrNull(props.decision.fullPacks));
             price.value = props.decision.price;
         }
     },
 );
 
+const baseOf = (parts) => baseQuantityOf(parts, props.item?.units ?? []);
+
+const dead = computed(() => baseOf(deadParts.value));
+const dg = computed(() => baseOf(dgParts.value));
+const full = computed(() => baseOf(fullParts.value));
+
+const deadPacks = computed(() => sealedPacksOf(deadParts.value, props.item?.units ?? []));
+const dgPacks = computed(() => sealedPacksOf(dgParts.value, props.item?.units ?? []));
+const fullPacks = computed(() => sealedPacksOf(fullParts.value, props.item?.units ?? []));
+
+const typedPacks = computed(() => (isSealedPackProduct.value ? [deadPacks.value, dgPacks.value, fullPacks.value] : []));
+
+const arePacksWhole = computed(() => typedPacks.value.every((packs) => Number.isInteger(packs)));
+
+const isOverPacks = computed(() => isSealedPackProduct.value && typedPacks.value.reduce((sum, packs) => sum + packs, 0) > (props.item?.maxPacks ?? 0));
+
+const packUnitCode = computed(() => props.item?.units.find((unit) => unit.is_sealed_pack)?.code ?? '');
+
+/** A quantity in the base unit written in the product's units, e.g. 130 as "1 ROL + 30 MTR". */
+const textOf = (baseQuantity, packs = null) => (props.item.units.length > 1 ? formatStock(baseQuantity, props.item.units, props.item.baseUnit, packs) : `${formatQuantity(baseQuantity)} ${props.item.baseUnit}`);
+
 const number = (value) => (value === '' || value === null ? 0 : Number(value));
 
-const decided = computed(() => Math.round((number(dead.value) + number(dg.value) + number(full.value)) * 1000) / 1000);
+const decided = computed(() => Math.round((dead.value + dg.value + full.value) * 1000) / 1000);
 
 const remaining = computed(() => Math.round(((props.item?.shortage ?? 0) - decided.value) * 1000) / 1000);
 
-const hasDamagedGoods = computed(() => number(dg.value) > 0);
+const hasDamagedGoods = computed(() => dg.value > 0);
 
 const isDamagedGoodsBlocked = computed(() => hasDamagedGoods.value && props.item?.damagedGoodsProblem !== null);
 
@@ -56,19 +95,34 @@ const hintOfPrice = computed(() => {
     return margin + other;
 });
 
-const canSave = computed(() => remaining.value === 0 && !isDamagedGoodsBlocked.value && (!hasDamagedGoods.value || (price.value !== '' && number(price.value) >= 0)));
+const canSave = computed(
+    () => remaining.value === 0 && arePacksWhole.value && !isOverPacks.value && !isDamagedGoodsBlocked.value && (!hasDamagedGoods.value || (price.value !== '' && number(price.value) >= 0)),
+);
 
-/** Puts the whole shortage in one place, the quick answer when nothing is split. */
+/** Puts the whole shortage in one place, the quick answer when nothing is split; the whole packs there are go along with it. */
 function putAllIn(target) {
-    const all = String(props.item.shortage);
+    const packFactor = Number(props.item.units.find((unit) => unit.is_sealed_pack)?.conversion_factor ?? 0);
+    const allPacks = isSealedPackProduct.value ? Math.min(props.item.maxPacks ?? 0, Math.floor(props.item.shortage / packFactor + 1e-9)) : null;
+    const all = partsOf(String(props.item.shortage), allPacks);
+    const none = partsOf('0', isSealedPackProduct.value ? 0 : null);
 
-    dead.value = target === 'dead' ? all : '0';
-    dg.value = target === 'dg' ? all : '0';
-    full.value = target === 'full' ? all : '0';
+    deadParts.value = target === 'dead' ? all : none;
+    dgParts.value = target === 'dg' ? all : none;
+    fullParts.value = target === 'full' ? all : none;
 }
 
+const packsText = (packs) => (isSealedPackProduct.value ? String(packs) : '');
+
 function save() {
-    emit('save', { dead: String(number(dead.value)), dg: String(number(dg.value)), full: String(number(full.value)), price: hasDamagedGoods.value ? String(price.value) : '' });
+    emit('save', {
+        dead: String(dead.value),
+        dg: String(dg.value),
+        full: String(full.value),
+        price: hasDamagedGoods.value ? String(price.value) : '',
+        deadPacks: packsText(deadPacks.value),
+        dgPacks: packsText(dgPacks.value),
+        fullPacks: packsText(fullPacks.value),
+    });
     emit('update:modelValue', false);
 }
 </script>
@@ -78,13 +132,13 @@ function save() {
         <q-card v-if="item" class="damaged">
             <q-card-section>
                 <div class="damaged__title">{{ item.isReturn ? 'Keputusan barang retur' : 'Keputusan barang rusak' }}</div>
-                <small v-if="item.isReturn" class="damaged__hint">{{ item.productName }} dihitung {{ formatQuantity(item.shortage) }} {{ item.baseUnit }} di gudang retur. Tentukan ke mana semuanya pergi sampai pas.</small>
-                <small v-else class="damaged__hint">{{ item.productName }} kurang {{ formatQuantity(item.shortage) }} {{ item.baseUnit }}. Bagi jumlah itu sampai pas.</small>
+                <small v-if="item.isReturn" class="damaged__hint">{{ item.productName }} dihitung {{ textOf(item.shortage, item.countedPacks ?? null) }} di gudang retur. Tentukan ke mana semuanya pergi sampai pas.</small>
+                <small v-else class="damaged__hint">{{ item.productName }} kurang {{ textOf(item.shortage) }}. Bagi jumlah itu sampai pas.</small>
             </q-card-section>
 
             <q-card-section class="damaged__fields">
-                <q-input v-model="dead" type="number" min="0" step="any" outlined dense :suffix="item.baseUnit" label="Masuk dead stock" hint="Tidak dijual di kasir." />
-                <q-input v-model="dg" type="number" min="0" step="any" outlined dense :suffix="item.baseUnit" label="Dijual sebagai barang DG" :hint="item.damagedGoodsProblem ? `Tidak bisa: ${item.damagedGoodsProblem}` : `Jadi barang baru ${item.damagedGoodsSku}.`" :error="isDamagedGoodsBlocked" />
+                <UnitPartsInput v-model="deadParts" :units="item.units" label="Masuk dead stock" hint="Tidak dijual di kasir." />
+                <UnitPartsInput v-model="dgParts" :units="item.units" label="Dijual sebagai barang DG" :hint="item.damagedGoodsProblem ? `Tidak bisa: ${item.damagedGoodsProblem}` : `Jadi barang baru ${item.damagedGoodsSku}.`" :is-error="isDamagedGoodsBlocked" />
                 <template v-if="hasDamagedGoods && !item.damagedGoodsProblem">
                     <div v-if="item.existingSku" class="damaged__existing">
                         Barang DG sudah ada: <b>{{ item.existingName }}</b> ({{ item.existingSku }}).
@@ -98,7 +152,12 @@ function save() {
                     </div>
                     <q-input v-model="price" type="number" min="0" step="any" outlined dense prefix="Rp" :label="`Harga jual DG per ${item.baseUnit}`" :hint="hintOfPrice" />
                 </template>
-                <q-input v-model="full" type="number" min="0" step="any" outlined dense :suffix="item.baseUnit" :label="item.isReturn ? 'Kembali ke stok jual' : 'Layak jual harga penuh'" :hint="item.isReturn ? 'Masih bagus, dikembalikan ke gudang asal barang.' : 'Ternyata tidak rusak, tetap di stok jual.'" />
+                <UnitPartsInput
+                    v-model="fullParts"
+                    :units="item.units"
+                    :label="item.isReturn ? 'Kembali ke stok jual' : 'Layak jual harga penuh'"
+                    :hint="item.isReturn ? 'Masih bagus, dikembalikan ke gudang asal barang.' : 'Ternyata tidak rusak, tetap di stok jual.'"
+                />
 
                 <div class="damaged__quick">
                     <q-btn flat dense no-caps size="sm" color="primary" label="Semua dead stock" @click="putAllIn('dead')" />
@@ -106,9 +165,13 @@ function save() {
                 </div>
 
                 <div class="damaged__remaining" :class="{ 'damaged__remaining--ok': remaining === 0 }">
-                    <template v-if="remaining === 0">Pas: semua {{ formatQuantity(item.shortage) }} {{ item.baseUnit }} sudah dibagi.</template>
-                    <template v-else-if="remaining > 0">Belum dibagi: {{ formatQuantity(remaining) }} {{ item.baseUnit }}</template>
-                    <template v-else>Kelebihan: {{ formatQuantity(-remaining) }} {{ item.baseUnit }}</template>
+                    <template v-if="remaining === 0">Pas: semua {{ textOf(item.shortage, item.countedPacks ?? null) }} sudah dibagi.</template>
+                    <template v-else-if="remaining > 0">Belum dibagi: {{ textOf(remaining) }}</template>
+                    <template v-else>Kelebihan: {{ textOf(-remaining) }}</template>
+                </div>
+                <div v-if="isSealedPackProduct && (!arePacksWhole || isOverPacks)" class="damaged__remaining">
+                    <template v-if="!arePacksWhole">{{ packUnitCode }} harus bilangan bulat; sisa potongan ditulis dalam satuan yang lebih kecil.</template>
+                    <template v-else>{{ packUnitCode }} utuh yang dibagi melebihi yang ada ({{ item.maxPacks ?? 0 }} {{ packUnitCode }}). Potongan yang sudah terpakai tidak bisa jadi {{ packUnitCode }} lagi.</template>
                 </div>
             </q-card-section>
 

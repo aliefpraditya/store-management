@@ -31,6 +31,7 @@ class SaveStockOpnameReviewRequest extends FormRequest
     public function rules(): array
     {
         $quantity = ['nullable', 'numeric', 'min:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'];
+        $packs = ['nullable', 'integer', 'min:0', 'max:'.self::MAX_QUANTITY];
 
         return [
             'rows' => ['required', 'array', 'min:1'],
@@ -42,6 +43,9 @@ class SaveStockOpnameReviewRequest extends FormRequest
             'rows.*.damaged_goods_quantity' => $quantity,
             'rows.*.full_price_quantity' => $quantity,
             'rows.*.damaged_goods_price' => ['nullable', 'numeric', 'min:0', 'max:'.self::MAX_PRICE, 'decimal:0,2'],
+            'rows.*.dead_stock_packs' => $packs,
+            'rows.*.damaged_goods_packs' => $packs,
+            'rows.*.full_price_packs' => $packs,
         ];
     }
 
@@ -100,6 +104,9 @@ class SaveStockOpnameReviewRequest extends FormRequest
             'rows.*.full_price_quantity.numeric' => 'Jumlah layak jual penuh harus berupa angka.',
             'rows.*.full_price_quantity.min' => 'Jumlah layak jual penuh tidak boleh negatif.',
             'rows.*.full_price_quantity.decimal' => 'Jumlah layak jual penuh maksimal 3 angka desimal.',
+            'rows.*.dead_stock_packs.integer' => 'Jumlah rol utuh dead stock harus bilangan bulat.',
+            'rows.*.damaged_goods_packs.integer' => 'Jumlah rol utuh barang DG harus bilangan bulat.',
+            'rows.*.full_price_packs.integer' => 'Jumlah rol utuh yang kembali ke stok jual harus bilangan bulat.',
             'rows.*.damaged_goods_price.numeric' => 'Harga jual barang DG harus berupa angka.',
             'rows.*.damaged_goods_price.min' => 'Harga jual barang DG tidak boleh negatif.',
             'rows.*.damaged_goods_price.decimal' => 'Harga jual barang DG maksimal 2 angka desimal.',

@@ -96,7 +96,8 @@ function typedCountOf(item) {
 /**
  * What the admin decides while reviewing the variances, per item id: the reason, a note, whether the item is reviewed, and
  * for damaged goods where the units go (dead stock, DG product with its price per base unit, full price).
- * @type {import('vue').Ref<Record<number, {reason_id: number|null, note: string, is_reviewed: boolean, dead: string, dg: string, full: string, price: string}>>}
+ * The `...Packs` say how many whole sealed packs (rolls) each of the three parts holds, '' when they were not said.
+ * @type {import('vue').Ref<Record<number, {reason_id: number|null, note: string, is_reviewed: boolean, dead: string, dg: string, full: string, price: string, deadPacks: string, dgPacks: string, fullPacks: string}>>}
  */
 const reviews = ref({});
 
@@ -114,6 +115,9 @@ function reviewOf(item) {
         dg: textOf(item.damage?.damaged_goods_quantity),
         full: textOf(item.damage?.full_price_quantity),
         price: textOf(item.damage?.damaged_goods_price ?? item.damage?.existing?.price),
+        deadPacks: textOf(item.damage?.dead_stock_packs),
+        dgPacks: textOf(item.damage?.damaged_goods_packs),
+        fullPacks: textOf(item.damage?.full_price_packs),
     };
 }
 
@@ -212,7 +216,7 @@ function changeReason(item) {
     const row = reviews.value[item.id];
 
     if (!isDamagedReason(item)) {
-        Object.assign(row, { dead: '', dg: '', full: '', price: '' });
+        Object.assign(row, { dead: '', dg: '', full: '', price: '', deadPacks: '', dgPacks: '', fullPacks: '' });
     }
 
     row.is_reviewed = isReviewable(item);
@@ -222,6 +226,25 @@ function markAllReviewed() {
     props.items.data.filter(isReviewable).forEach((item) => {
         reviews.value[item.id].is_reviewed = true;
     });
+}
+
+/**
+ * How many whole sealed packs (rolls) the decision of the item can send on: the rolls counted in a returns warehouse, or the
+ * rolls a routine count found missing from the shelf. The same rule the server checks when posting.
+ * @returns {number|null} null for a product without a sealed pack unit
+ */
+function packsToDivideOf(item) {
+    const sealedPackUnit = item.units.find((unit) => unit.is_sealed_pack);
+
+    if (!sealedPackUnit) {
+        return null;
+    }
+
+    const factor = Number(sealedPackUnit.conversion_factor);
+    const systemPacks = item.system_intact_packs ?? 0;
+    const countedPacks = Math.min(item.counted_packs ?? systemPacks, Math.floor(Number(item.counted_quantity ?? 0) / factor + 1e-9));
+
+    return props.opname.is_returns_check ? countedPacks : Math.max(0, systemPacks - countedPacks);
 }
 
 const damageDialog = ref({ isOpen: false, itemId: null });
@@ -236,7 +259,10 @@ const damageDialogItem = computed(() => {
     return {
         productName: item.product.name,
         baseUnit: item.base_unit,
+        units: item.units,
         shortage: shortageOf(item),
+        countedPacks: props.opname.is_returns_check ? item.counted_packs : null,
+        maxPacks: packsToDivideOf(item),
         isReturn: props.opname.is_returns_check,
         damagedGoodsSku: item.damage?.damaged_goods_sku ?? '',
         damagedGoodsProblem: item.damage?.damaged_goods_problem ?? null,
@@ -261,12 +287,21 @@ function saveDamageDecision(decision) {
     row.is_reviewed = isReviewable(item);
 }
 
+/**
+ * A decided quantity (in the base unit) in the product's units, e.g. 130 as "1 ROL + 30 MTR"; `packs` is how many of it are
+ * whole sealed packs, when the admin said.
+ */
+const decidedText = (item, quantity, packs = null) =>
+    formatStock(Number(quantity), item.units, item.base_unit, packs === '' || packs === null || packs === undefined ? null : Number(packs));
+
 const damageSummary = (item) => {
     const row = reviews.value[item.id];
 
     const normalLabel = props.opname.is_returns_check ? 'Normal' : 'Penuh';
 
-    return isDamageDecided(item) ? `Dead stock ${row.dead} · DG ${row.dg} · ${normalLabel} ${row.full}` : 'Tentukan keputusan';
+    return isDamageDecided(item)
+        ? `Dead stock ${decidedText(item, row.dead, row.deadPacks)} · DG ${decidedText(item, row.dg, row.dgPacks)} · ${normalLabel} ${decidedText(item, row.full, row.fullPacks)}`
+        : 'Tentukan keputusan';
 };
 
 const uncountedCount = computed(() => props.summary.items_count - props.summary.counted_count);
@@ -454,6 +489,9 @@ function saveReview(afterSaved) {
             damaged_goods_quantity: isDamaged && row.dg !== '' ? row.dg : null,
             full_price_quantity: isDamaged && row.full !== '' ? row.full : null,
             damaged_goods_price: isDamaged && damageNumber(row.dg) > 0 && row.price !== '' ? row.price : null,
+            dead_stock_packs: isDamaged && row.deadPacks !== '' ? row.deadPacks : null,
+            damaged_goods_packs: isDamaged && row.dgPacks !== '' ? row.dgPacks : null,
+            full_price_packs: isDamaged && row.fullPacks !== '' ? row.fullPacks : null,
         };
     });
 
@@ -791,7 +829,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             />
                             </div>
                             <small v-if="!isReviewing && item.needs_damage_decision && item.damage && item.damage.dead_stock_quantity !== null" class="lines__muted">
-                                Dead stock {{ formatQuantity(item.damage.dead_stock_quantity) }} · DG {{ formatQuantity(item.damage.damaged_goods_quantity) }} · {{ opname.is_returns_check ? 'Normal' : 'Penuh' }} {{ formatQuantity(item.damage.full_price_quantity) }}
+                                Dead stock {{ decidedText(item, item.damage.dead_stock_quantity, item.damage.dead_stock_packs) }} · DG {{ decidedText(item, item.damage.damaged_goods_quantity, item.damage.damaged_goods_packs) }} · {{ opname.is_returns_check ? 'Normal' : 'Penuh' }} {{ decidedText(item, item.damage.full_price_quantity, item.damage.full_price_packs) }}
                             </small>
                         </td>
                         <td>
@@ -912,7 +950,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
         <DamagedGoodsDialog
             v-model="damageDialog.isOpen"
             :item="damageDialogItem"
-            :decision="damageDialog.itemId === null ? undefined : { dead: reviews[damageDialog.itemId].dead, dg: reviews[damageDialog.itemId].dg, full: reviews[damageDialog.itemId].full, price: reviews[damageDialog.itemId].price }"
+            :decision="damageDialog.itemId === null ? undefined : reviews[damageDialog.itemId]"
             @save="saveDamageDecision"
         />
 

@@ -2,12 +2,14 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Enums\OpnameReasonBehavior;
 use App\Enums\StockMovementType;
 use App\Enums\StockOpnameReason;
 use App\Enums\StockOpnameScope;
 use App\Enums\UserRole;
 use App\Exceptions\StockOpnameException;
 use App\Models\CashShift;
+use App\Models\OpnameReason;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\Sale;
@@ -17,6 +19,7 @@ use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
 use App\Models\Store;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\ProductService;
 use App\Services\SaleReturnService;
 use App\Services\SaleService;
@@ -328,6 +331,139 @@ class SealedPackStockTest extends TestCase
         $this->actingAs($this->admin)
             ->post(route('tenant.products.store', ['tenant' => $this->store->code]), [...$this->formOf($this->wire, isSealedPack: true, hasSealedBase: true), 'sku' => 'KW-NEW', 'version' => null])
             ->assertSessionHasErrors(['units.0.is_sealed_pack']);
+    }
+
+    public function test_a_returned_roll_sent_to_dead_stock_stays_a_roll_there_and_the_loose_metres_go_back_on_the_shelf(): void
+    {
+        $shelfAfterSale = $this->inspectReturnedRollAndMetres(['dead_stock_quantity' => '100', 'dead_stock_packs' => 1, 'damaged_goods_quantity' => '0', 'full_price_quantity' => '30', 'full_price_packs' => 0]);
+
+        $this->assertSame(['quantity' => '100.000', 'intact_packs' => 1], $this->stockIn($this->wire, 'DEAD'));
+        $this->assertSame(['quantity' => (string) ($shelfAfterSale['quantity'] + 30).'.000', 'intact_packs' => $shelfAfterSale['intact_packs']], $this->shelfOf($this->wire));
+        $this->assertSame(['quantity' => '0.000', 'intact_packs' => 0], $this->returnsShelfOf($this->wire));
+    }
+
+    public function test_a_returned_roll_sold_on_as_damaged_goods_is_a_roll_of_the_damaged_goods_product(): void
+    {
+        $this->inspectReturnedRollAndMetres(['dead_stock_quantity' => '0', 'damaged_goods_quantity' => '100', 'damaged_goods_packs' => 1, 'damaged_goods_price' => '500', 'full_price_quantity' => '30', 'full_price_packs' => 0]);
+
+        $twin = $this->store->run(fn () => Product::query()->where('damaged_from_product_id', $this->wire->id)->with('productUnits')->sole());
+
+        $this->assertSame('ROL', $twin->sealedPackUnit()?->unit_code);
+        $this->assertSame(['quantity' => '100.000', 'intact_packs' => 1], $this->stockIn($twin, 'MAIN'));
+    }
+
+    public function test_a_roll_kept_on_the_shelf_goes_back_as_a_whole_roll_when_the_decision_says_so(): void
+    {
+        $shelfAfterSale = $this->inspectReturnedRollAndMetres(['dead_stock_quantity' => '30', 'dead_stock_packs' => 0, 'damaged_goods_quantity' => '0', 'full_price_quantity' => '100', 'full_price_packs' => 1]);
+
+        $this->assertSame(['quantity' => '30.000', 'intact_packs' => 0], $this->stockIn($this->wire, 'DEAD'));
+        $this->assertSame(['quantity' => (string) ($shelfAfterSale['quantity'] + 100).'.000', 'intact_packs' => $shelfAfterSale['intact_packs'] + 1], $this->shelfOf($this->wire));
+    }
+
+    public function test_a_roll_cannot_be_divided_when_the_returns_warehouse_was_counted_in_metres_only(): void
+    {
+        $this->expectException(StockOpnameException::class);
+        $this->expectExceptionMessage('ROL utuh yang dibagi (1) lebih banyak dari yang ada (0)');
+
+        $this->inspectReturnedRollAndMetres(
+            ['dead_stock_quantity' => '100', 'dead_stock_packs' => 1, 'damaged_goods_quantity' => '0', 'full_price_quantity' => '30', 'full_price_packs' => 0],
+            [['unit_code' => 'MTR', 'quantity' => '130']],
+        );
+    }
+
+    public function test_a_roll_cannot_be_made_out_of_fewer_metres_than_a_roll(): void
+    {
+        $this->expectException(StockOpnameException::class);
+        $this->expectExceptionMessage('ROL utuh lebih banyak dari yang muat di jumlah barangnya');
+
+        $this->inspectReturnedRollAndMetres(['dead_stock_quantity' => '30', 'dead_stock_packs' => 1, 'damaged_goods_quantity' => '0', 'full_price_quantity' => '100', 'full_price_packs' => 0]);
+    }
+
+    public function test_a_lost_roll_found_damaged_in_a_routine_count_goes_to_dead_stock_as_a_roll(): void
+    {
+        $opname = $this->opnameCounting(['ROL' => '2', 'MTR' => '100']);
+        $damaged = $this->store->run(fn () => OpnameReason::query()->where('behavior', OpnameReasonBehavior::Damaged)->firstOrFail());
+
+        $this->store->run(function () use ($opname, $damaged): void {
+            $opnames = app(StockOpnameService::class);
+            $itemId = StockOpnameItem::query()->where('stock_opname_id', $opname->id)->value('id');
+
+            $opnames->saveReview($opname, $this->admin->id, [[
+                'item_id' => $itemId, 'reason_id' => $damaged->id, 'note' => null, 'is_reviewed' => true,
+                'dead_stock_quantity' => '100', 'damaged_goods_quantity' => '0', 'full_price_quantity' => '0', 'damaged_goods_price' => null,
+                'dead_stock_packs' => 1, 'damaged_goods_packs' => 0, 'full_price_packs' => 0,
+            ]]);
+            $opnames->post($opname, $this->admin->id);
+        });
+
+        $this->assertSame(['quantity' => '300.000', 'intact_packs' => 2], $this->shelfOf($this->wire));
+        $this->assertSame(['quantity' => '100.000', 'intact_packs' => 1], $this->stockIn($this->wire, 'DEAD'));
+    }
+
+    public function test_a_roll_cannot_go_to_dead_stock_when_the_count_lost_no_roll(): void
+    {
+        $opname = $this->opnameCounting(['ROL' => '3', 'MTR' => '0']);
+        $damaged = $this->store->run(fn () => OpnameReason::query()->where('behavior', OpnameReasonBehavior::Damaged)->firstOrFail());
+
+        $this->expectException(StockOpnameException::class);
+        $this->expectExceptionMessage('ROL utuh yang dibagi (1) lebih banyak dari yang ada (0)');
+
+        $this->store->run(fn () => app(StockOpnameService::class)->saveReview($opname, $this->admin->id, [[
+            'item_id' => StockOpnameItem::query()->where('stock_opname_id', $opname->id)->value('id'), 'reason_id' => $damaged->id, 'note' => null, 'is_reviewed' => true,
+            'dead_stock_quantity' => '100', 'damaged_goods_quantity' => '0', 'full_price_quantity' => '0', 'damaged_goods_price' => null,
+            'dead_stock_packs' => 1, 'damaged_goods_packs' => 0, 'full_price_packs' => 0,
+        ]]));
+    }
+
+    /**
+     * Sells 1 roll and 30 m of the wire, takes it all back, counts it in the returns warehouse as 1 ROL + 30 MTR, reviews the
+     * decision given and posts.
+     *
+     * @param  array<string, mixed>  $decision
+     * @param  list<array{unit_code: string, quantity: string}>  $countedParts
+     * @return array{quantity: string, intact_packs: int} the main shelf before the inspection
+     */
+    private function inspectReturnedRollAndMetres(array $decision, array $countedParts = [['unit_code' => 'ROL', 'quantity' => '1'], ['unit_code' => 'MTR', 'quantity' => '30']]): array
+    {
+        $this->sell([['ROL', 1], ['MTR', 30]]);
+        $sale = $this->store->run(fn () => Sale::query()->with('items')->sole());
+        $this->store->run(fn () => app(SaleReturnService::class)->createApproved($sale, $this->shift, $this->admin, [
+            'client_uuid' => (string) Str::uuid(),
+            'refund_method' => 'cash',
+            'items' => $sale->items->map(fn ($line): array => ['sale_item_id' => $line->id, 'quantity' => $line->quantity])->all(),
+        ]));
+        $shelfAfterSale = $this->shelfOf($this->wire);
+
+        $this->store->run(function () use ($decision, $countedParts): void {
+            $opnames = app(StockOpnameService::class);
+            $opname = $opnames->create([
+                'warehouse_id' => $this->returnsWarehouse()->id,
+                'opname_date' => now()->toDateString(),
+                'scope' => StockOpnameScope::Selected->value,
+                'reason_code' => StockOpnameReason::ReturnsCheck->value,
+            ], $this->admin->id);
+            $itemId = StockOpnameItem::query()->where('stock_opname_id', $opname->id)->value('id');
+
+            $opnames->start($opname);
+            $opnames->saveCounts($opname, [['item_id' => $itemId, 'reason_id' => null, 'note' => null, 'parts' => $countedParts]]);
+            $opnames->finishCounting($opname);
+            $opnames->saveReview($opname, $this->admin->id, [['item_id' => $itemId, 'reason_id' => null, 'note' => null, 'is_reviewed' => true, 'damaged_goods_price' => null, ...$decision]]);
+            $opnames->post($opname, $this->admin->id);
+        });
+
+        return $shelfAfterSale;
+    }
+
+    /**
+     * @return array{quantity: string, intact_packs: int}
+     */
+    private function stockIn(Product $product, string $warehouseCode): array
+    {
+        return $this->store->run(function () use ($product, $warehouseCode): array {
+            $stock = Stock::query()->where('product_id', $product->id)->whereIn('warehouse_id', Warehouse::query()->where('code', $warehouseCode)->select('id'))->firstOrFail();
+
+            return ['quantity' => (string) $stock->quantity, 'intact_packs' => $stock->intact_packs];
+        });
     }
 
     /**

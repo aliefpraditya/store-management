@@ -222,7 +222,7 @@ async function printReplacement(saleReturn) {
                             {{ line.name }}
                             <small>
                                 dibeli {{ formatQuantity(line.quantity) }} {{ line.unit }} · {{ formatRupiah(line.unit_price) }}
-                                <template v-if="Number(line.returned) > 0"> · sudah diretur {{ formatQuantity(line.returned) }}</template>
+                                <template v-if="Number(line.returned) > 0"> · sudah diretur {{ formatQuantity(line.returned) }} {{ line.unit }}</template>
                             </small>
                         </span>
                         <q-input

@@ -78,6 +78,8 @@ class DamagedGoodsService
     {
         $twin = $this->twinOf($product) ?? $this->makeTwin($product);
 
+        $this->matchSealedPackUnit($product, $twin);
+
         foreach ($twin->productUnits as $twinUnit) {
             $price = $twinUnit->is_sellable ? $this->priceOfUnit($twinUnit, $baseUnitPrice) : '0.00';
 
@@ -87,6 +89,24 @@ class DamagedGoodsService
         }
 
         return $twin;
+    }
+
+    /**
+     * A roll sent to the DG product has to stay a roll there, so its roll unit is the original's. A twin made before rolls were
+     * tracked is brought in line; its stock already there stays loose, because nothing says it was whole.
+     */
+    private function matchSealedPackUnit(Product $product, Product $twin): void
+    {
+        $product->loadMissing('productUnits');
+        $isSealedPackByUnitCode = $product->productUnits->pluck('is_sealed_pack', 'unit_code');
+
+        foreach ($twin->productUnits as $twinUnit) {
+            $isSealedPack = (bool) ($isSealedPackByUnitCode[$twinUnit->unit_code] ?? false);
+
+            if ($twinUnit->is_sealed_pack !== $isSealedPack) {
+                $twinUnit->forceFill(['is_sealed_pack' => $isSealedPack])->save();
+            }
+        }
     }
 
     private function makeTwin(Product $product): Product
@@ -118,6 +138,7 @@ class DamagedGoodsService
                 'cost_price' => $unit->cost_price,
                 'selling_price' => 0,
                 'is_default_sale' => $unit->is_default_sale,
+                'is_sealed_pack' => $unit->is_sealed_pack,
             ]);
         }
 

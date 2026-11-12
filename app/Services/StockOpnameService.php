@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\DB;
  *
  * @phpstan-type CountPart array{unit_code: string, quantity: string|null}
  * @phpstan-type CountRow array{item_id: int, parts: list<CountPart>, reason_id: int|null, note: string|null}
- * @phpstan-type ReviewRow array{item_id: int, reason_id: int|null, note: string|null, is_reviewed: bool, dead_stock_quantity: string|null, damaged_goods_quantity: string|null, full_price_quantity: string|null, damaged_goods_price: string|null}
+ * @phpstan-type ReviewRow array{item_id: int, reason_id: int|null, note: string|null, is_reviewed: bool, dead_stock_quantity: string|null, damaged_goods_quantity: string|null, full_price_quantity: string|null, damaged_goods_price: string|null, dead_stock_packs?: int|null, damaged_goods_packs?: int|null, full_price_packs?: int|null}
  */
 class StockOpnameService
 {
@@ -207,9 +207,10 @@ class StockOpnameService
         DB::transaction(function () use ($opname, $userId, $rows): void {
             $opname = $this->lockedInStatus($opname, 'direview', StockOpnameStatus::Review);
 
-            $itemsById = $opname->items()->with(['product', 'reason'])->whereIn('id', array_column($rows, 'item_id'))->get()->keyBy('id');
+            $itemsById = $opname->items()->with(['product.productUnits', 'reason'])->whereIn('id', array_column($rows, 'item_id'))->get()->keyBy('id');
             $reasonsById = OpnameReason::query()->get()->keyBy('id');
             $systemQuantities = $this->currentQuantities($opname, $itemsById->pluck('product_id')->all());
+            $systemPacks = $this->currentIntactPacks($opname, $itemsById->pluck('product_id')->all());
 
             foreach ($rows as $row) {
                 $item = $itemsById->get($row['item_id']);
@@ -220,6 +221,7 @@ class StockOpnameService
 
                 $reason = $row['reason_id'] === null ? null : $reasonsById->get($row['reason_id']);
                 $isDamaged = ($reason?->behavior->needsDamageDecision() ?? false) || $opname->reason_code?->isReturnsCheck() === true;
+                $isDecidingPacks = $isDamaged && $item->product->sealedPackUnit() !== null;
 
                 $item->forceFill([
                     'reason_id' => $reason?->id,
@@ -228,9 +230,12 @@ class StockOpnameService
                     'damaged_goods_quantity' => $isDamaged ? $row['damaged_goods_quantity'] : null,
                     'full_price_quantity' => $isDamaged ? $row['full_price_quantity'] : null,
                     'damaged_goods_price' => $isDamaged ? $row['damaged_goods_price'] : null,
+                    'dead_stock_packs' => $isDecidingPacks ? $row['dead_stock_packs'] ?? null : null,
+                    'damaged_goods_packs' => $isDecidingPacks ? $row['damaged_goods_packs'] ?? null : null,
+                    'full_price_packs' => $isDecidingPacks ? $row['full_price_packs'] ?? null : null,
                 ])->setRelation('reason', $reason);
 
-                $this->markReviewed($opname, $item, $row['is_reviewed'], $userId, $systemQuantities[$item->product_id] ?? '0');
+                $this->markReviewed($opname, $item, $row['is_reviewed'], $userId, $systemQuantities[$item->product_id] ?? '0', $systemPacks[$item->product_id] ?? 0);
 
                 $item->save();
             }
@@ -308,9 +313,10 @@ class StockOpnameService
             $countedItems = $opname->items()->with(['product.productUnits', 'reason'])->whereNotNull('counted_quantity')->orderBy('product_id')->get();
             $lockedStocks = $this->stockLedger->lockedStocks($countedItems->pluck('product_id')->all(), $opname->warehouse_id);
             $systemQuantities = array_map(fn (array $stock): string => $stock['quantity'], $lockedStocks);
+            $systemPacks = array_map(fn (array $stock): int => $stock['intact_packs'], $lockedStocks);
 
             $this->requireNotesForLargeVariances($opname, $countedItems, $systemQuantities);
-            $this->requireReviewedVariances($opname, $countedItems, $systemQuantities);
+            $this->requireReviewedVariances($opname, $countedItems, $systemQuantities, $systemPacks);
 
             foreach ($countedItems as $item) {
                 $systemQuantity = $systemQuantities[$item->product_id];
@@ -380,10 +386,11 @@ class StockOpnameService
     /**
      * @param  Collection<int, StockOpnameItem>  $countedItems
      * @param  array<int, string>  $systemQuantities  live quantity by product id
+     * @param  array<int, int>  $systemPacks  live number of whole sealed packs by product id
      *
      * @throws StockOpnameException
      */
-    private function requireReviewedVariances(StockOpname $opname, Collection $countedItems, array $systemQuantities): void
+    private function requireReviewedVariances(StockOpname $opname, Collection $countedItems, array $systemQuantities, array $systemPacks): void
     {
         if (! $opname->reason_code?->requiresVarianceReview()) {
             return;
@@ -393,7 +400,7 @@ class StockOpnameService
 
         foreach ($countedItems as $item) {
             $variance = $opname->varianceOf($item->counted_quantity, $systemQuantities[$item->product_id]);
-            $problem = $this->isReviewNeeded($opname, $variance) ? $this->reviewProblem($opname, $item, $variance, true) : null;
+            $problem = $this->isReviewNeeded($opname, $variance) ? $this->reviewProblem($opname, $item, $variance, true, $systemPacks[$item->product_id]) : null;
 
             if ($problem !== null) {
                 $problems[] = "{$item->product->name} ({$problem})";
@@ -409,10 +416,11 @@ class StockOpnameService
      * Marks an item reviewed or not. Marking needs the item counted and complete, judged against the live stock.
      *
      * @param  numeric-string  $systemQuantity
+     * @param  int  $systemPacks  the number of whole sealed packs on the shelf now
      *
      * @throws StockOpnameException
      */
-    private function markReviewed(StockOpname $opname, StockOpnameItem $item, bool $isReviewed, int $userId, string $systemQuantity): void
+    private function markReviewed(StockOpname $opname, StockOpnameItem $item, bool $isReviewed, int $userId, string $systemQuantity, int $systemPacks): void
     {
         if (! $isReviewed) {
             $item->forceFill(['reviewed_at' => null, 'reviewed_by' => null]);
@@ -425,7 +433,7 @@ class StockOpnameService
         }
 
         $variance = $opname->varianceOf((string) $item->counted_quantity, $systemQuantity);
-        $problem = $this->isReviewNeeded($opname, $variance) ? $this->reviewProblem($opname, $item, $variance, false) : null;
+        $problem = $this->isReviewNeeded($opname, $variance) ? $this->reviewProblem($opname, $item, $variance, false, $systemPacks) : null;
 
         if ($problem !== null) {
             throw StockOpnameException::cannotReview($item->product->name, $problem);
@@ -440,8 +448,9 @@ class StockOpnameService
      * to the shortage, and units that become a DG product need a price and a DG SKU that is free.
      *
      * @param  bool  $needsReviewMark  whether the admin's "reviewed" mark is also required
+     * @param  int  $systemPacks  the number of whole sealed packs on the shelf now
      */
-    private function reviewProblem(StockOpname $opname, StockOpnameItem $item, BigDecimal $variance, bool $needsReviewMark): ?string
+    private function reviewProblem(StockOpname $opname, StockOpnameItem $item, BigDecimal $variance, bool $needsReviewMark, int $systemPacks): ?string
     {
         $isReturnsCheck = $opname->reason_code?->isReturnsCheck() === true;
 
@@ -450,8 +459,8 @@ class StockOpnameService
         }
 
         $problem = match (true) {
-            $isReturnsCheck => $this->returnsDecisionProblem($item),
-            $item->reason->behavior->needsDamageDecision() => $this->damageDecisionProblem($item, $variance),
+            $isReturnsCheck => $this->returnsDecisionProblem($item, $systemPacks),
+            $item->reason->behavior->needsDamageDecision() => $this->damageDecisionProblem($item, $variance, $systemPacks),
             default => null,
         };
 
@@ -466,7 +475,7 @@ class StockOpnameService
      * An inspection of returns has to account for every unit counted: how many go back on the shelf, to dead stock and to a DG
      * product, adding up to what was counted. Nothing counted means nothing to send on.
      */
-    private function returnsDecisionProblem(StockOpnameItem $item): ?string
+    private function returnsDecisionProblem(StockOpnameItem $item, int $systemPacks): ?string
     {
         $counted = BigDecimal::of((string) $item->counted_quantity);
 
@@ -483,6 +492,12 @@ class StockOpnameService
 
         if (! $deadStock->plus($damagedGoods)->plus($item->full_price_quantity)->isEqualTo($counted)) {
             return 'pembagian barang harus berjumlah sama dengan yang dihitung ('.rtrim(rtrim((string) $counted->toScale(3), '0'), '.').')';
+        }
+
+        $packsProblem = $this->decidedPacksProblem($item, $this->countedPacksInReturns($item, $systemPacks));
+
+        if ($packsProblem !== null) {
+            return $packsProblem;
         }
 
         if ($damagedGoods->isPositive()) {
@@ -509,7 +524,7 @@ class StockOpnameService
         return ! $variance->isZero() || $opname->reason_code?->isReturnsCheck() === true;
     }
 
-    private function damageDecisionProblem(StockOpnameItem $item, BigDecimal $variance): ?string
+    private function damageDecisionProblem(StockOpnameItem $item, BigDecimal $variance, int $systemPacks): ?string
     {
         if ($variance->isPositive()) {
             return 'alasan Rusak hanya untuk selisih kurang';
@@ -525,6 +540,12 @@ class StockOpnameService
 
         if (! $deadStock->plus($damagedGoods)->plus($item->full_price_quantity)->isEqualTo($shortage)) {
             return 'keputusan barang rusak harus berjumlah sama dengan selisih ('.rtrim(rtrim((string) $shortage->toScale(3), '0'), '.').')';
+        }
+
+        $packsProblem = $this->decidedPacksProblem($item, $this->packsLostIn($item, $systemPacks));
+
+        if ($packsProblem !== null) {
+            return $packsProblem;
         }
 
         if ($damagedGoods->isPositive()) {
@@ -570,17 +591,17 @@ class StockOpnameService
         $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $shortage->negated(), $opname, $userId, $note, $systemQuantity, $packChange);
 
         if ($deadStock->isPositive()) {
-            $this->stockLedger->record($item->product_id, $this->deadStockWarehouse()->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)");
+            $this->stockLedger->record($item->product_id, $this->deadStockWarehouse()->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)", packChange: $this->packsDecidedFor($item, $item->dead_stock_packs));
         }
 
         if ($damagedGoods->isPositive()) {
             $twin = $this->damagedGoods->productFor($item->product, (string) $item->damaged_goods_price);
 
-            $this->stockLedger->record($twin->id, $opname->warehouse_id, $movementType, (string) $damagedGoods, $opname, $userId, "{$note} (barang DG {$twin->sku})");
+            $this->stockLedger->record($twin->id, $opname->warehouse_id, $movementType, (string) $damagedGoods, $opname, $userId, "{$note} (barang DG {$twin->sku})", packChange: $this->packsDecidedFor($item, $item->damaged_goods_packs));
         }
 
         if ($fullPrice->isPositive()) {
-            $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $fullPrice, $opname, $userId, "{$note} (layak jual penuh, kembali ke stok jual)");
+            $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $fullPrice, $opname, $userId, "{$note} (layak jual penuh, kembali ke stok jual)", packChange: $this->packsDecidedFor($item, $item->full_price_packs));
         }
     }
 
@@ -610,8 +631,10 @@ class StockOpnameService
         $note = $this->movementNote($opname, $item);
 
         $packUnit = $item->product->sealedPackUnit();
-        $countedPacks = $packUnit === null ? 0 : min($item->counted_packs ?? $systemPacks, $counted->dividedBy($packUnit->conversion_factor, 0, RoundingMode::Down)->toInt());
-        $packsOnShelf = $packUnit === null ? 0 : min($countedPacks, $fullPrice->dividedBy($packUnit->conversion_factor, 0, RoundingMode::Down)->toInt());
+        $countedPacks = $this->countedPacksInReturns($item, $systemPacks);
+        $deadStockPacks = $this->packsDecidedFor($item, $item->dead_stock_packs);
+        $damagedGoodsPacks = $this->packsDecidedFor($item, $item->damaged_goods_packs);
+        $packsOnShelf = $packUnit === null ? 0 : $item->full_price_packs ?? max(0, min($countedPacks - $deadStockPacks - $damagedGoodsPacks, $fullPrice->dividedBy($packUnit->conversion_factor, 0, RoundingMode::Down)->toInt()));
         $packVariance = $countedPacks - $systemPacks;
 
         if (! $variance->isZero() || $packVariance !== 0) {
@@ -623,18 +646,80 @@ class StockOpnameService
         }
 
         if ($deadStock->isPositive()) {
-            $this->stockLedger->record($item->product_id, $this->deadStockWarehouse()->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)");
+            $this->stockLedger->record($item->product_id, $this->deadStockWarehouse()->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)", packChange: $deadStockPacks);
         }
 
         if ($damagedGoods->isPositive()) {
             $twin = $this->damagedGoods->productFor($item->product, (string) $item->damaged_goods_price);
 
-            $this->stockLedger->record($twin->id, $origin, $movementType, (string) $damagedGoods, $opname, $userId, "{$note} (barang DG {$twin->sku})");
+            $this->stockLedger->record($twin->id, $origin, $movementType, (string) $damagedGoods, $opname, $userId, "{$note} (barang DG {$twin->sku})", packChange: $damagedGoodsPacks);
         }
 
         if ($fullPrice->isPositive()) {
             $this->stockLedger->record($item->product_id, $origin, $movementType, (string) $fullPrice, $opname, $userId, "{$note} (layak jual, kembali ke stok jual)", packChange: $packsOnShelf);
         }
+    }
+
+    /**
+     * How many whole sealed packs the count in a returns warehouse holds: the packs counted, as far as the counted quantity
+     * holds them. Zero for a product without a sealed pack unit.
+     */
+    private function countedPacksInReturns(StockOpnameItem $item, int $systemPacks): int
+    {
+        $packUnit = $item->product->sealedPackUnit();
+
+        if ($packUnit === null) {
+            return 0;
+        }
+
+        $fittingPacks = BigDecimal::of((string) $item->counted_quantity)->dividedBy($packUnit->conversion_factor, 0, RoundingMode::Down)->toInt();
+
+        return min($item->counted_packs ?? $systemPacks, $fittingPacks);
+    }
+
+    /**
+     * How many whole sealed packs a routine count found missing from the shelf: the ones the shelf had and the count did not.
+     */
+    private function packsLostIn(StockOpnameItem $item, int $systemPacks): int
+    {
+        return max(0, $systemPacks - $this->countedPacksInReturns($item, $systemPacks));
+    }
+
+    /**
+     * Whether the whole packs the admin said go to dead stock, the DG product and the shelf fit in the quantity each of them
+     * gets and do not come to more than there are to send on. Said in words for the admin, or null when they do.
+     *
+     * @param  int  $availablePacks  the whole packs the decision can divide
+     */
+    private function decidedPacksProblem(StockOpnameItem $item, int $availablePacks): ?string
+    {
+        $packUnit = $item->product->sealedPackUnit();
+
+        if ($packUnit === null) {
+            return null;
+        }
+
+        $totalPacks = 0;
+
+        foreach ([[$item->dead_stock_packs, $item->dead_stock_quantity], [$item->damaged_goods_packs, $item->damaged_goods_quantity], [$item->full_price_packs, $item->full_price_quantity]] as [$packs, $quantity]) {
+            $packs ??= 0;
+
+            if ($packs > BigDecimal::of((string) $quantity)->dividedBy($packUnit->conversion_factor, 0, RoundingMode::Down)->toInt()) {
+                return "jumlah {$packUnit->unit_code} utuh lebih banyak dari yang muat di jumlah barangnya";
+            }
+
+            $totalPacks += $packs;
+        }
+
+        return $totalPacks > $availablePacks ? "{$packUnit->unit_code} utuh yang dibagi ({$totalPacks}) lebih banyak dari yang ada ({$availablePacks})" : null;
+    }
+
+    /**
+     * The whole packs the admin sent to one place, none for a product that has no sealed pack unit.
+     */
+    private function packsDecidedFor(StockOpnameItem $item, ?int $packs): int
+    {
+        return $item->product->sealedPackUnit() === null ? 0 : $packs ?? 0;
     }
 
     private function deadStockWarehouse(): ?Warehouse
@@ -895,6 +980,20 @@ class StockOpnameService
         }
 
         return array_map('intval', $busyIds);
+    }
+
+    /**
+     * @param  list<int>  $productIds
+     * @return array<int, int> whole sealed packs per product id; products without a stock row are absent
+     */
+    private function currentIntactPacks(StockOpname $opname, array $productIds): array
+    {
+        return DB::table('stocks')
+            ->where('warehouse_id', $opname->warehouse_id)
+            ->whereIn('product_id', $productIds)
+            ->pluck('intact_packs', 'product_id')
+            ->map(fn ($packs): int => (int) $packs)
+            ->all();
     }
 
     /**
