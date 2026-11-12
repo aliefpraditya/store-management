@@ -32,4 +32,12 @@ enum SellingChangeMethod: string
     {
         return $this !== self::KeepMargin;
     }
+
+    /**
+     * @return list<array{value: string, label: string, takes_value: bool}>
+     */
+    public static function options(): array
+    {
+        return array_map(fn (self $method): array => ['value' => $method->value, 'label' => $method->label(), 'takes_value' => $method->takesValue()], self::cases());
+    }
 }

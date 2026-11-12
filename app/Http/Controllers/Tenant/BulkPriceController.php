@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Exceptions\BulkPriceException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Tenant\ApplyBulkPriceRequest;
 use App\Http\Requests\Tenant\BulkPriceRequest;
 use App\Services\BulkPriceService;
 use Illuminate\Http\JsonResponse;
@@ -28,10 +29,10 @@ class BulkPriceController extends Controller
         return response()->json(['data' => $preview]);
     }
 
-    public function apply(BulkPriceRequest $request): RedirectResponse
+    public function apply(ApplyBulkPriceRequest $request): RedirectResponse
     {
         try {
-            $totals = $this->bulkPrices->apply($request->productIds(), $request->change());
+            $totals = $this->bulkPrices->apply($request->productIds(), $request->change(), $request->previewFingerprint());
         } catch (BulkPriceException $exception) {
             return back()->with('error', $exception->getMessage());
         }

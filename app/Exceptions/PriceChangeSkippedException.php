@@ -20,6 +20,16 @@ class PriceChangeSkippedException extends Exception
         return new self('Harga jual akan jadi negatif.');
     }
 
+    public static function costOverLimit(): self
+    {
+        return new self('Modal akan melebihi batas harga.');
+    }
+
+    public static function priceOverLimit(): self
+    {
+        return new self('Harga jual akan melebihi batas harga.');
+    }
+
     public static function marginNeedsCost(): self
     {
         return new self('Modal 0, harga dari margin tidak bisa dihitung.');

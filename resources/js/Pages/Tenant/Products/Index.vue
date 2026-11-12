@@ -10,8 +10,8 @@ import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
     products: { type: Object, required: true },
-    /** Every item the current search and filters match (up to what one bulk change takes), for "select all". */
-    matching_ids: { type: Array, required: true },
+    /** Every item the current search and filters match (up to what one bulk change takes). Only present after "select all" asked for it. */
+    matching_ids: { type: Array, default: () => [] },
     filters: { type: Object, required: true },
     categories: { type: Array, required: true },
     brands: { type: Array, required: true },
@@ -66,6 +66,21 @@ function select(ids) {
     }
 
     selectedIds.value = [...merged];
+}
+
+const isSelectingAll = ref(false);
+
+/** How many items "select all" takes: everything the list matches, up to what one bulk change takes. */
+const selectableCount = computed(() => Math.min(props.products.total, props.bulk_price.max_products));
+
+/** The ids of everything the list matches are only worked out when asked for, since most visits never select all. */
+function selectAllMatching() {
+    router.reload({
+        only: ['matching_ids'],
+        onStart: () => (isSelectingAll.value = true),
+        onFinish: () => (isSelectingAll.value = false),
+        onSuccess: () => select(props.matching_ids),
+    });
 }
 
 /** @param {number[]} ids */
@@ -150,10 +165,10 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
         <div v-if="products.total > 0" class="selection">
             <span>
                 <b>{{ selectedIds.length }}</b> barang dipilih
-                <small v-if="products.total > matching_ids.length" class="items__muted">(pilih semua dibatasi {{ bulk_price.max_products }} barang)</small>
+                <small v-if="products.total > selectableCount" class="items__muted">(pilih semua dibatasi {{ bulk_price.max_products }} barang)</small>
             </span>
             <span class="selection__actions">
-                <q-btn flat dense no-caps color="primary" :label="`Pilih semua ${matching_ids.length} hasil`" @click="select(matching_ids)" />
+                <q-btn flat dense no-caps color="primary" :label="`Pilih semua ${selectableCount} hasil`" :loading="isSelectingAll" @click="selectAllMatching" />
                 <q-btn flat dense no-caps color="grey-7" label="Kosongkan pilihan" :disable="selectedIds.length === 0" @click="selectedIds = []" />
 
             </span>

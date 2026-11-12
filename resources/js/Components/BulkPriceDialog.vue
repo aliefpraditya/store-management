@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
+import { useQuasar } from 'quasar';
 import { postJson } from '../Composables/postJson';
 
 const props = defineProps({
@@ -18,6 +19,8 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['update:modelValue', 'applied']);
+
+const $q = useQuasar();
 
 /** How long typing has to pause before the preview is worked out again. */
 const PREVIEW_DELAY_MS = 450;
@@ -55,14 +58,24 @@ const isSetChosen = computed(() => costMethod.value === 'set' || sellingMethod.v
 
 const isFilled = (value) => value !== '' && value !== null && value !== undefined;
 
+/** The same Rupiah added to every unit makes no sense (PCS and a DUS of 12), so a nominal change needs one unit. */
+const isUnitMissingForNominal = computed(() => (costMethod.value === 'nominal' || sellingMethod.value === 'nominal') && unitCode.value === '');
+
 const isChangeComplete = computed(
     () => (costMethod.value !== '' || sellingMethod.value !== '')
         && (costMethod.value === '' || isFilled(costValue.value))
         && (sellingMethod.value === '' || !sellingMethodOption.value.takes_value || isFilled(sellingValue.value))
-        && !(sellingMethod.value === 'keep_margin' && costMethod.value === ''),
+        && !(sellingMethod.value === 'keep_margin' && costMethod.value === '')
+        && !isUnitMissingForNominal.value,
 );
 
-const changeHint = computed(() => (sellingMethod.value === 'keep_margin' && costMethod.value === '' ? 'Mempertahankan margin hanya berarti bila harga beli ikut diubah.' : null));
+const changeHint = computed(() => {
+    if (isUnitMissingForNominal.value) {
+        return 'Nominal Rp perlu dibatasi ke satu satuan lewat Satuan yang diubah.';
+    }
+
+    return sellingMethod.value === 'keep_margin' && costMethod.value === '' ? 'Mempertahankan margin hanya berarti bila harga beli ikut diubah.' : null;
+});
 
 /** Everything the server needs to work out the same change for the preview and the apply. */
 const payload = computed(() => ({
@@ -134,16 +147,28 @@ watch([payloadKey, () => props.modelValue], schedulePreview);
 
 onBeforeUnmount(() => clearTimeout(previewTimer));
 
+/**
+ * Saves the change that the preview on screen showed. The server refuses when the prices moved since that preview; the
+ * window then stays open and works the preview out again, so the admin looks at the new numbers before applying.
+ */
 function apply() {
-    router.post(props.urls.apply, payload.value, {
+    router.post(props.urls.apply, { ...payload.value, preview_fingerprint: preview.value.fingerprint }, {
         preserveScroll: true,
         preserveState: true,
         onStart: () => (isApplying.value = true),
         onFinish: () => (isApplying.value = false),
-        onSuccess: () => {
+        onSuccess: (page) => {
+            if (page.props.flash?.error) {
+                preview.value = null;
+                loadPreview();
+
+                return;
+            }
+
             emit('applied');
             emit('update:modelValue', false);
         },
+        onError: (errors) => $q.notify({ type: 'negative', message: Object.values(errors)[0] }),
     });
 }
 

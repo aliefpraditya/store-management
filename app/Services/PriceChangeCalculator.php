@@ -24,6 +24,9 @@ class PriceChangeCalculator
 {
     private const MONEY_SCALE = 2;
 
+    /** The most a `decimal(15,2)` price column holds; a result above it would fail the save instead of being skipped. */
+    private const MAX_MONEY = '9999999999999.99';
+
     /**
      * @param  PriceChange  $change
      * @return UnitPricePlan
@@ -41,11 +44,18 @@ class PriceChangeCalculator
             $newCost = $change['cost_method'] === null
                 ? $oldCost
                 : $this->changedCost($oldCost, $change['cost_method'], BigDecimal::of($change['cost_value']));
+        } catch (PriceChangeSkippedException $exception) {
+            return $this->plan($unit, $oldCost, $oldPrice, $oldCost, $oldPrice, $exception->getMessage());
+        }
+
+        try {
             $newPrice = $change['selling_method'] === null || ! $unit->is_sellable
                 ? $oldPrice
                 : $this->changedPrice($oldCost, $oldPrice, $newCost, $change['selling_method'], BigDecimal::of($change['selling_value'] ?? '0'));
         } catch (PriceChangeSkippedException $exception) {
-            return $this->plan($unit, $oldCost, $oldPrice, $oldCost, $oldPrice, $exception->getMessage());
+            $costNote = $change['cost_method'] === null ? '' : ' Modal satuan ini juga tidak diubah.';
+
+            return $this->plan($unit, $oldCost, $oldPrice, $oldCost, $oldPrice, $exception->getMessage().$costNote);
         }
 
         return $this->plan($unit, $oldCost, $oldPrice, $newCost, $newPrice, null);
@@ -66,6 +76,10 @@ class PriceChangeCalculator
             throw PriceChangeSkippedException::negativeCost();
         }
 
+        if ($newCost->isGreaterThan(self::MAX_MONEY)) {
+            throw PriceChangeSkippedException::costOverLimit();
+        }
+
         return $newCost;
     }
 
@@ -84,6 +98,10 @@ class PriceChangeCalculator
 
         if ($newPrice->isNegative()) {
             throw PriceChangeSkippedException::negativePrice();
+        }
+
+        if ($newPrice->isGreaterThan(self::MAX_MONEY)) {
+            throw PriceChangeSkippedException::priceOverLimit();
         }
 
         return $newPrice;

@@ -45,7 +45,7 @@ class ProductController extends Controller
 
         return Inertia::render('Tenant/Products/Index', [
             'products' => $products,
-            'matching_ids' => $this->productService->matchingIds($search, $categoryId, $brandId, $status, $condition),
+            'matching_ids' => Inertia::optional(fn (): array => $this->productService->matchingIds($search, $categoryId, $brandId, $status, $condition)),
             'filters' => ['search' => $search, 'category' => $categoryId, 'brand' => $brandId, 'status' => $status?->value ?? '', 'condition' => $condition?->value ?? ''],
             'statuses' => ProductStatusFilter::options(),
             'conditions' => ProductConditionFilter::options(),
@@ -69,8 +69,8 @@ class ProductController extends Controller
             ],
             'bulk_price' => [
                 'units' => Unit::query()->orderBy('code')->pluck('code'),
-                'cost_methods' => collect(CostChangeMethod::cases())->map(fn (CostChangeMethod $method): array => ['value' => $method->value, 'label' => $method->label()])->all(),
-                'selling_methods' => collect(SellingChangeMethod::cases())->map(fn (SellingChangeMethod $method): array => ['value' => $method->value, 'label' => $method->label(), 'takes_value' => $method->takesValue()])->all(),
+                'cost_methods' => CostChangeMethod::options(),
+                'selling_methods' => SellingChangeMethod::options(),
                 'max_products' => BulkPriceService::MAX_PRODUCTS,
                 'urls' => [
                     'preview' => route('tenant.bulk-prices.preview', ['tenant' => tenant('code')]),

@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use OwenIt\Auditing\Models\Audit;
+use RuntimeException;
 use Tests\Concerns\BuildsCashierFixtures;
 use Tests\Concerns\PreparesStoreDatabase;
 use Tests\TestCase;
@@ -67,9 +68,29 @@ class BulkPriceTest extends TestCase
         return $this->actingAs($this->admin)->postJson($this->url('preview'), $payload);
     }
 
+    /**
+     * Applies what the admin would have previewed just before, unless the test brings a fingerprint of its own.
+     */
     private function apply(array $payload): TestResponse
     {
+        $payload['preview_fingerprint'] ??= $this->preview($payload)->json('data.fingerprint') ?? str_repeat('0', 64);
+
         return $this->actingAs($this->admin)->post($this->url('apply'), $payload);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function matchingIdsOf(string $listUrl): array
+    {
+        $ids = [];
+        $this->actingAs($this->admin)->get($listUrl)->assertInertia(function (Assert $page) use (&$ids): void {
+            $page->reloadOnly('matching_ids', function (Assert $reload) use (&$ids): void {
+                $ids = $reload->toArray()['props']['matching_ids'];
+            });
+        });
+
+        return $ids;
     }
 
     /**
@@ -105,9 +126,10 @@ class BulkPriceTest extends TestCase
         $this->actingAs($this->admin)->get($listUrl)->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Tenant/Products/Index')
             ->has('products.data', 3)
-            ->has('matching_ids', 3)
+            ->missing('matching_ids')
+            ->reloadOnly('matching_ids', fn (Assert $reload) => $reload->has('matching_ids', 3))
             ->has('brands', 1)
-            ->where('bulk_price.max_products', 2000)
+            ->where('bulk_price.max_products', 500)
             ->where('bulk_price.units', ['DUS', 'PCS'])
             ->where('bulk_price.cost_methods.0', ['value' => 'percent', 'label' => 'Persen (naik atau turun)'])
             ->where('bulk_price.selling_methods.2', ['value' => 'set', 'label' => 'Setarakan ke harga tertentu', 'takes_value' => true])
@@ -118,10 +140,10 @@ class BulkPriceTest extends TestCase
 
         $this->actingAs($this->admin)->get($listUrl.'?category='.$paint->id.'&brand='.$dulux->id)->assertInertia(fn (Assert $page) => $page
             ->has('products.data', 1)
-            ->where('matching_ids', [$wall->id])
+            ->reloadOnly('matching_ids', fn (Assert $reload) => $reload->where('matching_ids', [$wall->id]))
             ->where('filters.brand', $dulux->id));
 
-        $this->actingAs($this->admin)->get($listUrl.'?category='.$tools->id)->assertInertia(fn (Assert $page) => $page->where('matching_ids', [$brush->id]));
+        $this->actingAs($this->admin)->get($listUrl.'?category='.$tools->id)->assertInertia(fn (Assert $page) => $page->reloadOnly('matching_ids', fn (Assert $reload) => $reload->where('matching_ids', [$brush->id])));
     }
 
     public function test_select_all_follows_the_condition_and_status_filters_too(): void
@@ -131,9 +153,9 @@ class BulkPriceTest extends TestCase
         $dg = $this->item('Rusak', ['is_damaged_goods' => true]);
         $listUrl = route('tenant.products.index', ['tenant' => $this->store->code]);
 
-        $this->actingAs($this->admin)->get($listUrl.'?status=inactive')->assertInertia(fn (Assert $page) => $page->where('matching_ids', [$inactive->id]));
-        $this->actingAs($this->admin)->get($listUrl.'?condition=damaged')->assertInertia(fn (Assert $page) => $page->where('matching_ids', [$dg->id]));
-        $this->actingAs($this->admin)->get($listUrl.'?condition=normal&status=active')->assertInertia(fn (Assert $page) => $page->where('matching_ids', [$normal->id]));
+        $this->assertSame([$inactive->id], $this->matchingIdsOf($listUrl.'?status=inactive'));
+        $this->assertSame([$dg->id], $this->matchingIdsOf($listUrl.'?condition=damaged'));
+        $this->assertSame([$normal->id], $this->matchingIdsOf($listUrl.'?condition=normal&status=active'));
     }
 
     public function test_the_bulk_price_change_has_no_page_of_its_own(): void
@@ -227,7 +249,7 @@ class BulkPriceTest extends TestCase
     {
         $product = $this->item();
 
-        $this->preview($this->payload($product, ['cost_method' => 'nominal', 'cost_value' => 2000, 'selling_method' => 'margin', 'selling_value' => 25]))
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'cost_method' => 'nominal', 'cost_value' => 2000, 'selling_method' => 'margin', 'selling_value' => 25]))
             ->assertOk()
             ->assertJsonPath('data.products.0.units.0.new_cost', '8000.00')
             ->assertJsonPath('data.products.0.units.0.new_price', '10666.67');
@@ -271,7 +293,7 @@ class BulkPriceTest extends TestCase
             ->assertJsonPath('data.products.0.units.0.skip_reason', 'Modal 0, harga dari margin tidak bisa dihitung.');
 
         $this->preview($this->payload($free, ['cost_method' => 'percent', 'cost_value' => 10, 'selling_method' => 'keep_margin']))
-            ->assertJsonPath('data.products.0.units.0.skip_reason', 'Modal atau harga jual sekarang 0, margin lama tidak bisa dihitung.');
+            ->assertJsonPath('data.products.0.units.0.skip_reason', 'Modal atau harga jual sekarang 0, margin lama tidak bisa dihitung. Modal satuan ini juga tidak diubah.');
     }
 
     public function test_a_unit_that_is_not_sold_keeps_its_selling_price(): void
@@ -320,12 +342,161 @@ class BulkPriceTest extends TestCase
     public function test_skipped_units_stay_as_they_were_and_are_reported(): void
     {
         $product = $this->item();
+        $this->store->run(fn () => $this->unitOf($product, 'PCS')->forceFill(['cost_price' => 0])->save());
 
-        $this->apply($this->payload($product, ['cost_method' => 'nominal', 'cost_value' => -10000]))
+        $this->apply($this->payload($product, ['selling_method' => 'margin', 'selling_value' => 30]))
             ->assertSessionHas('success', 'Harga 1 barang diubah (1 satuan). 1 satuan dilewati.');
 
-        $this->assertSame('6000.00', $this->pricesOf($product, 'PCS')[0]);
-        $this->assertSame('60000.00', $this->pricesOf($product, 'DUS')[0]);
+        $this->assertSame(['0.00', '10000.00'], $this->pricesOf($product, 'PCS'));
+        $this->assertSame(['70000.00', '100000.00'], $this->pricesOf($product, 'DUS'));
+    }
+
+    public function test_a_nominal_change_needs_one_unit_to_be_chosen(): void
+    {
+        $ids = [$this->item()->id];
+        $message = 'Nominal Rp perlu dibatasi ke satu satuan: tambahan Rp yang sama tidak masuk akal untuk semua satuan (PCS dan DUS isi 12 tidak naik sama besar).';
+
+        $this->preview(['product_ids' => $ids, 'cost_method' => 'nominal', 'cost_value' => 500])->assertJsonValidationErrors(['unit_code' => $message]);
+        $this->preview(['product_ids' => $ids, 'selling_method' => 'nominal', 'selling_value' => 500])->assertJsonValidationErrors(['unit_code' => $message]);
+        $this->preview(['product_ids' => $ids, 'unit_code' => 'PCS', 'cost_method' => 'nominal', 'cost_value' => 500])->assertOk();
+        $this->preview(['product_ids' => $ids, 'selling_method' => 'percent', 'selling_value' => 5])->assertOk();
+    }
+
+    public function test_applying_needs_the_preview_it_was_looked_at_from(): void
+    {
+        $product = $this->item();
+        $change = ['selling_method' => 'percent', 'selling_value' => 10];
+
+        $this->actingAs($this->admin)->post($this->url('apply'), $this->payload($product, $change))->assertSessionHasErrors(['preview_fingerprint' => 'Lihat pratinjaunya dulu sebelum menerapkan.']);
+        $this->actingAs($this->admin)->post($this->url('apply'), $this->payload($product, [...$change, 'preview_fingerprint' => 'pendek']))->assertSessionHasErrors('preview_fingerprint');
+        $this->assertSame('10000.00', $this->pricesOf($product, 'PCS')[1]);
+    }
+
+    public function test_prices_that_moved_since_the_preview_stop_the_whole_run(): void
+    {
+        $product = $this->item();
+        $other = $this->item('Cat');
+        $payload = $this->payload([$product, $other], ['selling_method' => 'percent', 'selling_value' => 10]);
+        $fingerprint = $this->preview($payload)->json('data.fingerprint');
+
+        $this->store->run(fn () => $this->unitOf($other, 'PCS')->forceFill(['selling_price' => 12000])->save());
+
+        $this->apply([...$payload, 'preview_fingerprint' => $fingerprint])->assertSessionHas('error', 'Harga barang berubah sejak pratinjau dibuat, jadi belum ada yang disimpan. Pratinjau dihitung ulang: periksa lagi, lalu terapkan.');
+
+        $this->assertSame('10000.00', $this->pricesOf($product, 'PCS')[1]);
+        $this->assertSame('12000.00', $this->pricesOf($other, 'PCS')[1]);
+        $this->assertNotSame($fingerprint, $this->preview($payload)->json('data.fingerprint'));
+    }
+
+    public function test_the_preview_fingerprint_is_the_same_while_nothing_moves(): void
+    {
+        $payload = $this->payload($this->item(), ['selling_method' => 'percent', 'selling_value' => 10]);
+
+        $this->assertSame($this->preview($payload)->json('data.fingerprint'), $this->preview($payload)->json('data.fingerprint'));
+    }
+
+    public function test_a_result_past_what_a_price_column_holds_is_skipped_instead_of_failing_the_save(): void
+    {
+        $product = $this->item();
+
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'cost_method' => 'set', 'cost_value' => '999999999999', 'selling_method' => 'percent', 'selling_value' => 5]))
+            ->assertJsonPath('data.products.0.units.0.is_changed', true);
+
+        $this->store->run(fn () => $this->unitOf($product, 'PCS')->forceFill(['cost_price' => '9999999999999.00', 'selling_price' => '9999999999999.00'])->save());
+
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'cost_method' => 'nominal', 'cost_value' => 5]))
+            ->assertJsonPath('data.products.0.units.0.skip_reason', 'Modal akan melebihi batas harga.');
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'selling_method' => 'percent', 'selling_value' => 5]))
+            ->assertJsonPath('data.products.0.units.0.skip_reason', 'Harga jual akan melebihi batas harga.');
+
+        $this->apply($this->payload($product, ['unit_code' => 'PCS', 'selling_method' => 'percent', 'selling_value' => 5]))->assertSessionHas('success', 'Harga 0 barang diubah (0 satuan). 1 satuan dilewati.');
+    }
+
+    public function test_the_most_items_one_change_takes_is_allowed_but_not_one_more(): void
+    {
+        $this->preview(['product_ids' => range(1, 500), 'selling_method' => 'percent', 'selling_value' => 5])->assertStatus(409);
+        $this->preview(['product_ids' => range(1, 501), 'selling_method' => 'percent', 'selling_value' => 5])->assertStatus(422);
+    }
+
+    public function test_the_preview_lists_the_first_hundred_changed_items_and_counts_all(): void
+    {
+        $products = array_map(fn (int $number): Product => $this->item("Barang {$number}"), range(1, 101));
+
+        $this->preview($this->payload($products, ['selling_method' => 'percent', 'selling_value' => 10]))
+            ->assertOk()
+            ->assertJsonPath('data.is_truncated', true)
+            ->assertJsonCount(100, 'data.products')
+            ->assertJsonPath('data.totals', ['products_selected' => 101, 'products_changed' => 101, 'units_changed' => 202, 'units_skipped' => 0]);
+
+        $this->preview($this->payload(array_slice($products, 0, 100), ['selling_method' => 'percent', 'selling_value' => 10]))
+            ->assertJsonPath('data.is_truncated', false)
+            ->assertJsonCount(100, 'data.products');
+    }
+
+    public function test_midpoints_of_a_sen_round_up(): void
+    {
+        $product = $this->item();
+        $this->store->run(fn () => $this->unitOf($product, 'PCS')->forceFill(['cost_price' => '1234.55'])->save());
+
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'cost_method' => 'percent', 'cost_value' => 10]))
+            ->assertJsonPath('data.products.0.units.0.new_cost', '1358.01');
+    }
+
+    public function test_many_items_are_changed_with_a_kept_margin_and_the_unpriceable_ones_skipped(): void
+    {
+        $first = $this->item('Satu');
+        $second = $this->item('Dua');
+        $free = $this->item('Gratis');
+        $this->store->run(fn () => ProductUnit::query()->where('product_id', $free->id)->update(['cost_price' => 0]));
+
+        $this->apply($this->payload([$first, $second, $free], ['cost_method' => 'percent', 'cost_value' => 10, 'selling_method' => 'keep_margin']))
+            ->assertSessionHas('success', 'Harga 2 barang diubah (4 satuan). 2 satuan dilewati.');
+
+        foreach ([$first, $second] as $product) {
+            $this->assertSame(['6600.00', '11000.00'], $this->pricesOf($product, 'PCS'));
+            $this->assertSame(['77000.00', '121000.00'], $this->pricesOf($product, 'DUS'));
+        }
+        $this->assertSame(['0.00', '10000.00'], $this->pricesOf($free, 'PCS'));
+    }
+
+    public function test_a_save_that_fails_halfway_leaves_every_item_as_it_was(): void
+    {
+        $first = $this->item('Satu');
+        $second = $this->item('Dua');
+        $savedUnits = 0;
+        ProductUnit::saving(function () use (&$savedUnits): void {
+            if (++$savedUnits === 3) {
+                throw new RuntimeException('Simpan gagal di tengah.');
+            }
+        });
+        $payload = $this->payload([$first, $second], ['selling_method' => 'percent', 'selling_value' => 10]);
+        $payload['preview_fingerprint'] = $this->preview($payload)->json('data.fingerprint');
+
+        $this->withoutExceptionHandling();
+        try {
+            $this->actingAs($this->admin)->post($this->url('apply'), $payload);
+            $this->fail('The failing save should have stopped the run.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Simpan gagal di tengah.', $exception->getMessage());
+        }
+
+        foreach ([$first, $second] as $product) {
+            $this->assertSame('10000.00', $this->pricesOf($product, 'PCS')[1]);
+            $this->assertSame('110000.00', $this->pricesOf($product, 'DUS')[1]);
+        }
+    }
+
+    public function test_changing_only_a_unit_beside_the_base_moves_the_counter_without_an_empty_audit_entry(): void
+    {
+        $product = $this->item();
+        config(['audit.console' => true]);
+
+        $this->apply($this->payload($product, ['unit_code' => 'DUS', 'selling_method' => 'percent', 'selling_value' => 10]))->assertSessionHasNoErrors();
+
+        $this->store->run(function () use ($product): void {
+            $this->assertSame(2, Product::query()->findOrFail($product->id)->version);
+            $this->assertSame(0, Audit::query()->where('auditable_type', Product::class)->where('auditable_id', $product->id)->where('event', 'updated')->count());
+        });
     }
 
     public function test_items_nobody_changes_keep_their_save_counter(): void
@@ -356,7 +527,7 @@ class BulkPriceTest extends TestCase
         $ids = [$product->id];
 
         $this->preview(['product_ids' => [], 'selling_method' => 'percent', 'selling_value' => 5])->assertJsonValidationErrors(['product_ids' => 'Pilih barang yang mau diubah.']);
-        $this->preview(['product_ids' => range(1, 2001), 'selling_method' => 'percent', 'selling_value' => 5])->assertJsonValidationErrors('product_ids');
+        $this->preview(['product_ids' => range(1, 501), 'selling_method' => 'percent', 'selling_value' => 5])->assertJsonValidationErrors('product_ids');
         $this->preview(['product_ids' => $ids])->assertJsonValidationErrors(['cost_method' => 'Pilih harga yang mau diubah: harga beli, harga jual, atau keduanya.']);
         $this->preview(['product_ids' => $ids, 'cost_method' => 'percent'])->assertJsonValidationErrors(['cost_value' => 'Isi angka perubahan harga beli.']);
         $this->preview(['product_ids' => $ids, 'selling_method' => 'nominal'])->assertJsonValidationErrors(['selling_value' => 'Isi angka perubahan harga jual.']);

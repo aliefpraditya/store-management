@@ -109,6 +109,12 @@ class BulkPriceRequest extends FormRequest
                     $validator->errors()->add('cost_method', 'Pilih harga yang mau diubah: harga beli, harga jual, atau keduanya.');
                 }
 
+                $isNominalChange = $costMethod === CostChangeMethod::Nominal->value || $sellingMethod === SellingChangeMethod::Nominal->value;
+
+                if ($isNominalChange && blank($this->input('unit_code'))) {
+                    $validator->errors()->add('unit_code', 'Nominal Rp perlu dibatasi ke satu satuan: tambahan Rp yang sama tidak masuk akal untuk semua satuan (PCS dan DUS isi 12 tidak naik sama besar).');
+                }
+
                 if ($sellingMethod === SellingChangeMethod::KeepMargin->value && blank($costMethod)) {
                     $validator->errors()->add('selling_method', 'Mempertahankan margin hanya berarti bila harga beli ikut diubah.');
                 }

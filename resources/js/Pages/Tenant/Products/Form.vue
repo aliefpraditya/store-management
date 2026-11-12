@@ -7,7 +7,7 @@ import PickOrCreateSelect from '../../../Components/PickOrCreateSelect.vue';
 import UnitFormDialog from '../../../Components/UnitFormDialog.vue';
 import UnitSelect from '../../../Components/UnitSelect.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
-import { marginFromPrice, priceFromMargin } from '../../../Composables/usePriceMargin';
+import { costFromBase, marginFromPrice, priceFromMargin } from '../../../Composables/usePriceMargin';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -42,14 +42,6 @@ const emptyUnitRow = (isDefaultSale = false) => ({
 });
 
 /**
- * What a unit costs when it simply follows the base unit: the base cost times the conversion.
- * @param {string|number} baseCost purchase price of the base unit
- * @param {string|number} conversionFactor
- * @returns {number}
- */
-const suggestedCost = (baseCost, conversionFactor) => Math.round(Number(baseCost || 0) * Number(conversionFactor || 0) * 100) / 100;
-
-/**
  * The server sends decimals as strings ("116600.00"); the inputs show them as plain numbers. A unit whose cost
  * differs from base cost times conversion was priced by hand, so it stops following the base cost. The margin is not
  * stored: it is worked out from the cost and the selling price, and only lives here to be typed into.
@@ -58,7 +50,7 @@ const toNumericRow = (row, index, rows) => ({
     ...row,
     conversion_factor: Number(row.conversion_factor),
     cost_price: Number(row.cost_price),
-    cost_is_manual: index > 0 && Math.abs(Number(row.cost_price) - suggestedCost(rows[0].cost_price, row.conversion_factor)) > 0.005,
+    cost_is_manual: index > 0 && Math.abs(Number(row.cost_price) - costFromBase(rows[0].cost_price, row.conversion_factor)) > 0.005,
     selling_price: Number(row.selling_price),
     margin_percent: marginFromPrice(row.cost_price, row.selling_price) ?? '',
 });
@@ -109,7 +101,7 @@ watch(
     () => {
         form.units.forEach((row, index) => {
             if (index > 0 && !row.cost_is_manual) {
-                row.cost_price = suggestedCost(form.units[0].cost_price, row.conversion_factor);
+                row.cost_price = costFromBase(form.units[0].cost_price, row.conversion_factor);
                 row.margin_percent = marginFromPrice(row.cost_price, row.selling_price) ?? '';
             }
         });

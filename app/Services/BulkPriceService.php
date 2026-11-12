@@ -12,9 +12,10 @@ use Illuminate\Support\Facades\DB;
 /**
  * Changes the modal and the selling price of many items in one go. The admin picks the items on the item list (by ticking them or by
  * category and brand), looks at a preview, and applies. The apply works the numbers out again under the products' row
- * locks, so what is saved is never what a stale preview showed. Every unit is saved through its model, which is what
- * keeps the price history in the audit trail, and every changed product moves its save counter so an item form that
- * was open before is refused instead of silently overwriting the new prices.
+ * locks and refuses to save when they are not the numbers of the preview (its fingerprint), so what is saved is always
+ * what the admin saw. Every unit is saved through its model, which is what keeps the price history in the audit trail,
+ * and every changed product moves its save counter so an item form that was open before is refused instead of
+ * silently overwriting the new prices.
  *
  * @phpstan-import-type PriceChange from PriceChangeCalculator
  * @phpstan-import-type UnitPricePlan from PriceChangeCalculator
@@ -24,7 +25,8 @@ use Illuminate\Support\Facades\DB;
  */
 class BulkPriceService
 {
-    public const MAX_PRODUCTS = 2000;
+    /** Measured at about 15 ms per item with the audit trail on (200 items took 3 s), so this stays within a web request's time limit. */
+    public const MAX_PRODUCTS = 500;
 
     private const PREVIEW_PRODUCT_LIMIT = 100;
 
@@ -32,11 +34,12 @@ class BulkPriceService
 
     /**
      * What the change would do to the picked items, without saving anything. Only items that change or are skipped are
-     * listed, and only the first few of them; the totals count all.
+     * listed, and only the first few of them; the totals count all. The fingerprint covers every picked item, listed
+     * or not.
      *
      * @param  list<int>  $productIds
      * @param  PriceChange  $change
-     * @return array{products: list<ProductPlan>, is_truncated: bool, totals: BulkPriceTotals}
+     * @return array{products: list<ProductPlan>, is_truncated: bool, totals: BulkPriceTotals, fingerprint: string}
      */
     public function preview(array $productIds, array $change): array
     {
@@ -47,28 +50,47 @@ class BulkPriceService
             'products' => $affected->take(self::PREVIEW_PRODUCT_LIMIT)->values()->all(),
             'is_truncated' => $affected->count() > self::PREVIEW_PRODUCT_LIMIT,
             'totals' => $this->totals($plans),
+            'fingerprint' => $this->fingerprint($plans),
         ];
     }
 
     /**
      * @param  list<int>  $productIds
      * @param  PriceChange  $change
+     * @param  string  $previewFingerprint  the fingerprint of the preview the admin looked at
      * @return BulkPriceTotals
      *
      * @throws BulkPriceException
      */
-    public function apply(array $productIds, array $change): array
+    public function apply(array $productIds, array $change, string $previewFingerprint): array
     {
-        return DB::transaction(function () use ($productIds, $change): array {
+        return DB::transaction(function () use ($productIds, $change, $previewFingerprint): array {
             $products = $this->loadProducts($productIds, true);
             $plans = $this->plansFor($products, $change);
 
-            foreach ($products->keyBy('id') as $productId => $product) {
-                $this->save($product, $plans->firstWhere('id', $productId));
+            if (! hash_equals($previewFingerprint, $this->fingerprint($plans))) {
+                throw BulkPriceException::previewOutdated();
+            }
+
+            $plansById = $plans->keyBy('id');
+
+            foreach ($products as $product) {
+                $this->save($product, $plansById[$product->id]);
             }
 
             return $this->totals($plans);
         });
+    }
+
+    /**
+     * Identifies what the change does to every picked unit: it differs as soon as someone changes a price of a picked
+     * item after the preview was made.
+     *
+     * @param  Collection<int, ProductPlan>  $plans
+     */
+    private function fingerprint(Collection $plans): string
+    {
+        return hash('sha256', $plans->map(fn (array $plan): array => ['id' => $plan['id'], 'units' => $plan['units']])->toJson());
     }
 
     /**
@@ -142,7 +164,24 @@ class BulkPriceService
             }
         }
 
-        $product->forceFill(['version' => $product->version + 1])->save();
+        $product->version++;
+
+        if ($this->isOnlyVersionDirty($product)) {
+            Product::withoutAuditing(fn (): bool => $product->save());
+
+            return;
+        }
+
+        $product->save();
+    }
+
+    /**
+     * Moving the save counter alone (the base unit was not touched) has nothing to audit: the counter is excluded
+     * from the trail, so the entry would be empty.
+     */
+    private function isOnlyVersionDirty(Product $product): bool
+    {
+        return array_keys($product->getDirty()) === ['version'];
     }
 
     /**

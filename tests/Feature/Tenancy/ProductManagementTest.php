@@ -850,6 +850,21 @@ class ProductManagementTest extends TestCase
         $this->assertSame('Nama pertama', $this->savedProduct()->name);
     }
 
+    public function test_an_item_form_opened_before_a_bulk_price_change_is_refused(): void
+    {
+        $this->create();
+        $product = $this->savedProduct();
+        $openedBeforeBulkChange = $this->editPayload($product, ['units' => $this->unchangedUnits($product)]);
+        $change = ['product_ids' => [$product->id], 'unit_code' => 'PAIL', 'selling_method' => 'percent', 'selling_value' => 10];
+        $fingerprint = $this->actingAs($this->admin)->postJson(route('tenant.bulk-prices.preview', ['tenant' => $this->store->code]), $change)->json('data.fingerprint');
+
+        $this->actingAs($this->admin)->post(route('tenant.bulk-prices.apply', ['tenant' => $this->store->code]), [...$change, 'preview_fingerprint' => $fingerprint])->assertSessionHasNoErrors();
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), [...$openedBeforeBulkChange, 'name' => 'Nama dari form lama'])
+            ->assertSessionHas('error', 'Barang ini diubah orang lain sejak halaman dibuka. Muat ulang halaman, lalu isi lagi perubahan Anda.');
+
+        $this->assertNotSame('Nama dari form lama', $this->savedProduct()->name);
+    }
+
     public function test_an_edit_needs_the_version_it_was_opened_with(): void
     {
         $this->create();

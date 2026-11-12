@@ -50,19 +50,13 @@ Diperbaiki (10 Nov 2026), bersama aturan review berjenjang (kasir ditinjau Admin
 - **[ARCH][nit]** migrasi `2026_11_08_120000` membuang `followed_up_by/at` tanpa menyalin daftar selisih "ditolak, belum ditindaklanjuti"; sudah terpasang di toko yang ada, jadi hanya perlu dicek bila ada DB lama lain.
 - **[UX][nit]** kartu *Perlu tindakan* di Dashboard Admin masih menampilkan selisih yang hanya bisa diputuskan Super Admin; halaman detailnya menjelaskan alasannya.
 
-## 8. Harga massal dan kalkulator
+## 8. Sisa dari harga massal dan kalkulator
 
-- **[LOG][major]** `PriceChangeCalculator.php:61,79`, `BulkPriceDialog.vue:166-175,207` — "Semua satuan" + metode Nominal menambah Rupiah yang sama ke tiap satuan (+500 ke PCS dan ke DUS isi 12). Docs butir 14 (baris 1691) menyebut satuan perlu dibatasi untuk nominal, tetapi backend tidak mewajibkan dan UI hanya memberi catatan untuk "Setarakan". Pratinjau hanya 100 barang pertama. → wajibkan `unit_code` bila metode nominal (di `BulkPriceRequest`), atau catatan merah.
-- **[LOG][major]** `BulkPriceService.php:60-71` — apply menghitung ulang di server tanpa membandingkan dengan pratinjau; bila admin lain mengubah data di antaranya, yang tersimpan berbeda dan docs ("yang diterapkan selalu yang sudah dilihat", baris 1691) menjanjikan sebaliknya. → kirim sidik jari pratinjau (hash `id:version`) dan tolak 409 bila beda, atau koreksi docs.
-- **[PERF][major]** `BulkPriceService.php:27,62-71,125-146` — satu transaksi sinkron dengan lock hingga 2.000 produk, ±10-16 ribu query (UPDATE + INSERT audit per satuan dan produk) di request web; `$plans->firstWhere` di dalam loop O(n²). Waktu belum diukur dan tidak ada tes di batas 2.000. → ukur; turunkan `MAX_PRODUCTS` atau pindah ke antrean bersama provisioning; pakai `keyBy`.
-- **[TEST][major]** `BulkPriceTest.php` — belum diuji: rollback bila satu simpan gagal; Form Barang yang dibuka sebelum ubah massal ditolak "diubah orang lain"; `is_truncated` dan batas 100 pratinjau; tepat 2.000 id; titik tengah HalfUp (tes baris 247-254 menghasilkan 1358,016, bukan titik tengah); apply keep_margin/skip pada banyak barang; paritas rumus JS (`usePriceMargin.js`, `useUnitConversion.js`) vs backend (tidak ada runner JS); tes unit `PriceChangeCalculator`.
-- **[BUG][nit]** `Form.vue:154`, `usePriceMargin.js:32-39` — `isMarginOutOfRange` memberi error merah pada margin ≥ 100; baris baru bermodal 0 dan mengisi harga jual dulu menghasilkan margin tepat 100 (error palsu). → `marginFromPrice` null bila modal ≤ 0.
-- **[BUG][nit]** `PriceChangeCalculator.php:92-94,108` — tidak ada batas atas hasil; kolom `decimal(15,2)` bisa meluap (pratinjau OK, apply `QueryException` 22003 → 500, transaksi rollback). → skip "Melebihi batas harga".
-- **[LOG][nit]** `PriceChangeCalculator.php:47-49` — bila aturan harga jual tak bisa dihitung (keep_margin dengan harga 0), perubahan modal satuan itu ikut dibatalkan sehingga modal DUS bisa berubah sementara modal PCS (dasar) tidak. Sesuai docs; sebutkan di alasan skip.
-- **[QUAL][nit]** `usePriceMargin.js:6-10,24,39`, `Form.vue:51` — uang dihitung dengan float + `Math.round`; pada titik tengah sen (1,15 × 1,5 = 1,725) JS bisa 1,72 sementara server 1,73. → hitung dalam sen bulat atau minta server menghitung.
-- **[PERF][nit]** `ProductController.php:46`, `ProductService.php:61-68` — `matching_ids` (hingga 2.000 id) dihitung dan dikirim di setiap request daftar barang, padahal hanya dipakai tombol "Pilih semua". → `Inertia::optional` atau endpoint saat tombol diklik.
-- **[UX][nit]** `BulkPriceDialog.vue:137-148`, `Index.vue:232` — `apply` tanpa `onError`; `onSuccess` menyala juga untuk redirect berisi flash error (`BulkPriceController.php:36 productsMissing`) sehingga dialog menutup dan seleksi dikosongkan walau tidak ada yang tersimpan. → cek `flash.error`, tambah `onError`.
-- **[QUAL][nit]** `ProductController.php:53-62` memuat pemetaan enum → opsi di controller (pakai `options()` seperti `ProductStatusFilter`); `BulkPriceService.php:145` `forceFill(['version'])` pada produk yang hanya satuan non-dasarnya berubah menghasilkan audit `updated` kosong, dan audit satu proses tak punya tag bersama.
+Semua temuan lain di bagian ini sudah diperbaiki dan dihapus dari daftar. Yang tersisa, **diterima**:
+
+- **[TEST][nit]** Paritas rumus JS (`usePriceMargin.js`) dengan backend tidak punya tes otomatis karena belum ada runner JS; dicek manual dengan Node (mis. 1,15 × 1,5 = 1,73, sama dengan server).
+- **[QUAL][nit]** Audit satu proses ubah massal tidak punya tag bersama: laravel-auditing memberi tag per model, jadi satu tag untuk semua barang butuh status statis. Waktu dan pengguna yang sama sudah cukup untuk mengelompokkannya.
+- **[PERF][nit]** Terapkan tetap sinkron (±15 md per barang); pindah ke antrean menunggu keputusan deploy Hostinger (bagian 1).
 - **OOS:** `CartPricer` memakai `product_units.cost_price` per satuan, jadi ubah massal memengaruhi HPP penjualan berikutnya (area kasir).
 
 ## 9. Opname lanjutan, barang rusak, gudang retur
