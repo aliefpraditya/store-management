@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { roundMoney } from '../../Composables/useCart';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
+import MoneyInput from '../MoneyInput.vue';
 
 const props = defineProps({
     modelValue: { type: Boolean, required: true },
@@ -76,13 +77,11 @@ function confirm() {
             </q-card-section>
 
             <q-card-section class="close__form">
-                <q-input v-model="countedCash" type="number" min="0" step="any" outlined dense prefix="Rp" label="Tunai yang dihitung" autofocus />
+                <MoneyInput v-model="countedCash" allow-decimal outlined dense prefix="Rp" label="Tunai yang dihitung" autofocus />
 
-                <q-input
+                <MoneyInput
                     v-model="drawerLeftCash"
-                    type="number"
-                    min="0"
-                    step="any"
+                    allow-decimal
                     outlined
                     dense
                     prefix="Rp"

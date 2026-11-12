@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
+import MoneyInput from '../MoneyInput.vue';
 
 const props = defineProps({
     /** @type {{id: number, code: string, name: string, carried_over_cash: string|null, busy_with: string|null, busy_note: string|null}[]} */
@@ -75,12 +76,12 @@ function openShift() {
                 />
                 <div v-else class="open__register">{{ register.code }} · {{ register.name }}</div>
 
-                <q-input v-model="openingCash" type="number" min="0" step="any" outlined dense prefix="Rp" label="Modal kas awal" autofocus>
+                <MoneyInput v-model="openingCash" allow-decimal outlined dense prefix="Rp" label="Modal kas awal" autofocus>
                     <template #hint>
                         <template v-if="hasCarriedOverCash">Sisa laci shift sebelumnya: {{ formatRupiah(register.carried_over_cash) }}</template>
                         <template v-else>Belum ada shift sebelumnya di register ini. Hitung uang di laci lalu isi.</template>
                     </template>
-                </q-input>
+                </MoneyInput>
                 <q-input v-if="isOpeningChanged" v-model="openingNote" outlined dense maxlength="255" label="Alasan modal berbeda dari sisa laci (wajib)" />
                 <p v-if="register?.busy_with" class="open__busy">{{ register.name }} sedang dipakai {{ register.busy_with }}.</p>
             </q-card-section>

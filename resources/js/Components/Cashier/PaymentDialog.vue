@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { roundMoney } from '../../Composables/useCart';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
+import MoneyInput from '../MoneyInput.vue';
 import OrderFields from './OrderFields.vue';
 
 const props = defineProps({
@@ -240,10 +241,9 @@ function confirm() {
                         />
                     </div>
                     <div class="payment__amount">
-                        <q-input
+                        <MoneyInput
                             v-model="line.amount"
-                            type="number"
-                            min="0"
+                            allow-decimal
                             :step="AMOUNT_STEP"
                             outlined
                             prefix="Rp"

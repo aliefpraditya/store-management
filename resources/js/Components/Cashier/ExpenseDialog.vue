@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar';
 import { postJson } from '../../Composables/postJson';
 import { newUuid } from '../../Composables/useCart';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
+import MoneyInput from '../MoneyInput.vue';
 
 const props = defineProps({
     modelValue: { type: Boolean, required: true },
@@ -118,7 +119,7 @@ async function save() {
                     dense
                     label="Kategori"
                 />
-                <q-input v-model="form.amount" type="number" min="0" step="any" outlined dense prefix="Rp" label="Nominal" />
+                <MoneyInput v-model="form.amount" allow-decimal outlined dense prefix="Rp" label="Nominal" />
                 <q-input v-model="form.description" outlined dense maxlength="255" label="Keterangan (mis. beli galon)" />
                 <q-input v-model="form.paid_to" outlined dense maxlength="255" label="Dibayar ke (opsional)" />
 
