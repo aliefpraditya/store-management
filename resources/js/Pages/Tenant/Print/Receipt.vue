@@ -11,7 +11,7 @@ defineProps({
 <template>
     <Head :title="`Nota ${receipt.number}`" />
 
-    <PrintPage paper-width="80mm">
+    <PrintPage :paper-width="`${receipt.paper_width}mm`">
         <ReceiptSheet :receipt="receipt" />
     </PrintPage>
 </template>

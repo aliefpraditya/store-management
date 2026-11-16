@@ -6,6 +6,7 @@ use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\PreparesStoreDatabase;
 use Tests\TestCase;
 
@@ -20,12 +21,12 @@ class StorePathTenancyTest extends TestCase
         $this->prepareStoreDatabase(['code' => 'test_alpha']);
 
         $this->actingAs(User::factory()->create(['is_super_admin' => true]))
-            ->getJson('/t/test_alpha/ping')
+            ->get('/t/test_alpha/cashier')
             ->assertOk()
-            ->assertJson([
-                'store' => 'test_alpha',
-                'database' => self::STORE_DATABASE,
-            ]);
+            ->assertInertia(fn (Assert $page) => $page->where('store.code', 'test_alpha'));
+
+        // Tenancy stays initialized after the request, so the default connection is still that store's database.
+        $this->assertSame(self::STORE_DATABASE, DB::connection()->getDatabaseName());
     }
 
     public function test_session_cache_and_queue_stay_on_the_central_connection(): void

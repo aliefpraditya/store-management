@@ -121,6 +121,21 @@ class LoginTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_failures_from_one_address_are_throttled_across_different_usernames(): void
+    {
+        [$user] = $this->userWithStore();
+        RateLimiter::clear('login-ip|127.0.0.1');
+
+        foreach (range(1, 20) as $attempt) {
+            $this->post(route('login'), ['username' => "guess{$attempt}", 'password' => 'wrong-password']);
+        }
+
+        $this->attemptLogin($user)->assertSessionHasErrors('username');
+
+        $this->assertStringContainsString('Terlalu banyak percobaan', session('errors')->first('username'));
+        $this->assertGuest();
+    }
+
     public function test_user_can_sign_out(): void
     {
         $this->actingAs(User::factory()->create())

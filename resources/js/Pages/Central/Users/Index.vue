@@ -1,5 +1,6 @@
 <script setup>
 import { router } from '@inertiajs/vue3';
+import { useQuasar } from 'quasar';
 import CentralLayout from '../../../Layouts/CentralLayout.vue';
 
 defineProps({
@@ -7,8 +8,28 @@ defineProps({
     create_url: { type: String, required: true },
 });
 
+const $q = useQuasar();
+
+/**
+ * Deactivating locks the person out at once (a cashier mid-shift included), so it asks first;
+ * activating again is harmless and goes straight through.
+ */
 function toggleActive(user, isActive) {
-    router.patch(user.status_url, { is_active: isActive }, { preserveScroll: true });
+    const save = () => router.patch(user.status_url, { is_active: isActive }, { preserveScroll: true });
+
+    if (isActive) {
+        save();
+
+        return;
+    }
+
+    $q.dialog({
+        title: 'Nonaktifkan user?',
+        message: `${user.name} tidak akan bisa masuk lagi sampai diaktifkan kembali.`,
+        ok: { label: 'Nonaktifkan', color: 'negative', unelevated: true, noCaps: true },
+        cancel: { label: 'Batal', flat: true, noCaps: true },
+        persistent: true,
+    }).onOk(save);
 }
 </script>
 
@@ -36,12 +57,12 @@ function toggleActive(user, isActive) {
                             <small>{{ user.username }}</small>
                         </td>
                         <td>
-                            <span v-if="user.role" class="users__role" :class="{ 'users__role--super': user.role.value === 'super_admin' }">
+                            <span v-if="user.role" class="users__role" :class="{ 'users__role--super': !user.role.is_store_role }">
                                 {{ user.role.label }}
                             </span>
                             <span v-else class="users__muted">Belum ada toko</span>
                         </td>
-                        <td>{{ user.store?.name ?? (user.role?.value === 'super_admin' ? 'Semua' : '—') }}</td>
+                        <td>{{ user.store?.name ?? (user.role && !user.role.is_store_role ? 'Semua' : '—') }}</td>
                         <td class="users__center">
                             <q-toggle
                                 :model-value="user.is_active"

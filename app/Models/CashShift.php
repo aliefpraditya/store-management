@@ -4,9 +4,9 @@ namespace App\Models;
 
 use App\Enums\CashShiftStatus;
 use App\Enums\ShiftDifferenceStatus;
+use App\Enums\UserRole;
 use Database\Factories\CashShiftFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,7 +17,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 /**
  * Lives in the store database. `cashier_id` points at a central user, so it has no relation.
  */
-#[Fillable(['client_uuid', 'register_id', 'business_date', 'cashier_id', 'cashier_name', 'opened_at', 'opening_cash', 'closed_at', 'expected_cash', 'counted_cash', 'cash_difference', 'deposit_amount', 'status', 'difference_status', 'closing_note'])]
+#[Fillable(['client_uuid', 'register_id', 'business_date', 'cashier_id', 'cashier_name', 'opened_at', 'opening_cash', 'opening_cash_note', 'closed_at', 'closed_by', 'counted_at', 'expected_cash', 'counted_cash', 'cash_difference', 'deposit_amount', 'drawer_left_cash', 'status', 'difference_status', 'closing_note'])]
 class CashShift extends Model implements AuditableContract
 {
     /** @use HasFactory<CashShiftFactory> */
@@ -32,24 +32,17 @@ class CashShift extends Model implements AuditableContract
             'business_date' => 'date',
             'opened_at' => 'datetime',
             'closed_at' => 'datetime',
+            'counted_at' => 'datetime',
             'difference_approved_at' => 'datetime',
-            'followed_up_at' => 'datetime',
             'opening_cash' => 'decimal:2',
             'expected_cash' => 'decimal:2',
             'counted_cash' => 'decimal:2',
             'cash_difference' => 'decimal:2',
             'deposit_amount' => 'decimal:2',
+            'drawer_left_cash' => 'decimal:2',
             'status' => CashShiftStatus::class,
             'difference_status' => ShiftDifferenceStatus::class,
         ];
-    }
-
-    /**
-     * A refused cash difference stays open until an admin marks it followed up.
-     */
-    public function needsFollowUp(): bool
-    {
-        return $this->difference_status === ShiftDifferenceStatus::Rejected && $this->followed_up_at === null;
     }
 
     /**
@@ -61,12 +54,16 @@ class CashShift extends Model implements AuditableContract
     }
 
     /**
-     * @param  Builder<CashShift>  $query
-     * @return Builder<CashShift>
+     * The role the cashier of the shift has in this store now. `cashier_id` points at a central user, so it is looked up;
+     * a user who is gone, or who has lost access to the store, counts as a cashier (the lowest role). Must run while the
+     * store's tenancy is initialized.
      */
-    public function scopeAwaitingFollowUp(Builder $query): Builder
+    public function cashierRole(): UserRole
     {
-        return $query->where('difference_status', ShiftDifferenceStatus::Rejected)->whereNull('followed_up_at');
+        /** @var Store $store */
+        $store = tenant();
+
+        return User::query()->find($this->cashier_id)?->roleIn($store) ?? UserRole::Cashier;
     }
 
     /**

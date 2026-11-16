@@ -1,5 +1,7 @@
 <script setup>
+import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
+import { useQuasar } from 'quasar';
 import CentralLayout from '../../../Layouts/CentralLayout.vue';
 
 defineProps({
@@ -7,12 +9,45 @@ defineProps({
     create_url: { type: String, required: true },
 });
 
+const $q = useQuasar();
+
+/** Id of the store whose request is still running, so its buttons cannot be pressed twice. */
+const busyStoreId = ref(null);
+
+/**
+ * Sends one store request and keeps that store's controls disabled until it finishes.
+ * @param {object} store
+ * @param {(options: object) => void} send
+ */
+function sendForStore(store, send) {
+    busyStoreId.value = store.id;
+    send({ preserveScroll: true, onFinish: () => (busyStoreId.value = null) });
+}
+
+/**
+ * Deactivating blocks every user of the store at once, so it asks first;
+ * activating again is harmless and goes straight through.
+ */
 function toggleActive(store, isActive) {
-    router.patch(store.status_url, { is_active: isActive }, { preserveScroll: true });
+    const save = () => sendForStore(store, (options) => router.patch(store.status_url, { is_active: isActive }, options));
+
+    if (isActive) {
+        save();
+
+        return;
+    }
+
+    $q.dialog({
+        title: 'Nonaktifkan toko?',
+        message: `Semua user ${store.name} tidak akan bisa masuk sampai toko diaktifkan kembali.`,
+        ok: { label: 'Nonaktifkan', color: 'negative', unelevated: true, noCaps: true },
+        cancel: { label: 'Batal', flat: true, noCaps: true },
+        persistent: true,
+    }).onOk(save);
 }
 
 function retryProvisioning(store) {
-    router.post(store.provision_url, {}, { preserveScroll: true });
+    sendForStore(store, (options) => router.post(store.provision_url, {}, options));
 }
 </script>
 
@@ -40,7 +75,10 @@ function retryProvisioning(store) {
                             <b>{{ store.name }}</b>
                             <small>{{ store.code }}</small>
                         </td>
-                        <td>{{ store.db_name }}</td>
+                        <td>
+                            {{ store.db_name }}
+                            <small v-if="store.schema_version" class="stores__muted">{{ store.schema_version }}</small>
+                        </td>
                         <td>{{ store.receipt_prefix }}</td>
                         <td>
                             <span class="stores__status" :class="`stores__status--${store.status.value}`">
@@ -52,6 +90,7 @@ function retryProvisioning(store) {
                             <q-toggle
                                 v-if="store.can_toggle_active"
                                 :model-value="store.is_active"
+                                :disable="busyStoreId === store.id"
                                 color="positive"
                                 dense
                                 :aria-label="`Aktif: ${store.name}`"
@@ -68,6 +107,8 @@ function retryProvisioning(store) {
                                 color="primary"
                                 label="Coba lagi"
                                 class="q-px-sm"
+                                :loading="busyStoreId === store.id"
+                                :disable="busyStoreId !== null"
                                 @click="retryProvisioning(store)"
                             />
                             <q-btn flat round dense icon="edit" color="grey-7" :aria-label="`Edit ${store.name}`" @click="router.visit(store.edit_url)" />

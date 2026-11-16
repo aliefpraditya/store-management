@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Listeners\RecordStoreSchemaVersion;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
@@ -22,7 +23,7 @@ class TenancyServiceProvider extends ServiceProvider
         return [
             // Tenant events
             Events\CreatingTenant::class => [],
-            // Provisioning is explicit (ProvisionStore action): the database is created by hand in hPanel,
+            // Provisioning is explicit (StoreProvisioner): the database is created by hand in hPanel,
             // then connection test + migrations + seeders are run on purpose, never automatically.
             Events\TenantCreated::class => [],
             Events\SavingTenant::class => [],
@@ -45,7 +46,9 @@ class TenancyServiceProvider extends ServiceProvider
 
             // Database events
             Events\DatabaseCreated::class => [],
-            Events\DatabaseMigrated::class => [],
+            Events\DatabaseMigrated::class => [
+                RecordStoreSchemaVersion::class,
+            ],
             Events\DatabaseSeeded::class => [],
             Events\DatabaseRolledBack::class => [],
             Events\DatabaseDeleted::class => [],
@@ -93,10 +96,6 @@ class TenancyServiceProvider extends ServiceProvider
     {
         foreach ($this->events() as $event => $listeners) {
             foreach ($listeners as $listener) {
-                if ($listener instanceof JobPipeline) {
-                    $listener = $listener->toListener();
-                }
-
                 Event::listen($event, $listener);
             }
         }

@@ -13,6 +13,8 @@ class LoginRequest extends FormRequest
 {
     private const MAX_ATTEMPTS = 5;
 
+    private const MAX_ATTEMPTS_PER_IP = 20;
+
     public function authorize(): bool
     {
         return true;
@@ -26,7 +28,7 @@ class LoginRequest extends FormRequest
         return [
             'username' => ['required', 'string'],
             'password' => ['required', 'string'],
-            'remember' => ['boolean'],
+            'should_remember' => ['boolean'],
         ];
     }
 
@@ -53,11 +55,12 @@ class LoginRequest extends FormRequest
 
         $isAuthenticated = Auth::attempt(
             [...$this->only('username', 'password'), 'is_active' => true],
-            $this->boolean('remember'),
+            $this->boolean('should_remember'),
         );
 
         if (! $isAuthenticated) {
             RateLimiter::hit($this->throttleKey());
+            RateLimiter::hit($this->ipThrottleKey());
 
             throw ValidationException::withMessages(['username' => 'Username atau password salah.']);
         }
@@ -70,13 +73,19 @@ class LoginRequest extends FormRequest
      */
     private function ensureIsNotRateLimited(): void
     {
-        if (! RateLimiter::tooManyAttempts($this->throttleKey(), self::MAX_ATTEMPTS)) {
+        $isLockedOut = RateLimiter::tooManyAttempts($this->throttleKey(), self::MAX_ATTEMPTS)
+            || RateLimiter::tooManyAttempts($this->ipThrottleKey(), self::MAX_ATTEMPTS_PER_IP);
+
+        if (! $isLockedOut) {
             return;
         }
 
         event(new Lockout($this));
 
-        $seconds = RateLimiter::availableIn($this->throttleKey());
+        $seconds = max(
+            RateLimiter::availableIn($this->throttleKey()),
+            RateLimiter::availableIn($this->ipThrottleKey()),
+        );
 
         throw ValidationException::withMessages([
             'username' => "Terlalu banyak percobaan. Coba lagi dalam {$seconds} detik.",
@@ -86,5 +95,15 @@ class LoginRequest extends FormRequest
     private function throttleKey(): string
     {
         return Str::transliterate(Str::lower($this->string('username')->toString()).'|'.$this->ip());
+    }
+
+    /**
+     * Counts failures from one address across every username, so a single password cannot be sprayed
+     * over many accounts without ever tripping the per-username limit. Never cleared on a successful
+     * login, or an attacker holding one valid account could reset it.
+     */
+    private function ipThrottleKey(): string
+    {
+        return 'login-ip|'.$this->ip();
     }
 }

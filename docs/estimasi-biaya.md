@@ -35,7 +35,7 @@ Asumsi: Laravel 13 API + Vue 3/**Quasar** (PWA-ready); go-live awal 1 toko (Mitr
 | 8 | Penerimaan kontainer | Multi-supplier, tanggal kirim/sampai/bongkar, biaya kontainer, **merujuk pembelian full/partial**, posting/batal, update status pembelian & harga beli | 12–15 |
 | 9 | Stok opname | Per gudang, cakupan, snapshot, hitung multi-satuan, posting | 6–8 |
 | 10 | Kasir online (inti) | Layar POS, pembayaran campur (tunai/transfer/QRIS/EDC), simpan atomik, penomoran per register, riwayat, void, log batal | 12–16 |
-| 11 | Shift & kas | Buka/tutup (modal tetap), setoran, kas masuk/keluar, laporan Z, rekap & approval selisih | 7–10 |
+| 11 | Shift & kas | Buka/tutup (modal dari sisa laci), setoran, kas masuk/keluar, laporan Z, rekap & approval selisih | 7–10 |
 | 12 | Retur | Refund/tukar (nilai retur dipotong otomatis), disposisi dead stock, approval Admin, kas keluar, bukti retur | 8–11 |
 | 13 | Persiapan offline-ready | `client_uuid` + endpoint idempoten, nomor per register, snapshot, API delta, pemisahan lapisan akses data di frontend | 3–5 |
 | 14 | Nota | Template + pratinjau + CSS 58/80 mm/A4 + pengaturan | 3–4 |
@@ -202,7 +202,7 @@ Cakupan rinci: [`analisis-sistem.md`](analisis-sistem.md) bagian 0.3. Peta menu 
 | 6 | **Stok opname** | Cakupan semua/kategori/barang terpilih, snapshot, hitung multi-satuan, import hasil hitung, review selisih + alasan, posting Admin | 7–9 |
 | 7 | Kasir online + pembayaran | Cari/scan, barang + satuan, keranjang, bayar campuran, simpan atomik, nomor per register, riwayat nota, batal sebelum bayar | 12–16 |
 | 8 | Nota | Template + pratinjau + cetak browser (58/80 mm/A4) | 3–4 |
-| 9 | **Buka/tutup kas (shift)** | Modal tetap, setoran, selisih + approval Admin, laporan Z, rekap shift | 7–10 |
+| 9 | **Buka/tutup kas (shift)** | Modal dari sisa laci, setoran, selisih + approval Admin, laporan Z, rekap shift | 7–10 |
 | 10 | **Retur** | Refund/tukar (nilai retur dipotong otomatis), disposisi dead stock, approval Admin | 8–11 |
 | 11 | **Surat jalan** | Dari nota, kirim bertahap, status antar/pulang, cetak tanpa harga | 7–9 |
 | 12 | **Pengeluaran** | Kategori, sumber laci/lainnya, kaitan shift | 3–4 |

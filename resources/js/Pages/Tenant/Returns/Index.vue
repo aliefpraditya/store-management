@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
+import { returnStatusChipClass } from '../../../Composables/useReturnStatus';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -19,8 +20,6 @@ const status = ref(props.filters.status);
 const search = ref(props.filters.search);
 const from = ref(props.filters.from ?? '');
 const to = ref(props.filters.to ?? '');
-
-const statusChipClass = { pending: 'chip--warn', completed: 'chip--ok', rejected: 'chip--bad' };
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -71,7 +70,7 @@ watch([status, from, to], () => applyFilters());
                         <th>Waktu</th>
                         <th>Nota</th>
                         <th>Kasir</th>
-                        <th>Uang kembali</th>
+                        <th>Nilai retur</th>
                         <th>Status</th>
                     </tr>
                 </thead>
@@ -84,8 +83,8 @@ watch([status, from, to], () => applyFilters());
                         <td>{{ dateTimeFormat.format(new Date(saleReturn.returned_at)) }}</td>
                         <td>{{ saleReturn.sale_number }}</td>
                         <td>{{ saleReturn.cashier_name }}</td>
-                        <td>{{ formatRupiah(saleReturn.refund_amount) }} <small class="returns__muted">{{ saleReturn.refund_method_label }}</small></td>
-                        <td><span class="chip" :class="statusChipClass[saleReturn.status]">{{ saleReturn.status_label }}</span></td>
+                        <td>{{ formatRupiah(saleReturn.credit_amount) }} <small class="returns__muted">{{ saleReturn.resolution_label }}</small></td>
+                        <td><span class="chip" :class="returnStatusChipClass[saleReturn.status]">{{ saleReturn.status_label }}</span></td>
                     </tr>
                 </tbody>
             </table>

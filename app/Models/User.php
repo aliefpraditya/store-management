@@ -83,6 +83,14 @@ class User extends Authenticatable implements AuditableContract
     }
 
     /**
+     * A cashier works with the receipts they made; an admin works with any receipt of the store.
+     */
+    public function canHandleReceipt(Sale $sale, Store $store): bool
+    {
+        return $sale->cashier_id === $this->id || $this->isAdminIn($store);
+    }
+
+    /**
      * Null only for a non-super-admin who has no store yet.
      *
      * @return Attribute<UserRole|null, never>

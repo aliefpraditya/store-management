@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Enums\ApiErrorCode;
+use App\Enums\PaymentMethod;
 use App\Enums\UserRole;
 use App\Models\CashShift;
 use App\Models\Register;
@@ -81,7 +82,7 @@ class ShiftReceiptTest extends TestCase
         $receipt = $response->json('data.1');
         $this->assertNull($receipt['show_url']);
         $this->assertStringEndsWith('/cashier/receipts/'.$receipt['id'].'/print', $receipt['print_url']);
-        $this->assertStringEndsWith('/cashier/receipts/'.$receipt['id'].'/sheet', $receipt['sheet_url']);
+        $this->assertArrayNotHasKey('sheet_url', $receipt);
     }
 
     public function test_only_an_admin_gets_the_link_to_the_full_receipt(): void
@@ -138,10 +139,9 @@ class ShiftReceiptTest extends TestCase
     {
         $sale = $this->makeSale($this->shift, $this->cashier, ['number' => 'INV/1']);
         $printUrl = $this->url('tenant.cashier.receipts.print', ['sale' => $sale->id]);
-        $sheetUrl = $this->url('tenant.cashier.receipts.sheet', ['sale' => $sale->id]);
 
-        $this->actingAs($this->cashier)->postJson($printUrl);
-        $this->actingAs($this->cashier)->get($sheetUrl)->assertOk()->assertInertia(fn (Assert $page) => $page
+        $firstSheetUrl = $this->actingAs($this->cashier)->postJson($printUrl)->json('data.sheet_url');
+        $this->actingAs($this->cashier)->get($firstSheetUrl)->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Tenant/Print/Receipt')
             ->where('receipt.number', 'INV/1')
             ->where('receipt.is_copy', false)
@@ -150,16 +150,49 @@ class ShiftReceiptTest extends TestCase
             ->where('receipt.store.phone', '021-123')
             ->where('receipt.items.0.name', 'Kuas'));
 
-        $this->actingAs($this->cashier)->postJson($printUrl);
-        $this->actingAs($this->cashier)->get($sheetUrl)->assertInertia(fn (Assert $page) => $page->where('receipt.is_copy', true));
+        $secondSheetUrl = $this->actingAs($this->cashier)->postJson($printUrl)->json('data.sheet_url');
+        $this->actingAs($this->cashier)->get($secondSheetUrl)->assertInertia(fn (Assert $page) => $page->where('receipt.is_copy', true));
+        $this->actingAs($this->cashier)->get($firstSheetUrl)->assertInertia(fn (Assert $page) => $page->where('receipt.is_copy', false));
+    }
+
+    public function test_the_sheet_holds_what_the_paper_shows_and_nothing_more(): void
+    {
+        $sale = $this->makeSale($this->shift, $this->cashier, ['number' => 'INV/1', 'status' => 'voided', 'void_reason' => 'Ditolak', 'void_refund_account' => 'BCA 1234567 a.n. Budi', 'voided_by_name' => 'Admin']);
+        $sheetUrl = $this->actingAs($this->cashier)->postJson($this->url('tenant.cashier.receipts.print', ['sale' => $sale->id]))->json('data.sheet_url');
+
+        $props = Assert::fromTestResponse($this->actingAs($this->cashier)->get($sheetUrl)->assertOk())->toArray()['props'];
+
+        $this->assertEqualsCanonicalizing(
+            ['number', 'sold_at', 'cashier_name', 'customer_name', 'status', 'total', 'change_amount', 'items', 'payments', 'order', 'is_copy', 'store', 'footer', 'paper_width'],
+            array_keys($props['receipt']),
+        );
+    }
+
+    public function test_a_cod_line_is_named_kekurangan_on_the_paper(): void
+    {
+        $sale = $this->makeSale($this->shift, $this->cashier);
+        $this->store->run(fn () => SalePayment::query()->where('sale_id', $sale->id)->update(['method' => PaymentMethod::Cod]));
+        $sheetUrl = $this->actingAs($this->cashier)->postJson($this->url('tenant.cashier.receipts.print', ['sale' => $sale->id]))->json('data.sheet_url');
+
+        $this->actingAs($this->cashier)->get($sheetUrl)->assertInertia(fn (Assert $page) => $page->where('receipt.payments.0.method', 'Kekurangan (COD)'));
+    }
+
+    public function test_the_sheet_cannot_be_opened_without_the_address_a_print_gave(): void
+    {
+        $sale = $this->makeSale($this->shift, $this->cashier);
+        $signedSheetUrl = $this->actingAs($this->cashier)->postJson($this->url('tenant.cashier.receipts.print', ['sale' => $sale->id]))->json('data.sheet_url');
+
+        $this->actingAs($this->cashier)->get($this->url('tenant.cashier.receipts.sheet', ['sale' => $sale->id]))->assertForbidden();
+        $this->actingAs($this->cashier)->get(str_replace('print=1', 'print=2', $signedSheetUrl))->assertForbidden();
+        $this->assertSame(1, $this->printCount($sale));
     }
 
     public function test_a_voided_receipt_can_still_be_printed_and_says_so(): void
     {
         $sale = $this->makeSale($this->shift, $this->cashier, ['status' => 'voided']);
 
-        $this->actingAs($this->cashier)->postJson($this->url('tenant.cashier.receipts.print', ['sale' => $sale->id]))->assertOk();
-        $this->actingAs($this->cashier)->get($this->url('tenant.cashier.receipts.sheet', ['sale' => $sale->id]))
+        $sheetUrl = $this->actingAs($this->cashier)->postJson($this->url('tenant.cashier.receipts.print', ['sale' => $sale->id]))->assertOk()->json('data.sheet_url');
+        $this->actingAs($this->cashier)->get($sheetUrl)
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page->where('receipt.status', 'voided'));
     }
@@ -171,7 +204,10 @@ class ShiftReceiptTest extends TestCase
         $theirs = $this->makeSale($otherShift, $other);
         $printUrl = $this->url('tenant.cashier.receipts.print', ['sale' => $theirs->id]);
 
-        $this->actingAs($this->cashier)->postJson($printUrl)->assertForbidden();
+        $this->actingAs($this->cashier)->postJson($printUrl)->assertForbidden()
+            ->assertJsonPath('code', ApiErrorCode::ReceiptNotYours->value)
+            ->assertJsonPath('message', 'Nota ini bukan nota Anda, jadi tidak bisa dicetak ulang.')
+            ->assertJsonStructure(['code', 'message', 'more_info']);
         $this->actingAs($this->cashier)->get($this->url('tenant.cashier.receipts.sheet', ['sale' => $theirs->id]))->assertForbidden();
         $this->assertSame(0, $this->printCount($theirs));
 

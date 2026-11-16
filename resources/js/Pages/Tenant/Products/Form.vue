@@ -2,10 +2,12 @@
 import { computed, ref, watch } from 'vue';
 import { router, useForm, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
+import ConversionCalculatorDialog from '../../../Components/ConversionCalculatorDialog.vue';
 import PickOrCreateSelect from '../../../Components/PickOrCreateSelect.vue';
 import UnitFormDialog from '../../../Components/UnitFormDialog.vue';
 import UnitSelect from '../../../Components/UnitSelect.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
+import { costFromBase, marginFromPrice, priceFromMargin } from '../../../Composables/usePriceMargin';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -30,35 +32,32 @@ const emptyUnitRow = (isDefaultSale = false) => ({
     id: null,
     unit: null,
     conversion_factor: 1,
-    barcode: '',
     is_sellable: true,
     cost_price: 0,
     cost_is_manual: false,
     selling_price: 0,
+    margin_percent: '',
     is_default_sale: isDefaultSale,
+    is_sealed_pack: false,
 });
 
 /**
- * What a unit costs when it simply follows the base unit: the base cost times the conversion.
- * @param {string|number} baseCost purchase price of the base unit
- * @param {string|number} conversionFactor
- * @returns {number}
- */
-const suggestedCost = (baseCost, conversionFactor) => Math.round(Number(baseCost || 0) * Number(conversionFactor || 0) * 100) / 100;
-
-/**
  * The server sends decimals as strings ("116600.00"); the inputs show them as plain numbers. A unit whose cost
- * differs from base cost times conversion was priced by hand, so it stops following the base cost.
+ * differs from base cost times conversion was priced by hand, so it stops following the base cost. The margin is not
+ * stored: it is worked out from the cost and the selling price, and only lives here to be typed into.
  */
 const toNumericRow = (row, index, rows) => ({
     ...row,
     conversion_factor: Number(row.conversion_factor),
     cost_price: Number(row.cost_price),
-    cost_is_manual: index > 0 && Math.abs(Number(row.cost_price) - suggestedCost(rows[0].cost_price, row.conversion_factor)) > 0.005,
+    cost_is_manual: index > 0 && Math.abs(Number(row.cost_price) - costFromBase(rows[0].cost_price, row.conversion_factor)) > 0.005,
     selling_price: Number(row.selling_price),
+    margin_percent: marginFromPrice(row.cost_price, row.selling_price) ?? '',
 });
 
+/** Version is the save counter the form was opened with: a save from an older one is refused, so edits are never silently overwritten. */
 const form = useForm({
+    version: props.product?.version ?? null,
     name: props.product?.name ?? '',
     sku: props.product?.sku ?? '',
     category: props.product?.category ?? null,
@@ -102,14 +101,59 @@ watch(
     () => {
         form.units.forEach((row, index) => {
             if (index > 0 && !row.cost_is_manual) {
-                row.cost_price = suggestedCost(form.units[0].cost_price, row.conversion_factor);
+                row.cost_price = costFromBase(form.units[0].cost_price, row.conversion_factor);
+                row.margin_percent = marginFromPrice(row.cost_price, row.selling_price) ?? '';
             }
         });
     },
 );
 
-function markCostAsManual(row, index) {
+/**
+ * A typed cost keeps the selling price where it is, so the margin is what moves.
+ * @param {object} row
+ * @param {number} index
+ * @param {string|number} typedCost
+ */
+function changeCost(row, index, typedCost) {
     row.cost_is_manual = index > 0;
+    row.margin_percent = marginFromPrice(typedCost, row.selling_price) ?? '';
+}
+
+/**
+ * A typed selling price decides the margin.
+ * @param {object} row
+ * @param {string|number} typedPrice
+ */
+function changeSellingPrice(row, typedPrice) {
+    row.margin_percent = marginFromPrice(row.cost_price, typedPrice) ?? '';
+}
+
+/**
+ * A typed margin decides the selling price (margin of the price, never markup on the cost). The margin box keeps what
+ * was typed, so the number does not jump under the cursor.
+ * @param {object} row
+ * @param {string|number} typedMargin
+ */
+function changeMargin(row, typedMargin) {
+    const price = priceFromMargin(row.cost_price, typedMargin);
+
+    if (price !== null) {
+        row.selling_price = price;
+    }
+}
+
+const isMarginOutOfRange = (row) => row.margin_percent !== '' && Number(row.margin_percent) >= 100;
+
+/** The unit being worked out in the conversion calculator. */
+const calculator = ref({ isOpen: false, rowIndex: 0 });
+
+function openCalculator(rowIndex) {
+    calculator.value = { isOpen: true, rowIndex };
+}
+
+/** @param {number} conversion */
+function applyCalculatedConversion(conversion) {
+    form.units[calculator.value.rowIndex].conversion_factor = conversion;
 }
 
 const defaultRowIndex = computed(() => form.units.findIndex((row) => row.is_default_sale));
@@ -130,11 +174,40 @@ function ensureDefaultIsSellable() {
         return;
     }
 
-    const replacement = form.units.findIndex((row) => row.is_sellable);
+    const replacementIndex = form.units.findIndex((row) => row.is_sellable);
 
-    if (replacement !== -1) {
-        makeDefault(replacement);
+    if (replacementIndex !== -1) {
+        makeDefault(replacementIndex);
     }
+}
+
+/**
+ * Only one unit can be the sealed pack (the roll that cannot be put back together once cut), so choosing one clears the others.
+ * An item that already has stock or transactions has its whole-pack count worked out from the quantity, a guess that cannot
+ * tell rolls from loose leftovers, so the admin confirms first and is pointed to a stock opname to correct it.
+ * @param {number} index
+ * @param {boolean} isSealedPack
+ */
+function chooseSealedPack(index, isSealedPack) {
+    const applyChoice = () => {
+        form.units.forEach((row, rowIndex) => {
+            row.is_sealed_pack = isSealedPack && rowIndex === index;
+        });
+    };
+
+    if (!isLocked) {
+        applyChoice();
+
+        return;
+    }
+
+    $q.dialog({
+        title: 'Ubah kemasan utuh?',
+        message: 'Barang ini sudah punya stok atau transaksi. Jumlah kemasan utuh (mis. ROL) akan diperkirakan dari stok yang ada dan belum tentu sama dengan yang ada di rak. Setelah disimpan, lakukan stok opname untuk mencocokkannya.',
+        cancel: { label: 'Batal', flat: true, noCaps: true },
+        ok: { label: 'Ubah', color: 'primary', unelevated: true, noCaps: true },
+        persistent: true,
+    }).onOk(applyChoice);
 }
 
 function addUnit() {
@@ -162,9 +235,9 @@ function confirmDelete() {
 }
 
 function send() {
-    form.transform((data) => ({
-        ...data,
-        units: data.units.map(({ cost_is_manual, ...row }) => row),
+    form.transform((submittedForm) => ({
+        ...submittedForm,
+        units: submittedForm.units.map(({ cost_is_manual, margin_percent, ...row }) => row),
     }))[props.form_action.method](props.form_action.url);
 }
 
@@ -172,9 +245,9 @@ function send() {
  * Selling under cost is allowed, but only after the person confirms it.
  */
 function submit() {
-    const belowCost = form.units.filter(isBelowCost).map((row) => row.unit?.code ?? 'satuan');
+    const belowCostUnitCodes = form.units.filter(isBelowCost).map((row) => row.unit?.code ?? 'satuan');
 
-    if (belowCost.length === 0) {
+    if (belowCostUnitCodes.length === 0) {
         send();
 
         return;
@@ -182,7 +255,7 @@ function submit() {
 
     $q.dialog({
         title: 'Harga jual di bawah modal',
-        message: `Harga jual ${belowCost.join(', ')} lebih rendah dari modalnya. Tetap simpan?`,
+        message: `Harga jual ${belowCostUnitCodes.join(', ')} lebih rendah dari modalnya. Tetap simpan?`,
         cancel: { label: 'Periksa lagi', flat: true, noCaps: true },
         ok: { label: 'Tetap simpan', color: 'primary', unelevated: true, noCaps: true },
         persistent: true,
@@ -212,10 +285,11 @@ function submit() {
                         v-model="form.category"
                         :options="categories"
                         label="Kategori"
+                        record-name="kategori"
                         hint="Ketik untuk menambah baru"
                         :error="form.errors.category || form.errors['category.name']"
                     />
-                    <PickOrCreateSelect v-model="form.brand" :options="brands" label="Merek (opsional)" clearable :error="form.errors['brand.name']" />
+                    <PickOrCreateSelect v-model="form.brand" :options="brands" label="Merek (opsional)" record-name="merek" clearable :error="form.errors['brand.name']" />
                     <q-input
                         v-model.number="form.min_stock"
                         type="number"
@@ -250,7 +324,8 @@ function submit() {
                     />
                     <p class="hint">
                         Modal adalah harga beli per satuan, jadi tiap satuan bisa berbeda. Satuan lain otomatis mengikuti modal satuan dasar × konversi sampai
-                        modalnya Anda isi sendiri.
+                        modalnya Anda isi sendiri. Margin dan harga jual saling menghitung: isi salah satunya, yang lain mengikuti. Mengubah modal menjaga harga
+                        jual dan menggeser margin.
                     </p>
                 </div>
 
@@ -260,11 +335,12 @@ function submit() {
                             <tr>
                                 <th>Satuan</th>
                                 <th>Konversi</th>
-                                <th>Barcode</th>
                                 <th>Modal</th>
+                                <th>Margin (%)</th>
                                 <th>Harga jual</th>
                                 <th class="units__center">Dijual</th>
                                 <th class="units__center">Default</th>
+                                <th class="units__center" title="Kemasan yang tidak bisa disambung lagi setelah dipotong, mis. rol kawat">Utuh</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -289,19 +365,31 @@ function submit() {
                                     </td>
                                     <td class="units__narrow">
                                         <span v-if="index === 0">1</span>
-                                        <q-input
-                                            v-else
-                                            v-model.number="row.conversion_factor"
-                                            type="number"
-                                            step="any"
-                                            min="0"
-                                            dense
-                                            outlined
-                                            :disable="isRowLocked(row)"
-                                        />
-                                    </td>
-                                    <td class="units__wide">
-                                        <q-input v-model="row.barcode" dense outlined placeholder="Opsional" />
+                                        <div v-else class="conversion">
+                                            <q-input
+                                                v-model.number="row.conversion_factor"
+                                                type="number"
+                                                step="any"
+                                                min="0"
+                                                dense
+                                                outlined
+                                                class="conversion__input"
+                                                :disable="isRowLocked(row)"
+                                                :aria-label="`Konversi ${row.unit?.code ?? ''}`"
+                                            />
+                                            <q-btn
+                                                outline
+                                                dense
+                                                no-caps
+                                                color="primary"
+                                                icon="calculate"
+                                                label="Hitung"
+                                                class="q-px-sm"
+                                                :disable="isRowLocked(row) || !row.unit || !form.units[0].unit"
+                                                :aria-label="`Hitung konversi ${row.unit?.code ?? ''}`"
+                                                @click="openCalculator(index)"
+                                            />
+                                        </div>
                                     </td>
                                     <td class="units__price">
                                         <q-input
@@ -313,17 +401,52 @@ function submit() {
                                             outlined
                                             hide-bottom-space
                                             :error="!!form.errors['units.' + index + '.cost_price']"
-                                            @update:model-value="markCostAsManual(row, index)"
+                                            @update:model-value="changeCost(row, index, $event)"
                                         />
                                     </td>
+                                    <td class="units__margin">
+                                        <q-input
+                                            v-model.number="row.margin_percent"
+                                            type="number"
+                                            step="any"
+                                            dense
+                                            outlined
+                                            suffix="%"
+                                            hide-bottom-space
+                                            :error="isMarginOutOfRange(row)"
+                                            :aria-label="`Margin ${row.unit?.code ?? ''}`"
+                                            @update:model-value="changeMargin(row, $event)"
+                                        >
+                                            <q-tooltip v-if="isMarginOutOfRange(row)">Margin harus kurang dari 100%</q-tooltip>
+                                        </q-input>
+                                    </td>
                                     <td class="units__price">
-                                        <q-input v-model.number="row.selling_price" type="number" step="any" min="0" dense outlined :class="{ 'below-cost': isBelowCost(row) }" />
+                                        <q-input
+                                            v-model.number="row.selling_price"
+                                            type="number"
+                                            step="any"
+                                            min="0"
+                                            dense
+                                            outlined
+                                            :class="{ 'below-cost': isBelowCost(row) }"
+                                            @update:model-value="changeSellingPrice(row, $event)"
+                                        />
                                     </td>
                                     <td class="units__center">
                                         <q-checkbox v-model="row.is_sellable" dense @update:model-value="ensureDefaultIsSellable" />
                                     </td>
                                     <td class="units__center">
                                         <q-radio :model-value="defaultRowIndex" :val="index" dense :disable="!row.is_sellable" @update:model-value="makeDefault(index)" />
+                                    </td>
+                                    <td class="units__center">
+                                        <q-checkbox
+                                            v-if="index > 0"
+                                            :model-value="row.is_sealed_pack"
+                                            dense
+                                            :disable="!row.is_sellable"
+                                            :aria-label="`${row.unit?.code ?? 'Satuan'} adalah kemasan utuh`"
+                                            @update:model-value="chooseSealedPack(index, $event)"
+                                        />
                                     </td>
                                     <td class="units__center">
                                         <q-btn
@@ -339,7 +462,7 @@ function submit() {
                                     </td>
                                 </tr>
                                 <tr v-if="rowError(index)">
-                                    <td colspan="8" class="units__error">{{ rowError(index) }}</td>
+                                    <td colspan="10" class="units__error">{{ rowError(index) }}</td>
                                 </tr>
                             </template>
                         </tbody>
@@ -351,11 +474,19 @@ function submit() {
                 <div class="units__footer">
                     <q-btn outline no-caps dense icon="add" label="Tambah satuan" color="primary" class="q-px-sm" @click="addUnit" />
                     <span class="tip">Harga di bawah modal meminta konfirmasi</span>
+                    <span class="tip">Utuh: kemasan yang tidak bisa disambung lagi setelah dipotong (mis. rol, kain, dll).</span>
                 </div>
             </section>
         </q-form>
 
-        <UnitFormDialog v-model="unitDialog.isOpen" :create-url="page.props.store.units_url" @saved="selectCreatedUnit" />
+        <UnitFormDialog v-model="unitDialog.isOpen" :create-url="page.props.store.unit_create_url" @saved="selectCreatedUnit" />
+        <ConversionCalculatorDialog
+            v-if="form.units[calculator.rowIndex]?.unit && form.units[0].unit"
+            v-model="calculator.isOpen"
+            :unit-code="form.units[calculator.rowIndex].unit.code"
+            :base-unit-code="form.units[0].unit.code"
+            @apply="applyCalculatedConversion"
+        />
     </StoreLayout>
 </template>
 
@@ -364,7 +495,7 @@ function submit() {
     display: flex;
     flex-direction: column;
     gap: 14px;
-    max-width: 1000px;
+    max-width: 1160px;
 }
 
 .card {
@@ -430,7 +561,7 @@ function submit() {
 
 .units {
     width: 100%;
-    min-width: 820px;
+    min-width: 1080px;
     border-collapse: collapse;
 }
 
@@ -458,15 +589,39 @@ function submit() {
 }
 
 .units__narrow {
-    width: 110px;
-}
-
-.units__wide {
-    min-width: 170px;
+    width: 220px;
 }
 
 .units__price {
-    width: 150px;
+    width: 140px;
+}
+
+.units__margin {
+    width: 130px;
+}
+
+.conversion {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.conversion__input {
+    flex: 1;
+    min-width: 90px;
+}
+
+/* Prices, margins and conversions are typed, not nudged: the up/down arrows only take room from the number. */
+.product-form :deep(input[type='number']) {
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.product-form :deep(input[type='number']::-webkit-outer-spin-button),
+.product-form :deep(input[type='number']::-webkit-inner-spin-button) {
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
 }
 
 .tag {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Services\ProductService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -12,16 +13,9 @@ use Illuminate\Http\Request;
  */
 class ProductSearchController extends Controller
 {
-    private const RESULT_LIMIT = 15;
-
-    public function __invoke(Request $request): JsonResponse
+    public function __invoke(Request $request, ProductService $productService): JsonResponse
     {
-        $products = Product::query()
-            ->with('baseUnit')
-            ->search($request->string('q')->toString())
-            ->orderBy('name')
-            ->limit(self::RESULT_LIMIT)
-            ->get();
+        $products = $productService->searchForPicker($request->string('q')->toString());
 
         return response()->json([
             'data' => $products->map(fn (Product $product): array => [

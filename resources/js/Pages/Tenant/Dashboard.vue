@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import StoreLayout from '../../Layouts/StoreLayout.vue';
 
-defineProps({
+const props = defineProps({
     summary: { type: Object, required: true },
 });
 
@@ -41,19 +41,14 @@ function greeting() {
 
 const title = `${greeting()}, ${page.props.auth.user.name}`;
 
-const approvalLabels = {
-    return: { title: 'Retur', badge: 'Retur', tone: 'warn' },
-    cash_difference: { title: 'Selisih kas', badge: 'Selisih kas', tone: 'bad' },
-};
-
 /**
- * Where an item waiting for approval is decided: the return list or the shift recap, both already narrowed to
- * what is waiting.
- * @param {string} kind `return` or `cash_difference`
- * @returns {string}
+ * What waits for a decision, apart by what it is, so each group says plainly what is waited for. Both lists link to the
+ * screen where they are decided, already narrowed to what is waiting.
  */
-const approvalHref = (kind) =>
-    kind === 'return' ? `${store.value.returns_url}?status=pending` : `${store.value.shifts_url}?difference=pending_approval`;
+const returnApprovals = computed(() => props.summary.approvals.filter((approval) => approval.kind === 'return'));
+const cashDifferenceApprovals = computed(() => props.summary.approvals.filter((approval) => approval.kind === 'cash_difference'));
+const pendingReturnsUrl = computed(() => `${store.value.returns_url}?status=pending`);
+const pendingCashDifferencesUrl = computed(() => `${store.value.shifts_url}?difference=pending_approval`);
 
 const formatTime = (isoDate) =>
     new Date(isoDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
@@ -88,39 +83,36 @@ const formatTime = (isoDate) =>
                 <p v-if="summary.pending.total === 0" class="empty">Semua beres.</p>
 
                 <template v-else>
-                    <div v-if="summary.approvals.length > 0" class="group">
+                    <div v-if="cashDifferenceApprovals.length > 0" class="group">
                         <h3 class="group__title">
-                            Menunggu persetujuan
-                            <span>{{ summary.pending.returns + summary.pending.cash_differences }}</span>
+                            Selisih kas menunggu review
+                            <span>{{ summary.pending.cash_differences }}</span>
                         </h3>
                         <ul class="list">
-                            <li v-for="item in summary.approvals" :key="`${item.kind}-${item.reference}`">
-                                <Link :href="approvalHref(item.kind)" class="list__text list__link">
-                                    {{ approvalLabels[item.kind].title }} · {{ item.reference }}
-                                    <small>{{ formatRupiah(item.amount) }}</small>
+                            <li v-for="approval in cashDifferenceApprovals" :key="approval.reference">
+                                <Link :href="pendingCashDifferencesUrl" class="list__text list__link">
+                                    {{ approval.reference }}
+                                    <small>{{ formatRupiah(approval.amount) }}</small>
                                 </Link>
-                                <span class="chip" :class="`chip--${approvalLabels[item.kind].tone}`">{{ approvalLabels[item.kind].badge }}</span>
+                                <span class="chip chip--bad">Selisih kas</span>
                             </li>
                         </ul>
                     </div>
 
-                    <div v-if="summary.cash_difference_follow_ups.length > 0" class="group">
+                    <div v-if="returnApprovals.length > 0" class="group">
                         <h3 class="group__title">
-                            Selisih kas perlu tindak lanjut
-                            <span>{{ summary.pending.cash_difference_follow_ups }}</span>
+                            Retur menunggu persetujuan
+                            <span>{{ summary.pending.returns }}</span>
                         </h3>
                         <ul class="list">
-                            <li v-for="shift in summary.cash_difference_follow_ups" :key="shift.reference">
-                                <Link :href="shift.show_url" class="list__text list__link">
-                                    {{ shift.reference }} · {{ shift.cashier_name }}
-                                    <small>{{ formatRupiah(shift.amount) }}</small>
+                            <li v-for="approval in returnApprovals" :key="approval.reference">
+                                <Link :href="pendingReturnsUrl" class="list__text list__link">
+                                    {{ approval.reference }}
+                                    <small>{{ formatRupiah(approval.amount) }}</small>
                                 </Link>
-                                <span class="chip chip--bad">Ditolak</span>
+                                <span class="chip chip--warn">Retur</span>
                             </li>
                         </ul>
-                        <Link v-if="summary.pending.cash_difference_follow_ups > summary.cash_difference_follow_ups.length" :href="`${store.shifts_url}?difference=awaiting_follow_up`" class="more">
-                            Lihat semua {{ summary.pending.cash_difference_follow_ups }} selisih
-                        </Link>
                     </div>
 
                     <div v-if="summary.unfinished_delivery_notes.length > 0" class="group">

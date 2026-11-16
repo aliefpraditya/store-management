@@ -3,17 +3,18 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Exceptions\DeliveryNoteException;
+use App\Http\Controllers\Concerns\PrintsDeliveryNotes;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\SaveCashierDeliveryNoteRequest;
-use App\Http\Resources\PrintableDeliveryNoteResource;
+use App\Http\Resources\CashierDeliveryNoteResource;
 use App\Models\DeliveryNote;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Services\DeliveryNoteService;
 use App\Services\PrintCounter;
+use App\Services\StoreSettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -23,9 +24,11 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class CashierDeliveryNoteController extends Controller
 {
+    use PrintsDeliveryNotes;
+
     public function __construct(
-        private readonly DeliveryNoteService $notes,
-        private readonly PrintCounter $prints,
+        private readonly DeliveryNoteService $noteService,
+        private readonly PrintCounter $printCounter,
     ) {}
 
     /**
@@ -40,91 +43,44 @@ class CashierDeliveryNoteController extends Controller
         return response()->json(['data' => [
             'number' => $sale->number,
             'customer_name' => $sale->customer_name,
-            'lines' => $this->notes->deliverableLines($sale),
-            'notes' => DeliveryNote::query()
-                ->with('items')
-                ->where('sale_id', $sale->id)
-                ->orderBy('id')
-                ->get()
-                ->map(fn (DeliveryNote $note): array => $this->noteSummary($note))
-                ->all(),
+            'lines' => $this->noteService->deliverableLines($sale),
+            'notes' => CashierDeliveryNoteResource::collection($this->noteService->notesOfSale($sale))->resolve(),
         ]]);
     }
 
     public function store(SaveCashierDeliveryNoteRequest $request, Sale $sale): JsonResponse
     {
-        $this->authorizeFor($request, $sale);
-
         try {
-            $note = $this->notes->create($sale, $request->user(), $request->validated());
+            $note = $this->noteService->create($sale, $request->user(), $request->validated());
         } catch (DeliveryNoteException $exception) {
             return response()->json(['message' => $exception->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        return response()->json(['data' => $this->noteSummary($note)], Response::HTTP_CREATED);
+        return response()->json(['data' => CashierDeliveryNoteResource::make($note)->resolve()], Response::HTTP_CREATED);
     }
 
     /**
-     * Notes one more print. A cashier may print the notes of their own receipts. The browser then opens the sheet
-     * in a new window, which shows the note as printed.
+     * Notes one more print and answers the sheet to open in a new window. A cashier may print the notes of their own receipts.
      */
     public function print(Request $request, DeliveryNote $deliveryNote): JsonResponse
     {
         $this->authorizeFor($request, $deliveryNote->sale);
 
-        $isCopy = $this->prints->record($deliveryNote);
-
-        return response()->json(['data' => ['is_copy' => $isCopy, 'print_count' => $deliveryNote->refresh()->print_count]]);
+        return $this->recordPrintOf($this->printCounter, $deliveryNote, 'tenant.cashier.delivery-notes.sheet');
     }
 
-    /**
-     * The printable sheet, opened in its own window and printed there. From the second print on it says SALINAN.
-     */
-    public function sheet(Request $request, DeliveryNote $deliveryNote): InertiaResponse
+    public function sheet(Request $request, DeliveryNote $deliveryNote, StoreSettingService $settings): InertiaResponse
     {
         $this->authorizeFor($request, $deliveryNote->sale);
 
-        return Inertia::render('Tenant/Print/DeliveryNote', [
-            'note' => PrintableDeliveryNoteResource::make($deliveryNote->load(['items', 'sale']), $deliveryNote->print_count > 1)->resolve(),
-        ]);
+        return $this->sheetOf($request, $deliveryNote, $settings->letterhead());
     }
 
-    /**
-     * A cashier works with their own receipts; an admin with any.
-     */
     private function authorizeFor(Request $request, Sale $sale): void
     {
         /** @var Store $store */
         $store = tenant();
 
-        abort_unless($request->user()->isAdminIn($store) || $sale->cashier_id === $request->user()->id, 403);
-    }
-
-    /**
-     * The items carry how much was sent and, once the delivery has ended, how much arrived and how much came back.
-     *
-     * @return array{id: int, number: string, status: string, status_label: string, print_count: int, print_url: string, sheet_url: string, items: list<array<string, mixed>>}
-     */
-    private function noteSummary(DeliveryNote $note): array
-    {
-        $note->loadMissing('items');
-
-        return [
-            'id' => $note->id,
-            'number' => $note->number,
-            'status' => $note->status->value,
-            'status_label' => $note->status->label(),
-            'print_count' => (int) $note->print_count,
-            'print_url' => route('tenant.cashier.delivery-notes.print', ['tenant' => tenant('code'), 'delivery_note' => $note->id]),
-            'sheet_url' => route('tenant.cashier.delivery-notes.sheet', ['tenant' => tenant('code'), 'delivery_note' => $note->id]),
-            'items' => $note->items->map(fn ($item): array => [
-                'sale_item_id' => $item->sale_item_id,
-                'name' => $item->product_name,
-                'unit' => $item->unit_name,
-                'quantity' => $item->quantity,
-                'quantity_delivered' => $item->quantity_delivered,
-                'quantity_returned' => $item->quantity_returned,
-            ])->values()->all(),
-        ];
+        abort_unless($request->user()->canHandleReceipt($sale, $store), 403);
     }
 }

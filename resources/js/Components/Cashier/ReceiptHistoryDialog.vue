@@ -3,7 +3,7 @@ import { ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../Composables/postJson';
-import { printInNewWindow } from '../../Composables/printInNewWindow';
+import { printSheet } from '../../Composables/printSheet';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
 
@@ -26,6 +26,8 @@ const SEARCH_DELAY_MS = 250;
 const query = ref('');
 const receipts = ref([]);
 const isLoading = ref(false);
+/** Why the list could not be loaded (a closed shift, a server error, no connection); empty when it loaded. */
+const loadError = ref('');
 const expandedId = ref(null);
 const printingId = ref(null);
 let latestLoadId = 0;
@@ -79,10 +81,11 @@ async function print(receipt) {
     printingId.value = receipt.id;
 
     try {
-        await printInNewWindow(async () => {
-            receipt.print_count = (await postJson(receipt.print_url)).print_count;
+        await printSheet(async () => {
+            const { print_count: printCount, sheet_url: sheetUrl } = await postJson(receipt.print_url);
+            receipt.print_count = printCount;
 
-            return receipt.sheet_url;
+            return sheetUrl;
         });
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
@@ -104,7 +107,8 @@ async function print(receipt) {
 
             <q-card-section class="history__list">
                 <q-inner-loading :showing="isLoading" />
-                <p v-if="!isLoading && receipts.length === 0" class="history__empty">Belum ada nota di shift ini.</p>
+                <p v-if="loadError" class="history__empty history__empty--error">{{ loadError }}</p>
+                <p v-else-if="!isLoading && receipts.length === 0" class="history__empty">Belum ada nota di shift ini.</p>
 
                 <div v-for="receipt in receipts" :key="receipt.id" class="receipt" :class="{ 'receipt--open': expandedId === receipt.id }">
                     <button type="button" class="receipt__row" @click="toggle(receipt)">
@@ -133,7 +137,7 @@ async function print(receipt) {
                             <q-btn outline no-caps dense color="primary" icon="print" :label="receipt.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="printingId === receipt.id" @click="print(receipt)" />
                             <q-btn v-if="receipt.status === 'completed'" outline no-caps dense color="primary" icon="local_shipping" label="Surat jalan" @click="emit('delivery', receipt)" />
                             <q-btn v-if="receipt.status === 'completed'" outline no-caps dense color="primary" icon="undo" label="Retur" @click="emit('return', receipt)" />
-                            <q-btn outline no-caps dense color="grey-7" icon="block" label="Void" disable><q-tooltip>Segera</q-tooltip></q-btn>
+                            <q-btn outline no-caps dense color="grey-7" icon="block" label="Void" disable><q-tooltip>Nota COD di-void lewat tombol COD di bar atas. Nota lain dikoreksi lewat Retur.</q-tooltip></q-btn>
                             <q-btn v-if="canOpenHistory && receipt.show_url" flat no-caps dense icon="open_in_new" label="Lihat detail" class="receipt__more" @click="router.visit(receipt.show_url)" />
                         </div>
                     </div>
@@ -176,6 +180,10 @@ async function print(receipt) {
     padding: 24px 0;
     color: var(--app-mute);
     text-align: center;
+}
+
+.history__empty--error {
+    color: var(--q-negative);
 }
 
 .receipt {

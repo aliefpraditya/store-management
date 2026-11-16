@@ -4,6 +4,8 @@ namespace App\Http\Requests\Central;
 
 use App\Enums\UserRole;
 use App\Models\User;
+use App\Rules\NotDeactivatingOwnAccount;
+use App\Services\AppSettingService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -12,8 +14,6 @@ use Illuminate\Validation\Rule;
  */
 class SaveUserRequest extends FormRequest
 {
-    private const MIN_PASSWORD_LENGTH = 5;
-
     public function authorize(): bool
     {
         return true;
@@ -34,14 +34,14 @@ class SaveUserRequest extends FormRequest
             ],
             'password' => [
                 $editedUser === null ? 'required' : 'nullable',
-                'string', 'min:'.self::MIN_PASSWORD_LENGTH,
+                'string', 'min:'.app(AppSettingService::class)->passwordMinLength(),
             ],
             'role' => ['required', Rule::enum(UserRole::class), $this->ownRoleRule()],
             'store_id' => [
                 Rule::requiredIf(fn (): bool => $this->enum('role', UserRole::class)?->isStoreRole() ?? false),
                 'nullable', 'integer', Rule::exists('stores', 'id'),
             ],
-            'is_active' => ['required', 'boolean', $this->ownActiveRule()],
+            'is_active' => ['required', 'boolean', new NotDeactivatingOwnAccount($editedUser, $this->user())],
         ];
     }
 
@@ -85,18 +85,6 @@ class SaveUserRequest extends FormRequest
         return function (string $attribute, mixed $value, \Closure $fail): void {
             if ($this->isEditingOwnAccount() && $value !== $this->editedUser()->role?->value) {
                 $fail('Anda tidak bisa mengubah peran akun sendiri.');
-            }
-        };
-    }
-
-    /**
-     * Stops a user from deactivating their own account.
-     */
-    private function ownActiveRule(): \Closure
-    {
-        return function (string $attribute, mixed $value, \Closure $fail): void {
-            if ($this->isEditingOwnAccount() && ! filter_var($value, FILTER_VALIDATE_BOOLEAN)) {
-                $fail('Anda tidak bisa menonaktifkan akun sendiri.');
             }
         };
     }

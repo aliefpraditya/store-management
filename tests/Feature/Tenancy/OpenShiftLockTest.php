@@ -48,7 +48,7 @@ class OpenShiftLockTest extends TestCase
      */
     private function openShiftThroughTheScreen(User $user): void
     {
-        $this->actingAs($user)->post($this->url('tenant.cashier.shifts.store'), ['register_id' => $this->register()->id])->assertSessionHas('success');
+        $this->actingAs($user)->post($this->url('tenant.cashier.shifts.store'), ['register_id' => $this->register()->id, 'opening_cash' => '0'])->assertSessionHas('success');
         $this->actingAs($user)->get($this->url('tenant.cashier.index'))->assertOk();
     }
 
@@ -56,7 +56,7 @@ class OpenShiftLockTest extends TestCase
     {
         $shift = $this->store->run(fn () => CashShift::query()->where('cashier_id', $user->id)->latest('id')->firstOrFail());
 
-        $this->actingAs($user)->post($this->url('tenant.cashier.shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0'])->assertSessionHas('success');
+        $this->actingAs($user)->post($this->url('tenant.cashier.shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'drawer_left_cash' => '0'])->assertSessionHas('success');
         $this->actingAs($user)->get($this->url('tenant.cashier.index'))->assertOk();
     }
 
@@ -65,11 +65,22 @@ class OpenShiftLockTest extends TestCase
         $response->assertRedirect($this->url('tenant.cashier.index'))->assertSessionHas('error', self::LOCKED_MESSAGE);
     }
 
+    public function test_a_shift_waiting_for_review_keeps_the_user_in_but_the_message_says_to_wait_not_to_close(): void
+    {
+        $this->openShiftThroughTheScreen($this->admin);
+        $shift = $this->store->run(fn () => CashShift::query()->where('cashier_id', $this->admin->id)->firstOrFail());
+        $this->actingAs($this->admin)->post($this->url('tenant.cashier.shifts.close', ['shift' => $shift->id]), ['counted_cash' => '100', 'drawer_left_cash' => '0'])->assertSessionHas('success');
+
+        $awaitingMessage = 'Shift Anda sudah dihitung dan menunggu keputusan Admin. Anda bisa keluar setelah shift ditutup.';
+        $this->actingAs($this->admin)->post(route('logout'))->assertRedirect($this->url('tenant.cashier.index'))->assertSessionHas('error', $awaitingMessage);
+        $this->actingAs($this->admin)->postJson(route('logout'))->assertStatus(423)->assertJsonPath('message', $awaitingMessage);
+    }
+
     public function test_store_pages_stay_open_while_a_shift_is_open_so_an_admin_can_check_stock(): void
     {
         $this->openShiftThroughTheScreen($this->admin);
 
-        foreach (['tenant.dashboard', 'tenant.products.index', 'tenant.stock-opnames.index', 'tenant.stock-history.index', 'tenant.units.index'] as $route) {
+        foreach (['tenant.dashboard', 'tenant.products.index', 'tenant.stock-opnames.index', 'tenant.stock-history.index', 'tenant.settings.index'] as $route) {
             $this->actingAs($this->admin)->get($this->url($route))->assertOk();
         }
 
@@ -170,6 +181,18 @@ class OpenShiftLockTest extends TestCase
             ->get(route('central.dashboard'))
             ->assertOk()
             ->assertSessionMissing(EnsureUserHasNoOpenShift::SESSION_KEY);
+    }
+
+    public function test_logging_out_still_works_when_a_remembered_store_database_cannot_be_reached(): void
+    {
+        $brokenStore = Store::factory()->create(['code' => 'test_broken_store', 'db_name' => 'store_test_does_not_exist']);
+
+        $this->actingAs($this->admin)
+            ->withSession([EnsureUserHasNoOpenShift::SESSION_KEY => [$brokenStore->code]])
+            ->post(route('logout'))
+            ->assertRedirect(route('login'));
+
+        $this->assertGuest();
     }
 
     public function test_a_cashier_without_a_shift_may_log_out(): void

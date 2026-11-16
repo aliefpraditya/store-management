@@ -41,11 +41,11 @@ class SaleHistoryService
      */
     public function totals(array $filters): array
     {
-        $completed = $this->query($filters)->where('status', SaleStatus::Completed);
+        $completedQuery = $this->query($filters)->where('status', SaleStatus::Completed);
 
         return [
-            'receipt_count' => (clone $completed)->count(),
-            'total' => (string) BigDecimal::of((string) (clone $completed)->sum('total'))->toScale(2),
+            'receipt_count' => (clone $completedQuery)->count(),
+            'total' => (string) BigDecimal::of((string) (clone $completedQuery)->sum('total'))->toScale(2),
         ];
     }
 
@@ -94,8 +94,8 @@ class SaleHistoryService
     {
         return Sale::query()
             ->when($filters['cashier_id'], fn (Builder $query, int $cashierId) => $query->where('cashier_id', $cashierId))
-            ->when($filters['from'], fn (Builder $query, string $from) => $query->whereDate('business_date', '>=', $from))
-            ->when($filters['to'], fn (Builder $query, string $to) => $query->whereDate('business_date', '<=', $to))
+            ->when($filters['from'], fn (Builder $query, string $from) => $query->where('business_date', '>=', $from))
+            ->when($filters['to'], fn (Builder $query, string $to) => $query->where('business_date', '<=', $to))
             ->when(SaleStatus::tryFrom((string) $filters['status']), fn (Builder $query, SaleStatus $status) => $query->where('status', $status))
             ->when(filled($filters['search']), fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->where('number', 'like', "%{$filters['search']}%")

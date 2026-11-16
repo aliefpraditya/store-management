@@ -9,13 +9,13 @@ const page = usePage();
 const form = useForm({
     username: '',
     password: '',
-    remember: false,
+    should_remember: false,
 });
 
 const isPasswordVisible = ref(false);
 
 function submit() {
-    form.post(page.props.urls.login, {
+    form.post(page.props.app_urls.login, {
         onFinish: () => form.reset('password'),
     });
 }
@@ -67,7 +67,7 @@ function submit() {
                             </template>
                         </q-input>
 
-                        <q-checkbox v-model="form.remember" label="Ingat saya" dense class="login__remember" />
+                        <q-checkbox v-model="form.should_remember" label="Ingat saya" dense class="login__remember" />
 
                         <q-btn
                             type="submit"

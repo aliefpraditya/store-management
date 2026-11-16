@@ -29,16 +29,16 @@ class DocumentNumberGenerator
         $period = $date->format('ym');
         $sequenceKey = ['type' => $type, 'register_id' => $register?->id ?? self::NO_REGISTER_ID, 'period' => $period];
 
-        $sequence = DB::table(self::SEQUENCES_TABLE)->where($sequenceKey);
-        $currentNumber = (clone $sequence)->lockForUpdate()->value('last_number');
+        $sequenceQuery = DB::table(self::SEQUENCES_TABLE)->where($sequenceKey);
+        $currentNumber = (clone $sequenceQuery)->lockForUpdate()->value('last_number');
 
         if ($currentNumber === null) {
             DB::table(self::SEQUENCES_TABLE)->insertOrIgnore([...$sequenceKey, 'last_number' => 0]);
-            $currentNumber = (clone $sequence)->lockForUpdate()->value('last_number');
+            $currentNumber = (clone $sequenceQuery)->lockForUpdate()->value('last_number');
         }
 
         $nextNumber = (int) $currentNumber + 1;
-        $sequence->update(['last_number' => $nextNumber]);
+        $sequenceQuery->update(['last_number' => $nextNumber]);
 
         /** @var Store $store */
         $store = tenant();

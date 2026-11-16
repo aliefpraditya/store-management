@@ -12,9 +12,14 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Runs after tenancy is initialized and the user is authenticated: only active users may enter an
  * active store, and only when they are a super admin or are attached to that store.
+ *
+ * The role found here is kept on the request, so later middleware and controllers need no second
+ * `store_users` lookup.
  */
 class EnsureUserCanAccessStore
 {
+    public const ROLE_ATTRIBUTE = 'store_role';
+
     public function handle(Request $request, Closure $next): Response
     {
         /** @var User|null $user */
@@ -25,10 +30,11 @@ class EnsureUserCanAccessStore
 
         abort_unless($user !== null && $store !== null && $user->is_active && $store->status === StoreStatus::Active, 403);
 
-        abort_unless(
-            $user->is_super_admin || $user->stores()->whereKey($store->getKey())->exists(),
-            403,
-        );
+        $storeRole = $user->roleIn($store);
+
+        abort_if($storeRole === null, 403);
+
+        $request->attributes->set(self::ROLE_ATTRIBUTE, $storeRole);
 
         return $next($request);
     }

@@ -41,6 +41,5 @@ return [
         'units.*.unit' => 'satuan',
         'units.*.conversion_factor' => 'konversi',
         'units.*.selling_price' => 'harga jual',
-        'units.*.barcode' => 'barcode',
     ],
 ];

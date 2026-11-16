@@ -148,4 +148,28 @@ class StockHistoryTest extends TestCase
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
             ->where('movements.data.0.document_number', null));
     }
+
+    public function test_a_date_filter_that_is_not_a_date_is_ignored_instead_of_failing(): void
+    {
+        $paint = $this->makeProduct('Cat');
+        $this->record($paint, '5');
+
+        $this->actingAs($this->admin)->get($this->url(['from' => 'abc', 'to' => '31/12/2026']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('filters.from', null)
+                ->where('filters.to', null)
+                ->has('movements.data', 1));
+    }
+
+    public function test_the_history_can_be_narrowed_to_a_warehouse_without_a_product(): void
+    {
+        $paint = $this->makeProduct('Cat');
+        $dead = $this->warehouse('DEAD');
+        $this->record($paint, '5');
+        $this->record($paint, '2', $dead);
+
+        $this->actingAs($this->admin)->get($this->url(['warehouse' => $dead->id]))
+            ->assertInertia(fn (Assert $page) => $page->has('movements.data', 1)->where('movements.data.0.warehouse', 'Dead Stock'));
+    }
 }

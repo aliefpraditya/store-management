@@ -1,35 +1,36 @@
 <script setup>
+import { printSheet } from '../../Composables/printSheet';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 
-defineProps({
+const props = defineProps({
     modelValue: { type: Boolean, required: true },
-    /** @type {{expected_cash: string, counted_cash: string, cash_difference: string, deposit_amount: string}|null} */
-    result: { type: Object, default: null },
+    /** @type {{counted_cash: string, deposit_amount: string, drawer_left_cash: string, report_url: string}|null} */
+    shiftTotals: { type: Object, default: null },
 });
 
 const emit = defineEmits(['update:modelValue']);
+
+/** The end-of-shift report prints from a hidden frame, so the dialog stays for the cashier to hand over the deposit. */
+const printReport = () => printSheet(() => props.shiftTotals.report_url);
 </script>
 
 <template>
     <q-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)">
-        <q-card v-if="result" class="closed">
+        <q-card v-if="shiftTotals" class="closed">
             <q-card-section>
                 <div class="closed__title">Shift ditutup</div>
 
                 <dl class="closed__rows">
-                    <div><dt>Tunai seharusnya</dt><dd>{{ formatRupiah(result.expected_cash) }}</dd></div>
-                    <div><dt>Tunai dihitung</dt><dd>{{ formatRupiah(result.counted_cash) }}</dd></div>
-                    <div :class="{ 'closed__bad': Number(result.cash_difference) !== 0 }">
-                        <dt>Selisih</dt>
-                        <dd>{{ formatRupiah(result.cash_difference) }}</dd>
-                    </div>
-                    <div class="closed__deposit"><dt>Setoran</dt><dd>{{ formatRupiah(result.deposit_amount) }}</dd></div>
+                    <div><dt>Tunai dihitung</dt><dd>{{ formatRupiah(shiftTotals.counted_cash) }}</dd></div>
+                    <div class="closed__deposit"><dt>Setoran</dt><dd>{{ formatRupiah(shiftTotals.deposit_amount) }}</dd></div>
+                    <div><dt>Ditinggal di laci</dt><dd>{{ formatRupiah(shiftTotals.drawer_left_cash) }}</dd></div>
                 </dl>
-                <p v-if="Number(result.cash_difference) !== 0" class="closed__note">Selisih menunggu persetujuan Admin.</p>
+                <p class="closed__note">Kas shift ini akan diperiksa Admin. Serahkan setoran sesuai angka di atas.</p>
             </q-card-section>
 
             <q-card-actions align="right">
-                <q-btn color="primary" unelevated no-caps label="Selesai" autofocus v-close-popup />
+                <q-btn flat no-caps label="Selesai" v-close-popup />
+                <q-btn color="primary" unelevated no-caps icon="print" label="Cetak Laporan Shift" autofocus @click="printReport" />
             </q-card-actions>
         </q-card>
     </q-dialog>
@@ -64,10 +65,6 @@ const emit = defineEmits(['update:modelValue']);
     font-weight: 600;
 }
 
-.closed__rows .closed__bad {
-    color: #be123c;
-}
-
 .closed__rows .closed__deposit {
     margin-top: 6px;
     padding-top: 8px;
@@ -78,7 +75,7 @@ const emit = defineEmits(['update:modelValue']);
 
 .closed__note {
     margin: 10px 0 0;
-    color: #c2710c;
+    color: var(--app-mute);
     font-size: 13px;
 }
 </style>

@@ -13,7 +13,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 /**
  * Lives in the store database: a cash register that sells from one warehouse.
  */
-#[Fillable(['code', 'name', 'warehouse_id', 'fixed_opening_cash', 'is_active'])]
+#[Fillable(['code', 'name', 'warehouse_id', 'is_active'])]
 class Register extends Model implements AuditableContract
 {
     /** @use HasFactory<RegisterFactory> */
@@ -25,7 +25,6 @@ class Register extends Model implements AuditableContract
     protected function casts(): array
     {
         return [
-            'fixed_opening_cash' => 'decimal:2',
             'is_active' => 'boolean',
         ];
     }

@@ -3,21 +3,21 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\PaymentMethod;
-use App\Enums\ReturnDisposition;
+use App\Enums\ReturnResolution;
 use App\Enums\SaleReturnStatus;
-use App\Enums\SaleStatus;
 use App\Exceptions\SaleReturnException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Tenant\DateRangeRequest;
 use App\Http\Requests\Tenant\SaveSaleReturnRequest;
+use App\Http\Resources\PrintableSaleReturnResource;
 use App\Http\Resources\SaleReturnListResource;
 use App\Http\Resources\SaleReturnResource;
 use App\Models\Sale;
 use App\Models\SaleReturn;
-use App\Models\Store;
 use App\Services\SaleReturnService;
 use App\Services\ShiftService;
+use App\Services\StoreSettingService;
 use Closure;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -35,35 +35,26 @@ class SaleReturnController extends Controller
     private const SALE_LOOKUP_LIMIT = 10;
 
     public function __construct(
-        private readonly SaleReturnService $returns,
-        private readonly ShiftService $shifts,
+        private readonly SaleReturnService $returnService,
+        private readonly ShiftService $shiftService,
     ) {}
 
-    public function index(Request $request): Response
+    public function index(DateRangeRequest $request): Response
     {
-        $status = $request->string('status')->toString();
+        $statusFilter = $request->string('status')->toString();
         $search = $request->string('search')->trim()->toString();
 
-        $returns = SaleReturn::query()
-            ->with(['sale', 'cashShift'])
-            ->when(SaleReturnStatus::tryFrom($status), fn (Builder $query, SaleReturnStatus $status) => $query->where('status', $status))
-            ->when($request->date('from'), fn (Builder $query, $from) => $query->whereDate('returned_at', '>=', $from))
-            ->when($request->date('to'), fn (Builder $query, $to) => $query->whereDate('returned_at', '<=', $to))
-            ->when($search !== '', fn (Builder $query) => $query->where(fn (Builder $query) => $query
-                ->where('number', 'like', "%{$search}%")
-                ->orWhereHas('sale', fn (Builder $sale) => $sale->where('number', 'like', "%{$search}%")->orWhere('customer_name', 'like', "%{$search}%"))))
-            ->orderByDesc('id')
-            ->paginate(self::LIST_PER_PAGE)
-            ->withQueryString()
+        $returns = $this->returnService
+            ->paginateReturns($statusFilter, $search, $request->fromDate(), $request->toDate(), self::LIST_PER_PAGE)
             ->through(fn (SaleReturn $saleReturn): array => SaleReturnListResource::make($saleReturn)->resolve());
 
         return Inertia::render('Tenant/Returns/Index', [
             'returns' => $returns,
             'filters' => [
-                'status' => $status,
+                'status' => $statusFilter,
                 'search' => $search,
-                'from' => $request->date('from')?->toDateString(),
-                'to' => $request->date('to')?->toDateString(),
+                'from' => $request->fromDate()?->toDateString(),
+                'to' => $request->toDate()?->toDateString(),
             ],
             'statuses' => collect(SaleReturnStatus::cases())->map(fn (SaleReturnStatus $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
             'pending_count' => SaleReturn::query()->where('status', SaleReturnStatus::Pending)->count(),
@@ -80,12 +71,13 @@ class SaleReturnController extends Controller
 
         return Inertia::render('Tenant/Returns/Create', [
             'sale' => $sale === null ? null : $this->saleOption($sale),
-            'refund_methods' => collect(PaymentMethod::forCashier())->map(fn (PaymentMethod $method): array => ['value' => $method->value, 'label' => $method->label()])->all(),
-            'dispositions' => collect(ReturnDisposition::cases())->map(fn (ReturnDisposition $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
+            'refund_methods' => PaymentMethod::cashierOptions(),
+            'resolutions' => ReturnResolution::options(),
             'urls' => [
                 'index' => route('tenant.returns.index', ['tenant' => tenant('code')]),
                 'store' => route('tenant.returns.store', ['tenant' => tenant('code')]),
                 'sales' => route('tenant.returns.sales', ['tenant' => tenant('code')]),
+                'products' => route('tenant.cashier.products', ['tenant' => tenant('code')]),
             ],
         ]);
     }
@@ -96,19 +88,9 @@ class SaleReturnController extends Controller
      */
     public function sales(Request $request): JsonResponse
     {
-        $term = $request->string('q')->trim()->toString();
-
-        $sales = Sale::query()
-            ->with(['items', 'payments'])
-            ->where('status', SaleStatus::Completed)
-            ->when($term !== '', fn (Builder $query) => $query->where(fn (Builder $query) => $query
-                ->where('number', 'like', "%{$term}%")
-                ->orWhere('customer_name', 'like', "%{$term}%")))
-            ->orderByDesc('sold_at')
-            ->limit(self::SALE_LOOKUP_LIMIT)
-            ->get()
+        $sales = $this->returnService
+            ->returnableSales($request->string('q')->trim()->toString(), self::SALE_LOOKUP_LIMIT)
             ->map(fn (Sale $sale): array => $this->saleOption($sale))
-            ->filter(fn (array $option): bool => collect($option['lines'])->contains(fn (array $line): bool => (float) $line['remaining'] > 0))
             ->values();
 
         return response()->json(['data' => $sales]);
@@ -119,14 +101,14 @@ class SaleReturnController extends Controller
      */
     public function store(SaveSaleReturnRequest $request): RedirectResponse
     {
-        $shift = $this->shifts->openShiftOf($request->user());
+        $shift = $this->shiftService->openShiftOf($request->user());
 
         if ($shift === null) {
             return back()->withInput()->with('error', SaleReturnException::shiftNotOpen()->getMessage());
         }
 
         try {
-            $saleReturn = $this->returns->createApproved(Sale::query()->findOrFail($request->validated('sale_id')), $shift, $request->user(), $request->validated());
+            $saleReturn = $this->returnService->createApproved(Sale::query()->findOrFail($request->validated('sale_id')), $shift, $request->user(), $request->validated());
         } catch (SaleReturnException $exception) {
             return back()->withInput()->with('error', $exception->getMessage());
         }
@@ -152,8 +134,8 @@ class SaleReturnController extends Controller
 
     public function approve(Request $request, SaleReturn $saleReturn): RedirectResponse
     {
-        return $this->perform(function () use ($request, $saleReturn): string {
-            $this->returns->approve($saleReturn, $request->user());
+        return $this->redirectWithOutcome(function () use ($request, $saleReturn): string {
+            $this->returnService->approve($saleReturn, $request->user());
 
             return 'Retur disetujui. Stok sudah kembali.';
         });
@@ -161,8 +143,8 @@ class SaleReturnController extends Controller
 
     public function reject(Request $request, SaleReturn $saleReturn): RedirectResponse
     {
-        return $this->perform(function () use ($request, $saleReturn): string {
-            $this->returns->reject($saleReturn, $request->user());
+        return $this->redirectWithOutcome(function () use ($request, $saleReturn): string {
+            $this->returnService->reject($saleReturn, $request->user());
 
             return 'Retur ditolak.';
         });
@@ -171,16 +153,10 @@ class SaleReturnController extends Controller
     /**
      * The return slip, opened in its own window and printed there.
      */
-    public function sheet(SaleReturn $saleReturn): Response
+    public function sheet(SaleReturn $saleReturn, StoreSettingService $settings): Response
     {
-        /** @var Store $store */
-        $store = tenant();
-
         return Inertia::render('Tenant/Print/SaleReturn', [
-            'saleReturn' => [
-                ...SaleReturnResource::make($saleReturn->load(['sale', 'cashShift', 'items.saleItem']))->resolve(),
-                'store' => ['name' => $store->name, 'address' => $store->address, 'phone' => $store->phone],
-            ],
+            'saleReturn' => PrintableSaleReturnResource::make($saleReturn->load(['sale', 'cashShift', 'items.saleItem']), $settings->letterhead(), $settings->paperWidth())->resolve(),
         ]);
     }
 
@@ -194,18 +170,18 @@ class SaleReturnController extends Controller
             'number' => $sale->number,
             'sold_at' => $sale->sold_at->toIso8601String(),
             'customer_name' => $sale->customer_name,
-            'default_refund_method' => $this->returns->defaultRefundMethod($sale)->value,
-            'lines' => $this->returns->returnableLines($sale),
+            'default_refund_method' => $this->returnService->defaultRefundMethod($sale)->value,
+            'lines' => $this->returnService->returnableLines($sale),
         ];
     }
 
     /**
-     * @param  Closure(): string  $step  returns the success message
+     * @param  Closure(): string  $action  returns the success message
      */
-    private function perform(Closure $step): RedirectResponse
+    private function redirectWithOutcome(Closure $action): RedirectResponse
     {
         try {
-            return back()->with('success', $step());
+            return back()->with('success', $action());
         } catch (SaleReturnException $exception) {
             return back()->with('error', $exception->getMessage());
         }

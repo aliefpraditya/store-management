@@ -80,7 +80,7 @@ Routes are split by domain in `routes/`:
 
 -   `web.php` — central pages (home, login, central dashboard)
 -   `tenant.php` — per-store pages under `t/{tenant}/...`
--   `api.php` — JSON endpoints (currently Sanctum user stub only)
+-   `api.php` — JSON endpoints (none yet; the app uses session login, not tokens)
 -   `console.php` — console commands
 
 Prefer named routes and `route()` when linking.
@@ -172,6 +172,7 @@ Pages are resolved with `import.meta.glob('./Pages/**/*.vue')`; follow the patte
 -   **No `Co-Authored-By` trailer.** Do not append a `Co-Authored-By: Claude ...` line (or any co-author trailer) to commit messages.
 -   **Never run `migrate:fresh` (or anything that drops/rebuilds all tables) against the `.env` database (`mitra_manager`) or any store database, and never run tests with `APP_ENV` overridden away from `testing`.** The Tenancy feature tests use `RefreshDatabase` (runs `migrate:fresh` — drops every table), which is only safe against the isolated `mitra_manager_test` database set in `phpunit.xml`. If in doubt, don't override `APP_ENV` or the DB settings at all.
 -   Run `vendor/bin/pint --dirty --format agent` and the narrowest relevant `php artisan test --compact` after every change.
+-   **Do not run the full test suite after a code change** — it is slow (several minutes, real MySQL). Run only the tests related to what changed (the test files or `--filter` for that feature, plus any test that covers a class you touched). Run the full suite only when the user explicitly asks for it.
 -   Docs in `docs/` are in Indonesian; keep them that way, and only create new documentation files when explicitly requested.
 
 ## Deployment

@@ -17,6 +17,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\SaleService;
+use App\Services\ShiftService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -160,7 +161,7 @@ class CashierSaleTest extends TestCase
     {
         $unit = $this->unitOf($this->sellableProduct(), 'PCS');
 
-        $this->sell([[$unit, 2]], [['cash', 19999]])->assertSessionHas('error', 'Pembayaran kurang dari total belanja.');
+        $this->sell([[$unit, 2]], [['cash', 19999]])->assertSessionHas('error', 'Pembayaran kurang dari total belanja Rp 20.000. Harga di layar mungkin sudah berubah: cari ulang barangnya, lalu coba lagi.');
         $this->assertSame(0, $this->salesCount());
     }
 
@@ -231,7 +232,7 @@ class CashierSaleTest extends TestCase
     {
         $unit = $this->unitOf($this->sellableProduct(), 'PCS');
 
-        $this->sell([[$unit, 1]], [['cash', 10000]], as: $this->storeUser())->assertSessionHas('error', 'Buka shift dulu sebelum berjualan.');
+        $this->sell([[$unit, 1]], [['cash', 10000]], as: $this->storeUser())->assertSessionHas('error', 'Buka shift dulu sebelum berjualan. Bila shift Anda sudah dihitung, tunggu keputusan Admin.');
 
         $this->assertSame(0, $this->salesCount());
     }
@@ -263,7 +264,7 @@ class CashierSaleTest extends TestCase
         ];
         $this->actingAs($this->cashier)->post($this->url('sales.store'), $payload)->assertSessionHas('last_sale');
         $shift = $this->store->run(fn () => CashShift::query()->where('cashier_id', $this->cashier->id)->firstOrFail());
-        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'closing_note' => 'Uji'])->assertSessionHas('success');
+        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'drawer_left_cash' => '0', 'closing_note' => 'Uji'])->assertSessionHas('success');
 
         $this->store->run(function () use ($shift, $payload): void {
             $service = app(SaleService::class);
@@ -355,19 +356,24 @@ class CashierSaleTest extends TestCase
         $this->assertSame('INV/TCS/K2/'.now()->format('ym').'/0001', $this->store->run(fn () => Sale::query()->sole()->number));
     }
 
-    public function test_the_shift_summary_counts_sales_by_method_and_expected_cash(): void
+    public function test_the_shift_summary_counts_sales_by_method_and_expected_cash_and_the_cashier_sees_only_the_count(): void
     {
         $unit = $this->unitOf($this->sellableProduct(), 'PCS');
         $this->sell([[$unit, 13]], [['cash', 200000]]);
         $this->sell([[$unit, 5]], [['qris', 50000]]);
 
+        $shift = $this->store->run(fn () => CashShift::query()->sole());
+        $summary = $this->store->run(fn (): array => app(ShiftService::class)->summarize($shift));
+        $this->assertSame(
+            [2, '180000.00', '130000.00', '50000.00', '0.00', '130000.00'],
+            [$summary['sale_count'], $summary['total_sales'], $summary['payments']['cash'], $summary['payments']['qris'], $summary['payments']['transfer'], $summary['expected_cash']],
+        );
+
         $this->actingAs($this->cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
             ->where('summary.sale_count', 2)
-            ->where('summary.total_sales', '180000.00')
-            ->where('summary.payments.cash', '130000.00')
-            ->where('summary.payments.qris', '50000.00')
-            ->where('summary.payments.transfer', '0.00')
-            ->where('summary.expected_cash', '130000.00'));
+            ->missing('summary.total_sales')
+            ->missing('summary.payments')
+            ->missing('summary.expected_cash'));
     }
 
     public function test_closing_a_shift_after_sales_compares_the_cash_with_what_the_receipts_say(): void
@@ -376,31 +382,46 @@ class CashierSaleTest extends TestCase
         $this->sell([[$unit, 13]], [['cash', 200000]]);
         $shift = $this->store->run(fn () => CashShift::query()->sole());
 
-        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '130000'])
-            ->assertSessionHas('closed_shift', ['expected_cash' => '130000.00', 'counted_cash' => '130000.00', 'cash_difference' => '0.00', 'deposit_amount' => '130000.00']);
+        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '130000', 'drawer_left_cash' => '0'])
+            ->assertSessionHas('closed_shift', ['counted_cash' => '130000.00', 'deposit_amount' => '130000.00', 'drawer_left_cash' => '0.00', 'report_url' => $this->url('shifts.report', ['shift' => $shift->id])]);
+    }
+
+    public function test_a_background_refresh_of_the_badges_does_not_eat_the_receipt_waiting_to_be_shown(): void
+    {
+        $receipt = ['number' => 'TCS/0001', 'items' => []];
+        $version = $this->actingAs($this->cashier)->get($this->url('index'))->viewData('page')['version'];
+        $partialReload = [
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => (string) $version,
+            'X-Inertia-Partial-Component' => 'Tenant/Cashier/Index',
+            'X-Inertia-Partial-Data' => 'order_counts,pending_return_count',
+        ];
+
+        $this->actingAs($this->cashier)->withSession(['last_sale' => $receipt])->get($this->url('index'), $partialReload)->assertOk();
+
+        $this->actingAs($this->cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('last_sale.number', 'TCS/0001'));
+        $this->actingAs($this->cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('last_sale', null));
     }
 
     public function test_a_closed_shift_can_no_longer_sell(): void
     {
         $unit = $this->unitOf($this->sellableProduct(), 'PCS');
         $shift = $this->store->run(fn () => CashShift::query()->sole());
-        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'closing_note' => 'kosong']);
+        $this->actingAs($this->cashier)->post($this->url('shifts.close', ['shift' => $shift->id]), ['counted_cash' => '0', 'drawer_left_cash' => '0', 'closing_note' => 'kosong']);
 
-        $this->sell([[$unit, 1]], [['cash', 10000]])->assertSessionHas('error', 'Buka shift dulu sebelum berjualan.');
+        $this->sell([[$unit, 1]], [['cash', 10000]])->assertSessionHas('error', 'Buka shift dulu sebelum berjualan. Bila shift Anda sudah dihitung, tunggu keputusan Admin.');
     }
 
     public function test_the_item_lookup_finds_items_with_their_sellable_units_and_stock(): void
     {
-        $brush = $this->sellableProduct('Kuas Cat', '30');
+        $this->sellableProduct('Kuas Cat', '30');
         $this->sellableProduct('Paku', '5', ['is_active' => false]);
-        $this->store->run(fn () => $this->unitOf($brush, 'DUS')->update(['barcode' => '8990000000012']));
 
         $this->actingAs($this->cashier)->getJson($this->url('products', ['q' => 'kuas']))->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.name', 'Kuas Cat')
             ->assertJsonPath('data.0.stock', '30.000')
             ->assertJsonPath('data.0.base_unit', 'PCS')
-            ->assertJsonPath('data.0.matched_unit_id', null)
             ->assertJsonPath('data.0.units.0.code', 'PCS')
             ->assertJsonPath('data.0.units.0.price', '10000.00')
             ->assertJsonPath('data.0.units.1.conversion_factor', '12.000');
@@ -409,17 +430,14 @@ class CashierSaleTest extends TestCase
         $this->actingAs($this->cashier)->getJson($this->url('products', ['q' => '']))->assertJsonCount(0, 'data');
     }
 
-    public function test_scanning_a_barcode_finds_that_item_and_the_scanned_unit(): void
+    public function test_scanning_a_sku_barcode_finds_that_item(): void
     {
-        $brush = $this->sellableProduct('Kuas Cat', '30');
-        $this->sellableProduct('Kuas Lain', '30');
-        $dozen = $this->unitOf($brush, 'DUS');
-        $this->store->run(fn () => $dozen->update(['barcode' => '8990000000012']));
+        $this->sellableProduct('Kuas Cat', '30', ['sku' => 'MU0496']);
+        $this->sellableProduct('Kuas Lain', '30', ['sku' => 'MU0497']);
 
-        $this->actingAs($this->cashier)->getJson($this->url('products', ['q' => '8990000000012']))
+        $this->actingAs($this->cashier)->getJson($this->url('products', ['q' => 'MU0496']))
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.name', 'Kuas Cat')
-            ->assertJsonPath('data.0.matched_unit_id', $dozen->id);
+            ->assertJsonPath('data.0.name', 'Kuas Cat');
     }
 
     public function test_a_unit_not_for_sale_is_left_out_of_the_lookup(): void

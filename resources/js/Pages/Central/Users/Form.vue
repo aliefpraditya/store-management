@@ -25,12 +25,12 @@ const form = useForm({
 });
 
 const isPasswordVisible = ref(false);
-const isStoreNeeded = computed(() => form.role !== 'super_admin');
+const isStoreNeeded = computed(() => props.roles.find((role) => role.value === form.role)?.is_store_role ?? true);
 
 const roleOptions = computed(() => props.roles.map((role) => ({ label: role.label, value: role.value })));
 
 function submit() {
-    form.transform((data) => ({ ...data, store_id: isStoreNeeded.value ? data.store_id : null }))[props.form_action.method](
+    form.transform((formValues) => ({ ...formValues, store_id: isStoreNeeded.value ? formValues.store_id : null }))[props.form_action.method](
         props.form_action.url,
     );
 }
@@ -104,7 +104,7 @@ function submit() {
 
             <div class="user-form__actions">
                 <q-btn type="submit" color="primary" unelevated no-caps label="Simpan" :loading="form.processing" />
-                <q-btn flat no-caps label="Batal" @click="router.visit(page.props.urls.central_users)" />
+                <q-btn flat no-caps label="Batal" @click="router.visit(page.props.app_urls.central_users)" />
             </div>
         </q-form>
     </CentralLayout>

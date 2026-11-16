@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\SaleReturnStatus;
+use App\Models\SaleReturn;
 use App\Models\Store;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -46,12 +48,15 @@ class HandleInertiaRequests extends Middleware
                 'error' => fn () => $request->session()->get('error'),
             ],
             'store' => fn () => $this->currentStore(),
+            'menu_badges' => fn () => $this->menuBadges(),
             'has_open_shift' => fn () => $request->session()->get(EnsureUserHasNoOpenShift::SESSION_KEY, []) !== [],
-            'urls' => [
+            // Not named `urls`: many pages pass a `urls` prop of their own, which would replace this one.
+            'app_urls' => [
                 'home' => route('home'),
                 'central_dashboard' => route('central.dashboard'),
                 'central_stores' => route('central.stores.index'),
                 'central_users' => route('central.users.index'),
+                'central_settings' => route('central.settings.index'),
                 'login' => route('login'),
                 'logout' => route('logout'),
             ],
@@ -59,9 +64,23 @@ class HandleInertiaRequests extends Middleware
     }
 
     /**
+     * What waits for someone in the store, as the numbers on the sidebar entries; null on central pages.
+     *
+     * @return array{returns: int}|null
+     */
+    private function menuBadges(): ?array
+    {
+        if (! tenancy()->initialized) {
+            return null;
+        }
+
+        return ['returns' => SaleReturn::query()->where('status', SaleReturnStatus::Pending)->count()];
+    }
+
+    /**
      * The store of the current page, for every page under /t/{code}; null on central pages.
      *
-     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, units_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string}|null
+     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, unit_create_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string, expenses_url: string, daily_closings_url: string, settings_url: string, reports_url: string}|null
      */
     private function currentStore(): ?array
     {
@@ -78,7 +97,7 @@ class HandleInertiaRequests extends Middleware
             'receipt_prefix' => $store->receipt_prefix,
             'dashboard_url' => route('tenant.dashboard', ['tenant' => $store->code]),
             'products_url' => route('tenant.products.index', ['tenant' => $store->code]),
-            'units_url' => route('tenant.units.index', ['tenant' => $store->code]),
+            'unit_create_url' => route('tenant.units.store', ['tenant' => $store->code]),
             'stock_opnames_url' => route('tenant.stock-opnames.index', ['tenant' => $store->code]),
             'stock_history_url' => route('tenant.stock-history.index', ['tenant' => $store->code]),
             'cashier_url' => route('tenant.cashier.index', ['tenant' => $store->code]),
@@ -86,6 +105,10 @@ class HandleInertiaRequests extends Middleware
             'delivery_notes_url' => route('tenant.delivery-notes.index', ['tenant' => $store->code]),
             'returns_url' => route('tenant.returns.index', ['tenant' => $store->code]),
             'shifts_url' => route('tenant.shifts.index', ['tenant' => $store->code]),
+            'expenses_url' => route('tenant.expenses.index', ['tenant' => $store->code]),
+            'daily_closings_url' => route('tenant.daily-closings.index', ['tenant' => $store->code]),
+            'settings_url' => route('tenant.settings.index', ['tenant' => $store->code]),
+            'reports_url' => route('tenant.reports.sales', ['tenant' => $store->code]),
         ];
     }
 }

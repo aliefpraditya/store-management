@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
+import { newUuid } from '../../../Composables/useCart';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
@@ -12,13 +13,13 @@ const props = defineProps({
 
 const SEARCH_DELAY_MS = 250;
 
+/** One uuid per opened form: a second tap or a retry of the same save gives back the first note, not another. */
 const form = useForm({
+    client_uuid: newUuid(),
     sale_id: null,
     recipient_name: '',
     recipient_phone: '',
     recipient_address: '',
-    driver_name: '',
-    vehicle_number: '',
     notes: '',
     items: [],
 });
@@ -118,10 +119,6 @@ function submit() {
                         <q-input v-model="form.recipient_phone" label="Telepon" outlined :error="!!form.errors.recipient_phone" :error-message="form.errors.recipient_phone" />
                     </div>
                     <q-input v-model="form.recipient_address" type="textarea" autogrow label="Alamat" outlined :error="!!form.errors.recipient_address" :error-message="form.errors.recipient_address" />
-                    <div class="grid grid--gap">
-                        <q-input v-model="form.driver_name" label="Sopir (opsional)" outlined />
-                        <q-input v-model="form.vehicle_number" label="No. kendaraan (opsional)" outlined />
-                    </div>
                     <q-input v-model="form.notes" label="Catatan (opsional)" outlined class="note-form__notes" />
                 </section>
 
@@ -191,10 +188,6 @@ function submit() {
     grid-template-columns: 1fr 1fr;
     gap: 14px;
     margin-bottom: 14px;
-}
-
-.grid--gap {
-    margin-top: 14px;
 }
 
 .note-form__notes {

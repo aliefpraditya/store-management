@@ -11,7 +11,6 @@ const props = defineProps({
     statuses: { type: Array, required: true },
     differences: { type: Array, required: true },
     pending_difference_count: { type: Number, required: true },
-    follow_up_count: { type: Number, required: true },
 });
 
 const page = usePage();
@@ -53,12 +52,6 @@ watch([status, difference, from, to], () => applyFilters());
             <q-btn flat no-caps dense color="primary" label="Lihat" @click="difference = 'pending_approval'" />
         </div>
 
-        <div v-if="follow_up_count > 0" class="waiting">
-            <q-icon name="assignment_late" />
-            <span><b>{{ follow_up_count }}</b> selisih kas yang ditolak belum ditindaklanjuti.</span>
-            <q-btn flat no-caps dense color="primary" label="Lihat" @click="difference = 'awaiting_follow_up'" />
-        </div>
-
         <div class="filters">
             <q-input v-model="search" outlined dense clearable placeholder="Cari nama kasir" class="filters__search">
                 <template #prepend><q-icon name="search" /></template>
@@ -96,7 +89,7 @@ watch([status, difference, from, to], () => applyFilters());
                         <td>
                             {{ timeFormat.format(new Date(shift.opened_at)) }}
                             <template v-if="shift.closed_at">– {{ timeFormat.format(new Date(shift.closed_at)) }}</template>
-                            <span v-else class="chip chip--ok">{{ shift.status_label }}</span>
+                            <span v-else class="chip" :class="shift.status === 'open' ? 'chip--ok' : 'chip--warn'">{{ shift.status_label }}</span>
                         </td>
                         <td class="shifts__right">
                             {{ formatRupiah(shift.sales_total) }}
@@ -107,8 +100,7 @@ watch([status, difference, from, to], () => applyFilters());
                             <template v-else>–</template>
                         </td>
                         <td>
-                            <span v-if="shift.status === 'closed'" class="chip" :class="differenceChipClass[shift.difference_status]">{{ shift.difference_status_label }}</span>
-                            <small v-if="shift.needs_follow_up" class="shifts__follow">perlu tindak lanjut</small>
+                            <span v-if="shift.status !== 'open'" class="chip" :class="differenceChipClass[shift.difference_status]">{{ shift.difference_status_label }}</span>
                         </td>
                     </tr>
                 </tbody>
@@ -211,14 +203,6 @@ watch([status, difference, from, to], () => applyFilters());
     display: block;
     color: var(--app-mute);
     font-size: 12.5px;
-}
-
-.shifts__follow {
-    display: block;
-    margin-top: 2px;
-    color: #c2710c;
-    font-size: 12px;
-    font-weight: 600;
 }
 
 .shifts__minus {

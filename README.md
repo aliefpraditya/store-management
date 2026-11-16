@@ -1,58 +1,98 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Mitra Manager
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A multi-store point-of-sale (POS) for retail stores in Indonesia. One central database holds the stores, users and store access; **each store has its own database**. The interface and the business documents are in Indonesian.
 
-## About Laravel
+Release 1 (R1) covers the day-to-day running of a store: store master, items with per-unit prices and conversions, stock opname, and sales (cashier, shifts and cash, payments, receipts, returns, delivery notes, customer orders, expenses and day closing). It is online-only. See the [changelog](CHANGELOG.md) for what is in each release.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Stack
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Laravel 13** (PHP 8.3), server-side rendered through **Inertia.js 3**, session auth, no separate API
+- **Vue 3** (JavaScript) with **Quasar 2**, bundled by Vite
+- **MySQL** (tests also run on real MySQL, not SQLite)
+- **stancl/tenancy 3.10**: database-per-store multi-tenancy, identified by path (`t/{store_code}/...`)
+- **owen-it/laravel-auditing**: audit trail in the central and every store database
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Requirements
 
-## Learning Laravel
+- PHP 8.3 and Composer
+- Node.js and npm
+- MySQL 8
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Getting started
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
+cp .env.example .env
+php artisan key:generate
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Set the MySQL connection in `.env` (the example file defaults to SQLite, which the app does not support), then:
 
-## Contributing
+```bash
+php artisan migrate        # central database
+npm install
+composer run dev           # or: npm run dev
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Store databases are **never created automatically**. Create an empty database for a store by hand (on Hostinger, in hPanel), register its credentials on the store's row in `stores`, then migrate it:
 
-## Code of Conduct
+```bash
+php artisan tenants:migrate
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+`php artisan db:seed` creates a demo Super Admin, a sample store (`mitra_utama`) with a Store Admin and a Cashier, for local development.
 
-## Security Vulnerabilities
+## Roles
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+| Role | Access |
+|---|---|
+| Super Admin | Central dashboard, store master, users and access, and every store |
+| Store Admin | Everything inside their own store(s) |
+| Cashier | The cashier screen only |
 
-## License
+Everyone except a Super Admin goes straight to their store after login.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+## Commands
+
+```bash
+npm run build                            # production frontend build
+vendor/bin/pint --dirty --format agent   # code style, after touching PHP
+php artisan test --compact               # full test suite (slow, real MySQL)
+php artisan test --compact --filter=TestName
+```
+
+Tests run against the isolated `mitra_manager_test` database set in `phpunit.xml`. Several tests use `RefreshDatabase`, which drops every table, so never point them at the `.env` database or a store database.
+
+## Architecture in short
+
+```
+HTTP request → Controller → Service → Model
+```
+
+- **Controllers** are thin: validate (Form Request), call a service, return an Inertia response.
+- **Services** (`app/Services/`) hold the business logic.
+- **Enums** (`app/Enums/`) hold status and type values.
+- Tables and columns are English, snake_case and plural. Any method with two or more writes runs in `DB::transaction()`.
+- Central routes live in `routes/web.php`; store routes in `routes/tenant.php` under `t/{tenant}/...` with the middleware `web` → `InitializeTenancyByPath` → `auth` → `store.access`.
+- Sessions, cache and the queue are forced onto the central connection, because the default connection switches to the store database while tenancy is initialized. A model that lives in the central database must use the `CentralConnection` trait.
+- Store database migrations are in `database/migrations/tenant`.
+
+## Documentation
+
+Read these before working on a feature (they are in Indonesian):
+
+- [docs/analisis-sistem.md](docs/analisis-sistem.md): source of truth for scope and business rules
+- [docs/wireframe.html](docs/wireframe.html) and [docs/diagram.html](docs/diagram.html): screens and flows (the `-r2` files are Release 2)
+- [docs/estimasi-biaya.md](docs/estimasi-biaya.md): estimates
+- [docs/hasil-review-kode.md](docs/hasil-review-kode.md): open code review findings
+
+Release 2 and later scope (purchases, container receiving, transfers, FIFO costing, price history) is not part of R1 and should not be added unless asked.
+
+## Deployment
+
+Hosted on Hostinger: one hosting runs Laravel and serves the built Vue assets (`npm run build`). Databases are created by hand in hPanel (one user per database). There is no long-running worker on shared hosting, so use cron:
+
+```
+php artisan schedule:run
+php artisan queue:work --stop-when-empty
+```

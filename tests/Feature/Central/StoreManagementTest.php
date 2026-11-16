@@ -11,6 +11,8 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\StoreProvisioner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -135,7 +137,7 @@ class StoreManagementTest extends TestCase
         $this->assertNotNull($store->schema_version);
         $this->assertSame(
             ['connection' => 'ok', 'migration' => 'ok', 'seed' => 'ok'],
-            $store->provisioningLogs()->orderBy('id')->pluck('result', 'step')->all(),
+            $store->provisioningLogs()->orderBy('id')->pluck('result', 'step')->map->value->all(),
         );
     }
 
@@ -160,14 +162,16 @@ class StoreManagementTest extends TestCase
             'expense_categories', 'expenses', 'daily_closings', 'settings', 'document_sequences',
         ], $tables));
 
+        $store->forceFill(['status' => StoreStatus::Failed])->save();
         app(StoreProvisioner::class)->provision($store);
 
         $warehouses = $store->run(fn () => Warehouse::query()->orderBy('code')->get(['code', 'type', 'is_default']));
 
-        $this->assertSame(['DEAD', 'MAIN'], $warehouses->pluck('code')->all());
+        $this->assertSame(['DEAD', 'MAIN', 'RETUR'], $warehouses->pluck('code')->all());
         $this->assertSame(WarehouseType::DeadStock, $warehouses[0]->type);
         $this->assertSame(WarehouseType::Sellable, $warehouses[1]->type);
         $this->assertTrue($warehouses[1]->is_default);
+        $this->assertSame(WarehouseType::Returns, $warehouses[2]->type);
     }
 
     public function test_code_and_prefix_are_normalized(): void
@@ -186,6 +190,8 @@ class StoreManagementTest extends TestCase
             ->post(route('central.stores.store'), $this->payload(['db_name' => self::MISSING_DATABASE]))
             ->assertRedirect(route('central.stores.index'))
             ->assertSessionHas('error');
+
+        $this->assertStringContainsString('Database belum dibuat di hPanel.', session('error'));
 
         $store = Store::query()->where('code', 'cabang_barat')->firstOrFail();
 
@@ -234,7 +240,65 @@ class StoreManagementTest extends TestCase
 
         $this->actingAs($this->superAdmin())
             ->post(route('central.stores.provision', $store))
-            ->assertForbidden();
+            ->assertSessionHas('error', 'Database toko ini sudah siap.');
+
+        $this->assertSame(StoreStatus::Active, $store->fresh()->status);
+    }
+
+    public function test_a_failing_migration_leaves_the_store_failed_with_a_log_instead_of_an_error_page(): void
+    {
+        $this->createDatabase(self::LATE_DATABASE);
+        DB::connection('mysql')->statement('CREATE TABLE `'.self::LATE_DATABASE.'`.`units` (id INT)');
+
+        $this->actingAs($this->superAdmin())
+            ->post(route('central.stores.store'), $this->payload(['db_name' => self::LATE_DATABASE]))
+            ->assertRedirect(route('central.stores.index'))
+            ->assertSessionHas('error');
+
+        $store = Store::query()->where('code', 'cabang_barat')->firstOrFail();
+
+        $this->assertFalse(tenancy()->initialized);
+        $this->assertSame(StoreStatus::Failed, $store->status);
+        $this->assertSame(
+            ['connection' => 'ok', 'migration' => 'failed'],
+            $store->provisioningLogs()->orderBy('id')->pluck('result', 'step')->map->value->all(),
+        );
+    }
+
+    public function test_a_second_retry_while_setup_is_running_is_refused(): void
+    {
+        $store = Store::factory()->create(['db_name' => self::MISSING_DATABASE, 'status' => StoreStatus::Failed]);
+        $runningSetup = Cache::lock('store-provisioning:'.$store->id, 60);
+        $runningSetup->get();
+
+        $this->actingAs($this->superAdmin())
+            ->post(route('central.stores.provision', $store))
+            ->assertSessionHas('error', 'Persiapan database toko ini sedang berjalan. Tunggu sampai selesai.');
+
+        $runningSetup->release();
+
+        $this->assertSame(StoreStatus::Failed, $store->fresh()->status);
+        $this->assertSame(0, $store->provisioningLogs()->count());
+    }
+
+    public function test_schema_version_follows_every_tenant_migration(): void
+    {
+        $this->actingAs($this->superAdmin())->post(route('central.stores.store'), $this->payload());
+        $store = Store::query()->where('code', 'cabang_barat')->firstOrFail();
+        $store->forceFill(['schema_version' => 'stale'])->save();
+
+        Artisan::call('tenants:migrate', ['--tenants' => [$store->code]]);
+
+        $this->assertNotSame('stale', $store->fresh()->schema_version);
+        $this->assertNotNull($store->fresh()->schema_version);
+    }
+
+    public function test_the_database_password_is_left_out_of_a_serialized_store(): void
+    {
+        $store = Store::factory()->create(['db_password' => 'rahasia-toko']);
+
+        $this->assertArrayNotHasKey('db_password', $store->toArray());
+        $this->assertSame('rahasia-toko', $store->db_password);
     }
 
     public function test_central_database_can_never_be_used_for_a_store(): void
@@ -376,10 +440,21 @@ class StoreManagementTest extends TestCase
 
             $this->actingAs($admin)
                 ->patch(route('central.stores.status', $store), ['is_active' => true])
-                ->assertForbidden();
+                ->assertSessionHas('error', 'Toko ini belum selesai disiapkan.');
 
             $this->assertSame($status, $store->fresh()->status);
         }
+    }
+
+    public function test_switching_a_store_needs_an_active_flag(): void
+    {
+        $store = Store::factory()->create();
+
+        $this->actingAs($this->superAdmin())
+            ->patch(route('central.stores.status', $store), [])
+            ->assertSessionHasErrors('is_active');
+
+        $this->assertSame(StoreStatus::Active, $store->fresh()->status);
     }
 
     public function test_deactivated_store_cannot_be_entered(): void

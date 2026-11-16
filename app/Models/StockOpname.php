@@ -51,7 +51,7 @@ class StockOpname extends Model implements AuditableContract
      */
     public function varianceOf(string $countedQuantity, string $systemQuantity): BigDecimal
     {
-        return $this->reason_code?->countsArrivals()
+        return $this->reason_code?->isArrivalCount()
             ? BigDecimal::of($countedQuantity)
             : BigDecimal::of($countedQuantity)->minus($systemQuantity);
     }

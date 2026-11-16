@@ -3,27 +3,22 @@ import { computed, ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../../Composables/postJson';
-import { printInNewWindow } from '../../../Composables/printInNewWindow';
+import { printSheet } from '../../../Composables/printSheet';
+import { deliveryNoteStatusChipClass } from '../../../Composables/useDeliveryNoteStatus';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
     note: { type: Object, required: true },
+    /** @type {{id: number, name: string}[]} the drivers that can take the goods out */
+    drivers: { type: Array, default: () => [] },
+    settings_url: { type: String, default: null },
 });
 
 const $q = useQuasar();
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' });
-
-const statusChipClass = {
-    draft: 'chip--off',
-    shipped: 'chip--warn',
-    delivered: 'chip--ok',
-    partially_delivered: 'chip--warn',
-    returned: 'chip--bad',
-    cancelled: 'chip--bad',
-};
 
 const isCompleteOpen = ref(false);
 const isCompleting = ref(false);
@@ -62,8 +57,24 @@ function complete() {
     });
 }
 
+const isShipOpen = ref(false);
+const isShipping = ref(false);
+const driverId = ref(null);
+
+/** Who takes the goods out is chosen now, from the drivers kept in the store settings; leaving it empty is allowed. */
+function openShip() {
+    driverId.value = null;
+    isShipOpen.value = true;
+}
+
 function ship() {
-    router.post(props.note.urls.ship, {}, { preserveScroll: true });
+    router.post(props.note.urls.ship, { driver_id: driverId.value }, {
+        preserveScroll: true,
+        onStart: () => (isShipping.value = true),
+        onFinish: () => (isShipping.value = false),
+        onSuccess: () => (isShipOpen.value = false),
+        onError: (errors) => $q.notify({ type: 'negative', message: Object.values(errors)[0], position: 'top' }),
+    });
 }
 
 function cancel() {
@@ -83,11 +94,7 @@ async function print() {
     isPrinting.value = true;
 
     try {
-        await printInNewWindow(async () => {
-            await postJson(props.note.urls.print);
-
-            return props.note.urls.sheet;
-        });
+        await printSheet(async () => (await postJson(props.note.urls.print)).sheet_url);
         router.reload({ only: ['note'] });
     } catch (error) {
         $q.notify({ type: 'negative', message: error.message, position: 'top' });
@@ -99,11 +106,14 @@ async function print() {
 
 <template>
     <StoreLayout :title="note.number">
+        <template #back>
+            <q-btn flat no-caps dense icon="arrow_back" label="Surat Jalan" class="q-ml-sm" @click="router.visit(note.urls.index)" />
+        </template>
+
         <template #actions>
-            <q-btn flat no-caps dense icon="arrow_back" label="Surat Jalan" class="q-mr-sm" @click="router.visit(note.urls.index)" />
             <q-btn v-if="note.can_cancel" flat no-caps dense color="negative" label="Batalkan" class="q-mr-sm" @click="cancel" />
             <q-btn outline no-caps dense color="primary" icon="print" :label="note.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="isPrinting" class="q-mr-sm" @click="print" />
-            <q-btn v-if="note.can_ship" color="primary" unelevated no-caps dense label="Tandai Dikirim" @click="ship" />
+            <q-btn v-if="note.can_ship" color="primary" unelevated no-caps dense label="Tandai Dikirim" @click="openShip" />
             <q-btn v-if="note.can_complete" color="positive" unelevated no-caps dense label="Selesaikan Pengiriman" @click="openComplete" />
             <q-btn v-if="isFinished && note.items.some((item) => Number(item.quantity_returned) > 0)" outline no-caps dense color="primary" icon="undo" label="Buat Retur" class="q-ml-sm" @click="router.visit(note.sale.new_return_url)" />
         </template>
@@ -113,9 +123,9 @@ async function print() {
                 <div>
                     <b>{{ note.number }}</b>
                     <small>{{ dateFormat.format(new Date(note.business_date)) }} · dibuat {{ note.created_by_name }}</small>
-                    <small>Nota <a :href="note.sale.show_url" @click.prevent="router.visit(note.sale.show_url)">{{ note.sale.number }}</a></small>
+                    <small>Nota <a :href="note.sale.show_url" @click.prevent="router.visit(note.sale.show_url)">{{ note.sale.number }}</a><template v-if="note.other_sale_numbers.length > 0">, juga memuat barang dari nota {{ note.other_sale_numbers.join(', ') }}</template></small>
                 </div>
-                <span class="chip" :class="statusChipClass[note.status]">{{ note.status_label }}</span>
+                <span class="chip" :class="deliveryNoteStatusChipClass[note.status]">{{ note.status_label }}</span>
             </header>
 
             <dl class="note__facts">
@@ -146,6 +156,37 @@ async function print() {
                 </tbody>
             </table>
         </article>
+
+        <q-dialog v-model="isShipOpen" persistent>
+            <q-card class="complete">
+                <q-card-section>
+                    <div class="complete__title">Tandai dikirim</div>
+                    <p class="complete__hint">Pilih sopir yang mengantar.</p>
+
+                    <q-select
+                        v-model="driverId"
+                        :options="drivers"
+                        option-value="id"
+                        option-label="name"
+                        emit-value
+                        map-options
+                        clearable
+                        outlined
+                        dense
+                        autofocus
+                        label="Sopir"
+                        behavior="menu"
+                    />
+                    <p v-if="drivers.length === 0" class="complete__hint">
+                        Belum ada sopir. Tambahkan di <a :href="settings_url" @click.prevent="router.visit(settings_url)">Pengaturan Toko</a>, atau lanjutkan tanpa sopir.
+                    </p>
+                </q-card-section>
+                <q-card-actions align="right">
+                    <q-btn flat no-caps label="Batal" :disable="isShipping" @click="isShipOpen = false" />
+                    <q-btn color="primary" unelevated no-caps label="Tandai Dikirim" :loading="isShipping" @click="ship" />
+                </q-card-actions>
+            </q-card>
+        </q-dialog>
 
         <q-dialog v-model="isCompleteOpen" persistent>
             <q-card class="complete">

@@ -2,8 +2,14 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\CostChangeMethod;
+use App\Enums\ProductConditionFilter;
+use App\Enums\ProductStatusFilter;
+use App\Enums\SellingChangeMethod;
 use App\Exceptions\ProductHasTransactionsException;
+use App\Exceptions\ProductSaveException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Tenant\BarcodeLabelSheetRequest;
 use App\Http\Requests\Tenant\SaveProductRequest;
 use App\Http\Resources\ProductFormResource;
 use App\Http\Resources\ProductListResource;
@@ -11,6 +17,8 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Unit;
+use App\Services\BarcodeLabelService;
+use App\Services\BulkPriceService;
 use App\Services\ProductService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,32 +29,54 @@ class ProductController extends Controller
 {
     private const PER_PAGE = 25;
 
-    public function __construct(private readonly ProductService $products) {}
+    public function __construct(private readonly ProductService $productService) {}
 
     public function index(Request $request): Response
     {
         $search = $request->string('search')->toString();
         $categoryId = $request->integer('category') ?: null;
-        $status = $request->string('status')->toString();
+        $brandId = $request->integer('brand') ?: null;
+        $status = ProductStatusFilter::tryFrom($request->string('status')->toString());
+        $condition = ProductConditionFilter::tryFrom($request->string('condition')->toString());
 
-        $products = Product::query()
-            ->withStockTotals()
-            ->withTransactionFlag()
-            ->with(['category', 'brand', 'baseUnit', 'productUnits.unit'])
-            ->search($search)
-            ->when($categoryId, fn ($query) => $query->where('products.category_id', $categoryId))
-            ->when($status === 'active', fn ($query) => $query->where('products.is_active', true))
-            ->when($status === 'inactive', fn ($query) => $query->where('products.is_active', false))
-            ->orderBy('products.name')
-            ->paginate(self::PER_PAGE)
-            ->withQueryString()
+        $products = $this->productService
+            ->paginateProducts($search, $categoryId, $brandId, $status, $condition, self::PER_PAGE)
             ->through(fn (Product $product): array => ProductListResource::make($product)->resolve());
 
         return Inertia::render('Tenant/Products/Index', [
             'products' => $products,
-            'filters' => ['search' => $search, 'category' => $categoryId, 'status' => $status],
+            'matching_ids' => Inertia::optional(fn (): array => $this->productService->matchingIds($search, $categoryId, $brandId, $status, $condition)),
+            'filters' => ['search' => $search, 'category' => $categoryId, 'brand' => $brandId, 'status' => $status?->value ?? '', 'condition' => $condition?->value ?? ''],
+            'statuses' => ProductStatusFilter::options(),
+            'conditions' => ProductConditionFilter::options(),
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
+            'brands' => Brand::query()->orderBy('name')->get(['id', 'name']),
             'create_url' => route('tenant.products.create', ['tenant' => tenant('code')]),
+            'barcode_label' => [
+                'limits' => [
+                    'max_copies_per_product' => BarcodeLabelService::MAX_COPIES_PER_PRODUCT,
+                    'max_labels' => BarcodeLabelService::MAX_LABELS,
+                    'min_width' => BarcodeLabelSheetRequest::MIN_WIDTH_MM,
+                    'max_width' => BarcodeLabelSheetRequest::MAX_WIDTH_MM,
+                    'min_height' => BarcodeLabelSheetRequest::MIN_HEIGHT_MM,
+                    'max_height' => BarcodeLabelSheetRequest::MAX_HEIGHT_MM,
+                    'max_columns' => BarcodeLabelSheetRequest::MAX_COLUMNS,
+                ],
+                'urls' => [
+                    'products' => route('tenant.barcode-labels.products', ['tenant' => tenant('code')]),
+                    'sheet' => route('tenant.barcode-labels.sheet', ['tenant' => tenant('code')]),
+                ],
+            ],
+            'bulk_price' => [
+                'units' => Unit::query()->orderBy('code')->pluck('code'),
+                'cost_methods' => CostChangeMethod::options(),
+                'selling_methods' => SellingChangeMethod::options(),
+                'max_products' => BulkPriceService::MAX_PRODUCTS,
+                'urls' => [
+                    'preview' => route('tenant.bulk-prices.preview', ['tenant' => tenant('code')]),
+                    'apply' => route('tenant.bulk-prices.apply', ['tenant' => tenant('code')]),
+                ],
+            ],
         ]);
     }
 
@@ -61,7 +91,7 @@ class ProductController extends Controller
 
     public function store(SaveProductRequest $request): RedirectResponse
     {
-        $this->products->create($request->validated());
+        $this->productService->create($request->validated());
 
         return redirect()->route('tenant.products.index', ['tenant' => tenant('code')])->with('success', 'Barang ditambahkan.');
     }
@@ -77,7 +107,11 @@ class ProductController extends Controller
 
     public function update(SaveProductRequest $request, Product $product): RedirectResponse
     {
-        $this->products->update($product, $request->validated());
+        try {
+            $this->productService->update($product, $request->validated());
+        } catch (ProductSaveException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
 
         return redirect()->route('tenant.products.index', ['tenant' => tenant('code')])->with('success', 'Barang disimpan.');
     }
@@ -85,7 +119,7 @@ class ProductController extends Controller
     public function destroy(Product $product): RedirectResponse
     {
         try {
-            $this->products->delete($product);
+            $this->productService->delete($product);
         } catch (ProductHasTransactionsException $exception) {
             return redirect()->route('tenant.products.index', ['tenant' => tenant('code')])->with('error', $exception->getMessage());
         }

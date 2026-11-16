@@ -2,6 +2,7 @@
 
 namespace Tests\Concerns;
 
+use App\Enums\StoreStatus;
 use App\Models\Store;
 use App\Services\StoreProvisioner;
 use Database\Seeders\StoreDatabaseSeeder;
@@ -58,6 +59,7 @@ trait PreparesStoreDatabase
             return $store;
         }
 
+        $store->forceFill(['status' => StoreStatus::Provisioning])->save();
         app(StoreProvisioner::class)->provision($store);
         self::$provisionedDatabases[$database] = true;
 

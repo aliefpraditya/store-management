@@ -77,11 +77,11 @@ class UserManagementTest extends TestCase
                 ->component('Central/Users/Index')
                 ->has('users', 2)
                 ->where('users.0.username', 'zed')
-                ->where('users.0.role', ['value' => 'super_admin', 'label' => 'Super Admin'])
+                ->where('users.0.role', ['value' => 'super_admin', 'label' => 'Super Admin', 'is_store_role' => false])
                 ->where('users.0.store', null)
                 ->where('users.0.is_self', true)
                 ->where('users.1.username', 'amy')
-                ->where('users.1.role', ['value' => 'cashier', 'label' => 'Kasir'])
+                ->where('users.1.role', ['value' => 'cashier', 'label' => 'Kasir', 'is_store_role' => true])
                 ->where('users.1.store.name', 'Mitra Utama')
                 ->where('users.1.is_self', false)
                 ->missing('users.0.password')
@@ -311,9 +311,36 @@ class UserManagementTest extends TestCase
 
         $this->actingAs($admin)
             ->patch(route('central.users.status', $admin), ['is_active' => false])
-            ->assertForbidden();
+            ->assertSessionHasErrors(['is_active' => 'Anda tidak bisa menonaktifkan akun sendiri.']);
 
         $this->assertTrue($admin->fresh()->is_active);
+    }
+
+    public function test_changing_a_users_store_role_leaves_an_audit_record(): void
+    {
+        config(['audit.console' => true]);
+        $store = Store::factory()->create();
+        $cashier = $this->storeUser(UserRole::Cashier, $store, ['username' => 'sari']);
+
+        $this->actingAs($this->superAdmin())
+            ->put(route('central.users.update', $cashier), $this->payload($store, ['role' => 'admin', 'password' => '']));
+
+        $roleAudit = $cashier->audits()->where('event', 'store_assignment_changed')->sole();
+
+        $this->assertSame('cashier', $roleAudit->old_values['store_assignment']['role']);
+        $this->assertSame('admin', $roleAudit->new_values['store_assignment']['role']);
+    }
+
+    public function test_saving_a_user_without_changing_the_store_role_adds_no_assignment_audit(): void
+    {
+        config(['audit.console' => true]);
+        $store = Store::factory()->create();
+        $cashier = $this->storeUser(UserRole::Cashier, $store, ['username' => 'sari']);
+
+        $this->actingAs($this->superAdmin())
+            ->put(route('central.users.update', $cashier), $this->payload($store, ['name' => 'Sari Baru', 'password' => '']));
+
+        $this->assertSame(0, $cashier->audits()->where('event', 'store_assignment_changed')->count());
     }
 
     public function test_user_without_a_store_has_no_role(): void

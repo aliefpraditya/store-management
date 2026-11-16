@@ -1,6 +1,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
+import ExchangeEditor from '../../../Components/ExchangeEditor.vue';
+import { newUuid } from '../../../Composables/useCart';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -9,16 +11,52 @@ const props = defineProps({
     /** The receipt chosen on the way in, or null. @type {{id: number, number: string, customer_name: string|null, default_refund_method: string, lines: object[]}|null} */
     sale: { type: Object, default: null },
     refund_methods: { type: Array, required: true },
-    dispositions: { type: Array, required: true },
+    resolutions: { type: Array, required: true },
     urls: { type: Object, required: true },
 });
 
+/** One uuid per opened form: a second tap or a retry of the same save gives back the first return, not another. */
 const form = useForm({
+    client_uuid: newUuid(),
     sale_id: null,
+    resolution: 'exchange',
     refund_method: 'cash',
+    refund_account: '',
     reason: '',
     items: [],
+    exchange_items: [],
+    exchange_payments: [],
 });
+
+const isExchange = computed(() => form.resolution === 'exchange');
+
+/** What the replacement editor last reported: its lines, extra payment and whether it is complete. */
+const exchangeDraft = ref(null);
+
+function onExchangeChange(payload) {
+    exchangeDraft.value = payload;
+    form.exchange_items = payload.items;
+    form.exchange_payments = payload.payments;
+    form.refund_method = payload.refund_method;
+    form.refund_account = payload.refund_account;
+}
+
+/** Money paid back by transfer, QRIS or EDC needs the account it goes to; an exchange says so itself. */
+const isAccountMissing = computed(() => !isExchange.value && form.refund_method !== 'cash' && form.refund_account.trim() === '');
+
+/** Back to a plain refund: the money goes back the way the customer paid and no replacement is sent. */
+watch(
+    () => form.resolution,
+    (resolution) => {
+        if (resolution === 'refund') {
+            form.refund_method = chosenSale.value?.default_refund_method ?? 'cash';
+            form.refund_account = '';
+            form.exchange_items = [];
+            form.exchange_payments = [];
+            exchangeDraft.value = null;
+        }
+    },
+);
 
 const chosenSale = ref(null);
 const saleOptions = ref([]);
@@ -31,7 +69,7 @@ function chooseSale(sale) {
     chosenSale.value = sale;
     form.sale_id = sale?.id ?? null;
     form.refund_method = sale?.default_refund_method ?? 'cash';
-    form.items = (sale?.lines ?? []).map((line) => ({ sale_item_id: line.id, quantity: 0, disposition: 'resellable' }));
+    form.items = (sale?.lines ?? []).map((line) => ({ sale_item_id: line.id, quantity: 0 }));
 }
 
 if (props.sale) {
@@ -72,7 +110,7 @@ function submit() {
     <StoreLayout title="Retur Baru">
         <template #actions>
             <q-btn flat no-caps label="Batal" class="q-mr-sm" @click="router.visit(urls.index)" />
-            <q-btn color="primary" unelevated no-caps label="Simpan Retur" :loading="form.processing" :disable="!chosenSale || !hasAnythingToReturn" @click="submit" />
+            <q-btn color="primary" unelevated no-caps label="Simpan Retur" :loading="form.processing" :disable="!chosenSale || !hasAnythingToReturn || isAccountMissing || (isExchange && !exchangeDraft?.is_ready)" @click="submit" />
         </template>
 
         <q-form class="return-form" @submit.prevent="submit">
@@ -89,6 +127,7 @@ function submit() {
                     hide-selected
                     fill-input
                     input-debounce="250"
+                    behavior="menu"
                     :error="!!form.errors.sale_id"
                     :error-message="form.errors.sale_id"
                     @filter="searchSales"
@@ -112,7 +151,7 @@ function submit() {
             <template v-if="chosenSale">
                 <section class="card">
                     <h2>Barang yang diretur</h2>
-                    <p class="hint">Isi jumlah yang dikembalikan pelanggan dan pilih ke mana barangnya. Biarkan 0 untuk barang yang tidak diretur.</p>
+                    <p class="hint">Isi jumlah yang dikembalikan pelanggan. Biarkan 0 untuk barang yang tidak diretur. Barangnya masuk ke gudang retur dan baru bisa dijual atau jadi dead stock setelah diperiksa lewat opname.</p>
                     <p v-if="form.errors.items" class="error">{{ form.errors.items }}</p>
 
                     <table class="lines">
@@ -120,9 +159,8 @@ function submit() {
                             <tr>
                                 <th>Barang</th>
                                 <th class="lines__right">Di nota</th>
-                                <th class="lines__right">Sisa</th>
+                                <th class="lines__right">Bisa diretur</th>
                                 <th class="lines__qty">Diretur</th>
-                                <th class="lines__where">Barang masuk ke</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -145,29 +183,16 @@ function submit() {
                                         :aria-label="`Jumlah retur ${line.name}`"
                                     />
                                 </td>
-                                <td class="lines__where">
-                                    <q-select
-                                        v-model="form.items[index].disposition"
-                                        :options="dispositions"
-                                        option-value="value"
-                                        option-label="label"
-                                        emit-value
-                                        map-options
-                                        outlined
-                                        dense
-                                        hide-bottom-space
-                                        :disable="Number(line.remaining) <= 0"
-                                        :aria-label="`Tujuan ${line.name}`"
-                                    />
-                                </td>
                             </tr>
                         </tbody>
                     </table>
                 </section>
 
                 <section class="card">
-                    <h2>Uang kembali</h2>
-                    <div class="refund">
+                    <h2>Penyelesaian</h2>
+                    <q-btn-toggle v-model="form.resolution" :options="props.resolutions" no-caps unelevated toggle-color="primary" color="grey-3" text-color="grey-8" class="return-form__toggle" />
+
+                    <div v-if="!isExchange" class="refund">
                         <q-select
                             v-model="form.refund_method"
                             :options="refund_methods"
@@ -175,15 +200,26 @@ function submit() {
                             option-label="label"
                             emit-value
                             map-options
+                            behavior="menu"
                             label="Dikembalikan lewat"
                             outlined
                             :error="!!form.errors.refund_method"
                             :error-message="form.errors.refund_method"
                         />
+                        <q-input v-if="form.refund_method !== 'cash'" v-model="form.refund_account" label="Rekening penerima" placeholder="Bank, nomor rekening, atas nama" outlined :error="!!form.errors.refund_account" :error-message="form.errors.refund_account" />
                         <div class="refund__total"><span>Total dikembalikan</span><b>{{ formatRupiah(refundTotal) }}</b></div>
                     </div>
+
+                    <template v-else>
+                        <p class="hint">Pilih barang yang dibawa pelanggan sebagai gantinya. Nilai barang yang diretur dipakai lebih dulu; pelanggan menambah bila kurang, atau menerima sisanya.</p>
+                        <p v-if="form.errors.exchange_items" class="error">{{ form.errors.exchange_items }}</p>
+                        <ExchangeEditor :products-url="urls.products" :credit="refundTotal" :payment-methods="refund_methods" :default-method="chosenSale.default_refund_method" @change="onExchangeChange" />
+                    </template>
+
                     <q-input v-model="form.reason" label="Alasan retur (opsional)" outlined :error="!!form.errors.reason" :error-message="form.errors.reason" class="return-form__reason" />
-                    <p class="hint">Retur tunai keluar dari laci kas shift Anda yang sedang berjalan. Harga mengikuti nota asli.</p>
+                    <p class="hint">
+                        Uang tunai yang masuk atau keluar dicatat di laci kas shift Anda yang sedang berjalan. Harga barang yang diretur mengikuti nota asli; harga barang pengganti mengikuti harga hari ini.
+                    </p>
                 </section>
             </template>
         </q-form>
@@ -259,11 +295,6 @@ function submit() {
     padding-left: 14px;
 }
 
-.lines .lines__where {
-    width: 150px;
-    padding-left: 14px;
-}
-
 .refund {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -272,6 +303,7 @@ function submit() {
 }
 
 .refund__total {
+    grid-column: 1 / -1;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -281,6 +313,10 @@ function submit() {
 .refund__total b {
     color: var(--app-ink);
     font-size: 22px;
+}
+
+.return-form__toggle {
+    margin-bottom: 14px;
 }
 
 .return-form__reason {

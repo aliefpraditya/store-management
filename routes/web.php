@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Central\DashboardController;
+use App\Http\Controllers\Central\SettingController;
 use App\Http\Controllers\Central\StoreController;
 use App\Http\Controllers\Central\StoreProvisionController;
 use App\Http\Controllers\Central\StoreStatusController;
@@ -30,4 +31,7 @@ Route::prefix('pusat')
 
         Route::resource('users', UserController::class)->except(['show', 'destroy']);
         Route::patch('users/{user}/status', UserStatusController::class)->name('users.status');
+
+        Route::get('settings', [SettingController::class, 'index'])->name('settings.index');
+        Route::put('settings', [SettingController::class, 'update'])->name('settings.update');
     });

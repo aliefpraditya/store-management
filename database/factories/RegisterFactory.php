@@ -20,7 +20,6 @@ class RegisterFactory extends Factory
             'code' => strtoupper(fake()->unique()->lexify('K????')),
             'name' => 'Kasir '.fake()->unique()->numberBetween(1, 9999),
             'warehouse_id' => Warehouse::factory(),
-            'fixed_opening_cash' => 500000,
             'last_sale_sequence' => 0,
             'is_active' => true,
         ];

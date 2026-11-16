@@ -80,7 +80,7 @@ section:last-of-type{break-after:auto}
     subgraph SA["Super Admin"]
         A1(["Mulai"]) --&gt; A2["Isi form toko: kode, nama, alamat, telepon"]
         A2 --&gt; A2b["Buat database kosong + user di hPanel Hostinger, catat nama, user, password"]
-        A2b --&gt; A3["Isi nama DB, user, password di form; tentukan admin toko + register kasir + modal kas tetap"]
+        A2b --&gt; A3["Isi nama DB, user, password di form; tentukan admin toko + register kasir"]
         A9(["Toko aktif, tombolnya tampil di Dashboard Pusat"])
     end
     subgraph SYS["Sistem"]
@@ -100,7 +100,7 @@ section:last-of-type{break-after:auto}
     S4 --&gt;|"Ya"| S6 --&gt; S7 --&gt; A9</pre></section>
 <section id="d2"><div class="sh"><h2>5.3 BPMN-2 — Login &amp; Routing per Role</h2><span class="tag r1">R1</span></div><pre class="mermaid">flowchart TD
     subgraph U["Pengguna"]
-        U1(["Buka aplikasi"]) --&gt; U2["Isi email dan password"]
+        U1(["Buka aplikasi"]) --&gt; U2["Isi username dan password"]
         U9(["Bekerja"])
     end
     subgraph SYS["Sistem"]
@@ -129,14 +129,14 @@ section:last-of-type{break-after:auto}
 <section id="d3"><div class="sh"><h2>5.4 BPMN-3 — Input / Ubah Barang (R1, sederhana)</h2><span class="tag r1">R1</span></div><pre class="mermaid">flowchart TD
     subgraph ADM["Admin Toko"]
         A1(["Tambah / ubah barang"]) --&gt; A2["Isi info: sku, nama, kategori, merek, stok minimum"]
-        A2 --&gt; A3["Pilih satuan dasar, tambah satuan lain + konversi + barcode satuan"]
+        A2 --&gt; A3["Pilih satuan dasar, tambah satuan lain + konversi"]
         A3 --&gt; A4["Isi harga beli per satuan dasar dan harga jual nominal per satuan"]
         A4 --&gt; A5["Tandai satuan boleh dijual dan satuan default"]
         A5 --&gt; A6["Simpan"]
         A12(["Selesai: barang tampil di daftar dan kasir"])
     end
     subgraph SYS["Sistem"]
-        S1{"Validasi: sku/barcode unik, 1 satuan dasar, konversi lebih dari 0 maks 3 desimal, harga tidak negatif, default jual boleh dijual"}
+        S1{"Validasi: sku unik, 1 satuan dasar, konversi lebih dari 0 maks 3 desimal, harga tidak negatif, default jual boleh dijual"}
         S2{"Harga jual di bawah modal satuan?"}
         S3["Peringatan, butuh konfirmasi"]
         S4["Simpan barang + satuan, audit mencatat perubahan harga"]
@@ -171,7 +171,7 @@ section:last-of-type{break-after:auto}
 <section id="d5"><div class="sh"><h2>5.8 BPMN-7 — Penjualan Kasir (online)</h2><span class="tag r1">R1</span></div><pre class="mermaid">flowchart TD
     subgraph KS["Kasir"]
         K1(["Buka layar Kasir"]) --&gt; K2{"Shift terbuka?"}
-        K3["Buka shift: konfirmasi modal kas tetap"]
+        K3["Buka shift: modal terisi dari sisa laci kemarin (ubah = alasan wajib)"]
         K4["Cari / scan barang, pilih satuan dan qty"]
         K5{"Tambah barang lagi?"}
         K6["Isi nama pelanggan (opsional, teks bebas)"]
@@ -198,20 +198,20 @@ section:last-of-type{break-after:auto}
     K5 --&gt;|"Selesai"| K6 --&gt; K8 --&gt; D5 --&gt; D6 --&gt; K12 --&gt; K1</pre></section>
 <section id="d6"><div class="sh"><h2>5.10 BPMN-9 — Buka &amp; Tutup Shift (2 Shift per Hari)</h2><span class="tag r1">R1</span></div><pre class="mermaid">flowchart TD
     subgraph KS["Kasir"]
-        K0(["Awal shift: Buka Shift"]) --&gt; K0b["Konfirmasi modal kas tetap ada di laci"]
+        K0(["Awal shift: Buka Shift"]) --&gt; K0b["Cek modal terisi dari sisa laci; ubah bila beda dan isi alasan"]
         K1(["Akhir shift: Tutup Shift"]) --&gt; K2["Lihat ringkasan: tunai, transfer, QRIS, EDC, retur, pengeluaran laci"]
         K3["Hitung uang tunai di laci, input"]
-        K5["Isi catatan selisih"]
-        K7["Setor tunai di atas modal tetap ke Admin"]
-        K8["Terima laporan Z"]
+        K5["Isi catatan (opsional; selisih tidak diberitahukan)"]
+        K7["Tentukan uang yang ditinggal di laci; sisanya disetor ke Admin"]
+        K8["Cetak Laporan Akhir Shift (versi buta: tanpa nominal sistem)"]
     end
     subgraph SYS["Sistem"]
-        S0["Simpan cash_shifts open dengan opening_cash = modal tetap register"]
-        S2["Tunai seharusnya = modal + tunai masuk - refund tunai - pengeluaran laci"]
+        S0["Simpan cash_shifts open dengan opening_cash = sisa laci shift terakhir register (atau isian kasir + alasan)"]
+        S2["Tunai seharusnya = modal + tunai masuk + DP pesanan tunai - refund tunai - DP void tunai - pengeluaran laci"]
         S3{"Selisih tidak nol?"}
-        S4["Simpan closed + setoran, difference_status pending_approval"]
+        S4["Simpan pending_review + setoran, difference_status pending_approval; shift menunggu review"]
         S4b["Simpan closed + setoran, difference_status none"]
-        S5["Cetak laporan Z"]
+        S5["Sediakan Laporan Akhir Shift (buta untuk kasir, lengkap untuk Admin)"]
     end
     subgraph ADM["Admin Toko"]
         A1{"Setujui selisih kas?"}
@@ -414,7 +414,6 @@ section:last-of-type{break-after:auto}
         string unit_code FK "units.code, e.g. PCS"
         decimal conversion_factor "base units per 1 of this unit, 3 decimals"
         boolean is_base
-        string barcode "unique, identifies this unit when scanned"
         smallint sort_order "display order of unit chips"
         boolean is_sellable "may appear in POS"
         decimal cost_price "purchase price of this unit, 2 decimals; may differ per unit, defaults to base cost x conversion"
@@ -653,7 +652,6 @@ section:last-of-type{break-after:auto}
         string code UK "used in receipt number"
         string name
         bigint warehouse_id FK
-        decimal fixed_opening_cash "modal kas tetap"
         int last_sale_sequence "server mirror"
         boolean is_active
     }
@@ -665,12 +663,14 @@ section:last-of-type{break-after:auto}
         bigint cashier_id "no FK, other database"
         string cashier_name
         datetime opened_at
-        decimal opening_cash "= fixed_opening_cash"
+        decimal opening_cash "drawer_left_cash of the last closed shift on the register, or typed in"
+        string opening_cash_note "reason when it differs from the carried-over cash"
         datetime closed_at
         decimal expected_cash "opening + cash sales - cash refunds - drawer expenses"
         decimal counted_cash
         decimal cash_difference
-        decimal deposit_amount "counted cash above fixed float"
+        decimal deposit_amount "counted cash minus drawer_left_cash"
+        decimal drawer_left_cash "cash left in the drawer for the next shift"
         enum status "open, closed"
         enum difference_status "none, pending_approval, approved, rejected"
         bigint difference_approved_by

@@ -30,6 +30,23 @@ enum StockOpnameStatus: string
     }
 
     /**
+     * An opname whose products are being counted: the stock of those products is not to be sold while the store has
+     * chosen to lock sales during opname. A draft has taken no snapshot yet, and a posted or cancelled one is over.
+     */
+    public function isCounting(): bool
+    {
+        return $this === self::Counting || $this === self::Review;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function countingValues(): array
+    {
+        return array_values(array_map(fn (self $status): string => $status->value, array_filter(self::cases(), fn (self $status): bool => $status->isCounting())));
+    }
+
+    /**
      * A cancelled draft is erased for good: nothing was counted, so there is nothing to keep. Any later status is
      * soft deleted instead, hidden from the list but kept as a record.
      */

@@ -68,6 +68,7 @@ function toggleSidebar() {
     }
 }
 
+/** An entry is lit for its own page and the pages below it (a query string does not count), or only its own page when it is `isExact`. */
 const isActive = (item) => {
     if (!item.href) {
         return false;
@@ -75,19 +76,38 @@ const isActive = (item) => {
 
     const path = new URL(item.href).pathname;
 
-    return item.isExact ? page.url === path : page.url.startsWith(path);
+    if (item.isExact) {
+        return page.url === path;
+    }
+
+    return page.url === path || page.url.startsWith(`${path}/`) || page.url.startsWith(`${path}?`);
 };
 
 useFlashMessages();
 
+/**
+ * Signs out after a confirmation. While a shift is still running the server refuses to sign out, so the button
+ * explains that instead and offers the way to the till, where the shift is closed.
+ */
 function signOut() {
+    if (page.props.has_open_shift && page.props.store) {
+        $q.dialog({
+            title: 'Shift masih berjalan',
+            message: 'Tutup shift dulu sebelum keluar. Shift ditutup dari layar kasir.',
+            cancel: { label: 'Kembali', flat: true, noCaps: true },
+            ok: { label: 'Ke Kasir', color: 'primary', unelevated: true, noCaps: true },
+        }).onOk(() => router.visit(page.props.store.cashier_url));
+
+        return;
+    }
+
     $q.dialog({
         title: 'Keluar?',
         message: 'Anda akan keluar dari akun ini.',
         cancel: { label: 'Batal', flat: true, noCaps: true },
         ok: { label: 'Keluar', color: 'negative', unelevated: true, noCaps: true },
         persistent: true,
-    }).onOk(() => router.post(page.props.urls.logout));
+    }).onOk(() => router.post(page.props.app_urls.logout));
 }
 </script>
 
@@ -98,6 +118,7 @@ function signOut() {
         <q-header bordered class="shell__header">
             <q-toolbar class="shell__toolbar">
                 <q-btn flat round dense icon="menu" :aria-label="isMiniActive ? 'Lebarkan menu' : 'Ciutkan menu'" @click="toggleSidebar" />
+                <slot name="back" />
                 <q-toolbar-title class="shell__title">{{ props.title }}</q-toolbar-title>
                 <q-btn
                     v-if="page.props.has_open_shift && page.props.store"
@@ -142,6 +163,10 @@ function signOut() {
                             <q-icon :name="item.icon" size="20px" />
                         </q-item-section>
                         <q-item-section class="q-mini-drawer-hide">{{ item.label }}</q-item-section>
+                        <q-item-section v-if="item.badge > 0" side class="q-mini-drawer-hide">
+                            <q-badge color="negative" :label="item.badge" :aria-label="`${item.badge} ${item.badgeHint ?? ''}`" />
+                        </q-item-section>
+                        <q-badge v-if="item.badge > 0" floating rounded color="negative" class="q-mini-drawer-only" />
                         <q-item-section v-if="!item.href && !group.label" side class="q-mini-drawer-hide">
                             <span class="shell__soon">Segera</span>
                         </q-item-section>
@@ -155,7 +180,7 @@ function signOut() {
                         <b>{{ user.name }}</b>
                         <small>{{ roleLabel }}</small>
                     </div>
-                    <q-btn v-if="!page.props.has_open_shift" flat round dense icon="logout" color="grey-5" aria-label="Keluar" @click="signOut">
+                    <q-btn flat round dense icon="logout" color="grey-5" aria-label="Keluar" @click="signOut">
                         <q-tooltip>Keluar</q-tooltip>
                     </q-btn>
                 </div>

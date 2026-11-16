@@ -26,6 +26,7 @@ class ProductFormResource extends JsonResource
             'brand' => $this->brand === null ? null : ['id' => $this->brand->id, 'name' => $this->brand->name],
             'min_stock' => $this->min_stock,
             'is_active' => $this->is_active,
+            'version' => $this->version,
             'is_locked' => $this->hasTransactions(),
             'delete_url' => route('tenant.products.destroy', ['tenant' => tenant('code'), 'product' => $this->id]),
             'units' => $this->productUnits->map(fn ($productUnit): array => [
@@ -35,11 +36,11 @@ class ProductFormResource extends JsonResource
                     'name' => $productUnit->unit->name,
                 ],
                 'conversion_factor' => $productUnit->conversion_factor,
-                'barcode' => $productUnit->barcode,
                 'is_sellable' => $productUnit->is_sellable,
                 'cost_price' => $productUnit->cost_price,
                 'selling_price' => $productUnit->selling_price,
                 'is_default_sale' => $productUnit->is_default_sale,
+                'is_sealed_pack' => $productUnit->is_sealed_pack,
             ])->values()->all(),
         ];
     }

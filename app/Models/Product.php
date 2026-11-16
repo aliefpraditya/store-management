@@ -15,13 +15,21 @@ use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
- * Lives in the store database. Quantities and `cost_price` are per base unit.
+ * Lives in the store database. Quantities and `cost_price` are per base unit. A damaged-goods (DG) product is made by an
+ * opname from the product it was damaged from (`damaged_from_product_id`), with its own SKU and price.
  */
-#[Fillable(['sku', 'name', 'category_id', 'brand_id', 'base_unit_code', 'cost_price', 'min_stock', 'is_active'])]
+#[Fillable(['sku', 'name', 'category_id', 'brand_id', 'base_unit_code', 'cost_price', 'min_stock', 'is_active', 'is_damaged_goods', 'damaged_from_product_id'])]
 class Product extends Model implements AuditableContract
 {
     /** @use HasFactory<ProductFactory> */
     use Auditable, HasFactory, SoftDeletes;
+
+    /**
+     * The save counter is bookkeeping for the edit form, not a change someone made.
+     *
+     * @var list<string>
+     */
+    protected array $auditExclude = ['version'];
 
     /**
      * @return array<string, mixed>
@@ -32,6 +40,8 @@ class Product extends Model implements AuditableContract
             'cost_price' => 'decimal:2',
             'min_stock' => 'decimal:3',
             'is_active' => 'boolean',
+            'is_damaged_goods' => 'boolean',
+            'version' => 'integer',
         ];
     }
 
@@ -52,6 +62,14 @@ class Product extends Model implements AuditableContract
     }
 
     /**
+     * @return BelongsTo<Product, $this>
+     */
+    public function damagedFrom(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'damaged_from_product_id');
+    }
+
+    /**
      * @return BelongsTo<Unit, $this>
      */
     public function baseUnit(): BelongsTo
@@ -65,6 +83,15 @@ class Product extends Model implements AuditableContract
     public function productUnits(): HasMany
     {
         return $this->hasMany(ProductUnit::class)->orderBy('sort_order');
+    }
+
+    /**
+     * The unit that cannot be put back together once cut (a roll of wire), when the product has one. Reads the loaded
+     * units, so load `productUnits` first.
+     */
+    public function sealedPackUnit(): ?ProductUnit
+    {
+        return $this->productUnits->firstWhere('is_sealed_pack', true);
     }
 
     /**
@@ -103,14 +130,24 @@ class Product extends Model implements AuditableContract
     }
 
     /**
-     * Adds `sellable_stock` and `dead_stock`: the product's total in the warehouses of each type.
+     * The product has a minimum and its stock in the sellable warehouses (the `?`) is under it. Products without a
+     * minimum are never low. The one definition of "below minimum", used by the list flag and the dashboard count.
+     */
+    private const BELOW_MINIMUM_SQL = '(products.min_stock > 0 and (select coalesce(sum(stocks.quantity), 0) from stocks
+        join warehouses on warehouses.id = stocks.warehouse_id
+        where stocks.product_id = products.id and warehouses.type = ?) < products.min_stock)';
+
+    /**
+     * Adds `sellable_stock`, `dead_stock` and `returns_stock` (returned goods waiting to be inspected, not for sale): the product's
+     * total in the warehouses of each type, `sellable_intact_packs` and
+     * `dead_intact_packs`: how many whole sealed packs of it are in the warehouses of each type, and `is_below_minimum`, see {@see self::BELOW_MINIMUM_SQL}.
      *
      * @param  Builder<Product>  $query
      */
     public function scopeWithStockTotals(Builder $query): void
     {
-        $totalIn = fn (WarehouseType $type) => Stock::query()
-            ->selectRaw('coalesce(sum(stocks.quantity), 0)')
+        $totalIn = fn (WarehouseType $type, string $column = 'quantity') => Stock::query()
+            ->selectRaw("coalesce(sum(stocks.{$column}), 0)")
             ->whereColumn('stocks.product_id', 'products.id')
             ->whereIn('stocks.warehouse_id', Warehouse::query()->select('id')->where('type', $type));
 
@@ -118,11 +155,14 @@ class Product extends Model implements AuditableContract
             'products.*',
             'sellable_stock' => $totalIn(WarehouseType::Sellable),
             'dead_stock' => $totalIn(WarehouseType::DeadStock),
-        ]);
+            'returns_stock' => $totalIn(WarehouseType::Returns),
+            'sellable_intact_packs' => $totalIn(WarehouseType::Sellable, 'intact_packs'),
+            'dead_intact_packs' => $totalIn(WarehouseType::DeadStock, 'intact_packs'),
+        ])->selectRaw(self::BELOW_MINIMUM_SQL.' as is_below_minimum', [WarehouseType::Sellable->value]);
     }
 
     /**
-     * Matches the name, the SKU, or the barcode of any of the product's units.
+     * Matches the name or the SKU.
      *
      * @param  Builder<Product>  $query
      */
@@ -134,10 +174,12 @@ class Product extends Model implements AuditableContract
             return;
         }
 
-        $query->where(function (Builder $query) use ($term): void {
-            $query->where('products.name', 'like', "%{$term}%")
-                ->orWhere('products.sku', 'like', "%{$term}%")
-                ->orWhereHas('productUnits', fn (Builder $units) => $units->where('barcode', 'like', "%{$term}%"));
+        // A typed % or _ is part of the name, not a wildcard.
+        $contains = '%'.addcslashes($term, '%_\\').'%';
+
+        $query->where(function (Builder $query) use ($contains): void {
+            $query->where('products.name', 'like', $contains)
+                ->orWhere('products.sku', 'like', $contains);
         });
     }
 
@@ -149,13 +191,6 @@ class Product extends Model implements AuditableContract
      */
     public function scopeBelowMinimumStock(Builder $query): void
     {
-        $query->where('is_active', true)
-            ->where('min_stock', '>', 0)
-            ->whereRaw(
-                '(select coalesce(sum(stocks.quantity), 0) from stocks
-                    join warehouses on warehouses.id = stocks.warehouse_id
-                    where stocks.product_id = products.id and warehouses.type = ?) < products.min_stock',
-                [WarehouseType::Sellable->value],
-            );
+        $query->where('is_active', true)->whereRaw(self::BELOW_MINIMUM_SQL, [WarehouseType::Sellable->value]);
     }
 }

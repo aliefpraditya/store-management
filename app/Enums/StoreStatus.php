@@ -22,7 +22,7 @@ enum StoreStatus: string
     /**
      * The database was never set up successfully: its credentials may still be fixed and setup retried.
      */
-    public function needsProvisioning(): bool
+    public function isAwaitingProvisioning(): bool
     {
         return $this === self::Provisioning || $this === self::Failed;
     }

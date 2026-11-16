@@ -52,12 +52,12 @@ class SaveUnitRequest extends FormRequest
                     return;
                 }
 
-                $takenByAnotherUnit = Unit::query()
+                $isNameTakenByAnotherUnit = Unit::query()
                     ->where('name', $this->input('code'))
                     ->when($this->editedUnit(), fn ($query, Unit $unit) => $query->where('code', '!=', $unit->code))
                     ->exists();
 
-                if ($takenByAnotherUnit) {
+                if ($isNameTakenByAnotherUnit) {
                     $validator->errors()->add('name', 'Tanpa nama, nama mengikuti kode, tetapi nama itu sudah dipakai satuan lain.');
                 }
             },
