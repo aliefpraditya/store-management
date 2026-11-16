@@ -45,7 +45,10 @@ function readStoredMini() {
 
 const isMini = ref(readStoredMini() ?? window.innerWidth < WIDE_SCREEN_MIN_WIDTH);
 
-/** Mini mode only exists next to the page; on a phone the drawer is an overlay and always full width. */
+/**
+ * Mini mode only exists next to the page; on a phone the drawer is an overlay and always full width. The labels
+ * are switched with this flag rather than Quasar's `q-mini-drawer-hide`, which also hides them in the overlay.
+ */
 const isMiniActive = computed(() => isMini.value && $q.screen.gt.sm);
 
 /**
@@ -139,15 +142,15 @@ function signOut() {
             <div class="shell__nav">
                 <div class="shell__brand">
                     <div class="shell__logo">{{ brand.initial }}</div>
-                    <div class="q-mini-drawer-hide">
+                    <div v-if="!isMiniActive">
                         <b>{{ brand.name }}</b>
                         <small>{{ brand.sub }}</small>
                     </div>
                 </div>
 
                 <template v-for="group in menuGroups" :key="group.label ?? 'main'">
-                    <div v-if="group.label" class="shell__group q-mini-drawer-hide">{{ group.label }}</div>
-                    <div v-if="group.label" class="shell__divider q-mini-drawer-only" />
+                    <div v-if="group.label && !isMiniActive" class="shell__group">{{ group.label }}</div>
+                    <div v-if="group.label && isMiniActive" class="shell__divider" />
 
                     <q-item
                         v-for="item in group.items"
@@ -162,12 +165,12 @@ function signOut() {
                         <q-item-section avatar class="shell__item-icon">
                             <q-icon :name="item.icon" size="20px" />
                         </q-item-section>
-                        <q-item-section class="q-mini-drawer-hide">{{ item.label }}</q-item-section>
-                        <q-item-section v-if="item.badge > 0" side class="q-mini-drawer-hide">
+                        <q-item-section v-if="!isMiniActive">{{ item.label }}</q-item-section>
+                        <q-item-section v-if="item.badge > 0 && !isMiniActive" side>
                             <q-badge color="negative" :label="item.badge" :aria-label="`${item.badge} ${item.badgeHint ?? ''}`" />
                         </q-item-section>
-                        <q-badge v-if="item.badge > 0" floating rounded color="negative" class="q-mini-drawer-only" />
-                        <q-item-section v-if="!item.href && !group.label" side class="q-mini-drawer-hide">
+                        <q-badge v-if="item.badge > 0 && isMiniActive" floating rounded color="negative" />
+                        <q-item-section v-if="!item.href && !group.label && !isMiniActive" side>
                             <span class="shell__soon">Segera</span>
                         </q-item-section>
                         <q-tooltip v-if="isMiniActive" anchor="center right" self="center left" :offset="[10, 0]">{{ item.label }}</q-tooltip>
@@ -176,7 +179,7 @@ function signOut() {
 
                 <div class="shell__me">
                     <div class="shell__avatar">{{ userInitial }}</div>
-                    <div class="shell__me-text q-mini-drawer-hide">
+                    <div v-if="!isMiniActive" class="shell__me-text">
                         <b>{{ user.name }}</b>
                         <small>{{ roleLabel }}</small>
                     </div>
