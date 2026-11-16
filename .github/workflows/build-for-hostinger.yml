@@ -68,3 +68,33 @@ jobs:
           git add -f vendor public/build
           git commit -m "Build ${GITHUB_SHA::7} for Hostinger" -m "Source commit: ${GITHUB_SHA}"
           git push --force origin production
+
+      # Hostinger pulls the production branch on its own (Git webhook). This step does not wait for that pull, so a
+      # migration that is new in this push is only applied if the pull has already finished. Needs the HOSTINGER_*
+      # secrets; without them this step is skipped.
+      - name: Run the migrations on the server
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
+          SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
+          SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
+          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.HOSTINGER_SSH_KNOWN_HOSTS }}
+          APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$SSH_HOST" ] || [ -z "$APP_PATH" ]; then
+            echo "HOSTINGER_* secrets are not set: skipping the migrations."
+            exit 0
+          fi
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+          # `migrate` is the central database, `tenants:migrate` every registered store database.
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "set -e
+            cd '$APP_PATH'
+            php artisan migrate --force
+            php artisan tenants:migrate --force
+            php artisan optimize:clear"
