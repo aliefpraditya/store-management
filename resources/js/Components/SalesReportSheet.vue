@@ -35,6 +35,7 @@ const asLocalDate = (isoDay) => new Date(`${isoDay}T00:00:00`);
                 <tr><td>Jumlah nota (tanpa nota void)</td><td>{{ report.totals.receipt_count }}</td></tr>
                 <tr v-if="report.totals.voids_count > 0"><td>Nota void pada periode ini (tidak termasuk di atas), {{ report.totals.voids_count }} nota</td><td>{{ formatRupiah(report.totals.voids_total) }}</td></tr>
                 <tr><td>Laba kotor (estimasi, modal = harga beli terakhir)</td><td>{{ formatRupiah(report.totals.gross_profit) }}</td></tr>
+                <tr v-if="Number(report.totals.dead_stock_loss) > 0"><td>Sudah dikurangi rugi dead stock (barang tidak bisa dijual lagi, sebesar harga belinya)</td><td>{{ formatRupiah(report.totals.dead_stock_loss) }}</td></tr>
                 <tr v-if="report.products_without_cost > 0"><td colspan="2">{{ report.products_without_cost }} barang belum punya harga beli, jadi labanya sama dengan penjualannya.</td></tr>
             </tbody>
         </table>

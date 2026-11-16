@@ -117,7 +117,7 @@ async function print() {
                         <td class="ret__right">{{ formatQuantity(item.quantity) }} {{ item.unit }}</td>
                         <td class="ret__right">{{ formatRupiah(item.unit_price) }}</td>
                         <td class="ret__right">{{ formatRupiah(item.refund_subtotal) }}</td>
-                        <td><span class="chip" :class="item.disposition === 'dead_stock' ? 'chip--bad' : 'chip--ok'">{{ item.disposition_label }}</span></td>
+                        <td><span class="chip" :class="`chip--${item.disposition_tone}`">{{ item.disposition_label }}</span></td>
                     </tr>
                 </tbody>
             </table>

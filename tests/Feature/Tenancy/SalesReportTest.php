@@ -3,12 +3,17 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Enums\SaleReturnStatus;
+use App\Enums\StockOpnameReason;
+use App\Enums\StockOpnameScope;
+use App\Enums\StockOpnameStatus;
 use App\Enums\UserRole;
 use App\Models\CashShift;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SalePayment;
 use App\Models\SaleReturn;
+use App\Models\StockOpname;
+use App\Models\StockOpnameItem;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\CodSaleService;
@@ -97,6 +102,63 @@ class SalesReportTest extends TestCase
         ]));
     }
 
+    /**
+     * An opname already posted that sent units to dead stock, valued at the cost it was posted with (6.000 a brush).
+     */
+    private function postedOpname(StockOpnameReason $reason, string $deadStock, string $variance, ?CarbonImmutable $postedAt = null): void
+    {
+        $this->store->run(function () use ($reason, $deadStock, $variance, $postedAt): void {
+            $opname = StockOpname::factory()->create([
+                'warehouse_id' => $this->mainWarehouse()->id,
+                'reason_code' => $reason,
+                'scope' => StockOpnameScope::Selected,
+                'status' => StockOpnameStatus::Posted,
+                'snapshot_at' => now(),
+                'posted_at' => $postedAt ?? now(),
+                'created_by' => $this->admin->id,
+            ]);
+            StockOpnameItem::factory()->create([
+                'stock_opname_id' => $opname->id,
+                'product_id' => $this->brush->id,
+                'snapshot_quantity' => '10',
+                'counted_quantity' => '10',
+                'dead_stock_quantity' => $deadStock,
+                'cost_price_at_posting' => '6000',
+                'variance' => $variance,
+            ]);
+        });
+    }
+
+    public function test_dead_stock_found_by_an_inspection_or_a_damaged_count_is_a_loss_of_its_cost_in_the_profit(): void
+    {
+        $this->sell(5, [['method' => 'cash', 'amount' => 50000]]);
+        $this->postedOpname(StockOpnameReason::ReturnsCheck, '2', '0');
+        $this->postedOpname(StockOpnameReason::Routine, '1', '-3');
+        $this->postedOpname(StockOpnameReason::Routine, '4', '0');
+        $this->postedOpname(StockOpnameReason::ReturnsCheck, '9', '0', CarbonImmutable::now()->subDays(10));
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->where('report.totals.dead_stock_loss', '18000.00')
+            ->where('report.totals.gross_profit', '2000.00')
+            ->where('report.days.6.dead_stock_loss', '18000.00')
+            ->where('report.days.6.gross_profit', '2000.00')
+            ->where('report.days.5.dead_stock_loss', '0.00')
+            ->where('report.products.0.cost', '48000.00')
+            ->where('report.products.0.profit', '2000.00'));
+    }
+
+    public function test_a_product_with_only_dead_stock_in_the_period_is_listed_with_its_loss(): void
+    {
+        $this->postedOpname(StockOpnameReason::ReturnsCheck, '2', '0');
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->where('report.totals.gross_profit', '-12000.00')
+            ->where('report.products.0.name', 'Kuas')
+            ->where('report.products.0.revenue', '0.00')
+            ->where('report.products.0.cost', '12000.00')
+            ->where('report.products.0.profit', '-12000.00'));
+    }
+
     public function test_only_admins_may_see_the_report(): void
     {
         $this->actingAs($this->cashier)->get($this->url())->assertForbidden();
@@ -120,7 +182,7 @@ class SalesReportTest extends TestCase
         $this->sellInAWeek();
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.totals', ['gross_total' => '100000.00', 'returns_total' => '20000.00', 'net_total' => '80000.00', 'receipt_count' => 3, 'gross_profit' => '32000.00', 'voids_count' => 0, 'voids_total' => '0.00']));
+            ->where('report.totals', ['gross_total' => '100000.00', 'returns_total' => '20000.00', 'net_total' => '80000.00', 'receipt_count' => 3, 'dead_stock_loss' => '0.00', 'gross_profit' => '32000.00', 'voids_count' => 0, 'voids_total' => '0.00']));
     }
 
     public function test_each_day_has_its_own_figures_and_days_without_sales_are_listed(): void
@@ -128,8 +190,8 @@ class SalesReportTest extends TestCase
         $this->sellInAWeek();
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.days.6', ['date' => today()->toDateString(), 'gross_total' => '70000.00', 'returns_total' => '20000.00', 'net_total' => '50000.00', 'receipt_count' => 2, 'gross_profit' => '20000.00', 'voids_count' => 0, 'voids_total' => '0.00'])
-            ->where('report.days.5', ['date' => today()->subDay()->toDateString(), 'gross_total' => '30000.00', 'returns_total' => '0.00', 'net_total' => '30000.00', 'receipt_count' => 1, 'gross_profit' => '12000.00', 'voids_count' => 0, 'voids_total' => '0.00'])
+            ->where('report.days.6', ['date' => today()->toDateString(), 'gross_total' => '70000.00', 'returns_total' => '20000.00', 'net_total' => '50000.00', 'receipt_count' => 2, 'dead_stock_loss' => '0.00', 'gross_profit' => '20000.00', 'voids_count' => 0, 'voids_total' => '0.00'])
+            ->where('report.days.5', ['date' => today()->subDay()->toDateString(), 'gross_total' => '30000.00', 'returns_total' => '0.00', 'net_total' => '30000.00', 'receipt_count' => 1, 'dead_stock_loss' => '0.00', 'gross_profit' => '12000.00', 'voids_count' => 0, 'voids_total' => '0.00'])
             ->where('report.days.0.net_total', '0.00'));
     }
 

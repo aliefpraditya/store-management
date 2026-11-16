@@ -59,6 +59,7 @@ class SaleReturnService
         private readonly StockService $stockLedger,
         private readonly DocumentNumberGenerator $documentNumbers,
         private readonly SaleService $saleService,
+        private readonly StockOpnameService $opnames,
     ) {}
 
     /**
@@ -256,6 +257,8 @@ class SaleReturnService
             $sale = Sale::query()->lockForUpdate()->findOrFail($saleReturn->sale_id);
             $saleReturn = $this->lockedPending($saleReturn, 'disetujui');
 
+            $this->requireNoInspectionOfReturnedGoods($saleReturn);
+
             foreach ($saleReturn->items->sortBy('product_id') as $item) {
                 $this->stockLedger->record(
                     $item->product_id,
@@ -277,6 +280,28 @@ class SaleReturnService
 
             return $saleReturn->load('items.saleItem');
         }, StockService::DEADLOCK_ATTEMPTS);
+    }
+
+    /**
+     * Goods that arrive in a returns warehouse while an inspection of it is counting or in review would be read as a
+     * shortage when it posts (the count never saw them, the stock now holds them) and be released unsorted. So approving
+     * waits until the inspection that holds one of the returned products is done or cancelled. The returns warehouses are
+     * locked first, the same order an opname locks them in, so an inspection cannot start between the check and the move.
+     *
+     * @throws SaleReturnException
+     */
+    private function requireNoInspectionOfReturnedGoods(SaleReturn $saleReturn): void
+    {
+        $itemsByWarehouseId = $saleReturn->items->groupBy('destination_warehouse_id')->sortKeys();
+
+        Warehouse::query()->whereIn('id', $itemsByWarehouseId->keys())->orderBy('id')->lockForUpdate()->get();
+
+        $inspectedProductIds = $itemsByWarehouseId->flatMap(fn (Collection $items, int $warehouseId): array => $this->opnames->productIdsBeingCounted($warehouseId, $items->pluck('product_id')->all()));
+        $inspectedNames = $saleReturn->items->whereIn('product_id', $inspectedProductIds)->map(fn (SaleReturnItem $item): string => $item->saleItem->product_name)->unique()->values()->all();
+
+        if ($inspectedNames !== []) {
+            throw SaleReturnException::goodsBeingInspected($inspectedNames);
+        }
     }
 
     /**
@@ -498,8 +523,9 @@ class SaleReturnService
 
         $saleItems = $sale->items->keyBy('id');
         $returnedQuantityBySaleItemId = $this->returnedQuantities($sale, self::GOODS_HOLDING_STATUSES);
+        $returnsWarehouseId = $this->returnsWarehouseFor($sale);
 
-        return $requestedLines->map(function (array $line) use ($saleItems, $returnedQuantityBySaleItemId, $sale): array {
+        return $requestedLines->map(function (array $line) use ($saleItems, $returnedQuantityBySaleItemId, $returnsWarehouseId): array {
             $saleItem = $saleItems->get($line['sale_item_id']) ?? throw SaleReturnException::lineNotOnSale();
             $remaining = $this->remainingQuantity($saleItem, $returnedQuantityBySaleItemId);
 
@@ -516,7 +542,7 @@ class SaleReturnService
                 'unit_price' => $saleItem->unit_price,
                 'cost_total' => (string) BigDecimal::of($saleItem->cost_total)->multipliedBy($line['quantity'])->dividedBy($saleItem->quantity, 2, RoundingMode::HalfUp),
                 'refund_subtotal' => (string) $line['quantity']->multipliedBy($saleItem->unit_price)->toScale(2, RoundingMode::HalfUp),
-                'destination_warehouse_id' => $this->returnsWarehouseFor($sale),
+                'destination_warehouse_id' => $returnsWarehouseId,
             ];
         })->values();
     }

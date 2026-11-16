@@ -13,36 +13,32 @@
 
 ## 2. Sisa dari COD dan void nota
 
-Semua temuan bagian ini sudah diperbaiki (tooltip tombol Void kini menunjuk tombol *COD* dan Retur, 10 Nov 2026). Yang tersisa, **diterima**:
+Semua temuan lain di bagian ini sudah diperbaiki dan dihapus dari daftar. Yang tersisa, **diterima**:
 
 - **[TEST][nit]** Penguncian surat jalan saat void dan "Sudah diantar" dibuktikan lewat urutan query (`for update` pada `delivery_notes`), bukan lewat dua proses yang benar-benar berjalan bersamaan. Tes dua proses di PHPUnit rawan flaky (aturan CLAUDE.md: tes flaky lebih buruk dari tanpa tes), jadi tidak dikerjakan.
 
 ## 3. Sisa dari pengaturan toko dan satuan
 
-Semua temuan bagian ini sudah diperbaiki (9-10 Nov 2026): satu tombol Simpan; penggantian kode satuan dicatat di log aplikasi (audit tidak bisa menyimpan kunci teks); query opname pindah ke `StockOpnameService::productIdsBeingCounted`; simpan pertama kali `settings` memakai `insertOrIgnore` lalu update, jadi dua simpan bersamaan tidak bentrok di kunci unik. Yang tersisa, **diterima**:
+Semua temuan lain di bagian ini sudah diperbaiki dan dihapus dari daftar. Yang tersisa, **diterima**:
 
 - **[LOG][nit]** `requireNoOpnameLock` di `SaleService.php` tidak terkunci terhadap mulai-opname: satu penjualan yang lolos pemeriksaan tepat sebelum opname dimulai tetap masuk (stok aman karena posting membaca stok live di bawah lock). Menutupnya butuh pembacaan terkunci pada gudang dan menyerialkan penjualan, harga yang terlalu mahal untuk jendela yang sempit dan tanpa dampak ke stok.
 
-## 4. Sisa dari laporan penjualan
-
-Semua temuan bagian ini sudah diperbaiki (9-10 Nov 2026): pola `signed` dijelaskan di `routes/tenant.php` (hanya lembar yang dicacah cetaknya lewat POST), dan kartu per metode bayar kini menutup dengan *Penjualan*, *Retur disetujui*, *Penjualan bersih*. Per kasir tetap penjualan sebelum retur (dilabeli) karena retur tidak terikat pada kasir penjual. Dasar tanggal retur dan void di laporan dan Tutup Hari dibahas di bagian 6.
-
 ## 5. Format cetak dan laporan tutup shift
 
-Semua temuan bagian ini sudah diperbaiki (10 Nov 2026): baris DP nota void bernama di rekap shift dan diberi catatan di Tutup Hari; pengurang kas memakai tanda minus dan baris Void dipisah sebagai informasi; lembar nota kini memakai `PrintableSaleResource` (hanya yang tampil di kertas), lebar kertas dari `ThermalPageSize` saja, `formatFigure` bersama, dan label COD "Kekurangan (COD)" ditetapkan server; `app()` di resource cetak diganti data dari controller; logika menu "entri terdalam" dihapus; tes dan docs disesuaikan. Dua item yang sudah kedaluwarsa dihapus (dialog tutup shift kini buta dan tidak punya baris metode). Laporan Akhir Shift cetak sudah dibangun (docs 7.6 butir 8). Yang tersisa, di luar cakupan:
+Semua temuan lain di bagian ini sudah diperbaiki dan dihapus dari daftar. Yang tersisa, di luar cakupan:
 
 - **OOS:** tanggal cetak memakai zona waktu browser, bukan toko (pola lama); `Shifts/Show.vue` mendeteksi tunai lewat label `'Tunai'`; `CloseShiftDialog.vue:31` menghitung selisih dengan float di frontend (keputusan akhir tetap di backend).
 
 ## 6. Lintas fitur: dasar tanggal
 
-Diperbaiki (10 Nov 2026): satu aturan hari bisnis untuk laporan penjualan, Tutup Hari, dan Dashboard. Penjualan dan retur memakai hari bisnis shift tempat kejadiannya (retur lewat `cash_shifts.business_date`), dan void memakai kolom baru `sales.void_business_date` (hari bisnis shift pembatal, atau hari void bila pembatal tidak punya shift), sehingga hitungan void dan refund tunainya jatuh di hari yang sama. Migrasi `2026_11_10_110000` mengisi void lama dari shift pengembali uang, lalu tanggal `voided_at`. Ada tes shift yang melewati tengah malam (retur dan void) dan void Admin tanpa shift. Yang tersisa, diterima:
+Semua temuan lain di bagian ini sudah diperbaiki dan dihapus dari daftar. Yang tersisa, **diterima**:
 
 - **[TEST][nit]** backfill migrasi `void_business_date` belum punya tes otomatis (dijalankan manual di toko dengan data lama sebelum dipakai).
 - **[LOG][nit]** daftar retur Admin (`SaleReturnService`) masih menyaring tanggal dengan `returned_at` (tanggal kalender), karena itu filter daftar dan bukan angka laporan.
 
 ## 7. Kas shift: sisa laci, tutup buta, shift ditahan
 
-Diperbaiki (10 Nov 2026), bersama aturan review berjenjang (kasir ditinjau Admin Toko, Admin Toko ditinjau Super Admin, Super Admin meninjau shiftnya sendiri): Rekap Shift menyembunyikan semua angka uang untuk shift berjalan (`is_cash_hidden`); `closed_by` dan `counted_at` disimpan, yang menutup shift tidak memutuskannya; Admin bisa menutup shift terlupa lewat tombol di detail Rekap Shift; layar terkunci dan pesan logout menyebut peninjau dan menunggu keputusan; register yang menunggu review tampil sibuk; props berat layar kasir menjadi closure dan `summary` tidak dihitung saat menunggu review; `DP pesanan tunai` tampil di rekap; docs D9, 7.6, ERD, dan BPMN disesuaikan; tes baru untuk jenjang review, penutupan oleh Admin, logout terkunci, dan pengeluaran, penjualan, retur, serta void DP tunai saat menunggu review. Yang tersisa, diterima atau ditunda:
+Semua temuan lain di bagian ini sudah diperbaiki dan dihapus dari daftar. Yang tersisa, **diterima atau ditunda**:
 
 - **[PERF][nit]** `bestSellers` (join `sale_items` x `sales` x `stocks` 30 hari) belum punya indeks `(warehouse_id, status, sold_at)` dan belum diukur; kini hanya dihitung saat halaman dimuat atau diminta, tidak di tiap polling.
 - **[SEC][nit]** kasir masih bisa menebak tunai seharusnya dari daftar nota dan pengeluaran shiftnya (data itu memang dipakai untuk cetak ulang); dicatat di docs D9 sebagai dorongan UX.
@@ -59,21 +55,13 @@ Semua temuan lain di bagian ini sudah diperbaiki dan dihapus dari daftar. Yang t
 - **[PERF][nit]** Terapkan tetap sinkron (±15 md per barang); pindah ke antrean menunggu keputusan deploy Hostinger (bagian 1).
 - **OOS:** `CartPricer` memakai `product_units.cost_price` per satuan, jadi ubah massal memengaruhi HPP penjualan berikutnya (area kasir).
 
-## 9. Opname lanjutan, barang rusak, gudang retur
+## 9. Sisa dari opname lanjutan, barang rusak, gudang retur
 
-- **[LOG][major]** `StockOpnameService.php:317-328,616-621` — retur yang disetujui saat Pemeriksaan Retur masih Menghitung/Review ikut tertulis sebagai kekurangan: stok retur 5 dihitung 5, retur baru 3 disetujui (stok live 8), posting mencatat −3 lalu melepas 5; gudang retur jadi 0 padahal 3 unit masih di rak dan tak muncul lagi di pemeriksaan berikutnya. `SaleReturnService` tidak memeriksa opname. Belum dibuktikan lewat tes. → tahan `approve()` selama ada pemeriksaan aktif di gudang retur itu, atau jangan hapus selisih positif sejak snapshot.
-- **[DOC][major]** `analisis-sistem.md:725,737` (BPMN 5.12), `:1864`, `:1878` (7.7), `:88`, `wireframe.html:554-555,577,603,623` — masih menggambarkan kasir memilih tujuan barang retur ("Dijual lagi / Dead stock", "Barang masuk ke"), bertentangan dengan D18 (baris 142), 7.7 butir 2/2a dan kode; baris 88 masih "2 gudang tetap" padahal kini 3.
-- **[UX][major]** `SaleReturnResource.php:48-49` → `Returns/Show.vue:120`, `Cashier/ReturnDialog.vue:216` — `disposition_label` selalu "Gudang retur, menunggu pemeriksaan" bila disposisi null, tanpa melihat status: retur pending/ditolak juga berlabel itu, retur yang sudah diperiksa tetap "menunggu"; chip selalu hijau. → turunkan label dari status.
-- **[PERF][major]** `StockOpnameItemResource.php:71-87`, `StockOpnameReport.php:156-203`, `StockOpnameController.php:101`, `StockOpnameService.php:499,519,541,572,602,625`, `SaleReturnService.php:267` — ±3 query per baris per halaman (`twinOf`, satuan, `problemFor`), `damagedGoodsSummary` 2 query per barang di setiap GET, dan query per barang berulang saat posting (`Warehouse::findOrFail`, `deadStockWarehouse()`, `returnsWarehouseFor`, lazy load `item->saleItem`). Belum diukur. → ambil kembar DG dengan satu `whereIn`, memoize gudang per posting, `with(['items.saleItem','sale'])`.
-- **[TEST][major]** belum ada tes: migrasi `2026_11_08_100000` untuk toko lama (satu gudang jual → `RETUR`, banyak → `RETUR-{kode}`) dan `down()`; pemeriksaan retur dengan hitungan lebih besar dari stok; retur disetujui di tengah hitungan; produk dipegang opname aktif lain; gudang dead stock hilang/nonaktif; opname gudang non-retur yang menandai gudang retur; hitungan kemasan utuh turun di Pemeriksaan Retur; alasan nonaktif lewat endpoint counts; dua posting bersamaan.
-- **[BUG][nit]** `2026_11_08_100000_add_returns_warehouses.php:47-58` — `down()` memanggil `dropConstrainedForeignId` dulu lalu menghapus gudang retur; begitu ada `stocks`/`stock_movements`/`sale_return_items.destination_warehouse_id` yang menunjuk gudang itu, penghapusan gagal oleh FK dan skema terbalik separuh. Baris retur baru (disposisi NULL) dipaksa `resellable`. → tolak `down()` dengan pesan jelas bila ada pemakaian.
-- **[LOG][nit]** `StockOpnameService.php:56-80,788-791,149-153` — `create()` untuk Pemeriksaan Retur menambah item tanpa `lockWarehouseClaims` (beda dengan `addProduct`/`start`); `start()` cakupan Selected tidak memeriksa ulang produk sibuk; dua opname bisa memegang produk yang sama dan stok jual terisi dua kali. → `lockWarehouseClaims($opname)` di `create()`.
-- **[LOG][nit]** `StockOpnameService.php:569-582`, `SaveStockOpnameRequest.php:42` — request menerima gudang aktif apa saja, termasuk Dead Stock, untuk opname rutin; alasan Rusak dengan keputusan DG menaruh stok kembar di gudang dead stock sehingga tak bisa dijual. → batasi alasan Damaged atau tolak opname rutin pada gudang non-Sellable.
-- **[LOG][nit]** `DamagedGoodsService.php:77-107` — modal kembar DG disalin hanya saat dibuat; batch DG berikutnya masuk dengan modal lama bila modal barang asal berubah; `is_sealed_pack` tidak disalin (mungkin disengaja, tidak tertulis di D35). → putuskan dan tulis di docs 7.3 butir 21.
-- **[API][nit]** `SaveStockOpnameCountsRequest.php:36`, `SaveStockOpnameReviewRequest.php:38,79`, `SaveStockOpnameRequest.php:29,64` — `reason_id`, `note`, dan kolom keputusan hanya `nullable` padahal service membaca `$row['x']` langsung (kunci hilang → "Undefined array key", 500); request counts tidak menolak alasan nonaktif (request Review menolaknya); `Warehouse::find($this->input('warehouse_id'))` dengan input array mengembalikan Collection → `?->isReturns()` melempar (500, bukan 422). → `present`, cek alasan nonaktif, pengaman `is_scalar`.
-- **[UX][nit]** `StockOpnames/Show.vue:517-521,857-858` — untuk Pemeriksaan Retur `postMessage` tetap "Stok sekitar {variance_count} barang akan diperbarui…" (biasanya 0 padahal semua barang berpindah gudang), dan tabel konfirmasi berjudul "Barang rusak" dengan unit "Normal". → teks khusus returns-check.
-- **[DOC][nit]** `analisis-sistem.md:1779` (7.3 butir 20) dan `StockOpnameService.php:556` — "saldo akhir stok jual tetap sama dengan hasil hitung", padahal `StockOpnameReviewTest:319-329` membuktikan rak akhir = hitungan + `full_price_quantity` (hitung 7 dari 10, layak jual penuh 3 → rak 10); `CashierSaleReturnController.php:70` masih menyebut "the goods destinations".
-- **OOS:** semua retur kini membalik modal penuh (`sale_return_items.cost_total`) padahal barang menunggu di gudang retur, dan kerugian dead stock/DG dari pemeriksaan tidak masuk laporan laba (butuh keputusan R2). `StockOpnameItem` tidak `Auditable` padahal keputusan DG dan tanda review menentukan mutasi stok. Nama `$isDamaged`/`needs_damage_decision`/`damage_summary` dipakai ulang untuk Pemeriksaan Retur; `$needsReviewMark` melanggar aturan boolean.
+Semua temuan lain di bagian ini sudah diperbaiki dan dihapus dari daftar. Yang tersisa, **diterima**:
+
+- **[PERF][nit]** Layar opname kini memuat kembar DG dan masalah SKU satu kali per halaman (bukan 2-3 query per baris), ringkasan DG satu kali, dan posting mencari gudang tujuan satu kali; belum diukur dengan data besar. Pemeriksaan review masih memanggil `deadStockWarehouse()` per barang yang punya jumlah dead stock (satu query kecil per barang).
+- **[TEST][nit]** Belum ada tes: migrasi `2026_11_08_100000` naik untuk toko lama (satu gudang jual → `RETUR`, banyak → `RETUR-{kode}`; DDL-nya mengubah skema DB tes); hitungan kemasan utuh yang turun di Pemeriksaan Retur; balapan klaim gudang di `create()`/`start()` dan dua posting bersamaan (tes dua proses rawan flaky, dan aturan CLAUDE.md menyebut tes flaky lebih buruk dari tanpa tes).
+- **OOS:** `StockOpnameItem` tidak `Auditable` padahal keputusan DG dan tanda review menentukan mutasi stok. Nama `$isDamaged`/`needs_damage_decision`/`damage_summary` dipakai ulang untuk Pemeriksaan Retur; `$needsReviewMark` melanggar aturan boolean. Rugi dead stock sudah masuk laporan laba (12 Nov 2026); rugi DG tidak dihitung saat posting karena muncul sendiri saat barang DG terjual di bawah modal, dan selisih kurang selain Rusak belum masuk laporan.
 
 ## 10. Stok gulungan utuh
 

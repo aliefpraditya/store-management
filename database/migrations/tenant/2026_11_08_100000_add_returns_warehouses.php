@@ -43,9 +43,23 @@ return new class extends Migration
 
     /**
      * Reverse the migrations.
+     *
+     * Refused once anything points at a returns warehouse (stock, movements, opnames, return items): deleting it would fail on
+     * the foreign keys halfway, and return items that wait there have no disposition to fall back on.
      */
     public function down(): void
     {
+        $returnsWarehouseIds = DB::table('warehouses')->where('type', 'returns')->pluck('id');
+
+        $isInUse = DB::table('stocks')->whereIn('warehouse_id', $returnsWarehouseIds)->exists()
+            || DB::table('stock_movements')->whereIn('warehouse_id', $returnsWarehouseIds)->exists()
+            || DB::table('stock_opnames')->whereIn('warehouse_id', $returnsWarehouseIds)->exists()
+            || DB::table('sale_return_items')->whereIn('destination_warehouse_id', $returnsWarehouseIds)->exists();
+
+        if ($isInUse) {
+            throw new RuntimeException('Cannot roll back the returns warehouses: stock, movements, opnames or return items already refer to them.');
+        }
+
         DB::table('sale_return_items')->whereNull('disposition')->update(['disposition' => 'resellable']);
         DB::statement("ALTER TABLE sale_return_items MODIFY disposition ENUM('resellable', 'dead_stock') NOT NULL");
 

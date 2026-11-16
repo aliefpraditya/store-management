@@ -21,6 +21,11 @@ class StockOpnameException extends Exception
         return new self("{$productName} sedang dihitung di opname lain untuk gudang ini.");
     }
 
+    public static function damageNeedsSellableWarehouse(): self
+    {
+        return new self('Alasan Rusak hanya untuk opname gudang jual: barang DG dibuat di gudang yang sama dengan opname, dan dari gudang dead stock atau retur tidak bisa dijual.');
+    }
+
     public static function quantityTooLarge(string $productName): self
     {
         return new self("{$productName}: jumlah yang dihitung terlalu besar setelah diubah ke satuan terkecil. Periksa angkanya.");

@@ -559,11 +559,16 @@ function postOpname() {
 
 const isPostOpen = ref(false);
 
-const postMessage = computed(() =>
-    props.opname.is_counting_arrivals
+/** An inspection of returns moves every counted item out of the returns warehouse, so what it changes is not "the variance". */
+const postMessage = computed(() => {
+    if (props.opname.is_returns_check) {
+        return `${props.summary.counted_count} barang akan dilepas dari gudang retur dan dibagi ke stok jual, dead stock, atau barang DG sesuai keputusan. Selisih dengan catatan stok dicatat lebih dulu. Setelah diposting, opname tidak bisa diubah.`;
+    }
+
+    return props.opname.is_counting_arrivals
         ? `Stok sekitar ${props.summary.variance_count} barang akan bertambah, dengan nilai sekitar ${formatMoney(props.summary.variance_value)}. Setelah diposting, opname tidak bisa diubah.`
-        : `Stok sekitar ${props.summary.variance_count} barang akan diperbarui, dengan nilai selisih sekitar ${formatMoney(props.summary.variance_value)}. Setelah diposting, opname tidak bisa diubah.`,
-);
+        : `Stok sekitar ${props.summary.variance_count} barang akan diperbarui, dengan nilai selisih sekitar ${formatMoney(props.summary.variance_value)}. Setelah diposting, opname tidak bisa diubah.`;
+});
 
 /** How many damaged goods rows the posting confirmation lists before saying how many more there are. */
 const DAMAGE_ROWS_SHOWN = 6;
@@ -900,14 +905,14 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                     </div>
 
                     <template v-if="hasDamageSummary">
-                        <div class="post__heading">Barang rusak</div>
+                        <div class="post__heading">{{ opname.is_returns_check ? 'Barang retur dibagi ke' : 'Barang rusak' }}</div>
                         <table class="post__table">
                             <thead>
                                 <tr>
                                     <th>Barang</th>
                                     <th class="post__right">Dead stock</th>
                                     <th class="post__right">Barang DG</th>
-                                    <th class="post__right">Layak jual penuh</th>
+                                    <th class="post__right">{{ opname.is_returns_check ? 'Kembali ke stok jual' : 'Layak jual penuh' }}</th>
                                     <th class="post__right">Rugi</th>
                                     <th class="post__right">Loss profit</th>
                                 </tr>

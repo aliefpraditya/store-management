@@ -185,6 +185,20 @@ class StockOpnameTest extends TestCase
         return $this->actingAs($this->admin)->post($this->url($route, ['stock_opname' => $opname->id]));
     }
 
+    public function test_starting_a_draft_leaves_out_products_another_active_opname_holds(): void
+    {
+        $kept = $this->makeProduct('Cat A', '5');
+        $held = $this->makeProduct('Cat B', '5');
+        $draft = $this->opnameInStatus(StockOpnameStatus::Draft);
+        $this->addItem($draft, $kept);
+        $this->addItem($draft, $held);
+        $this->addItem($this->opnameInStatus(StockOpnameStatus::Draft), $held);
+
+        $this->action('start', $draft)->assertSessionHas('success', 'Snapshot stok diambil. 1 barang dilewati karena sedang dihitung di opname lain.');
+
+        $this->assertSame([$kept->id], $this->inStore(fn () => $draft->items()->pluck('product_id')->all()));
+    }
+
     public function test_only_admins_may_use_stock_opname(): void
     {
         $opname = $this->opname();

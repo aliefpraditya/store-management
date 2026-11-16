@@ -6,6 +6,8 @@ use App\Models\Product;
 use App\Models\ProductUnit;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
  * Makes the damaged-goods (DG) twin of a product: a product of its own, named "(DG) name", with the SKU of the original
@@ -38,13 +40,19 @@ class DamagedGoodsService
      */
     public function problemFor(Product $product): ?string
     {
+        return $this->problemGiven($product, Product::query()->withTrashed()->where('sku', $this->skuFor($product))->first());
+    }
+
+    /**
+     * @param  Product|null  $skuHolder  the product (even a deleted one) that holds the SKU the twin would take
+     */
+    private function problemGiven(Product $product, ?Product $skuHolder): ?string
+    {
         if ($product->is_damaged_goods) {
             return 'sudah barang DG, jadi tidak bisa dibuatkan DG lagi.';
         }
 
-        $holder = Product::query()->withTrashed()->where('sku', $this->skuFor($product))->first();
-
-        if ($holder !== null && $holder->damaged_from_product_id !== $product->id) {
+        if ($skuHolder !== null && $skuHolder->damaged_from_product_id !== $product->id) {
             return "SKU {$this->skuFor($product)} sudah dipakai barang lain.";
         }
 
@@ -59,18 +67,47 @@ class DamagedGoodsService
      */
     public function existingOf(Product $product): ?array
     {
-        $twin = $this->twinOf($product);
+        return $this->existingGiven($this->twinOf($product));
+    }
 
+    /**
+     * @return array{name: string, sku: string, price: string|null}|null
+     */
+    private function existingGiven(?Product $twin): ?array
+    {
         if ($twin === null) {
             return null;
         }
 
-        return ['name' => $twin->name, 'sku' => $twin->sku, 'price' => $twin->productUnits()->where('is_base', true)->value('selling_price')];
+        $twin->loadMissing('productUnits');
+
+        return ['name' => $twin->name, 'sku' => $twin->sku, 'price' => $twin->productUnits->firstWhere('is_base', true)?->selling_price];
+    }
+
+    /**
+     * {@see self::existingOf()} and {@see self::problemFor()} for many products in two queries, for a screen that lists
+     * a page of items instead of asking per item.
+     *
+     * @param  Collection<int, Product>  $products
+     * @return array<int, array{existing: array{name: string, sku: string, price: string|null}|null, problem: string|null}> by product id
+     */
+    public function decisionContextFor(Collection $products): array
+    {
+        $twinsByOriginalId = Product::query()->withTrashed()->with('productUnits')->whereIn('damaged_from_product_id', $products->pluck('id'))->get()->keyBy('damaged_from_product_id');
+        // The database compares SKUs without regard to case, so the lookup does too.
+        $holdersBySku = Product::query()->withTrashed()->whereIn('sku', $products->map(fn (Product $product): string => $this->skuFor($product)))->get()->keyBy(fn (Product $holder): string => Str::lower($holder->sku));
+
+        return $products->mapWithKeys(fn (Product $product): array => [$product->id => [
+            'existing' => $this->existingGiven($twinsByOriginalId->get($product->id)),
+            'problem' => $this->problemGiven($product, $holdersBySku->get(Str::lower($this->skuFor($product)))),
+        ]])->all();
     }
 
     /**
      * The twin of the product, made now when it does not exist yet, with the given selling price on its base unit. When
-     * it exists and the price is a different one, its sellable units are repriced.
+     * it exists and the price is a different one, its sellable units are repriced. The twin's modal follows the
+     * original's every time units go in: R1 prices stock at the last purchase price (no layers per batch), so a later
+     * batch does not come in at the modal the original had when the twin was made.
      *
      * @param  numeric-string  $baseUnitPrice
      */
@@ -79,6 +116,7 @@ class DamagedGoodsService
         $twin = $this->twinOf($product) ?? $this->makeTwin($product);
 
         $this->matchSealedPackUnit($product, $twin);
+        $this->matchCostPrice($product, $twin);
 
         foreach ($twin->productUnits as $twinUnit) {
             $price = $twinUnit->is_sellable ? $this->priceOfUnit($twinUnit, $baseUnitPrice) : '0.00';
@@ -105,6 +143,27 @@ class DamagedGoodsService
 
             if ($twinUnit->is_sealed_pack !== $isSealedPack) {
                 $twinUnit->forceFill(['is_sealed_pack' => $isSealedPack])->save();
+            }
+        }
+    }
+
+    /**
+     * The twin's modal, on the product and on every unit, is the original's.
+     */
+    private function matchCostPrice(Product $product, Product $twin): void
+    {
+        $product->loadMissing('productUnits');
+        $costByUnitCode = $product->productUnits->pluck('cost_price', 'unit_code');
+
+        if (BigDecimal::of((string) $twin->cost_price)->compareTo((string) $product->cost_price) !== 0) {
+            $twin->forceFill(['cost_price' => $product->cost_price])->save();
+        }
+
+        foreach ($twin->productUnits as $twinUnit) {
+            $cost = $costByUnitCode[$twinUnit->unit_code] ?? null;
+
+            if ($cost !== null && BigDecimal::of((string) $twinUnit->cost_price)->compareTo((string) $cost) !== 0) {
+                $twinUnit->forceFill(['cost_price' => $cost])->save();
             }
         }
     }

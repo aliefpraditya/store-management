@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Enums\StockOpnameReason;
+use App\Enums\StockOpnameScope;
+use App\Enums\StockOpnameStatus;
 use App\Enums\UserRole;
 use App\Enums\WarehouseType;
 use App\Exceptions\ShiftException;
@@ -12,6 +15,8 @@ use App\Models\Sale;
 use App\Models\SaleReturn;
 use App\Models\Stock;
 use App\Models\StockMovement;
+use App\Models\StockOpname;
+use App\Models\StockOpnameItem;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -292,6 +297,54 @@ class SaleReturnTest extends TestCase
         $this->assertSame('2.000', $this->returnsStockOf($this->brush));
     }
 
+    public function test_a_return_waits_for_approval_while_an_inspection_of_the_returns_warehouse_holds_its_goods(): void
+    {
+        [$cashier, $cashierShift] = $this->cashierOnSecondRegister();
+        $sale = $this->sellBrushes($cashier, $cashierShift, 5);
+        $saleReturn = $this->pendingReturn($sale, $cashierShift, $cashier, 2);
+        $inspection = $this->store->run(function () use ($sale): StockOpname {
+            $inspection = StockOpname::factory()->create([
+                'warehouse_id' => $this->returnsWarehouseOf($sale)->id,
+                'reason_code' => StockOpnameReason::ReturnsCheck,
+                'scope' => StockOpnameScope::Selected,
+                'status' => StockOpnameStatus::Counting,
+                'snapshot_at' => now(),
+                'created_by' => $this->admin->id,
+            ]);
+            StockOpnameItem::factory()->create(['stock_opname_id' => $inspection->id, 'product_id' => $this->brush->id, 'snapshot_quantity' => '0']);
+
+            return $inspection;
+        });
+
+        $this->actingAs($this->admin)->post($this->url('approve', ['sale_return' => $saleReturn->id]))
+            ->assertSessionHas('error', fn (string $message): bool => str_contains($message, 'Retur belum bisa disetujui: Kuas sedang diperiksa'));
+
+        $this->assertSame('pending', $this->saleReturn($saleReturn->id)->status->value);
+        $this->assertSame('', $this->returnsStockOf($this->brush));
+
+        $this->store->run(fn () => $inspection->forceFill(['status' => StockOpnameStatus::Cancelled])->save());
+        $this->actingAs($this->admin)->post($this->url('approve', ['sale_return' => $saleReturn->id]))->assertSessionHas('success');
+
+        $this->assertSame('2.000', $this->returnsStockOf($this->brush));
+    }
+
+    public function test_a_return_item_says_where_its_goods_are_by_the_status_of_the_return(): void
+    {
+        [$cashier, $cashierShift] = $this->cashierOnSecondRegister();
+        $sale = $this->sellBrushes($cashier, $cashierShift, 5);
+        $approved = $this->pendingReturn($sale, $cashierShift, $cashier, 2);
+        $rejected = $this->pendingReturn($sale, $cashierShift, $cashier, 1);
+        $this->actingAs($this->admin)->post($this->url('approve', ['sale_return' => $approved->id]))->assertSessionHas('success');
+        $this->actingAs($this->admin)->post($this->url('reject', ['sale_return' => $rejected->id]))->assertSessionHas('success');
+
+        $this->actingAs($this->admin)->get($this->url('show', ['sale_return' => $approved->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('saleReturn.items.0.disposition_label', 'Masuk gudang retur')
+            ->where('saleReturn.items.0.disposition_tone', 'ok'));
+        $this->actingAs($this->admin)->get($this->url('show', ['sale_return' => $rejected->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('saleReturn.items.0.disposition_label', 'Ditolak, barang tidak masuk gudang')
+            ->where('saleReturn.items.0.disposition_tone', 'bad'));
+    }
+
     public function test_rejecting_a_waiting_return_frees_the_goods_and_moves_no_stock(): void
     {
         [$cashier, $cashierShift] = $this->cashierOnSecondRegister();
@@ -379,7 +432,7 @@ class SaleReturnTest extends TestCase
             ->where('saleReturn.reason', 'Rusak')
             ->where('saleReturn.sale.number', $sale->number)
             ->where('saleReturn.items.0.name', 'Kuas')
-            ->where('saleReturn.items.0.disposition_label', 'Gudang retur, menunggu pemeriksaan')
+            ->where('saleReturn.items.0.disposition_label', 'Belum masuk gudang, menunggu persetujuan')
             ->where('saleReturn.urls.approve', $this->url('approve', ['sale_return' => $saleReturn->id]))
             ->where('saleReturn.urls.sheet', $this->url('sheet', ['sale_return' => $saleReturn->id])));
     }

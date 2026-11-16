@@ -26,9 +26,7 @@ class SaveStockOpnameRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
-        $warehouse = Warehouse::query()->find($this->input('warehouse_id'));
-
-        if ($warehouse?->isReturns()) {
+        if ($this->chosenWarehouse()?->isReturns()) {
             $this->merge(['reason_code' => StockOpnameReason::ReturnsCheck->value, 'scope' => StockOpnameScope::Selected->value]);
         }
     }
@@ -61,11 +59,22 @@ class SaveStockOpnameRequest extends FormRequest
      */
     private function isReturnsCheckOnlyForReturnsWarehouse(string $attribute, mixed $value, Closure $fail): void
     {
-        $isReturnsWarehouse = Warehouse::query()->find($this->input('warehouse_id'))?->isReturns() ?? false;
+        $isReturnsWarehouse = $this->chosenWarehouse()?->isReturns() ?? false;
 
         if ($value === StockOpnameReason::ReturnsCheck->value && ! $isReturnsWarehouse) {
             $fail('Pemeriksaan retur hanya untuk gudang retur.');
         }
+    }
+
+    /**
+     * The warehouse typed in the form, or null when it is missing or not a single id (an array would make `find` return
+     * a list and break the checks before validation can refuse it).
+     */
+    private function chosenWarehouse(): ?Warehouse
+    {
+        $warehouseId = $this->input('warehouse_id');
+
+        return is_scalar($warehouseId) ? Warehouse::query()->find($warehouseId) : null;
     }
 
     /**

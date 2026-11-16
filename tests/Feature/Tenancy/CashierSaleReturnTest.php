@@ -101,7 +101,7 @@ class CashierSaleReturnTest extends TestCase
             ->assertJsonCount(1, 'data.returns')
             ->assertJsonPath('data.returns.0.status', 'pending')
             ->assertJsonPath('data.returns.0.items.0.name', 'Kuas')
-            ->assertJsonPath('data.returns.0.items.0.disposition_label', 'Gudang retur, menunggu pemeriksaan');
+            ->assertJsonPath('data.returns.0.items.0.disposition_label', 'Belum masuk gudang, menunggu persetujuan');
     }
 
     public function test_a_cashier_asks_for_a_return_and_nothing_moves_until_an_admin_approves(): void

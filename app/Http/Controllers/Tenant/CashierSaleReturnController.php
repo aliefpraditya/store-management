@@ -67,8 +67,8 @@ class CashierSaleReturnController extends Controller
     }
 
     /**
-     * What the dialog needs for one receipt: the lines with what can still be returned, the ways to pay back and
-     * the goods destinations, and the returns already asked for. Any receipt of the store may be returned from the
+     * What the dialog needs for one receipt: the lines with what can still be returned, the ways to pay back
+     * and the returns already asked for (returned goods always wait in the returns warehouse; the cashier does not pick where they go). Any receipt of the store may be returned from the
      * till; an admin decides every return a cashier asks for.
      */
     public function show(Request $request, Sale $sale): JsonResponse

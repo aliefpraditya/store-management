@@ -6,6 +6,8 @@ use App\Enums\DeliveryNoteStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\SaleReturnStatus;
 use App\Enums\SaleStatus;
+use App\Enums\StockOpnameReason;
+use App\Enums\StockOpnameStatus;
 use App\Models\DeliveryNote;
 use App\Models\Product;
 use App\Models\Sale;
@@ -13,6 +15,7 @@ use App\Models\SaleItem;
 use App\Models\SalePayment;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
+use App\Models\StockOpnameItem;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
@@ -31,15 +34,18 @@ use Illuminate\Support\Collection;
  * and never in neither). The cost of an item is
  * the last purchase price when it was sold (R1 has no cost layers yet), so profit is an estimate: an item without a
  * purchase price has no cost, which is told. Returned goods wait in the returns warehouse until they are inspected, so
- * a return takes back the whole profit of what came back; what is lost on goods found damaged afterwards is not here.
- * Voided receipts are left out of the sales and the methods. A COD sale counts when it is made, whether or not the
+ * a return takes back the whole profit of what came back. What is found unsellable afterwards and sent to dead stock is
+ * a loss of its cost, taken off the profit on the day the opname is posted (`dead_stock_loss`, also added to the cost of
+ * the product in the product rows). Goods sent to a DG product are not counted then: they are sold later under their own
+ * product at its price, and a price under the cost shows as a lower profit when it is sold, so counting it here would
+ * count it twice. Voided receipts are left out of the sales and the methods. A COD sale counts when it is made, whether or not the
  * goods have been delivered.
  *
  * The figures of the methods and the cashiers are of the sales, before returns: returns are not tied to the cashier who
  * sold, nor to the method the sale was paid by.
  *
- * @phpstan-type ReportTotals array{gross_total: string, returns_total: string, net_total: string, receipt_count: int, gross_profit: string, voids_count: int, voids_total: string}
- * @phpstan-type ReportDay array{date: string, gross_total: string, returns_total: string, net_total: string, receipt_count: int, gross_profit: string, voids_count: int, voids_total: string}
+ * @phpstan-type ReportTotals array{gross_total: string, returns_total: string, net_total: string, receipt_count: int, dead_stock_loss: string, gross_profit: string, voids_count: int, voids_total: string}
+ * @phpstan-type ReportDay array{date: string, gross_total: string, returns_total: string, net_total: string, receipt_count: int, dead_stock_loss: string, gross_profit: string, voids_count: int, voids_total: string}
  * @phpstan-type ReportProduct array{product_id: int, name: string, unit: string, quantity: string, revenue: string, cost: string, profit: string, margin_percent: string, is_cost_missing: bool}
  * @phpstan-type SalesReport array{from: string, to: string, totals: ReportTotals, days: list<ReportDay>, methods: list<array{method: string, label: string, amount: string}>, cashiers: list<array{cashier_name: string, receipt_count: int, total: string}>, products: list<ReportProduct>, product_count: int, product_limit: int, products_without_cost: int}
  * @phpstan-type ReportPeriod array{from: CarbonImmutable, to: CarbonImmutable, is_cut_back: bool}
@@ -133,6 +139,11 @@ class SalesReportService
             ->get()
             ->keyBy(fn ($row): string => (string) $row->day);
 
+        $deadStockLossByDay = $this->deadStockLossQuery($from, $to)
+            ->groupByRaw('date(stock_opnames.posted_at)')
+            ->selectRaw('date(stock_opnames.posted_at) as day, sum(stock_opname_items.dead_stock_quantity * stock_opname_items.cost_price_at_posting) as loss')
+            ->pluck('loss', 'day');
+
         $days = [];
 
         for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
@@ -144,8 +155,10 @@ class SalesReportService
 
             $gross = BigDecimal::of((string) ($receipts->total ?? 0));
             $returns = BigDecimal::of((string) ($creditsByDay[$key] ?? 0));
+            $deadStockLoss = BigDecimal::of((string) ($deadStockLossByDay[$key] ?? 0));
             $profit = BigDecimal::of((string) ($sold->revenue ?? 0))->minus((string) ($sold->cost ?? 0))
-                ->minus(BigDecimal::of((string) ($returned->revenue ?? 0))->minus((string) ($returned->cost ?? 0)));
+                ->minus(BigDecimal::of((string) ($returned->revenue ?? 0))->minus((string) ($returned->cost ?? 0)))
+                ->minus($deadStockLoss);
 
             $days[] = [
                 'date' => $key,
@@ -153,6 +166,7 @@ class SalesReportService
                 'returns_total' => $this->money($returns),
                 'net_total' => $this->money($gross->minus($returns)),
                 'receipt_count' => (int) ($receipts->receipts ?? 0),
+                'dead_stock_loss' => $this->money($deadStockLoss),
                 'gross_profit' => $this->money($profit),
                 'voids_count' => (int) ($voided->voids ?? 0),
                 'voids_total' => $this->money($voided->total ?? 0),
@@ -175,6 +189,7 @@ class SalesReportService
             'returns_total' => $this->money($sum('returns_total')),
             'net_total' => $this->money($sum('net_total')),
             'receipt_count' => (int) collect($days)->sum('receipt_count'),
+            'dead_stock_loss' => $this->money($sum('dead_stock_loss')),
             'gross_profit' => $this->money($sum('gross_profit')),
             'voids_count' => (int) collect($days)->sum('voids_count'),
             'voids_total' => $this->money($sum('voids_total')),
@@ -257,11 +272,17 @@ class SalesReportService
             ->get()
             ->keyBy('product_id');
 
-        $products = Product::query()->withTrashed()->whereIn('id', $sold->keys()->merge($returned->keys())->unique())->get(['id', 'name', 'base_unit_code'])->keyBy('id');
+        $deadStockLosses = $this->deadStockLossQuery($from, $to)
+            ->groupBy('stock_opname_items.product_id')
+            ->selectRaw('stock_opname_items.product_id as product_id, sum(stock_opname_items.dead_stock_quantity * stock_opname_items.cost_price_at_posting) as loss')
+            ->pluck('loss', 'product_id');
 
-        return $sold->keys()->merge($returned->keys())->unique()->map(function (int $productId) use ($sold, $returned, $products): array {
+        $productIds = $sold->keys()->merge($returned->keys())->merge($deadStockLosses->keys())->unique();
+        $products = Product::query()->withTrashed()->whereIn('id', $productIds)->get(['id', 'name', 'base_unit_code'])->keyBy('id');
+
+        return $productIds->map(function (int $productId) use ($sold, $returned, $deadStockLosses, $products): array {
             $revenue = BigDecimal::of((string) ($sold[$productId]->revenue ?? 0))->minus((string) ($returned[$productId]->revenue ?? 0));
-            $cost = BigDecimal::of((string) ($sold[$productId]->cost ?? 0))->minus((string) ($returned[$productId]->cost ?? 0));
+            $cost = BigDecimal::of((string) ($sold[$productId]->cost ?? 0))->minus((string) ($returned[$productId]->cost ?? 0))->plus((string) ($deadStockLosses[$productId] ?? 0));
             $quantity = BigDecimal::of((string) ($sold[$productId]->quantity ?? 0))->minus((string) ($returned[$productId]->quantity ?? 0));
             $profit = $revenue->minus($cost);
 
@@ -334,6 +355,25 @@ class SalesReportService
             ->join('cash_shifts', 'cash_shifts.id', '=', 'sale_returns.cash_shift_id')
             ->where('sale_returns.status', SaleReturnStatus::Completed)
             ->whereBetween('cash_shifts.business_date', [$from->toDateString(), $to->toDateString()]);
+    }
+
+    /**
+     * The units an inspection or a count sent to dead stock, from the opnames posted in the period, with `stock_opnames`
+     * joined. A routine count only sends units there with a damaged-goods decision on a variance, which is why such an
+     * item must have one; an inspection of returns decides for every unit it counted.
+     *
+     * @return Builder<StockOpnameItem>
+     */
+    private function deadStockLossQuery(CarbonImmutable $from, CarbonImmutable $to): Builder
+    {
+        return StockOpnameItem::query()
+            ->join('stock_opnames', 'stock_opnames.id', '=', 'stock_opname_items.stock_opname_id')
+            ->where('stock_opnames.status', StockOpnameStatus::Posted)
+            ->where('stock_opname_items.dead_stock_quantity', '>', 0)
+            ->where(fn (Builder $items) => $items
+                ->where('stock_opnames.reason_code', StockOpnameReason::ReturnsCheck)
+                ->orWhere('stock_opname_items.variance', '!=', 0))
+            ->whereBetween('stock_opnames.posted_at', [$from->startOfDay(), $to->endOfDay()]);
     }
 
     /**

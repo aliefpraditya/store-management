@@ -30,19 +30,19 @@ class SaveStockOpnameReviewRequest extends FormRequest
      */
     public function rules(): array
     {
-        $quantity = ['nullable', 'numeric', 'min:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'];
+        $quantity = ['present', 'nullable', 'numeric', 'min:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'];
         $packs = ['nullable', 'integer', 'min:0', 'max:'.self::MAX_QUANTITY];
 
         return [
             'rows' => ['required', 'array', 'min:1'],
             'rows.*.item_id' => ['required', 'integer'],
-            'rows.*.reason_id' => ['nullable', 'integer', Rule::exists('opname_reasons', 'id')],
-            'rows.*.note' => ['nullable', 'string', 'max:255'],
+            'rows.*.reason_id' => ['present', 'nullable', 'integer', Rule::exists('opname_reasons', 'id')],
+            'rows.*.note' => ['present', 'nullable', 'string', 'max:255'],
             'rows.*.is_reviewed' => ['required', 'boolean'],
             'rows.*.dead_stock_quantity' => $quantity,
             'rows.*.damaged_goods_quantity' => $quantity,
             'rows.*.full_price_quantity' => $quantity,
-            'rows.*.damaged_goods_price' => ['nullable', 'numeric', 'min:0', 'max:'.self::MAX_PRICE, 'decimal:0,2'],
+            'rows.*.damaged_goods_price' => ['present', 'nullable', 'numeric', 'min:0', 'max:'.self::MAX_PRICE, 'decimal:0,2'],
             'rows.*.dead_stock_packs' => $packs,
             'rows.*.damaged_goods_packs' => $packs,
             'rows.*.full_price_packs' => $packs,

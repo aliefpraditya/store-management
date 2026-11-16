@@ -32,6 +32,7 @@ use Illuminate\Support\Facades\DB;
  *
  * @phpstan-type CountPart array{unit_code: string, quantity: string|null}
  * @phpstan-type CountRow array{item_id: int, parts: list<CountPart>, reason_id: int|null, note: string|null}
+ * @phpstan-type PostingWarehouses array{dead_stock: Warehouse|null, returns_origin_id: int|null}
  * @phpstan-type ReviewRow array{item_id: int, reason_id: int|null, note: string|null, is_reviewed: bool, dead_stock_quantity: string|null, damaged_goods_quantity: string|null, full_price_quantity: string|null, damaged_goods_price: string|null, dead_stock_packs?: int|null, damaged_goods_packs?: int|null, full_price_packs?: int|null}
  */
 class StockOpnameService
@@ -72,6 +73,7 @@ class StockOpnameService
             ]);
 
             if ($opname->reason_code?->isReturnsCheck()) {
+                $this->lockWarehouseClaims($opname);
                 $this->addProductsWaitingInWarehouse($opname);
             }
 
@@ -149,8 +151,8 @@ class StockOpnameService
             $this->lockWarehouseClaims($opname);
 
             if ($opname->scope === StockOpnameScope::Selected) {
+                $skippedCount = $this->dropProductsHeldElsewhere($opname);
                 $this->refreshSelectedSnapshots($opname);
-                $skippedCount = 0;
             } else {
                 $skippedCount = $this->createSnapshotItems($opname);
             }
@@ -179,8 +181,11 @@ class StockOpnameService
                 ->whereIn('id', array_column($counts, 'item_id'))
                 ->get()
                 ->keyBy('id');
+            $reasonsById = OpnameReason::query()->whereIn('id', array_filter(array_column($counts, 'reason_id')))->get()->keyBy('id');
 
             foreach ($counts as $count) {
+                $this->requireSellableWarehouseForDamage($opname, $reasonsById->get($count['reason_id']));
+
                 $item = $itemsById->get($count['item_id']);
 
                 $item?->forceFill([
@@ -220,6 +225,8 @@ class StockOpnameService
                 }
 
                 $reason = $row['reason_id'] === null ? null : $reasonsById->get($row['reason_id']);
+                $this->requireSellableWarehouseForDamage($opname, $reason);
+
                 $isDamaged = ($reason?->behavior->needsDamageDecision() ?? false) || $opname->reason_code?->isReturnsCheck() === true;
                 $isDecidingPacks = $isDamaged && $item->product->sealedPackUnit() !== null;
 
@@ -318,6 +325,8 @@ class StockOpnameService
             $this->requireNotesForLargeVariances($opname, $countedItems, $systemQuantities);
             $this->requireReviewedVariances($opname, $countedItems, $systemQuantities, $systemPacks);
 
+            $warehouses = $this->postingWarehouses($opname);
+
             foreach ($countedItems as $item) {
                 $systemQuantity = $systemQuantities[$item->product_id];
                 $variance = $opname->varianceOf($item->counted_quantity, $systemQuantity);
@@ -331,7 +340,7 @@ class StockOpnameService
                 ])->save();
 
                 if ($opname->reason_code?->isReturnsCheck()) {
-                    $this->postReturnsItem($opname, $item, $systemQuantity, $variance, $movementType, $userId, $lockedStocks[$item->product_id]['intact_packs']);
+                    $this->postReturnsItem($opname, $item, $systemQuantity, $variance, $movementType, $userId, $lockedStocks[$item->product_id]['intact_packs'], $warehouses);
 
                     continue;
                 }
@@ -341,7 +350,7 @@ class StockOpnameService
                 }
 
                 if (! $variance->isZero() && $this->isDamagedGoodsDecision($opname, $item)) {
-                    $this->postDamagedItem($opname, $item, $systemQuantity, $movementType, $userId, $packChange);
+                    $this->postDamagedItem($opname, $item, $systemQuantity, $movementType, $userId, $packChange, $warehouses);
 
                     continue;
                 }
@@ -458,6 +467,10 @@ class StockOpnameService
             return 'alasan belum dipilih';
         }
 
+        if (! $isReturnsCheck && $item->reason->behavior->needsDamageDecision() && ! $this->isSellableWarehouse($opname)) {
+            return 'alasan Rusak hanya untuk opname gudang jual';
+        }
+
         $problem = match (true) {
             $isReturnsCheck => $this->returnsDecisionProblem($item, $systemPacks),
             $item->reason->behavior->needsDamageDecision() => $this->damageDecisionProblem($item, $variance, $systemPacks),
@@ -564,6 +577,23 @@ class StockOpnameService
     }
 
     /**
+     * A damaged-goods decision puts the DG product into the opname's own warehouse, which only sells from a sellable one.
+     *
+     * @throws StockOpnameException
+     */
+    private function requireSellableWarehouseForDamage(StockOpname $opname, ?OpnameReason $reason): void
+    {
+        if ($reason?->behavior->needsDamageDecision() === true && ! $this->isSellableWarehouse($opname)) {
+            throw StockOpnameException::damageNeedsSellableWarehouse();
+        }
+    }
+
+    private function isSellableWarehouse(StockOpname $opname): bool
+    {
+        return Warehouse::query()->whereKey($opname->warehouse_id)->where('type', WarehouseType::Sellable)->exists();
+    }
+
+    /**
      * Whether the item is a damaged-goods shortage whose decision splits where the units go (only routine opnames ask for it).
      */
     private function isDamagedGoodsDecision(StockOpname $opname, StockOpnameItem $item): bool
@@ -579,8 +609,9 @@ class StockOpnameService
      *
      * @param  numeric-string  $systemQuantity  the locked stock of the item in the opname's warehouse
      * @param  int  $packChange  the change in whole sealed packs, taken in the first movement
+     * @param  PostingWarehouses  $warehouses
      */
-    private function postDamagedItem(StockOpname $opname, StockOpnameItem $item, string $systemQuantity, StockMovementType $movementType, int $userId, int $packChange): void
+    private function postDamagedItem(StockOpname $opname, StockOpnameItem $item, string $systemQuantity, StockMovementType $movementType, int $userId, int $packChange, array $warehouses): void
     {
         $deadStock = BigDecimal::of($item->dead_stock_quantity);
         $damagedGoods = BigDecimal::of($item->damaged_goods_quantity);
@@ -591,7 +622,7 @@ class StockOpnameService
         $this->stockLedger->record($item->product_id, $opname->warehouse_id, $movementType, (string) $shortage->negated(), $opname, $userId, $note, $systemQuantity, $packChange);
 
         if ($deadStock->isPositive()) {
-            $this->stockLedger->record($item->product_id, $this->deadStockWarehouse()->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)", packChange: $this->packsDecidedFor($item, $item->dead_stock_packs));
+            $this->stockLedger->record($item->product_id, $warehouses['dead_stock']->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)", packChange: $this->packsDecidedFor($item, $item->dead_stock_packs));
         }
 
         if ($damagedGoods->isPositive()) {
@@ -616,13 +647,13 @@ class StockOpnameService
      *
      * @param  numeric-string  $systemQuantity  the locked stock of the item in the returns warehouse
      * @param  int  $systemPacks  the locked number of whole packs in it
+     * @param  PostingWarehouses  $warehouses
      *
      * @throws StockOpnameException
      */
-    private function postReturnsItem(StockOpname $opname, StockOpnameItem $item, string $systemQuantity, BigDecimal $variance, StockMovementType $movementType, int $userId, int $systemPacks): void
+    private function postReturnsItem(StockOpname $opname, StockOpnameItem $item, string $systemQuantity, BigDecimal $variance, StockMovementType $movementType, int $userId, int $systemPacks, array $warehouses): void
     {
-        $origin = Warehouse::query()->findOrFail($opname->warehouse_id)->returns_for_warehouse_id
-            ?? throw StockOpnameException::notAReturnsWarehouse();
+        $origin = $warehouses['returns_origin_id'] ?? throw StockOpnameException::notAReturnsWarehouse();
 
         $counted = BigDecimal::of($item->counted_quantity);
         $deadStock = BigDecimal::of($item->dead_stock_quantity ?? '0');
@@ -646,7 +677,7 @@ class StockOpnameService
         }
 
         if ($deadStock->isPositive()) {
-            $this->stockLedger->record($item->product_id, $this->deadStockWarehouse()->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)", packChange: $deadStockPacks);
+            $this->stockLedger->record($item->product_id, $warehouses['dead_stock']->id, $movementType, (string) $deadStock, $opname, $userId, "{$note} (dead stock)", packChange: $deadStockPacks);
         }
 
         if ($damagedGoods->isPositive()) {
@@ -720,6 +751,19 @@ class StockOpnameService
     private function packsDecidedFor(StockOpnameItem $item, ?int $packs): int
     {
         return $item->product->sealedPackUnit() === null ? 0 : $packs ?? 0;
+    }
+
+    /**
+     * The warehouses posting moves goods to, looked up once for the whole opname instead of once per item.
+     *
+     * @return PostingWarehouses
+     */
+    private function postingWarehouses(StockOpname $opname): array
+    {
+        return [
+            'dead_stock' => $this->deadStockWarehouse(),
+            'returns_origin_id' => $opname->reason_code?->isReturnsCheck() ? Warehouse::query()->findOrFail($opname->warehouse_id)->returns_for_warehouse_id : null,
+        ];
     }
 
     private function deadStockWarehouse(): ?Warehouse
@@ -900,6 +944,23 @@ class StockOpnameService
         if ($opname->scope !== StockOpnameScope::Selected) {
             throw StockOpnameException::notSelectedScope();
         }
+    }
+
+    /**
+     * Products picked into a draft that another active opname of the warehouse holds by now (picked there first, or while
+     * two requests raced) are taken out, so a product is never counted in two opnames at once.
+     *
+     * @return int how many products were taken out
+     */
+    private function dropProductsHeldElsewhere(StockOpname $opname): int
+    {
+        $heldElsewhereIds = $this->busyProductIds($opname, $opname->items()->pluck('product_id')->all());
+
+        if ($heldElsewhereIds !== []) {
+            $opname->items()->whereIn('product_id', $heldElsewhereIds)->delete();
+        }
+
+        return count($heldElsewhereIds);
     }
 
     /**

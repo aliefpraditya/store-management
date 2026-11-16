@@ -54,6 +54,9 @@ class StockOpnameReport
     }
 
     /**
+     * One page of {@see self::itemsQuery()}. Each item also carries `damaged_goods_context`, the DG twin and the SKU
+     * problem of its product worked out for the whole page at once ({@see DamagedGoodsService::decisionContextFor()}).
+     *
      * @return LengthAwarePaginator<int, StockOpnameItem>
      */
     public function paginateItems(StockOpname $opname, ?string $search, ?string $filter, int $perPage): LengthAwarePaginator
@@ -62,7 +65,7 @@ class StockOpnameReport
 
         $term = trim((string) $search);
 
-        return $this->itemsQuery($opname)
+        $items = $this->itemsQuery($opname)
             ->with(['product.baseUnit', 'product.productUnits', 'reason', 'stockOpname' => fn ($opnames) => $opnames->withTrashed()])
             ->selectRaw('stock_opname_items.*, '.self::COST_PRICE_SQL.' as product_cost_price')
             ->selectRaw(self::SYSTEM_QUANTITY_SQL.' as system_quantity')
@@ -81,6 +84,11 @@ class StockOpnameReport
             ->orderBy('products.name')
             ->paginate($perPage)
             ->withQueryString();
+
+        $damagedGoodsContexts = $this->damagedGoods->decisionContextFor($items->getCollection()->pluck('product'));
+        $items->getCollection()->each(fn (StockOpnameItem $item) => $item->setAttribute('damaged_goods_context', $damagedGoodsContexts[$item->product_id]));
+
+        return $items;
     }
 
     /**
@@ -168,6 +176,7 @@ class StockOpnameReport
             ->get()
             ->sortBy(fn (StockOpnameItem $item): string => $item->product->name)
             ->values();
+        $damagedGoodsContexts = $this->damagedGoods->decisionContextFor($rows->pluck('product'));
 
         $items = [];
         $deadStockLoss = BigDecimal::zero();
@@ -205,7 +214,7 @@ class StockOpnameReport
                 'cost_price' => (string) $costPrice->toScale(2, RoundingMode::HalfUp),
                 'original_price' => (string) $originalPrice->toScale(2, RoundingMode::HalfUp),
                 'damaged_goods_price' => $item->damaged_goods_price,
-                'existing_price' => $this->damagedGoods->existingOf($item->product)['price'] ?? null,
+                'existing_price' => $damagedGoodsContexts[$item->product_id]['existing']['price'] ?? null,
                 'loss' => (string) $deadLoss->plus($dgLoss)->toScale(2, RoundingMode::HalfUp),
                 'loss_profit' => (string) $rowLossProfit->toScale(2, RoundingMode::HalfUp),
             ];

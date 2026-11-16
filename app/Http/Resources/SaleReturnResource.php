@@ -3,8 +3,10 @@
 namespace App\Http\Resources;
 
 use App\Enums\PaymentMethod;
+use App\Enums\ReturnDisposition;
 use App\Enums\SaleReturnStatus;
 use App\Models\SaleReturn;
+use App\Models\SaleReturnItem;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -46,10 +48,45 @@ class SaleReturnResource extends JsonResource
                 'unit_price' => $item->unit_price,
                 'refund_subtotal' => $item->refund_subtotal,
                 'disposition' => $item->disposition?->value,
-                'disposition_label' => $item->disposition?->label() ?? 'Gudang retur, menunggu pemeriksaan',
+                'disposition_label' => $this->dispositionLabel($item),
+                'disposition_tone' => $this->dispositionTone($item),
             ])->values()->all(),
             'is_pending' => $this->status === SaleReturnStatus::Pending,
         ];
+    }
+
+    /**
+     * Where the goods of a return item are. Old returns carry the choice made at the till; newer ones have none, since
+     * the goods only wait in the returns warehouse once approved. Which return an inspected unit came from is not
+     * tracked, so an approved one is not said to be waiting.
+     */
+    private function dispositionLabel(SaleReturnItem $item): string
+    {
+        if ($item->disposition !== null) {
+            return $item->disposition->label();
+        }
+
+        return match ($this->status) {
+            SaleReturnStatus::Pending => 'Belum masuk gudang, menunggu persetujuan',
+            SaleReturnStatus::Rejected => 'Ditolak, barang tidak masuk gudang',
+            SaleReturnStatus::Completed => 'Masuk gudang retur',
+        };
+    }
+
+    /**
+     * The chip colour (`ok`, `warn`, `bad`) that goes with {@see self::dispositionLabel()}.
+     */
+    private function dispositionTone(SaleReturnItem $item): string
+    {
+        if ($item->disposition !== null) {
+            return $item->disposition === ReturnDisposition::DeadStock ? 'bad' : 'ok';
+        }
+
+        return match ($this->status) {
+            SaleReturnStatus::Pending => 'warn',
+            SaleReturnStatus::Rejected => 'bad',
+            SaleReturnStatus::Completed => 'ok',
+        };
     }
 
     /**

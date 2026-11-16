@@ -19,6 +19,7 @@ use App\Services\StockService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
+use RuntimeException;
 use Tests\Concerns\BuildsCashierFixtures;
 use Tests\Concerns\PreparesStoreDatabase;
 use Tests\TestCase;
@@ -223,6 +224,84 @@ class StockOpnameReturnsCheckTest extends TestCase
         $this->assertSame('104.000', $this->stockOf($this->brush, 'MAIN'));
         $note = $this->store->run(fn (): ?string => StockMovement::query()->where('product_id', $this->brush->id)->where('type', StockMovementType::OpnameAdjustment)->orderBy('id')->value('note'));
         $this->assertSame('Pemeriksaan Retur', $note);
+    }
+
+    public function test_a_count_above_the_books_is_written_as_an_extra_before_everything_is_released(): void
+    {
+        $this->waitInReturns($this->brush, '5');
+        $opname = $this->inspectionCounting('7');
+
+        $this->review($opname, ['dead_stock_quantity' => 0, 'damaged_goods_quantity' => 0, 'full_price_quantity' => 7, 'is_reviewed' => true])->assertSessionHas('success');
+        $this->postOpname($opname)->assertSessionHas('success');
+
+        $this->assertSame('0.000', $this->stockOf($this->brush, 'RETUR'));
+        $this->assertSame('107.000', $this->stockOf($this->brush, 'MAIN'));
+        $this->assertSame(1, $this->store->run(fn (): int => StockMovement::query()->where('product_id', $this->brush->id)->where('type', StockMovementType::OpnameAdjustment)->where('quantity', '2.000')->count()));
+    }
+
+    public function test_a_product_another_active_opname_of_the_returns_warehouse_holds_is_left_out(): void
+    {
+        $this->waitInReturns($this->brush, '5');
+        $this->actingAs($this->admin)->post($this->url('store'), [
+            'warehouse_id' => $this->returnsWarehouse()->id,
+            'opname_date' => now()->toDateString(),
+            'scope' => StockOpnameScope::Selected->value,
+            'reason_code' => StockOpnameReason::ReturnsCheck->value,
+        ])->assertSessionHasNoErrors();
+
+        $this->actingAs($this->admin)->post($this->url('store'), [
+            'warehouse_id' => $this->returnsWarehouse()->id,
+            'opname_date' => now()->toDateString(),
+            'scope' => StockOpnameScope::Selected->value,
+            'reason_code' => StockOpnameReason::ReturnsCheck->value,
+        ])->assertSessionHasNoErrors();
+
+        $itemCounts = $this->store->run(fn (): array => StockOpname::query()->orderBy('id')->withCount('items')->get()->pluck('items_count')->all());
+        $this->assertSame([1, 0], $itemCounts);
+    }
+
+    public function test_goods_for_dead_stock_cannot_be_decided_without_a_dead_stock_warehouse(): void
+    {
+        $this->waitInReturns($this->brush, '5');
+        $opname = $this->inspectionCounting('5');
+        $this->store->run(fn () => Warehouse::query()->where('code', 'DEAD')->update(['is_active' => false]));
+
+        $this->review($opname, ['dead_stock_quantity' => 2, 'damaged_goods_quantity' => 0, 'full_price_quantity' => 3, 'is_reviewed' => true])
+            ->assertSessionHas('error', $this->hasMessage('gudang dead stock tidak ada'));
+    }
+
+    public function test_the_returns_warehouses_cannot_be_rolled_back_once_goods_wait_in_them(): void
+    {
+        $this->waitInReturns($this->brush, '5');
+        $migration = require database_path('migrations/tenant/2026_11_08_100000_add_returns_warehouses.php');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Cannot roll back the returns warehouses');
+
+        $this->store->run(fn () => $migration->down());
+    }
+
+    public function test_a_list_in_place_of_a_warehouse_id_is_refused_instead_of_failing(): void
+    {
+        $this->actingAs($this->admin)->post($this->url('store'), [
+            'warehouse_id' => [$this->returnsWarehouse()->id, $this->mainWarehouse()->id],
+            'opname_date' => now()->toDateString(),
+            'scope' => StockOpnameScope::Selected->value,
+            'reason_code' => StockOpnameReason::Routine->value,
+        ])->assertSessionHasErrors('warehouse_id');
+    }
+
+    public function test_the_confirmation_of_an_inspection_says_what_it_will_do(): void
+    {
+        $this->waitInReturns($this->brush, '5');
+        $opname = $this->inspectionCounting('5');
+        $this->review($opname, ['dead_stock_quantity' => 1, 'damaged_goods_quantity' => 1, 'full_price_quantity' => 3, 'damaged_goods_price' => 5000, 'is_reviewed' => true])->assertSessionHas('success');
+
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('opname.is_returns_check', true)
+            ->where('summary.counted_count', 1)
+            ->where('damage_summary.items.0.dead_stock_quantity', '1.000')
+            ->where('damage_summary.items.0.full_price_quantity', '3.000'));
     }
 
     public function test_the_summary_counts_every_counted_item_as_one_to_review(): void

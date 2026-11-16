@@ -86,6 +86,7 @@ const printReport = () => printSheet(() => props.urls.sheet);
                 <small>Laba kotor (estimasi)</small>
                 <b>{{ formatRupiah(report.totals.gross_profit) }}</b>
                 <em>modal = harga beli terakhir</em>
+                <em v-if="Number(report.totals.dead_stock_loss) > 0">sudah dikurangi rugi dead stock {{ formatRupiah(report.totals.dead_stock_loss) }}</em>
                 <em v-if="report.products_without_cost > 0" class="kpi__warn">{{ report.products_without_cost }} barang belum punya harga beli, jadi labanya sama dengan penjualannya</em>
             </div>
         </div>

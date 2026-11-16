@@ -54,6 +54,14 @@ class SaleReturnException extends Exception
         return new self('Buka shift dulu untuk membuat retur. '.ShiftException::AWAITING_REVIEW_HINT);
     }
 
+    /**
+     * @param  list<string>  $productNames
+     */
+    public static function goodsBeingInspected(array $productNames): self
+    {
+        return new self('Retur belum bisa disetujui: '.implode(', ', $productNames).' sedang diperiksa di opname gudang retur. Selesaikan atau batalkan pemeriksaannya dulu, supaya barang yang baru masuk tidak ikut terbaca sebagai selisih.');
+    }
+
     public static function noReturnsWarehouse(): self
     {
         return new self('Gudang retur untuk gudang nota ini belum ada di toko. Hubungi Admin.');

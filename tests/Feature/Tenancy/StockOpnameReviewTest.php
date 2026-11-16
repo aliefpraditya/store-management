@@ -17,6 +17,7 @@ use App\Models\StockOpnameItem;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\DamagedGoodsService;
 use App\Services\StoreSettingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -262,6 +263,57 @@ class StockOpnameReviewTest extends TestCase
         $this->store->run(fn () => $custom->forceFill(['is_active' => false])->save());
 
         $this->review($opname, $item, ['reason_id' => $custom->id, 'is_reviewed' => true])->assertSessionHasNoErrors()->assertSessionHas('success');
+    }
+
+    public function test_the_counts_refuse_a_switched_off_reason_and_rows_that_leave_fields_out(): void
+    {
+        [$opname, $item] = $this->opnameCounting($this->brush(), '8', ['status' => StockOpnameStatus::Counting]);
+        $inactive = $this->store->run(fn (): OpnameReason => OpnameReason::factory()->create(['is_active' => false]));
+        $counts = fn (array $row): TestResponse => $this->actingAs($this->admin)->put($this->url('counts', ['stock_opname' => $opname->id]), [
+            'counts' => [['item_id' => $item->id, 'parts' => [['unit_code' => 'PCS', 'quantity' => '8']], ...$row]],
+        ]);
+
+        $counts(['reason_id' => $inactive->id, 'note' => null])->assertSessionHasErrors(['counts.0.reason_id' => 'Alasan itu sudah dinonaktifkan.']);
+        $counts(['note' => null])->assertSessionHasErrors('counts.0.reason_id');
+        $counts(['reason_id' => null])->assertSessionHasErrors('counts.0.note');
+        $counts(['reason_id' => null, 'note' => null])->assertSessionHasNoErrors();
+    }
+
+    public function test_a_review_row_that_leaves_fields_out_is_refused_instead_of_failing(): void
+    {
+        [$opname, $item] = $this->opnameCounting($this->brush(), '8');
+
+        $this->actingAs($this->admin)->put($this->url('review', ['stock_opname' => $opname->id]), ['rows' => [['item_id' => $item->id, 'is_reviewed' => false]]])
+            ->assertSessionHasErrors(['rows.0.reason_id', 'rows.0.note', 'rows.0.dead_stock_quantity', 'rows.0.damaged_goods_quantity', 'rows.0.full_price_quantity', 'rows.0.damaged_goods_price']);
+    }
+
+    public function test_a_damaged_reason_is_only_for_an_opname_of_a_sellable_warehouse(): void
+    {
+        $deadStock = $this->store->run(fn (): Warehouse => Warehouse::query()->where('code', 'DEAD')->firstOrFail());
+        [$opname, $item] = $this->opnameCounting($this->brush(), '7', ['warehouse_id' => $deadStock->id]);
+
+        $this->review($opname, $item, ['reason_id' => $this->reasonId('Rusak')])
+            ->assertSessionHas('error', fn (string $message): bool => str_contains($message, 'Alasan Rusak hanya untuk opname gudang jual'));
+    }
+
+    public function test_the_dg_product_takes_the_modal_of_the_original_each_time_units_go_in(): void
+    {
+        $product = $this->brush();
+        $damagedGoods = app(DamagedGoodsService::class);
+        $twin = $this->store->run(fn (): Product => $damagedGoods->productFor($product, '5000'));
+        $this->assertSame('6000.00', $twin->cost_price);
+
+        $costsOfTwin = $this->store->run(function () use ($product, $damagedGoods): array {
+            Product::query()->whereKey($product->id)->update(['cost_price' => 6500]);
+            ProductUnit::query()->where('product_id', $product->id)->where('unit_code', 'PCS')->update(['cost_price' => 6500]);
+            ProductUnit::query()->where('product_id', $product->id)->where('unit_code', 'DUS')->update(['cost_price' => 78000]);
+
+            $twin = $damagedGoods->productFor(Product::query()->findOrFail($product->id), '5000')->load('productUnits');
+
+            return [$twin->cost_price, $twin->productUnits->pluck('cost_price', 'unit_code')->all()];
+        });
+
+        $this->assertSame(['6500.00', ['PCS' => '6500.00', 'DUS' => '78000.00']], $costsOfTwin);
     }
 
     public function test_damaged_goods_are_split_into_dead_stock_a_dg_product_and_full_price(): void

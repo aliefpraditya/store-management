@@ -72,6 +72,7 @@ class StockOpnameItemResource extends JsonResource
     {
         $damagedGoods = app(DamagedGoodsService::class);
         $baseUnit = $this->product->productUnits->firstWhere('is_base', true);
+        $context = $this->getAttribute('damaged_goods_context') ?? $damagedGoods->decisionContextFor(collect([$this->product]))[$this->product->id];
 
         return [
             'dead_stock_quantity' => $this->dead_stock_quantity,
@@ -81,8 +82,8 @@ class StockOpnameItemResource extends JsonResource
             'dead_stock_packs' => $this->dead_stock_packs,
             'damaged_goods_packs' => $this->damaged_goods_packs,
             'full_price_packs' => $this->full_price_packs,
-            'existing' => $damagedGoods->existingOf($this->product),
-            'damaged_goods_problem' => $damagedGoods->problemFor($this->product),
+            'existing' => $context['existing'],
+            'damaged_goods_problem' => $context['problem'],
             'damaged_goods_sku' => $damagedGoods->skuFor($this->product),
             'original_cost_price' => $baseUnit?->cost_price,
             'original_selling_price' => $baseUnit?->selling_price,
