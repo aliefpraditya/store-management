@@ -14,7 +14,6 @@ use Database\Seeders\StoreDatabaseSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -25,22 +24,12 @@ use Throwable;
  */
 class StoreProvisioner
 {
-    private const CHECK_CONNECTION = 'store_provisioning_check';
-
     private const LOCK_KEY_PREFIX = 'store-provisioning:';
 
     /** Longer than any single setup should take, so a crashed run cannot block retries for long. */
     private const LOCK_SECONDS = 600;
 
-    private const MAX_MESSAGE_LENGTH = 500;
-
-    /** MySQL driver error numbers a super admin can act on, with the advice to show. */
-    private const FAILURE_HINTS = [
-        1049 => 'Database belum dibuat di hPanel.',
-        1045 => 'Username atau password database salah.',
-        1044 => 'Username database tidak punya akses ke database ini.',
-        2002 => 'Server database tidak bisa dihubungi; periksa host database.',
-    ];
+    public function __construct(private readonly StoreConnectionChecker $connectionChecker) {}
 
     /**
      * @throws StoreProvisioningException when a step fails (the store is then marked as failed), the store is
@@ -126,14 +115,7 @@ class StoreProvisioner
             throw new RuntimeException('Database toko tidak boleh sama dengan database pusat.');
         }
 
-        config(['database.connections.'.self::CHECK_CONNECTION => $store->database()->connection()]);
-        DB::purge(self::CHECK_CONNECTION);
-
-        try {
-            DB::connection(self::CHECK_CONNECTION)->getPdo();
-        } finally {
-            DB::purge(self::CHECK_CONNECTION);
-        }
+        $this->connectionChecker->assertCanConnect($store);
     }
 
     private function migrate(Store $store): void
@@ -163,14 +145,8 @@ class StoreProvisioner
         return config('database.connections.'.config('tenancy.database.central_connection').'.database');
     }
 
-    /**
-     * Advice first when the database error is a known one, the raw error after it for whoever has to dig deeper.
-     */
     private function describeFailure(Throwable $exception): string
     {
-        $rawMessage = $exception->getMessage();
-        $hint = preg_match('/\[(\d{4})\]/', $rawMessage, $matches) === 1 ? (self::FAILURE_HINTS[(int) $matches[1]] ?? null) : null;
-
-        return Str::limit($hint === null ? $rawMessage : "{$hint} ({$rawMessage})", self::MAX_MESSAGE_LENGTH);
+        return $this->connectionChecker->describeFailure($exception);
     }
 }

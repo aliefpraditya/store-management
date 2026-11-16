@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Enums\StoreStatus;
+use App\Exceptions\StoreConnectionException;
 use App\Exceptions\StoreStatusException;
 use App\Models\Store;
 use Illuminate\Support\Arr;
+use PDOException;
 
 /**
  * Creates and changes store records. Preparing the store database is {@see StoreProvisioner}'s job.
@@ -17,6 +19,8 @@ class StoreService
     private const INFO_FIELDS = ['name', 'address', 'phone', 'receipt_prefix'];
 
     private const CONNECTION_FIELDS = ['db_username', 'db_host'];
+
+    public function __construct(private readonly StoreConnectionChecker $connectionChecker) {}
 
     /**
      * The store waits in `provisioning` until its database is prepared.
@@ -35,9 +39,12 @@ class StoreService
     /**
      * The code never changes, and the database name only changes while setup has not succeeded (afterwards it
      * would point at an empty database). The user, host and password can change at any time, since they get
-     * rotated in hPanel; a blank password keeps the current one.
+     * rotated in hPanel; a blank password keeps the current one. On a store that is already set up, changed
+     * credentials are tested first, because a wrong one would take the running store down.
      *
      * @param  StoreAttributes  $storeAttributes
+     *
+     * @throws StoreConnectionException when the changed credentials of a set-up store cannot connect
      */
     public function update(Store $store, array $storeAttributes): Store
     {
@@ -51,9 +58,27 @@ class StoreService
             $attributes['db_password'] = $storeAttributes['db_password'];
         }
 
-        $store->forceFill($attributes)->save();
+        $store->forceFill($attributes);
+
+        if (! $store->status->isAwaitingProvisioning() && $store->isDirty([...self::CONNECTION_FIELDS, 'db_password'])) {
+            $this->assertCanConnect($store);
+        }
+
+        $store->save();
 
         return $store;
+    }
+
+    /**
+     * @throws StoreConnectionException
+     */
+    private function assertCanConnect(Store $store): void
+    {
+        try {
+            $this->connectionChecker->assertCanConnect($store);
+        } catch (PDOException $exception) {
+            throw StoreConnectionException::withMessage($this->connectionChecker->describeFailure($exception), $exception);
+        }
     }
 
     /**

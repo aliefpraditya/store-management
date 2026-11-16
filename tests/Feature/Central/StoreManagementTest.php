@@ -392,26 +392,46 @@ class StoreManagementTest extends TestCase
         $this->assertSame(self::READY_DATABASE, $store->db_name);
     }
 
-    public function test_active_store_database_user_host_and_password_can_be_rotated(): void
+    public function test_active_store_database_user_and_host_can_be_changed_when_they_connect(): void
     {
-        $store = Store::factory()->create(['db_name' => self::READY_DATABASE, 'db_password' => 'lama-lama']);
-        $admin = $this->superAdmin();
+        $store = Store::factory()->create(['db_name' => self::READY_DATABASE, 'db_username' => 'u1_lama']);
 
-        $this->actingAs($admin)->put(route('central.stores.update', $store), $this->payload([
-            'db_name' => self::READY_DATABASE, 'db_username' => 'u1_putar', 'db_host' => '127.0.0.1', 'db_password' => 'sandi-baru',
+        $this->actingAs($this->superAdmin())->put(route('central.stores.update', $store), $this->payload([
+            'db_host' => '127.0.0.1',
         ]))->assertRedirect(route('central.stores.index'));
 
         $store->refresh();
-        $this->assertSame('u1_putar', $store->db_username);
+        $this->assertSame(config('database.connections.mysql.username'), $store->db_username);
         $this->assertSame('127.0.0.1', $store->db_host);
-        $this->assertSame('sandi-baru', $store->db_password);
         $this->assertSame(StoreStatus::Active, $store->status);
+    }
 
-        $this->actingAs($admin)->put(route('central.stores.update', $store), $this->payload([
-            'db_name' => self::READY_DATABASE, 'db_username' => 'u1_putar', 'db_password' => '',
-        ]));
+    public function test_active_store_credentials_that_cannot_connect_are_not_saved(): void
+    {
+        $store = Store::factory()->create(['db_name' => self::READY_DATABASE, 'db_password' => null]);
 
-        $this->assertSame('sandi-baru', $store->fresh()->db_password);
+        $this->actingAs($this->superAdmin())
+            ->from(route('central.stores.edit', $store))
+            ->put(route('central.stores.update', $store), $this->payload(['name' => 'Nama Baru', 'db_password' => 'sandi-salah']))
+            ->assertRedirect(route('central.stores.edit', $store))
+            ->assertSessionHas('error', fn (string $message): bool => str_contains($message, 'Toko tidak disimpan') && str_contains($message, 'Username atau password database salah.'));
+
+        $store->refresh();
+        $this->assertNotSame('Nama Baru', $store->name);
+        $this->assertNotSame('sandi-salah', $store->db_password);
+    }
+
+    public function test_the_connection_is_not_tested_when_only_store_info_changes(): void
+    {
+        $store = Store::factory()->create(['db_name' => self::READY_DATABASE, 'db_username' => 'u1_putus', 'db_password' => 'sandi-putus']);
+
+        $this->actingAs($this->superAdmin())->put(route('central.stores.update', $store), $this->payload([
+            'name' => 'Nama Baru', 'db_username' => 'u1_putus', 'db_password' => '',
+        ]))->assertRedirect(route('central.stores.index'));
+
+        $store->refresh();
+        $this->assertSame('Nama Baru', $store->name);
+        $this->assertSame('sandi-putus', $store->db_password);
     }
 
     public function test_failed_store_credentials_can_be_fixed_and_a_blank_password_is_kept(): void

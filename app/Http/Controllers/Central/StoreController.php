@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Central;
 
 use App\Enums\ProvisioningResult;
+use App\Exceptions\StoreConnectionException;
 use App\Exceptions\StoreProvisioningException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Central\SaveStoreRequest;
@@ -77,7 +78,11 @@ class StoreController extends Controller
 
     public function update(SaveStoreRequest $request, Store $store): RedirectResponse
     {
-        $this->storeService->update($store, $request->validated());
+        try {
+            $this->storeService->update($store, $request->validated());
+        } catch (StoreConnectionException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
 
         return redirect()->route('central.stores.index')->with('success', 'Toko disimpan.');
     }
