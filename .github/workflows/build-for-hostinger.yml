@@ -65,20 +65,30 @@ jobs:
           SSH_PORT: ${{ secrets.HOSTINGER_SSH_PORT }}
           SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
           SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          SSH_PASSWORD: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
           SSH_KNOWN_HOSTS: ${{ secrets.HOSTINGER_SSH_KNOWN_HOSTS }}
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
         run: |
-          if [ -z "$SSH_KEY" ] || [ -z "$SSH_HOST" ] || [ -z "$APP_PATH" ]; then
+          if [ -z "$SSH_HOST" ] || [ -z "$APP_PATH" ] || { [ -z "$SSH_KEY" ] && [ -z "$SSH_PASSWORD" ]; }; then
             echo "HOSTINGER_* secrets are not set: skipping the deploy and the migrations."
             exit 0
           fi
 
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
-          SSH_COMMAND="ssh -i $HOME/.ssh/deploy_key -p ${SSH_PORT:-22} -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o StrictHostKeyChecking=yes"
+          SSH_OPTIONS="-p ${SSH_PORT:-22} -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o StrictHostKeyChecking=yes"
+
+          # A key is preferred; the password is for a server where no key has been registered in hPanel.
+          if [ -n "$SSH_KEY" ]; then
+            printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            SSH_COMMAND="ssh -i $HOME/.ssh/deploy_key $SSH_OPTIONS"
+          else
+            sudo apt-get install -y -qq sshpass
+            export SSHPASS="$SSH_PASSWORD"
+            SSH_COMMAND="sshpass -e ssh -o PubkeyAuthentication=no $SSH_OPTIONS"
+          fi
 
           rsync -az --delete -e "$SSH_COMMAND" \
             --filter='P /.env' \
