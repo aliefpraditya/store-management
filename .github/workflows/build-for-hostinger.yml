@@ -1,6 +1,7 @@
-# Hostinger's Git deployment only pulls what is in the repository, and vendor/ and public/build are gitignored.
-# So CI installs the production dependencies, builds the frontend, and force-pushes the result to the `production`
-# branch, which Hostinger pulls. Pull requests only prove that the build works; nothing is pushed for them.
+# vendor/ and public/build are gitignored, so they cannot come from a Git pull on the server. CI installs the
+# production dependencies, builds the frontend, and copies the whole app to Hostinger over SSH (rsync), then runs the
+# migrations there. Nothing is pushed to another branch: main is the only branch. Pull requests only prove that the
+# build works; nothing is deployed for them.
 name: Build for Hostinger
 
 on:
@@ -12,13 +13,13 @@ on:
 
 concurrency:
   group: build-for-hostinger-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
 
     steps:
       - name: Check out the code
@@ -54,24 +55,10 @@ jobs:
       - name: Build the frontend
         run: npm run build
 
-      - name: Commit the build to the production branch
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        run: |
-          # Not needed on the server; also, a token without the `workflows` scope cannot push workflow files.
-          rm -rf .github tests docs node_modules
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git checkout --orphan production
-          git add -A
-          git add -f vendor public/build
-          git commit -m "Build ${GITHUB_SHA::7} for Hostinger" -m "Source commit: ${GITHUB_SHA}"
-          git push --force origin production
-
-      # Pulling and migrating happen in one SSH session on purpose: with a separate Git webhook the migrations could
-      # run before the new code has arrived. Needs the HOSTINGER_* secrets; without them this step is skipped.
-      - name: Update the server and run the migrations
+      # Needs the HOSTINGER_* secrets; without them this step is skipped. The `P` filters protect what only exists on
+      # the server (.env, storage contents, cache files, the storage link) from `--delete`, and `--exclude` keeps
+      # development files off the server (they are also left alone there).
+      - name: Copy the app to the server and run the migrations
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           SSH_HOST: ${{ secrets.HOSTINGER_SSH_HOST }}
@@ -82,7 +69,7 @@ jobs:
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
         run: |
           if [ -z "$SSH_KEY" ] || [ -z "$SSH_HOST" ] || [ -z "$APP_PATH" ]; then
-            echo "HOSTINGER_* secrets are not set: skipping the server update and the migrations."
+            echo "HOSTINGER_* secrets are not set: skipping the deploy and the migrations."
             exit 0
           fi
 
@@ -91,11 +78,23 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
+          SSH_COMMAND="ssh -i $HOME/.ssh/deploy_key -p ${SSH_PORT:-22} -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o StrictHostKeyChecking=yes"
+
+          rsync -az --delete -e "$SSH_COMMAND" \
+            --filter='P /.env' \
+            --filter='P /storage/***' \
+            --filter='P /bootstrap/cache/*.php' \
+            --filter='P /public/storage' \
+            --exclude='/.git/' \
+            --exclude='/.github/' \
+            --exclude='/node_modules/' \
+            --exclude='/tests/' \
+            --exclude='/docs/' \
+            ./ "$SSH_USER@$SSH_HOST:$APP_PATH/"
+
           # `migrate` is the central database, `tenants:migrate` every registered store database.
-          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" "$SSH_USER@$SSH_HOST" "set -e
+          $SSH_COMMAND "$SSH_USER@$SSH_HOST" "set -e
             cd '$APP_PATH'
-            git fetch origin production
-            git reset --hard origin/production
             php artisan migrate --force
             php artisan tenants:migrate --force
             php artisan optimize:clear"
