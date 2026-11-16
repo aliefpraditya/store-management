@@ -38,6 +38,22 @@ class StorePathTenancyTest extends TestCase
         $this->assertSame($central, config('queue.connections.database.connection'));
     }
 
+    public function test_each_store_connects_with_its_own_database_user_and_password(): void
+    {
+        $alpha = Store::factory()->create([
+            'db_name' => 'u111_store_alpha', 'db_username' => 'u111_alpha', 'db_password' => 'sandi-alpha', 'db_host' => '127.0.0.1',
+        ]);
+        $beta = Store::factory()->create([
+            'db_name' => 'u111_store_beta', 'db_username' => 'u111_beta', 'db_password' => 'sandi-beta', 'db_host' => '127.0.0.1',
+        ]);
+
+        $alphaConnection = $alpha->fresh()->database()->connection();
+        $betaConnection = $beta->fresh()->database()->connection();
+
+        $this->assertSame(['u111_store_alpha', 'u111_alpha', 'sandi-alpha'], [$alphaConnection['database'], $alphaConnection['username'], $alphaConnection['password']]);
+        $this->assertSame(['u111_store_beta', 'u111_beta', 'sandi-beta'], [$betaConnection['database'], $betaConnection['username'], $betaConnection['password']]);
+    }
+
     public function test_database_password_is_stored_encrypted(): void
     {
         $store = Store::factory()->create(['db_password' => 'rahasia-hpanel']);
