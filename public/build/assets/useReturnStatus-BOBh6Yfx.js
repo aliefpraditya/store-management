@@ -1,0 +1,1 @@
+var e={pending:`chip--warn`,completed:`chip--ok`,rejected:`chip--bad`};export{e as t};

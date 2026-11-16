@@ -1,0 +1,1 @@
+var e={draft:`chip--off`,shipped:`chip--warn`,delivered:`chip--ok`,partially_delivered:`chip--warn`,returned:`chip--bad`,cancelled:`chip--bad`};export{e as t};

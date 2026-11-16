@@ -1,0 +1,1 @@
+var e=new Intl.NumberFormat(`id-ID`,{maximumFractionDigits:2});function t(t){return e.format(Number(t))}function n(t){let n=Number(t);return`${n<0?`−`:``}Rp ${e.format(Math.abs(n))}`}function r(e){return n(-Math.abs(Number(e)))}export{t as n,n as r,r as t};

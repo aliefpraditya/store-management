@@ -1,0 +1,1 @@
+import{W as e,nt as t}from"./QBtn-CW39c_jO.js";function n(){let n=e();return(e,{title:r,message:i})=>{n.dialog({title:r,message:i,cancel:{label:`Batal`,flat:!0,noCaps:!0},ok:{label:`Hapus`,color:`negative`,unelevated:!0,noCaps:!0},persistent:!0}).onOk(()=>t.delete(e,{preserveScroll:!0}))}}export{n as t};

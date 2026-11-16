@@ -1,0 +1,1 @@
+import{Pt as e,Rt as t,Vt as n,ft as r,gt as i,tn as a,ut as o}from"./QBtn-CW39c_jO.js";var s={__name:`ThermalPageSize`,props:{width:{type:Number,required:!0}},setup(s){let c=s,l=o(()=>`@page { size: ${c.width}mm auto; margin: 0; }`);return(o,s)=>(e(),r(t(`style`),null,{default:n(()=>[i(a(l.value),1)]),_:1}))}};export{s as t};
