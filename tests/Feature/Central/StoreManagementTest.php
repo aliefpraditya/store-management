@@ -354,7 +354,7 @@ class StoreManagementTest extends TestCase
             ->assertSessionHasErrors('receipt_prefix');
     }
 
-    public function test_edit_form_hides_the_database_password_and_locks_an_active_store(): void
+    public function test_edit_form_hides_the_database_password_and_locks_the_database_name_of_an_active_store(): void
     {
         $store = Store::factory()->create(['db_password' => 'rahasia-hpanel']);
 
@@ -365,13 +365,13 @@ class StoreManagementTest extends TestCase
                 ->component('Central/Stores/Form')
                 ->where('store.code', $store->code)
                 ->where('store.has_db_password', true)
-                ->where('store.is_database_editable', false)
+                ->where('store.is_database_name_editable', false)
                 ->where('form_action.method', 'put')
                 ->missing('store.db_password')
             );
     }
 
-    public function test_active_store_info_can_change_but_code_and_database_cannot(): void
+    public function test_active_store_info_can_change_but_code_and_database_name_cannot(): void
     {
         $store = Store::factory()->create(['code' => 'mitra_utama', 'db_name' => self::READY_DATABASE]);
 
@@ -381,7 +381,6 @@ class StoreManagementTest extends TestCase
                 'code' => 'diganti',
                 'receipt_prefix' => 'mub',
                 'db_name' => 'store_dibelokkan',
-                'db_username' => 'orang_lain',
             ]))
             ->assertRedirect(route('central.stores.index'));
 
@@ -391,7 +390,28 @@ class StoreManagementTest extends TestCase
         $this->assertSame('MUB', $store->receipt_prefix);
         $this->assertSame('mitra_utama', $store->code);
         $this->assertSame(self::READY_DATABASE, $store->db_name);
-        $this->assertNotSame('orang_lain', $store->db_username);
+    }
+
+    public function test_active_store_database_user_host_and_password_can_be_rotated(): void
+    {
+        $store = Store::factory()->create(['db_name' => self::READY_DATABASE, 'db_password' => 'lama-lama']);
+        $admin = $this->superAdmin();
+
+        $this->actingAs($admin)->put(route('central.stores.update', $store), $this->payload([
+            'db_name' => self::READY_DATABASE, 'db_username' => 'u1_putar', 'db_host' => '127.0.0.1', 'db_password' => 'sandi-baru',
+        ]))->assertRedirect(route('central.stores.index'));
+
+        $store->refresh();
+        $this->assertSame('u1_putar', $store->db_username);
+        $this->assertSame('127.0.0.1', $store->db_host);
+        $this->assertSame('sandi-baru', $store->db_password);
+        $this->assertSame(StoreStatus::Active, $store->status);
+
+        $this->actingAs($admin)->put(route('central.stores.update', $store), $this->payload([
+            'db_name' => self::READY_DATABASE, 'db_username' => 'u1_putar', 'db_password' => '',
+        ]));
+
+        $this->assertSame('sandi-baru', $store->fresh()->db_password);
     }
 
     public function test_failed_store_credentials_can_be_fixed_and_a_blank_password_is_kept(): void

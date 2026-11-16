@@ -31,7 +31,7 @@ class StoreFormResource extends JsonResource
             'db_host' => $this->db_host,
             'has_db_password' => $this->getRawOriginal('db_password') !== null,
             'status' => ['value' => $this->status->value, 'label' => $this->status->label()],
-            'is_database_editable' => $this->status->isAwaitingProvisioning(),
+            'is_database_name_editable' => $this->status->isAwaitingProvisioning(),
         ];
     }
 }

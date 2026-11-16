@@ -9,7 +9,7 @@ use Illuminate\Validation\Rule;
 
 /**
  * Used for both adding (POST) and editing (PUT) a store; the store being edited is the `store` route
- * parameter. The code is only accepted when adding, and the database fields only while the store
+ * parameter. The code is only accepted when adding, and the database name only while the store
  * database has not been set up successfully.
  */
 class SaveStoreRequest extends FormRequest
@@ -46,19 +46,18 @@ class SaveStoreRequest extends FormRequest
         }
 
         if ($editedStore === null || $editedStore->status->isAwaitingProvisioning()) {
-            $rules += [
-                'db_name' => [
-                    'required', 'string', 'max:64', 'regex:/^[A-Za-z0-9_]+$/',
-                    Rule::unique('stores', 'db_name')->ignore($editedStore),
-                    Rule::notIn([$this->centralDatabaseName()]),
-                ],
-                'db_username' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9_.-]+$/'],
-                'db_password' => ['nullable', 'string', 'max:255'],
-                'db_host' => ['nullable', 'string', 'max:255', 'regex:/^[A-Za-z0-9.-]+$/'],
+            $rules['db_name'] = [
+                'required', 'string', 'max:64', 'regex:/^[A-Za-z0-9_]+$/',
+                Rule::unique('stores', 'db_name')->ignore($editedStore),
+                Rule::notIn([$this->centralDatabaseName()]),
             ];
         }
 
-        return $rules;
+        return $rules + [
+            'db_username' => ['required', 'string', 'max:64', 'regex:/^[A-Za-z0-9_.-]+$/'],
+            'db_password' => ['nullable', 'string', 'max:255'],
+            'db_host' => ['nullable', 'string', 'max:255', 'regex:/^[A-Za-z0-9.-]+$/'],
+        ];
     }
 
     /**

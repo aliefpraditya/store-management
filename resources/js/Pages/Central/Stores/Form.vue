@@ -11,7 +11,7 @@ const props = defineProps({
 const page = usePage();
 
 const isEditing = props.store !== null;
-const isDatabaseEditable = props.store?.is_database_editable ?? true;
+const isDatabaseNameEditable = props.store?.is_database_name_editable ?? true;
 
 const form = useForm({
     name: props.store?.name ?? '',
@@ -129,48 +129,47 @@ function submit() {
             <section class="store-form__section">
                 <h3>Database</h3>
 
-                <p v-if="!isDatabaseEditable" class="store-form__note">
-                    Database terkunci karena toko sudah disiapkan: <b>{{ store.db_name }}</b>.
+                <p v-if="!isDatabaseNameEditable" class="store-form__note">
+                    Nama database terkunci karena toko sudah disiapkan: <b>{{ store.db_name }}</b>. User, host, dan password masih bisa diubah.
                 </p>
                 <p v-else class="store-form__note">
                     Buat database dan user-nya dulu di hPanel. Aplikasi hanya menguji koneksi dan menyiapkan tabelnya.
                 </p>
 
-                <template v-if="isDatabaseEditable">
-                    <div class="store-form__row">
-                        <q-input
-                            v-model="form.db_name"
-                            label="Nama database"
-                            outlined
-                            :error="!!form.errors.db_name"
-                            :error-message="form.errors.db_name"
-                            @update:model-value="wasEditedByHand.db_name = true"
-                        />
-                        <q-input v-model="form.db_host" label="Host database" hint="Kosongkan untuk server bawaan" outlined :error="!!form.errors.db_host" :error-message="form.errors.db_host" />
-                    </div>
+                <div class="store-form__row">
+                    <q-input
+                        v-if="isDatabaseNameEditable"
+                        v-model="form.db_name"
+                        label="Nama database"
+                        outlined
+                        :error="!!form.errors.db_name"
+                        :error-message="form.errors.db_name"
+                        @update:model-value="wasEditedByHand.db_name = true"
+                    />
+                    <q-input v-model="form.db_host" label="Host database" hint="Kosongkan untuk server bawaan" outlined :error="!!form.errors.db_host" :error-message="form.errors.db_host" />
+                </div>
 
-                    <div class="store-form__row">
-                        <q-input v-model="form.db_username" label="User database" autocomplete="off" outlined :error="!!form.errors.db_username" :error-message="form.errors.db_username" />
-                        <q-input
-                            v-model="form.db_password"
-                            :type="isPasswordVisible ? 'text' : 'password'"
-                            label="Password database"
-                            :hint="store?.has_db_password ? 'Kosongkan jika tidak diubah' : undefined"
-                            autocomplete="new-password"
-                            outlined
-                            :error="!!form.errors.db_password"
-                            :error-message="form.errors.db_password"
-                        >
-                            <template #append>
-                                <q-icon
-                                    :name="isPasswordVisible ? 'visibility_off' : 'visibility'"
-                                    class="cursor-pointer"
-                                    @click="isPasswordVisible = !isPasswordVisible"
-                                />
-                            </template>
-                        </q-input>
-                    </div>
-                </template>
+                <div class="store-form__row">
+                    <q-input v-model="form.db_username" label="User database" autocomplete="off" outlined :error="!!form.errors.db_username" :error-message="form.errors.db_username" />
+                    <q-input
+                        v-model="form.db_password"
+                        :type="isPasswordVisible ? 'text' : 'password'"
+                        label="Password database"
+                        :hint="store?.has_db_password ? 'Kosongkan jika tidak diubah' : undefined"
+                        autocomplete="new-password"
+                        outlined
+                        :error="!!form.errors.db_password"
+                        :error-message="form.errors.db_password"
+                    >
+                        <template #append>
+                            <q-icon
+                                :name="isPasswordVisible ? 'visibility_off' : 'visibility'"
+                                class="cursor-pointer"
+                                @click="isPasswordVisible = !isPasswordVisible"
+                            />
+                        </template>
+                    </q-input>
+                </div>
             </section>
 
             <div class="store-form__actions">

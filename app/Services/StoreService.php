@@ -16,7 +16,7 @@ class StoreService
 {
     private const INFO_FIELDS = ['name', 'address', 'phone', 'receipt_prefix'];
 
-    private const DATABASE_FIELDS = ['db_name', 'db_username', 'db_host'];
+    private const CONNECTION_FIELDS = ['db_username', 'db_host'];
 
     /**
      * The store waits in `provisioning` until its database is prepared.
@@ -26,28 +26,29 @@ class StoreService
     public function create(array $storeAttributes): Store
     {
         return Store::query()->create([
-            ...Arr::only($storeAttributes, ['code', ...self::INFO_FIELDS, ...self::DATABASE_FIELDS]),
+            ...Arr::only($storeAttributes, ['code', 'db_name', ...self::INFO_FIELDS, ...self::CONNECTION_FIELDS]),
             'db_password' => $storeAttributes['db_password'] ?? null,
             'status' => StoreStatus::Provisioning,
         ]);
     }
 
     /**
-     * The code never changes. Database credentials only change while setup has not succeeded, and a
-     * blank password keeps the current one.
+     * The code never changes, and the database name only changes while setup has not succeeded (afterwards it
+     * would point at an empty database). The user, host and password can change at any time, since they get
+     * rotated in hPanel; a blank password keeps the current one.
      *
      * @param  StoreAttributes  $storeAttributes
      */
     public function update(Store $store, array $storeAttributes): Store
     {
-        $attributes = Arr::only($storeAttributes, self::INFO_FIELDS);
+        $attributes = Arr::only($storeAttributes, [...self::INFO_FIELDS, ...self::CONNECTION_FIELDS]);
 
         if ($store->status->isAwaitingProvisioning()) {
-            $attributes += Arr::only($storeAttributes, self::DATABASE_FIELDS);
+            $attributes += Arr::only($storeAttributes, ['db_name']);
+        }
 
-            if (filled($storeAttributes['db_password'] ?? null)) {
-                $attributes['db_password'] = $storeAttributes['db_password'];
-            }
+        if (filled($storeAttributes['db_password'] ?? null)) {
+            $attributes['db_password'] = $storeAttributes['db_password'];
         }
 
         $store->forceFill($attributes)->save();
