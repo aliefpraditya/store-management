@@ -1,0 +1,70 @@
+# Hostinger's Git deployment only pulls what is in the repository, and vendor/ and public/build are gitignored.
+# So CI installs the production dependencies, builds the frontend, and force-pushes the result to the `production`
+# branch, which Hostinger pulls. Pull requests only prove that the build works; nothing is pushed for them.
+name: Build for Hostinger
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-for-hostinger-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, ctype, json, bcmath, intl, pdo_mysql, zip
+          tools: composer:v2
+          coverage: none
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install PHP dependencies
+        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --no-progress
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Build the frontend
+        run: npm run build
+
+      - name: Commit the build to the production branch
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          # Not needed on the server; also, a token without the `workflows` scope cannot push workflow files.
+          rm -rf .github tests docs node_modules
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout --orphan production
+          git add -A
+          git add -f vendor public/build
+          git commit -m "Build ${GITHUB_SHA::7} for Hostinger" -m "Source commit: ${GITHUB_SHA}"
+          git push --force origin production
