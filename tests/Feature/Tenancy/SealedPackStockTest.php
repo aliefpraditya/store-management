@@ -7,8 +7,11 @@ use App\Enums\StockMovementType;
 use App\Enums\StockOpnameReason;
 use App\Enums\StockOpnameScope;
 use App\Enums\UserRole;
+use App\Exceptions\CustomerOrderException;
 use App\Exceptions\StockOpnameException;
 use App\Models\CashShift;
+use App\Models\CustomerOrder;
+use App\Models\CustomerOrderItem;
 use App\Models\OpnameReason;
 use App\Models\Product;
 use App\Models\ProductUnit;
@@ -20,6 +23,8 @@ use App\Models\StockOpnameItem;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\CashierCatalogService;
+use App\Services\CustomerOrderService;
 use App\Services\ProductService;
 use App\Services\SaleReturnService;
 use App\Services\SaleService;
@@ -324,6 +329,125 @@ class SealedPackStockTest extends TestCase
         $this->store->run(fn () => app(ProductService::class)->update($product->refresh(), $this->formOf($product, isSealedPack: false)));
 
         $this->assertSame(['quantity' => '450.000', 'intact_packs' => 0], $this->shelfOf($product));
+    }
+
+    public function test_changing_the_sealed_pack_unit_of_an_item_with_stock_leaves_movements_so_the_pack_chain_holds(): void
+    {
+        $product = $this->wireProduct('Kawat Lama', '450', 0);
+        $this->store->run(fn () => ProductUnit::query()->where('product_id', $product->id)->update(['is_sealed_pack' => false]));
+
+        $this->store->run(fn () => app(ProductService::class)->update($product, $this->formOf($product, isSealedPack: true)));
+        $this->store->run(fn () => app(ProductService::class)->update($product->refresh(), $this->formOf($product, isSealedPack: false)));
+
+        $movements = $this->store->run(fn () => StockMovement::query()->where('product_id', $product->id)->orderBy('id')->get());
+
+        $this->assertSame([[4, 4], [-4, 0]], $movements->map(fn (StockMovement $movement): array => [$movement->pack_change, $movement->packs_after])->all());
+        $this->assertSame(['0.000', '0.000'], $movements->map(fn (StockMovement $movement): string => (string) $movement->quantity)->all());
+        $this->assertSame([StockMovementType::OpnameAdjustment], $movements->pluck('type')->unique()->values()->all());
+    }
+
+    public function test_the_item_form_refuses_a_sealed_pack_that_is_not_bigger_than_the_base_unit(): void
+    {
+        $form = [...$this->formOf($this->wire, isSealedPack: true), 'sku' => 'KW-NEW', 'version' => null];
+        $form['units'][1]['conversion_factor'] = 1;
+
+        $this->actingAs($this->admin)
+            ->post(route('tenant.products.store', ['tenant' => $this->store->code]), $form)
+            ->assertSessionHasErrors(['units.1.is_sealed_pack']);
+    }
+
+    public function test_a_roll_set_aside_for_a_ready_order_is_not_sold_whole_to_someone_else(): void
+    {
+        $this->shelfIs('300', 2);
+        $this->orderOfRolls(2, isReady: true);
+
+        $this->sell([['ROL', 1]])->assertSessionHas('error', 'Kawat: ROL utuh tidak cukup, tersisa 0 ROL utuh. Sisanya potongan eceran, jual per satuan yang lebih kecil.');
+        $this->sell([['MTR', 100]])->assertSessionHas('last_sale');
+
+        $this->assertSame(['quantity' => '200.000', 'intact_packs' => 2], $this->shelfOf($this->wire));
+    }
+
+    public function test_the_order_that_set_the_rolls_aside_can_still_collect_them(): void
+    {
+        $this->shelfIs('300', 2);
+        $order = $this->orderOfRolls(2, isReady: true);
+
+        $this->actingAs($this->cashier)->post(route('tenant.cashier.sales.store', ['tenant' => $this->store->code]), [
+            'client_uuid' => (string) Str::uuid(),
+            'customer_order_id' => $order->id,
+            'payments' => [['method' => 'cash', 'amount' => 180000]],
+        ])->assertSessionHas('last_sale');
+
+        $this->assertSame(['quantity' => '100.000', 'intact_packs' => 0], $this->shelfOf($this->wire));
+    }
+
+    public function test_an_order_cannot_be_marked_arrived_when_other_ready_orders_hold_the_whole_rolls(): void
+    {
+        $this->shelfIs('300', 2);
+        $this->orderOfRolls(2, isReady: true);
+        $waiting = $this->orderOfRolls(1, isReady: false);
+
+        $this->expectException(CustomerOrderException::class);
+        $this->expectExceptionMessage('Kawat: ROL utuh belum cukup untuk pesanan ini, tersedia 0 ROL utuh.');
+
+        $this->store->run(fn () => app(CustomerOrderService::class)->markReady($waiting));
+    }
+
+    public function test_the_cashier_catalog_leaves_out_the_rolls_and_metres_set_aside_for_orders(): void
+    {
+        $this->orderOfRolls(1, isReady: true);
+        $this->assertSame(['stock' => '300.000', 'intact_packs' => 2], $this->catalogOfWire());
+
+        $this->shelfIs('400', 3);
+        $this->store->run(fn () => CustomerOrderItem::query()->update(['is_sealed_pack' => false, 'quantity' => 150, 'base_quantity' => 150]));
+
+        // 250 m can be sold, which holds 2 whole rolls: the screen must not claim 3 rolls and -50 m.
+        $this->assertSame(['stock' => '250.000', 'intact_packs' => 2], $this->catalogOfWire());
+    }
+
+    public function test_voiding_an_old_receipt_after_the_roll_unit_was_released_adds_no_whole_rolls(): void
+    {
+        $sale = $this->sellCod([['ROL', 1]], total: 90000);
+        $this->store->run(function (): void {
+            ProductUnit::query()->where('product_id', $this->wire->id)->update(['is_sealed_pack' => false]);
+            Stock::query()->where('product_id', $this->wire->id)->update(['intact_packs' => 0]);
+        });
+
+        $this->store->run(fn () => app(SaleVoidService::class)->void($sale, $this->cashier, 'Batal', null));
+
+        $this->assertSame(['quantity' => '400.000', 'intact_packs' => 0], $this->shelfOf($this->wire));
+    }
+
+    private function shelfIs(string $metres, int $wholeRolls): void
+    {
+        $this->store->run(fn () => Stock::query()->where('product_id', $this->wire->id)->update(['quantity' => $metres, 'intact_packs' => $wholeRolls]));
+    }
+
+    private function orderOfRolls(int $rolls, bool $isReady): CustomerOrder
+    {
+        return $this->store->run(function () use ($rolls, $isReady): CustomerOrder {
+            $orders = app(CustomerOrderService::class);
+            $order = $orders->create($this->shift, $this->cashier, [
+                'client_uuid' => (string) Str::uuid(),
+                'customer_name' => 'Pak Budi',
+                'customer_phone' => '08123456789',
+                'items' => [['product_unit_id' => $this->unitOf($this->wire, 'ROL')->id, 'quantity' => $rolls]],
+            ]);
+
+            return $isReady ? $orders->markReady($order) : $order;
+        });
+    }
+
+    /**
+     * @return array{stock: string, intact_packs: int|null}
+     */
+    private function catalogOfWire(): array
+    {
+        return $this->store->run(function (): array {
+            $item = app(CashierCatalogService::class)->search($this->mainWarehouse()->id, 'Kawat')[0];
+
+            return ['stock' => $item['stock'], 'intact_packs' => $item['intact_packs']];
+        });
     }
 
     public function test_the_item_form_refuses_the_base_unit_as_the_sealed_pack(): void

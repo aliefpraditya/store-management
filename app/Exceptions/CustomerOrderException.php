@@ -47,6 +47,14 @@ class CustomerOrderException extends Exception
         return new self("Stok {$productName} belum cukup untuk pesanan ini, tersedia {$availableText}. Masukkan barang yang datang lewat stok opname dulu.");
     }
 
+    /**
+     * The metres are there, but not as many whole packs (rolls) as the order asks for, after the ones other orders hold.
+     */
+    public static function packsNotInStock(string $productName, string $packUnitCode, int $freePacks): self
+    {
+        return new self("{$productName}: {$packUnitCode} utuh belum cukup untuk pesanan ini, tersedia {$freePacks} {$packUnitCode} utuh. Masukkan barang yang datang lewat stok opname dulu.");
+    }
+
     public static function shiftNeededForRefund(): self
     {
         return new self('Pesanan ini sudah menerima uang muka. Buka shift dulu untuk mengembalikannya. '.ShiftException::AWAITING_REVIEW_HINT);

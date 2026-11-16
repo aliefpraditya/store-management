@@ -13,6 +13,9 @@ use Brick\Math\RoundingMode;
  *
  * A sealed pack sold as such takes whole packs. Anything sold in a smaller unit takes loose pieces first and only then
  * opens a pack, because a pack that has been cut cannot be sold whole again. Taking more than there is throws.
+ *
+ * Whole packs that ready customer orders have set aside (`$reservedPacks`) are not there for anyone else: they can be
+ * neither sold whole nor opened for a smaller unit, so the order can still be collected as the packs it asked for.
  */
 final class SealedPackStock
 {
@@ -23,6 +26,7 @@ final class SealedPackStock
         private readonly string $productName,
         private readonly string $packUnitCode,
         private readonly string $baseUnitCode,
+        private readonly int $reservedPacks = 0,
     ) {}
 
     /**
@@ -32,8 +36,8 @@ final class SealedPackStock
      */
     public function takeSealedPacks(int $packs): int
     {
-        if ($packs > $this->intactPacks) {
-            throw SaleException::insufficientSealedPacks($this->productName, $this->packUnitCode, $this->intactPacks);
+        if ($packs > $this->freePacks()) {
+            throw SaleException::insufficientSealedPacks($this->productName, $this->packUnitCode, $this->freePacks());
         }
 
         $this->intactPacks -= $packs;
@@ -53,7 +57,7 @@ final class SealedPackStock
         $shortfall = $baseQuantity->minus($this->looseQuantity());
         $packsToOpen = $shortfall->isPositive() ? $shortfall->dividedBy($this->packConversion, 0, RoundingMode::Up)->toInt() : 0;
 
-        if ($packsToOpen > $this->intactPacks) {
+        if ($packsToOpen > $this->freePacks()) {
             throw SaleException::insufficientStock($this->productName, SaleException::quantityText($this->quantity, $this->baseUnitCode));
         }
 
@@ -61,6 +65,14 @@ final class SealedPackStock
         $this->quantity = $this->quantity->minus($baseQuantity);
 
         return -$packsToOpen;
+    }
+
+    /**
+     * @return int the whole packs nobody has set aside
+     */
+    public function freePacks(): int
+    {
+        return max(0, $this->intactPacks - $this->reservedPacks);
     }
 
     private function looseQuantity(): BigDecimal

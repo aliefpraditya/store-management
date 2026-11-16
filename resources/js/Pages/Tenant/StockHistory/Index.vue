@@ -104,7 +104,7 @@ watch([selectedProduct, warehouseId, from, to], () => applyFilters());
                         </td>
                         <td class="history__right">
                             <b>{{ formatQuantity(movement.balance_after) }}</b> {{ movement.base_unit }}
-                            <small v-if="movement.pack_unit" class="history__packs">
+                            <small v-if="movement.pack_unit && (movement.pack_change !== 0 || movement.packs_after > 0)" class="history__packs">
                                 {{ movement.packs_after }} {{ movement.pack_unit }} utuh<template v-if="movement.pack_change !== 0"> ({{ movement.pack_change > 0 ? '+' : '−' }}{{ Math.abs(movement.pack_change) }})</template>
                             </small>
                         </td>

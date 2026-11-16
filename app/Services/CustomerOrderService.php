@@ -101,7 +101,7 @@ class CustomerOrderService
     public function markReady(CustomerOrder $order): CustomerOrder
     {
         return DB::transaction(function () use ($order): CustomerOrder {
-            $lockedOrder = CustomerOrder::query()->with('items.product')->lockForUpdate()->findOrFail($order->id);
+            $lockedOrder = CustomerOrder::query()->with('items.product.productUnits')->lockForUpdate()->findOrFail($order->id);
 
             if ($lockedOrder->status !== OrderStatus::Ordered) {
                 throw CustomerOrderException::notOrderedYet($lockedOrder->status->label());
@@ -289,7 +289,7 @@ class CustomerOrderService
     private function recordLines(CustomerOrder $order, Collection $lines): void
     {
         foreach ($lines as $line) {
-            $order->items()->create(Arr::only($line['attributes'], ['product_id', 'product_unit_id', 'product_name', 'unit_name', 'quantity', 'conversion_snapshot', 'base_quantity', 'unit_price', 'subtotal']));
+            $order->items()->create(Arr::only($line['attributes'], ['product_id', 'product_unit_id', 'product_name', 'unit_name', 'quantity', 'conversion_snapshot', 'is_sealed_pack', 'base_quantity', 'unit_price', 'subtotal']));
         }
     }
 
@@ -324,6 +324,53 @@ class CustomerOrderService
 
             if ($required->isGreaterThan($available)) {
                 throw CustomerOrderException::goodsNotInStock($productItems->first()->product_name, SaleException::quantityText(BigDecimal::max($available, '0'), $productItems->first()->product->base_unit_code));
+            }
+        }
+
+        $this->requireWholePacksInStock($order, $itemsByProduct);
+    }
+
+    /**
+     * An order for rolls needs whole rolls, not just enough metres: the lines are laid on the shelf the way a sale would
+     * take them (rolls whole, smaller units from the loose pieces first), after the rolls other ready orders hold.
+     *
+     * @param  Collection<int, Collection<int, CustomerOrderItem>>  $itemsByProduct
+     *
+     * @throws CustomerOrderException
+     */
+    private function requireWholePacksInStock(CustomerOrder $order, Collection $itemsByProduct): void
+    {
+        $packProductIds = $itemsByProduct->filter(fn (Collection $productItems): bool => $productItems->first()->product->sealedPackUnit() !== null)->keys()->all();
+
+        if ($packProductIds === []) {
+            return;
+        }
+
+        $lockedStocks = $this->stockLedger->lockedStocks($packProductIds, $order->warehouse_id);
+        $reservedPacks = CustomerOrderItem::reservedPacks($order->warehouse_id, $packProductIds);
+
+        foreach ($packProductIds as $productId) {
+            $productItems = $itemsByProduct[$productId];
+            $product = $productItems->first()->product;
+            $packUnit = $product->sealedPackUnit();
+            $shelf = new SealedPackStock(
+                BigDecimal::of($lockedStocks[$productId]['quantity']),
+                $lockedStocks[$productId]['intact_packs'],
+                BigDecimal::of($packUnit->conversion_factor),
+                $product->name,
+                $packUnit->unit_code,
+                $product->base_unit_code,
+                $reservedPacks[$productId] ?? 0,
+            );
+
+            try {
+                foreach ($productItems as $item) {
+                    $item->is_sealed_pack
+                        ? $shelf->takeSealedPacks(BigDecimal::of((string) $item->quantity)->toInt())
+                        : $shelf->takeLoose(BigDecimal::of((string) $item->base_quantity));
+                }
+            } catch (SaleException) {
+                throw CustomerOrderException::packsNotInStock($product->name, $packUnit->unit_code, $shelf->freePacks());
             }
         }
     }

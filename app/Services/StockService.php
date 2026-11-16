@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\Stock;
 use App\Models\StockMovement;
 use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
@@ -117,15 +118,23 @@ class StockService
     /**
      * Starts counting whole packs for a product whose sealed pack unit was just set, changed or removed: each stock row is
      * given as many packs as fit in its quantity (a guess that the next opname corrects), or none when the product no
-     * longer has a sealed pack unit. Not a stock movement: the quantity does not change.
+     * longer has a sealed pack unit. The quantity does not change, but every row whose pack count does gets a movement of
+     * quantity 0, so the `packs_after` chain of the ledger stays unbroken.
      */
     public function resetIntactPacks(Product $product): void
     {
         $packConversion = $product->sealedPackUnit()?->conversion_factor;
+        $note = $packConversion === null ? 'Kemasan utuh tidak dihitung lagi (satuan kemasan dilepas)' : 'Hitungan kemasan utuh dimulai dari perkiraan (satuan kemasan diubah), dikoreksi opname berikutnya';
 
-        Stock::query()->where('product_id', $product->id)->update([
-            'intact_packs' => $packConversion === null ? 0 : DB::raw('floor(quantity / '.BigDecimal::of($packConversion).')'),
-        ]);
+        $stocks = Stock::query()->where('product_id', $product->id)->get(['product_id', 'warehouse_id', 'quantity', 'intact_packs']);
+
+        foreach ($stocks as $stock) {
+            $newPacks = $packConversion === null ? 0 : BigDecimal::of((string) $stock->quantity)->dividedBy($packConversion, 0, RoundingMode::Down)->toInt();
+
+            if ($newPacks !== (int) $stock->intact_packs) {
+                $this->record($product->id, $stock->warehouse_id, StockMovementType::OpnameAdjustment, '0', note: $note, packChange: $newPacks - (int) $stock->intact_packs);
+            }
+        }
     }
 
     /**

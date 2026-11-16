@@ -9,6 +9,7 @@ use App\Models\ProductUnit;
 use App\Models\SaleItem;
 use App\Models\Stock;
 use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Illuminate\Support\Collection;
 
 /**
@@ -137,6 +138,7 @@ class CashierCatalogService
     {
         $stocks = $this->stockOf($products, $warehouseId);
         $reserved = CustomerOrderItem::reservedQuantities($warehouseId, $products->modelKeys());
+        $reservedPacks = CustomerOrderItem::reservedPacks($warehouseId, $products->modelKeys());
         $countedProductIds = $this->settings->isSalesLockedDuringOpname() ? $this->stockOpnames->productIdsBeingCounted($warehouseId, $products->modelKeys()) : [];
 
         return $products->map(fn (Product $product): array => [
@@ -144,9 +146,9 @@ class CashierCatalogService
             'sku' => $product->sku,
             'name' => $product->name,
             'base_unit' => $product->base_unit_code,
-            'stock' => (string) BigDecimal::max(BigDecimal::of((string) ($stocks[$product->id]->quantity ?? '0'))->minus($reserved[$product->id] ?? '0'), '0')->toScale(3),
+            'stock' => (string) $this->sellableQuantity($stocks[$product->id] ?? null, $reserved[$product->id] ?? '0')->toScale(3),
             'reserved' => (string) BigDecimal::of($reserved[$product->id] ?? '0')->toScale(3),
-            'intact_packs' => $product->sealedPackUnit() === null ? null : (int) ($stocks[$product->id]->intact_packs ?? 0),
+            'intact_packs' => $this->sellableIntactPacks($product, $stocks[$product->id] ?? null, $reserved[$product->id] ?? '0', $reservedPacks[$product->id] ?? 0),
             'units' => $product->productUnits->map(fn (ProductUnit $unit): array => [
                 'id' => $unit->id,
                 'code' => $unit->unit_code,
@@ -157,6 +159,30 @@ class CashierCatalogService
             ])->values()->all(),
             'is_being_counted' => in_array($product->id, $countedProductIds, true),
         ])->values()->all();
+    }
+
+    private function sellableQuantity(?Stock $stock, string $reservedQuantity): BigDecimal
+    {
+        return BigDecimal::max(BigDecimal::of((string) ($stock->quantity ?? '0'))->minus($reservedQuantity), '0');
+    }
+
+    /**
+     * The whole packs a cashier can still sell as packs: not the ones ready orders hold, and no more than the sellable
+     * quantity holds, so that `stock - packs x conversion` (the loose pieces the screen shows) is never negative.
+     *
+     * @return int|null null for a product without a sealed pack unit
+     */
+    private function sellableIntactPacks(Product $product, ?Stock $stock, string $reservedQuantity, int $reservedPacks): ?int
+    {
+        $packUnit = $product->sealedPackUnit();
+
+        if ($packUnit === null) {
+            return null;
+        }
+
+        $fittingPacks = $this->sellableQuantity($stock, $reservedQuantity)->dividedBy($packUnit->conversion_factor, 0, RoundingMode::Down)->toInt();
+
+        return max(0, min((int) ($stock->intact_packs ?? 0) - $reservedPacks, $fittingPacks));
     }
 
     /**

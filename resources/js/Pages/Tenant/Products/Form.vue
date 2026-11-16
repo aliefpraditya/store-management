@@ -183,13 +183,31 @@ function ensureDefaultIsSellable() {
 
 /**
  * Only one unit can be the sealed pack (the roll that cannot be put back together once cut), so choosing one clears the others.
+ * An item that already has stock or transactions has its whole-pack count worked out from the quantity, a guess that cannot
+ * tell rolls from loose leftovers, so the admin confirms first and is pointed to a stock opname to correct it.
  * @param {number} index
  * @param {boolean} isSealedPack
  */
 function chooseSealedPack(index, isSealedPack) {
-    form.units.forEach((row, rowIndex) => {
-        row.is_sealed_pack = isSealedPack && rowIndex === index;
-    });
+    const applyChoice = () => {
+        form.units.forEach((row, rowIndex) => {
+            row.is_sealed_pack = isSealedPack && rowIndex === index;
+        });
+    };
+
+    if (!isLocked) {
+        applyChoice();
+
+        return;
+    }
+
+    $q.dialog({
+        title: 'Ubah kemasan utuh?',
+        message: 'Barang ini sudah punya stok atau transaksi. Jumlah kemasan utuh (mis. ROL) akan diperkirakan dari stok yang ada dan belum tentu sama dengan yang ada di rak. Setelah disimpan, lakukan stok opname untuk mencocokkannya.',
+        cancel: { label: 'Batal', flat: true, noCaps: true },
+        ok: { label: 'Ubah', color: 'primary', unelevated: true, noCaps: true },
+        persistent: true,
+    }).onOk(applyChoice);
 }
 
 function addUnit() {

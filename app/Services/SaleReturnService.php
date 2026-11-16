@@ -469,7 +469,7 @@ class SaleReturnService
      */
     private function lockedPending(SaleReturn $saleReturn, string $action): SaleReturn
     {
-        $saleReturn = SaleReturn::query()->with(['items', 'sale'])->lockForUpdate()->findOrFail($saleReturn->id);
+        $saleReturn = SaleReturn::query()->with(['items.saleItem.productUnit', 'sale'])->lockForUpdate()->findOrFail($saleReturn->id);
 
         if ($saleReturn->status !== SaleReturnStatus::Pending) {
             throw SaleReturnException::wrongStatus($action, $saleReturn->status->label());

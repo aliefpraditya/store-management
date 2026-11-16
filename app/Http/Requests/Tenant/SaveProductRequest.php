@@ -187,6 +187,8 @@ class SaveProductRequest extends FormRequest
             $validator->errors()->add('units.0.is_sealed_pack', 'Satuan dasar tidak bisa jadi kemasan utuh: itu satuan potongannya.');
         } elseif (! $this->unitRows()[$index]['is_sellable']) {
             $validator->errors()->add("units.{$index}.is_sealed_pack", 'Kemasan utuh harus satuan yang bisa dijual.');
+        } elseif ((float) ($this->unitRows()[$index]['conversion_factor'] ?? 0) <= 1) {
+            $validator->errors()->add("units.{$index}.is_sealed_pack", 'Kemasan utuh harus lebih besar dari satuan dasar (konversi di atas 1).');
         }
     }
 

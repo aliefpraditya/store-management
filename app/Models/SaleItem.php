@@ -42,10 +42,32 @@ class SaleItem extends Model
     /**
      * How many whole sealed packs `$quantity` of this line's unit holds: what goes back into the intact packs when that much
      * is voided or returned. Zero for a line not sold in a sealed pack unit; anything beyond whole packs comes back loose.
+     *
+     * The line only counts as a pack while its unit is still the product's sealed pack unit with the same conversion: after
+     * the pack unit was moved, released or re-converted, the stock row no longer counts packs of that size, and adding them
+     * would make `intact_packs x conversion` exceed the quantity. Load `productUnit` first to avoid one query per line.
      */
     public function wholePacksIn(string $quantity): int
     {
-        return $this->is_sealed_pack ? BigDecimal::of($quantity)->toScale(0, RoundingMode::Down)->toInt() : 0;
+        if (! $this->is_sealed_pack || ! $this->isStillSealedPackUnit()) {
+            return 0;
+        }
+
+        return BigDecimal::of($quantity)->toScale(0, RoundingMode::Down)->toInt();
+    }
+
+    private function isStillSealedPackUnit(): bool
+    {
+        return $this->productUnit?->is_sealed_pack === true
+            && BigDecimal::of((string) $this->productUnit->conversion_factor)->isEqualTo((string) $this->conversion_snapshot);
+    }
+
+    /**
+     * @return BelongsTo<ProductUnit, $this>
+     */
+    public function productUnit(): BelongsTo
+    {
+        return $this->belongsTo(ProductUnit::class);
     }
 
     /**

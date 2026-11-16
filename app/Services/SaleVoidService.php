@@ -45,7 +45,7 @@ class SaleVoidService
         return DB::transaction(function () use ($sale, $voider, $reason, $refundAccount): Sale {
             DailyClosing::lockAgainstClosing();
 
-            $lockedSale = Sale::query()->with(['items', 'payments'])->lockForUpdate()->findOrFail($sale->id);
+            $lockedSale = Sale::query()->with(['items.productUnit', 'payments'])->lockForUpdate()->findOrFail($sale->id);
             $lockedSale->setRelation('deliveryNotes', $this->deliveryNotes->lockedNotesOf($lockedSale));
 
             $this->requireVoidable($lockedSale);

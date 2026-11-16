@@ -76,7 +76,7 @@ class SaleService
 
             $this->requireNoOpnameLock($lines, $warehouseId);
             $this->requireStock($lines, $warehouseId, $collectedOrder?->id);
-            $packChanges = $this->planPackChanges($lines, $warehouseId);
+            $packChanges = $this->planPackChanges($lines, $warehouseId, $collectedOrder?->id);
 
             $total = $this->cartPricer->totalOf($lines);
             $payments = $saleInput['payments'] ?? [];
@@ -331,14 +331,15 @@ class SaleService
      * For products with a sealed pack unit (a roll of wire), the total in the base unit being enough is not enough: whole
      * packs can only be sold while whole packs are left, and a smaller unit opens a pack once the loose pieces run out. This
      * works out, line by line in cart order, how many whole packs each line takes off the stock, and refuses a line the
-     * packs cannot cover. The stock rows are already locked by {@see self::requireStock()}.
+     * packs cannot cover. The stock rows are already locked by {@see self::requireStock()}. Packs that other ready orders
+     * have set aside are not counted as there (the order being collected, `$collectedOrderId`, may take its own).
      *
      * @param  Collection<int, array{product: Product, product_id: int, product_name: string, base_unit_code: string, base_quantity: string, is_sealed_pack: bool, attributes: array<string, mixed>}>  $lines
      * @return array<int, int> change in whole packs (zero or negative) by line index, for the lines of products that have a sealed pack unit
      *
      * @throws SaleException
      */
-    private function planPackChanges(Collection $lines, int $warehouseId): array
+    private function planPackChanges(Collection $lines, int $warehouseId, ?int $collectedOrderId): array
     {
         $productIds = $lines->filter(fn (array $line): bool => $line['product']->sealedPackUnit() !== null)->pluck('product_id')->unique()->sort()->values()->all();
 
@@ -347,6 +348,7 @@ class SaleService
         }
 
         $lockedStocks = $this->stockLedger->lockedStocks($productIds, $warehouseId);
+        $reservedPacks = CustomerOrderItem::reservedPacks($warehouseId, $productIds, $collectedOrderId);
         $shelves = [];
         $packChanges = [];
 
@@ -365,6 +367,7 @@ class SaleService
                 $line['product_name'],
                 $packUnit->unit_code,
                 $line['base_unit_code'],
+                $reservedPacks[$productId] ?? 0,
             );
 
             $packChanges[$index] = $line['is_sealed_pack']
