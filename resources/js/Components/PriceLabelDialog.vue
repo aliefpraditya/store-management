@@ -17,7 +17,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue']);
 
-const { width, height, columns, labelWidth, problem: stockProblem, save: saveStock } = useLabelStock('price-label-size', () => props.limits);
+const { width, height, columns, problem: stockProblem, save: saveStock } = useLabelStock('price-label-size', () => props.limits);
 
 /** @type {import('vue').Ref<{id: number, product_id: number, name: string, sku: string, unit: string, price: string, is_base: boolean}[]>} */
 const units = ref([]);
@@ -180,7 +180,7 @@ function print() {
             <q-card-section class="labels__size">
                 <q-input v-model.number="width" type="number" min="1" outlined dense label="Lebar stok" suffix="mm" />
                 <q-input v-model.number="height" type="number" min="1" outlined dense label="Tinggi stok" suffix="mm" />
-                <q-input v-model.number="columns" type="number" min="1" :max="limits.max_columns" outlined dense label="Label ke samping" :hint="labelWidth ? `Tiap label ${labelWidth} mm` : undefined" />
+                <q-input v-model.number="columns" type="number" min="1" :max="limits.max_columns" outlined dense label="Label ke samping" />
             </q-card-section>
 
             <q-card-actions class="labels__actions">

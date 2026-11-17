@@ -45,9 +45,6 @@ export function useLabelStock(storageKey, limits) {
 
     const areColumnsValid = computed(() => Number.isInteger(columns.value) && columns.value >= 1 && columns.value <= limits().max_columns);
 
-    /** The width of one sticker, once the columns make sense. */
-    const labelWidth = computed(() => (areColumnsValid.value ? Math.round((width.value / columns.value) * 10) / 10 : null));
-
     /** What is wrong with the size or the columns, in words for the user; null when both are fine. */
     const problem = computed(() => {
         const { min_width, max_width, min_height, max_height, max_columns } = limits();
@@ -67,5 +64,5 @@ export function useLabelStock(storageKey, limits) {
         }
     }
 
-    return { width, height, columns, labelWidth, problem, save };
+    return { width, height, columns, problem, save };
 }
