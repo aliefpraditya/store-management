@@ -73,7 +73,7 @@ class DeliveryNoteController extends Controller
         $sale = $request->integer('sale') ? Sale::query()->with('items')->find($request->integer('sale')) : null;
 
         return Inertia::render('Tenant/DeliveryNotes/Create', [
-            'sale' => $sale === null ? null : $this->saleOption($sale),
+            'sale' => $sale === null ? null : $this->saleOption($sale, $this->noteService->deliverableLines($sale)),
             'urls' => [
                 'index' => route('tenant.delivery-notes.index', ['tenant' => tenant('code')]),
                 'store' => route('tenant.delivery-notes.store', ['tenant' => tenant('code')]),
@@ -88,12 +88,10 @@ class DeliveryNoteController extends Controller
      */
     public function sales(Request $request): JsonResponse
     {
-        $sales = $this->noteService
-            ->deliverableSales($request->string('q')->trim()->toString(), self::SALE_LOOKUP_LIMIT)
-            ->map(fn (Sale $sale): array => $this->saleOption($sale))
-            ->values();
+        $sales = $this->noteService->deliverableSales($request->string('q')->trim()->toString(), self::SALE_LOOKUP_LIMIT);
+        $linesBySaleId = $this->noteService->deliverableLinesOf($sales);
 
-        return response()->json(['data' => $sales]);
+        return response()->json(['data' => $sales->map(fn (Sale $sale): array => $this->saleOption($sale, $linesBySaleId[$sale->id]))->values()]);
     }
 
     public function store(SaveDeliveryNoteRequest $request): RedirectResponse
@@ -159,16 +157,17 @@ class DeliveryNoteController extends Controller
     }
 
     /**
+     * @param  list<array<string, mixed>>  $deliverableLines
      * @return array{id: int, number: string, sold_at: string, customer_name: string|null, lines: list<array<string, mixed>>}
      */
-    private function saleOption(Sale $sale): array
+    private function saleOption(Sale $sale, array $deliverableLines): array
     {
         return [
             'id' => $sale->id,
             'number' => $sale->number,
             'sold_at' => $sale->sold_at->toIso8601String(),
             'customer_name' => $sale->customer_name,
-            'lines' => $this->noteService->deliverableLines($sale),
+            'lines' => $deliverableLines,
         ];
     }
 

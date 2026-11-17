@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * One row of the delivery note list. Expects `sale` and the `items_count` count.
+ * One row of the delivery note list. Expects `sale`, `sales` and the `items_count` count.
  *
  * @mixin DeliveryNote
  */
@@ -26,6 +26,7 @@ class DeliveryNoteListResource extends JsonResource
             'status_label' => $this->status->label(),
             'recipient_name' => $this->recipient_name,
             'sale_number' => $this->sale->number,
+            'other_sale_numbers' => $this->sales->pluck('number')->reject(fn (string $number): bool => $number === $this->sale->number)->values()->all(),
             'items_count' => $this->getAttribute('items_count'),
             'show_url' => route('tenant.delivery-notes.show', ['tenant' => tenant('code'), 'delivery_note' => $this->id]),
         ];

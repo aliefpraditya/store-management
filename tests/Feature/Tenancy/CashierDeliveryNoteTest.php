@@ -58,7 +58,7 @@ class CashierDeliveryNoteTest extends TestCase
      */
     private function body(SaleItem $item, int|float $quantity, array $overrides = []): array
     {
-        return ['client_uuid' => (string) Str::uuid(), 'recipient_name' => 'Pak Budi', 'recipient_phone' => '0812', 'recipient_address' => 'Jl. Mawar 5', 'driver_name' => 'Joko', 'vehicle_number' => 'B 1', 'items' => [['sale_item_id' => $item->id, 'quantity' => $quantity]], ...$overrides];
+        return ['client_uuid' => (string) Str::uuid(), 'recipient_name' => 'Pak Budi', 'recipient_phone' => '0812', 'recipient_address' => 'Jl. Mawar 5', 'items' => [['sale_item_id' => $item->id, 'quantity' => $quantity]], ...$overrides];
     }
 
     private function noteCount(): int

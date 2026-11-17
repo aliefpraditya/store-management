@@ -29,14 +29,19 @@ const saleOptions = ref([]);
 let latestSearchId = 0;
 
 /**
- * Picks the receipt: the recipient defaults to the receipt's customer, and every line starts at what is still left
- * to deliver.
+ * Picks the receipt: the recipient defaults to the receipt's customer, and every line of the receipt starts at what is
+ * still left to deliver. A line of the receipt linked to it (made together with the order this receipt collected) starts
+ * at 0, so goods of another receipt only go out on this note when the admin chooses so.
  */
 function chooseSale(sale) {
     chosenSale.value = sale;
     form.sale_id = sale?.id ?? null;
     form.recipient_name = sale?.customer_name ?? '';
-    form.items = (sale?.lines ?? []).map((line) => ({ sale_item_id: line.id, quantity: Number(line.remaining) }));
+    form.items = (sale?.lines ?? []).map((line) => ({ sale_item_id: line.id, quantity: isOfChosenSale(line, sale) ? Number(line.remaining) : 0 }));
+}
+
+function isOfChosenSale(line, sale = chosenSale.value) {
+    return line.sale_number === sale?.number;
 }
 
 if (props.sale) {
@@ -124,7 +129,7 @@ function submit() {
 
                 <section class="card">
                     <h2>Barang yang diantar</h2>
-                    <p class="hint">Isi jumlah yang diantar kali ini. Biarkan 0 untuk barang yang tidak ikut.</p>
+                    <p class="hint">Isi jumlah yang diantar kali ini. Biarkan 0 untuk barang yang tidak ikut. Barang bertanda "dari nota" milik nota lain: isi bila ikut diantar sekalian.</p>
                     <p v-if="form.errors.items" class="error">{{ form.errors.items }}</p>
 
                     <table class="lines">
@@ -133,7 +138,10 @@ function submit() {
                         </thead>
                         <tbody>
                             <tr v-for="(line, index) in lines" :key="line.id">
-                                <td>{{ line.name }}</td>
+                                <td>
+                                    {{ line.name }}
+                                    <small v-if="!isOfChosenSale(line)" class="lines__origin">dari nota {{ line.sale_number }}</small>
+                                </td>
                                 <td class="lines__right">{{ formatQuantity(line.quantity) }} {{ line.unit }}</td>
                                 <td class="lines__right">{{ formatQuantity(line.remaining) }} {{ line.unit }}</td>
                                 <td class="lines__qty">
@@ -223,6 +231,12 @@ function submit() {
 .lines td {
     padding: 8px 0;
     border-bottom: 1px solid var(--app-line);
+}
+
+.lines .lines__origin {
+    display: block;
+    color: var(--app-mute);
+    font-size: 12px;
 }
 
 .lines .lines__right {

@@ -31,7 +31,7 @@ use Illuminate\Support\Str;
  * @phpstan-import-type PricedLine from CartPricer
  *
  * @phpstan-type SalePaymentInput array{method: string, amount: numeric-string|float|int, reference?: string|null}
- * @phpstan-type DeliveryNoteInput array{recipient_name?: string|null, recipient_address?: string|null, recipient_phone?: string|null, driver_name?: string|null, vehicle_number?: string|null, notes?: string|null, include_linked_sale_items?: bool|null}
+ * @phpstan-type DeliveryNoteInput array{recipient_name?: string|null, recipient_address?: string|null, recipient_phone?: string|null, notes?: string|null, include_linked_sale_items?: bool|null}
  * @phpstan-type SaleData array{client_uuid: string, customer_name?: string|null, items?: list<CartLine>, payments?: list<SalePaymentInput>, delivery_note?: DeliveryNoteInput|null, hold_delivery?: bool|null, customer_order_id?: int|null}
  */
 class SaleService

@@ -120,7 +120,7 @@ class StoreSettingService
      * otherwise both try to create the same key and one of them would fail on the unique key. The values are then
      * written as updates, so the audit trail keeps recording each change.
      *
-     * @param  array{receipt_name?: string|null, receipt_address?: string|null, receipt_phone?: string|null, receipt_footer?: string|null, paper_width: int|string, large_variance_threshold?: string|int|float|null, lock_sales_during_opname: bool, auto_print_receipt?: bool|null}  $settings
+     * @param  array{receipt_name?: string|null, receipt_address?: string|null, receipt_phone?: string|null, receipt_footer?: string|null, paper_width: int|string, large_variance_threshold?: string|int|float|null, lock_sales_during_opname: bool, auto_print_receipt: bool}  $settings
      */
     public function update(array $settings): void
     {

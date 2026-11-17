@@ -148,7 +148,7 @@ Toko
 | D27 | Master barang per toko | Input barang **cukup per toko**; katalog pusat, publish, dan replikasi **dihapus** (bukan ditunda). Lintas toko (cek stok Master, transfer antar-toko kelak) dicocokkan lewat `sku` | ✔ Anda |
 | D28 | Stok opname di R1 | Opname **masuk R1** sebagai alat pengaturan stok (hitung fisik, selisih, alasan, posting Admin); di R1 nilai selisih memakai harga beli terakhir (estimasi) | ✔ Anda |
 | D29 | Penerimaan di R1 | **Tidak ada** (dipindah ke R2 bersama pembelian). Stok bertambah murni lewat **stok opname**, plus retur/void/import saldo awal. Harga beli diisi manual di Form Harga | ✔ Anda |
-| D30 | Surat jalan | Dokumen pengantaran yang merujuk **nota** (penerima, alamat, sopir/kendaraan, item & qty kirim, status). **Tidak mengubah stok** (stok sudah berkurang saat nota); barang pulang diselesaikan lewat Retur | ✔ Anda; mekanisme = usul |
+| D30 | Surat jalan | Dokumen pengantaran yang merujuk **nota** (penerima, alamat, item & qty kirim, status; sopir dipilih dari daftar sopir toko saat *Tandai Dikirim*, kendaraan tidak dipakai). Satu surat jalan punya satu nota pemilik, tetapi boleh membawa barang nota lain yang dibuat bersama pesanan yang diambil. **Tidak mengubah stok** (stok sudah berkurang saat nota); barang pulang diselesaikan lewat Retur | ✔ Anda; mekanisme = usul |
 | D31 | Tutup hari | Penutupan akhir hari oleh Admin: semua shift tutup + selisih diputuskan → snapshot laporan harian dan **penguncian** transaksi tanggal itu; buka kembali hanya Super Admin | ✔ Anda; mekanisme = usul |
 | D32 | Pengeluaran | Catatan pengeluaran operasional per kategori; bersumber **laci kasir** (mengurangi tunai seharusnya, butuh shift terbuka) atau **lainnya** (tidak memengaruhi kas shift). Menggantikan konsep "kas masuk/keluar" | ✔ Anda; mekanisme = usul |
 | D35 | **Kemasan utuh (sealed pack)** | Barang yang kemasannya tidak bisa disambung lagi setelah dipotong (rol kawat, kabel, selang, kain) menandai satu satuannya `is_sealed_pack`. Stok tetap **satu angka dalam satuan dasar**, ditambah hitungan **rol utuh** (`stocks.intact_packs`); sisa eceran = stok − rol utuh × konversi (diturunkan, tidak disimpan). Jual satuan kemasan hanya sampai rol utuh yang tersisa, jual satuan lebih kecil mengambil eceran dulu dan baru **membuka rol** (utuh berkurang) bila eceran habis. Tidak berlaku untuk barang lain (dus sabun isi 12 tetap satu angka). Lacak sisa per rol (lot) tidak dibuat di R1 | ✔ Anda (5 Nov 2026); mekanisme = usul |
@@ -841,10 +841,10 @@ flowchart TD
 flowchart TD
     subgraph KS["Kasir / Admin"]
         K1(["Nota selesai, barang akan diantar"]) --> K2["Pilih Buat surat jalan dari layar bayar atau Riwayat Nota"]
-        K2 --> K3["Isi penerima, telepon, alamat, sopir, no. kendaraan"]
+        K2 --> K3["Isi penerima, telepon, alamat (sopir tidak ditanya di sini)"]
         K3 --> K4["Pilih item dan qty kirim (maksimal sisa yang belum disuratjalankan)"]
         K5["Simpan dan cetak surat jalan"]
-        K6["Perbarui status: dikirim, diterima, sebagian pulang, pulang semua"]
+        K6["Admin memperbarui status: dikirim (pilih sopir), diterima, sebagian pulang, pulang semua"]
     end
     subgraph SYS["Sistem"]
         S1{"Nota selesai dan qty kirim tidak melebihi sisa baris nota?"}
@@ -1472,18 +1472,20 @@ erDiagram
     sales ||--o{ delivery_notes : "delivered via"
     delivery_notes ||--|{ delivery_note_items : "lines"
     sale_items ||--o{ delivery_note_items : "delivered as"
+    delivery_notes ||--|{ delivery_note_sales : "carries goods of"
+    sales ||--o{ delivery_note_sales : "has goods on"
 
     delivery_notes {
         bigint id PK
         string number UK "SJ/MU/2610/0001"
-        bigint sale_id FK
+        bigint sale_id FK "receipt that owns the note"
         date business_date
         enum status "draft, shipped, delivered, partially_delivered, returned, cancelled"
         string recipient_name
         string recipient_phone
         text recipient_address
-        string driver_name
-        string vehicle_number
+        string driver_name "name snapshot of the driver chosen at Tandai Dikirim"
+        string vehicle_number "not asked anymore, only on older notes"
         datetime shipped_at
         datetime completed_at
         text notes
@@ -1502,6 +1504,15 @@ erDiagram
         decimal quantity "to deliver, sale unit"
         decimal quantity_delivered
         decimal quantity_returned "info only, stock restored via sale return"
+    }
+    delivery_note_sales {
+        bigint delivery_note_id PK, FK
+        bigint sale_id PK, FK "every receipt with goods on the note, the owner included"
+    }
+    drivers {
+        bigint id PK
+        string name UK
+        boolean is_active
     }
 ```
 
@@ -1892,20 +1903,20 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 
 **Tujuan:** dokumen pengantaran barang untuk nota yang barangnya diantar ke pelanggan (mengikuti `delivery_orders` lama: penerima, alamat, status antar, jumlah antar/terantar/pulang).
 
-**Layar:** Daftar Surat Jalan (filter status/tanggal) · Form Surat Jalan (dibuat dari nota) · Cetak · Perbarui Status. Di layar kasir: opsi **Buat surat jalan** setelah pembayaran dan tombol *Surat Jalan*; di Riwayat Nota: aksi *Surat jalan*.
-**Header:** nomor `SJ/{prefiks}/{YYMM}/{seq}`, nota asal, nama penerima, telepon, alamat, sopir, no. kendaraan, tanggal kirim, catatan.
+**Layar:** Daftar Surat Jalan (filter status/tanggal) · Form Surat Jalan (dibuat dari nota) · Cetak · Perbarui Status (hanya Admin). Di layar kasir: opsi **Buat surat jalan** setelah pembayaran dan tombol *Surat Jalan*; di Riwayat Nota: aksi *Surat jalan*.
+**Header:** nomor `SJ/{prefiks}/{YYMM}/{seq}`, nota pemilik (dan nota lain yang barangnya ikut), nama penerima, telepon, alamat, tanggal kirim, catatan. **Sopir** tidak ditanya saat surat jalan dibuat: dipilih dari daftar sopir toko saat *Tandai Dikirim* dan disimpan sebagai nama saat itu; kendaraan tidak dipakai.
 **Item:** dipilih dari baris nota — barang, satuan, qty nota, qty yang sudah disuratjalankan, **qty kirim ini**.
 **Status:** `draft → shipped → delivered` / `partially_delivered` / `returned`, atau `cancelled`.
 
 **Aturan bisnis**
-1. Surat jalan selalu merujuk **nota selesai**; jumlah qty di semua surat jalan aktif untuk satu baris nota ≤ qty baris itu (kirim bertahap boleh, satu nota bisa punya beberapa surat jalan).
+1. Surat jalan selalu merujuk **nota selesai** (nota pemilik); jumlah qty di semua surat jalan aktif untuk satu baris nota ≤ qty baris itu (kirim bertahap boleh, satu nota bisa punya beberapa surat jalan). Satu surat jalan boleh membawa baris dari **dua nota** bila nota pemilik mengambil pesanan yang dibuat bersama nota lain (tabel `delivery_note_sales`); batas qty tetap dihitung per baris nota di semua surat jalan aktif.
 2. **Tidak mengubah stok** (stok sudah berkurang saat nota). `quantity_returned` hanya penanda; barang yang kembali ke toko diselesaikan lewat **Retur** nota (layar menawarkan tombol "Buat Retur").
-3. Kasir/Admin membuat dan mencetak; Admin atau kasir shift berjalan memperbarui status. Selesai bila setiap item punya delivered + returned = qty kirim.
+3. Kasir/Admin membuat dan mencetak (kasir hanya untuk nota miliknya, termasuk surat jalan gabungan yang memuat barang nota miliknya); **mengubah status (kirim, selesai, batal) hanya lewat halaman Admin**. Selesai bila setiap item punya delivered + returned = qty kirim.
 4. Cetak A4/setengah A4 **tanpa harga** (pengaturan `delivery_note_show_prices`, default mati) dengan kolom tanda tangan pengirim dan penerima; cetak ulang bertanda **SALINAN**.
-5. Void nota COD membatalkan sendiri surat jalannya yang masih draft atau dikirim; void ditolak bila ada surat jalan yang berakhir Terkirim atau Sebagian terkirim (barang sudah diterima), sedangkan surat jalan Kembali tidak menghalangi.
+5. Void nota COD membatalkan sendiri surat jalannya yang masih draft atau dikirim; void ditolak bila ada surat jalan yang berakhir Terkirim atau Sebagian terkirim (barang sudah diterima), sedangkan surat jalan Kembali tidak menghalangi. Untuk nota yang barangnya ikut di surat jalan gabungan milik nota pengambilan pesanan, void ditolak selama surat jalan gabungan itu masih draft atau dikirim (batalkan dulu); begitu Kembali atau Dibatalkan, void boleh.
 6. Tutup hari tidak mensyaratkan surat jalan selesai (hanya peringatan jumlah yang belum selesai). Offline = R3.
 
-**Dibangun (Admin):** menu *Surat Jalan* (di atas Retur) → daftar dengan filter status, tanggal, dan cari nomor/penerima/nomor nota; *Surat Jalan Baru* memilih nota selesai (cari nomor atau pelanggan, hanya yang masih punya barang untuk diantar) atau dari tombol *Buat Surat Jalan* di halaman nota. Penerima, alamat, sopir, kendaraan, dan jumlah per barang (bawaan = sisa nota). Alur status: draft → *Tandai Dikirim* → *Selesaikan Pengiriman* (isi jumlah yang kembali per barang; sisanya terkirim; hasilnya Terkirim, Sebagian terkirim, atau Kembali) atau *Batalkan* (draft/dikirim). Nomor `SJ/{prefiks}/{YYMM}/{urut}`. Tidak mengubah stok. Cetak lewat browser **di jendela/tab baru** (halaman lembar surat jalan yang langsung membuka dialog cetak; layar asal tidak berubah; kertas continuous form dot matrix 9,5 x 5,5 inci (satu surat jalan per lembar; lebih dari sekitar sepuluh barang berlanjut ke lembar berikutnya dengan judul tabel diulang), huruf monospace hitam pekat tanpa bayangan, margin kertas 0 supaya header dan footer browser tidak tercetak, tanpa harga; **format mengikuti surat jalan kertas toko**: kiri atas *TOKO {nama}*, telepon, *No DO*, tanggal dan jam dibuat, nama dan telepon penerima, nomor nota, serta pengantar; kanan atas *Alamat Pengantaran*; tabel *Nama Barang*, kolom centang kosong untuk penyiap menandai barang yang sudah disiapkan, *Jumlah*, dan *Satuan*; empat kolom paraf **Pembuat, Penyiap, Pengantar, Penerima**; cetak ke-2 dst. bertanda SALINAN). Jendela dibuka saat tombol diklik, jadi browser yang memblokir pop-up akan menampilkan pesan agar pop-up diizinkan. **Dari layar kasir:** Kasir membuat dan mencetak surat jalan untuk **nota miliknya sendiri** tanpa meninggalkan layar kasir, lewat tombol *Surat jalan* di dialog nota shift dan tombol *Surat Jalan* di dialog setelah pembayaran. Dialognya memuat surat jalan yang sudah dibuat untuk nota itu (dengan *Cetak/Cetak ulang*) dan form baru (penerima, telepon, alamat, sopir, kendaraan, jumlah per barang, bawaan = sisa nota) dengan tombol *Buat* dan *Buat & Cetak*. Mengubah status (kirim, selesai, batal) tetap di halaman Admin. **Belum:** tombol *Buat Retur* (nonaktif), pengaturan tampil harga, dan ubah data surat jalan setelah dibuat (batalkan lalu buat ulang).
+**Dibangun (Admin):** menu *Surat Jalan* (di atas Retur) → daftar dengan filter status, tanggal, dan cari nomor/penerima/nomor nota; *Surat Jalan Baru* memilih nota selesai (cari nomor atau pelanggan, hanya yang masih punya barang untuk diantar) atau dari tombol *Buat Surat Jalan* di halaman nota. Penerima, alamat, dan jumlah per barang (bawaan = sisa nota; baris yang berasal dari nota lain yang terhubung diberi tanda *dari nota …* dan bawaannya 0, supaya barang nota lain hanya ikut bila Admin mengisinya). Alur status: draft → *Tandai Dikirim* (memilih sopir dari daftar sopir toko, boleh kosong) → *Selesaikan Pengiriman* (isi jumlah yang kembali per barang; sisanya terkirim; hasilnya Terkirim, Sebagian terkirim, atau Kembali) atau *Batalkan* (draft/dikirim). Nomor `SJ/{prefiks}/{YYMM}/{urut}`. Tidak mengubah stok. Cetak lewat browser **di jendela/tab baru** (halaman lembar surat jalan yang langsung membuka dialog cetak; layar asal tidak berubah; kertas continuous form dot matrix 9,5 x 5,5 inci (satu surat jalan per lembar; lebih dari sekitar sepuluh barang berlanjut ke lembar berikutnya dengan judul tabel diulang), huruf monospace hitam pekat tanpa bayangan, margin kertas 0 supaya header dan footer browser tidak tercetak, tanpa harga; **format mengikuti surat jalan kertas toko**: kiri atas *TOKO {nama}*, telepon, *No DO*, tanggal dan jam dibuat, nama dan telepon penerima, nomor nota, serta pengantar; kanan atas *Alamat Pengantaran*; tabel *Nama Barang*, kolom centang kosong untuk penyiap menandai barang yang sudah disiapkan, *Jumlah*, dan *Satuan*; empat kolom paraf **Pembuat, Penyiap, Pengantar, Penerima**; cetak ke-2 dst. bertanda SALINAN). Jendela dibuka saat tombol diklik, jadi browser yang memblokir pop-up akan menampilkan pesan agar pop-up diizinkan. **Dari layar kasir:** Kasir membuat dan mencetak surat jalan untuk **nota miliknya sendiri** tanpa meninggalkan layar kasir, lewat tombol *Surat jalan* di dialog nota shift dan tombol *Surat Jalan* di dialog setelah pembayaran. Dialognya memuat surat jalan yang sudah dibuat untuk nota itu (dengan *Cetak/Cetak ulang*) dan form baru (penerima, telepon, alamat, jumlah per barang, bawaan = sisa nota) dengan tombol *Buat* dan *Buat & Cetak*. Mengubah status (kirim, selesai, batal) tetap di halaman Admin. **Pencarian dan tampilan surat jalan gabungan:** daftar menemukan surat jalan lewat nomor nota pemilik maupun nota lain yang barangnya ikut, dan kolom *Nota* memuat semuanya. **Buat Retur:** setelah surat jalan selesai dan ada barang yang kembali, halaman surat jalan menawarkan tombol *Buat Retur* untuk **tiap nota tempat barang itu dijual** (retur dibuat lewat nota asalnya), bukan selalu nota pemilik. **Belum:** pengaturan tampil harga, dan ubah data surat jalan setelah dibuat (batalkan lalu buat ulang).
 
 ---
 

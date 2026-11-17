@@ -15,9 +15,11 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * Lives in the store database. A delivery note never moves stock: the stock left when the receipt was made.
- * `created_by` is a central user id (no foreign key across databases).
+ * `created_by` is a central user id (no foreign key across databases). `driver_name` is only written when the note is
+ * shipped (a snapshot of the chosen driver); `vehicle_number` is no longer asked for and is kept for the notes made
+ * while it still was.
  */
-#[Fillable(['client_uuid', 'number', 'sale_id', 'business_date', 'status', 'recipient_name', 'recipient_phone', 'recipient_address', 'driver_name', 'vehicle_number', 'shipped_at', 'completed_at', 'notes', 'created_by', 'created_by_name'])]
+#[Fillable(['client_uuid', 'number', 'sale_id', 'business_date', 'status', 'recipient_name', 'recipient_phone', 'recipient_address', 'shipped_at', 'completed_at', 'notes', 'created_by', 'created_by_name'])]
 class DeliveryNote extends Model implements AuditableContract
 {
     /** @use HasFactory<DeliveryNoteFactory> */

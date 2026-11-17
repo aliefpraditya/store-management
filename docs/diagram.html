@@ -291,10 +291,10 @@ section:last-of-type{break-after:auto}
 <section id="d9"><div class="sh"><h2>5.16 BPMN-15 — Surat Jalan (Pengantaran Barang)</h2><span class="tag r1">R1</span></div><pre class="mermaid">flowchart TD
     subgraph KS["Kasir / Admin"]
         K1(["Nota selesai, barang akan diantar"]) --&gt; K2["Pilih Buat surat jalan dari layar bayar atau Riwayat Nota"]
-        K2 --&gt; K3["Isi penerima, telepon, alamat, sopir, no. kendaraan"]
+        K2 --&gt; K3["Isi penerima, telepon, alamat (sopir tidak ditanya di sini)"]
         K3 --&gt; K4["Pilih item dan qty kirim (maksimal sisa yang belum disuratjalankan)"]
         K5["Simpan dan cetak surat jalan"]
-        K6["Perbarui status: dikirim, diterima, sebagian pulang, pulang semua"]
+        K6["Admin memperbarui status: dikirim (pilih sopir), diterima, sebagian pulang, pulang semua"]
     end
     subgraph SYS["Sistem"]
         S1{"Nota selesai dan qty kirim tidak melebihi sisa baris nota?"}

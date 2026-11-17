@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\DeliveryNote;
+use App\Models\Sale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -41,7 +42,6 @@ class DeliveryNoteResource extends JsonResource
             'sale' => [
                 'number' => $this->sale->number,
                 'show_url' => route('tenant.sales.show', ['tenant' => tenant('code'), 'sale' => $this->sale_id]),
-                'new_return_url' => route('tenant.returns.create', ['tenant' => tenant('code'), 'sale' => $this->sale_id]),
             ],
             'other_sale_numbers' => $this->items->loadMissing('saleItem.sale')
                 ->map(fn ($item): string => $item->saleItem->sale->number)
@@ -49,6 +49,7 @@ class DeliveryNoteResource extends JsonResource
                 ->reject(fn (string $number): bool => $number === $this->sale->number)
                 ->values()
                 ->all(),
+            'return_sales' => $this->returnSales(),
             'items' => $this->items->map(fn ($item): array => [
                 'id' => $item->id,
                 'name' => $item->product_name,
@@ -68,5 +69,25 @@ class DeliveryNoteResource extends JsonResource
                 'print' => $actionUrl('print'),
             ],
         ];
+    }
+
+    /**
+     * The receipts that have goods that came back on this note, each with the page to make the return on: a return is
+     * made on the receipt the goods were sold on, which for a combined note is not always the note's own receipt.
+     *
+     * @return list<array{number: string, new_return_url: string}>
+     */
+    private function returnSales(): array
+    {
+        return $this->items->loadMissing('saleItem.sale')
+            ->filter(fn ($item): bool => (float) $item->quantity_returned > 0)
+            ->map(fn ($item) => $item->saleItem->sale)
+            ->unique('id')
+            ->map(fn (Sale $sale): array => [
+                'number' => $sale->number,
+                'new_return_url' => route('tenant.returns.create', ['tenant' => tenant('code'), 'sale' => $sale->id]),
+            ])
+            ->values()
+            ->all();
     }
 }

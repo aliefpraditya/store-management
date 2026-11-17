@@ -14,6 +14,7 @@ use App\Models\CustomerOrderPayment;
 use App\Models\DeliveryNote;
 use App\Models\Product;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\SaleReturn;
 use App\Models\Stock;
 use App\Models\Store;
@@ -773,6 +774,124 @@ class CustomerOrderTest extends TestCase
         $this->actingAs($this->cashier)->postJson($this->codUrl('void', $heldSale), ['reason' => 'Batal'])->assertOk();
         $this->assertSame('50.000', $this->stockInPieces($this->brush));
         $this->assertSame(OrderStatus::Completed, $this->reloaded($order)->status);
+    }
+
+    public function test_a_receipt_on_a_combined_note_that_came_back_whole_can_be_voided(): void
+    {
+        [$heldSale, $order] = $this->heldCodReceiptAndReadyOrder();
+        $this->collectByCod($order, true)->assertSessionHas('last_sale');
+        $note = $this->store->run(fn (): DeliveryNote => DeliveryNote::query()->with('items')->sole());
+
+        $this->store->run(function () use ($note): void {
+            $service = app(DeliveryNoteService::class);
+            $service->ship($note);
+            $service->complete($note, $note->items->map(fn ($item): array => ['item_id' => $item->id, 'quantity_delivered' => '0', 'quantity_returned' => (string) $item->quantity])->all());
+        });
+
+        $this->assertSame(DeliveryNoteStatus::Returned, $this->store->run(fn (): DeliveryNoteStatus => DeliveryNote::query()->findOrFail($note->id)->status));
+
+        $this->actingAs($this->cashier)->postJson($this->codUrl('void', $heldSale), ['reason' => 'Batal'])->assertOk();
+    }
+
+    public function test_whoever_may_handle_either_receipt_of_a_combined_note_may_print_it(): void
+    {
+        [$heldSale, $order] = $this->heldCodReceiptAndReadyOrder();
+        $this->collectByCod($order, true)->assertSessionHas('last_sale');
+        $note = $this->store->run(fn (): DeliveryNote => DeliveryNote::query()->sole());
+        $ownerOfHeldSale = $this->storeUser();
+        $stranger = $this->storeUser();
+        $this->store->run(fn () => Sale::query()->whereKey($heldSale->id)->update(['cashier_id' => $ownerOfHeldSale->id]));
+
+        $print = fn (User $user): TestResponse => $this->actingAs($user)->postJson(route('tenant.cashier.delivery-notes.print', ['tenant' => $this->store->code, 'delivery_note' => $note->id]));
+
+        $print($ownerOfHeldSale)->assertOk();
+        $print($this->cashier)->assertOk();
+        $print($stranger)->assertForbidden();
+    }
+
+    public function test_a_combined_note_cannot_take_more_of_a_line_than_is_left_across_both_receipts(): void
+    {
+        [$sale, $order] = $this->receiptAndReadyOrder();
+        $this->collectByCod($order, false)->assertSessionHas('last_sale');
+        $collectingSale = $this->store->run(fn (): Sale => Sale::query()->findOrFail($this->reloaded($order)->sale_id));
+        $brushLine = $this->store->run(fn (): SaleItem => SaleItem::query()->where('sale_id', $sale->id)->sole());
+        $admin = $this->storeUser(UserRole::StoreAdmin);
+        $makeNote = fn (int $quantity): TestResponse => $this->actingAs($admin)->post(route('tenant.delivery-notes.store', ['tenant' => $this->store->code]), [
+            'client_uuid' => (string) Str::uuid(),
+            'sale_id' => $collectingSale->id,
+            'recipient_name' => 'Pak Budi',
+            'items' => [['sale_item_id' => $brushLine->id, 'quantity' => $quantity]],
+        ]);
+
+        $makeNote(30)->assertSessionHasNoErrors()->assertSessionHas('success');
+        $makeNote(30)->assertSessionHas('error');
+
+        $this->assertSame(2, $this->store->run(fn (): int => DeliveryNote::query()->count()));
+        $this->assertSame('20.000', $this->store->run(fn (): string => collect(app(DeliveryNoteService::class)->deliverableLines($sale))->firstWhere('name', 'Kuas')['remaining']));
+    }
+
+    public function test_the_note_list_finds_a_combined_note_by_the_number_of_either_receipt(): void
+    {
+        [$sale, $order] = $this->receiptAndReadyOrder();
+        $this->collectByCod($order, true)->assertSessionHas('last_sale');
+        $collectingSale = $this->store->run(fn (): Sale => Sale::query()->findOrFail($this->reloaded($order)->sale_id));
+        $admin = $this->storeUser(UserRole::StoreAdmin);
+
+        foreach ([$sale->number, $collectingSale->number] as $number) {
+            $this->actingAs($admin)->get(route('tenant.delivery-notes.index', ['tenant' => $this->store->code, 'search' => $number]))
+                ->assertInertia(fn (Assert $page) => $page
+                    ->has('notes.data', 1)
+                    ->where('notes.data.0.sale_number', $collectingSale->number)
+                    ->where('notes.data.0.other_sale_numbers', [$sale->number]));
+        }
+    }
+
+    public function test_the_note_page_sends_each_return_to_the_receipt_the_goods_were_sold_on(): void
+    {
+        [$sale, $order] = $this->receiptAndReadyOrder();
+        $this->collectByCod($order, true)->assertSessionHas('last_sale');
+        $note = $this->store->run(fn (): DeliveryNote => DeliveryNote::query()->with('items')->sole());
+        $admin = $this->storeUser(UserRole::StoreAdmin);
+
+        $this->store->run(function () use ($note): void {
+            $service = app(DeliveryNoteService::class);
+            $service->ship($note);
+            $service->complete($note, $note->items->map(fn ($item): array => [
+                'item_id' => $item->id,
+                'quantity_delivered' => $item->product_name === 'Kuas' ? '40' : (string) $item->quantity,
+                'quantity_returned' => $item->product_name === 'Kuas' ? '10' : '0',
+            ])->all());
+        });
+
+        $this->actingAs($admin)->get(route('tenant.delivery-notes.show', ['tenant' => $this->store->code, 'delivery_note' => $note->id]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('note.return_sales', 1)
+                ->where('note.return_sales.0.number', $sale->number)
+                ->where('note.return_sales.0.new_return_url', route('tenant.returns.create', ['tenant' => $this->store->code, 'sale' => $sale->id])));
+    }
+
+    public function test_the_deliverable_lines_of_many_receipts_cost_the_same_queries_as_those_of_one(): void
+    {
+        [$sale, $order] = $this->receiptAndReadyOrder();
+        $this->collectByCod($order, false)->assertSessionHas('last_sale');
+        $collectingSale = $this->store->run(fn (): Sale => Sale::query()->findOrFail($this->reloaded($order)->sale_id));
+        $this->store->run(fn () => Sale::factory()->count(4)->create()->each(fn (Sale $extraSale) => SaleItem::factory()->create(['sale_id' => $extraSale->id])));
+
+        $queriesFor = fn (array $saleIds): int => $this->store->run(function () use ($saleIds): int {
+            $sales = Sale::query()->with('items')->findMany($saleIds);
+
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            app(DeliveryNoteService::class)->deliverableLinesOf($sales);
+            DB::disableQueryLog();
+
+            return count(DB::getQueryLog());
+        });
+
+        $allSaleIds = $this->store->run(fn (): array => Sale::query()->pluck('id')->all());
+
+        $this->assertSame($queriesFor([$collectingSale->id]), $queriesFor($allSaleIds));
+        $this->assertGreaterThan(2, count($allSaleIds));
     }
 
     public function test_the_receipt_that_collects_an_order_cannot_be_voided_even_when_no_deposit_was_paid(): void

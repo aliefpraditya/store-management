@@ -60,18 +60,19 @@ class CashierDeliveryNoteController extends Controller
     }
 
     /**
-     * Notes one more print and answers the sheet to open in a new window. A cashier may print the notes of their own receipts.
+     * Notes one more print and answers the sheet to open in a new window. A cashier may print the notes that carry
+     * goods of their own receipts.
      */
     public function print(Request $request, DeliveryNote $deliveryNote): JsonResponse
     {
-        $this->authorizeFor($request, $deliveryNote->sale);
+        $this->authorizeForNote($request, $deliveryNote);
 
         return $this->recordPrintOf($this->printCounter, $deliveryNote, 'tenant.cashier.delivery-notes.sheet');
     }
 
     public function sheet(Request $request, DeliveryNote $deliveryNote, StoreSettingService $settings): InertiaResponse
     {
-        $this->authorizeFor($request, $deliveryNote->sale);
+        $this->authorizeForNote($request, $deliveryNote);
 
         return $this->sheetOf($request, $deliveryNote, $settings->letterhead());
     }
@@ -82,5 +83,17 @@ class CashierDeliveryNoteController extends Controller
         $store = tenant();
 
         abort_unless($request->user()->canHandleReceipt($sale, $store), 403);
+    }
+
+    /**
+     * A combined note belongs to the receipt that collected the order but also carries the goods of the receipt made
+     * with it, and the dialog of that receipt lists the note, so whoever may handle either receipt may print it.
+     */
+    private function authorizeForNote(Request $request, DeliveryNote $deliveryNote): void
+    {
+        /** @var Store $store */
+        $store = tenant();
+
+        abort_unless($deliveryNote->sales->contains(fn (Sale $sale): bool => $request->user()->canHandleReceipt($sale, $store)), 403);
     }
 }

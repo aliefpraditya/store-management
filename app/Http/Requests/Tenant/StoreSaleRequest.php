@@ -44,8 +44,6 @@ class StoreSaleRequest extends FormRequest
             'delivery_note.recipient_name' => [Rule::requiredIf($this->isDeliveryNoteNeeded(...)), 'nullable', 'string', 'max:255'],
             'delivery_note.recipient_address' => [Rule::requiredIf($this->isDeliveryNoteNeeded(...)), 'nullable', 'string', 'max:1000'],
             'delivery_note.recipient_phone' => ['nullable', 'string', 'max:255'],
-            'delivery_note.driver_name' => ['nullable', 'string', 'max:255'],
-            'delivery_note.vehicle_number' => ['nullable', 'string', 'max:255'],
             'delivery_note.notes' => ['nullable', 'string', 'max:1000'],
             'delivery_note.include_linked_sale_items' => ['nullable', 'boolean'],
             'order' => ['nullable', 'array'],

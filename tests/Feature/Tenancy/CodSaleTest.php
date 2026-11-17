@@ -63,7 +63,7 @@ class CodSaleTest extends TestCase
             'customer_name' => 'Pak Budi',
             'items' => [['product_unit_id' => $this->unitOf($this->brush, 'PCS')->id, 'quantity' => 10]],
             'payments' => [['method' => 'cod', 'amount' => 100000]],
-            'delivery_note' => ['recipient_name' => 'Pak Budi', 'recipient_address' => 'Jl. Mawar 5', 'recipient_phone' => '0812', 'driver_name' => 'Joko', 'vehicle_number' => 'B 1234'],
+            'delivery_note' => ['recipient_name' => 'Pak Budi', 'recipient_address' => 'Jl. Mawar 5', 'recipient_phone' => '0812'],
             ...$overrides,
         ];
     }
@@ -108,7 +108,7 @@ class CodSaleTest extends TestCase
         $note = $sale->deliveryNotes->sole();
 
         $this->assertSame([PaymentMethod::Cod, '100000.00', '100000.00'], [$sale->payments[0]->method, $sale->payments[0]->amount, $sale->paid_total]);
-        $this->assertSame([DeliveryNoteStatus::Draft, 'Pak Budi', 'Jl. Mawar 5', 'Joko', 'B 1234', '10.000'], [$note->status, $note->recipient_name, $note->recipient_address, $note->driver_name, $note->vehicle_number, $note->items[0]->quantity]);
+        $this->assertSame([DeliveryNoteStatus::Draft, 'Pak Budi', 'Jl. Mawar 5', null, null, '10.000'], [$note->status, $note->recipient_name, $note->recipient_address, $note->driver_name, $note->vehicle_number, $note->items[0]->quantity]);
         $this->assertSame('90.000', $this->stockInPieces($this->brush));
     }
 

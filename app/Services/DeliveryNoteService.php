@@ -27,7 +27,8 @@ use Illuminate\Support\Facades\DB;
  *
  * `client_uuid` makes a double submit return the first note instead of making a second.
  *
- * @phpstan-type NoteInput array{client_uuid: string, recipient_name: string, recipient_phone?: string|null, recipient_address?: string|null, driver_name?: string|null, vehicle_number?: string|null, notes?: string|null, items: list<array{sale_item_id: int, quantity: numeric-string|float|int}>}
+ * @phpstan-type NoteInput array{client_uuid: string, recipient_name: string, recipient_phone?: string|null, recipient_address?: string|null, notes?: string|null, items: list<array{sale_item_id: int, quantity: numeric-string|float|int}>}
+ * @phpstan-type DeliverableLine array{id: int, name: string, unit: string, quantity: string, remaining: string, sale_number: string}
  * @phpstan-type DeliveryOutcome array{item_id: int, quantity_delivered: numeric-string|float|int, quantity_returned: numeric-string|float|int}
  */
 class DeliveryNoteService
@@ -45,7 +46,7 @@ class DeliveryNoteService
     public function paginateNotes(string $statusValue, string $search, ?CarbonInterface $from, ?CarbonInterface $to, int $perPage): LengthAwarePaginator
     {
         return DeliveryNote::query()
-            ->with('sale')
+            ->with(['sale', 'sales'])
             ->withCount('items')
             ->when(DeliveryNoteStatus::tryFrom($statusValue), fn (Builder $query, DeliveryNoteStatus $status) => $query->where('status', $status))
             ->when($from, fn (Builder $query, CarbonInterface $from) => $query->where('business_date', '>=', $from->toDateString()))
@@ -53,7 +54,7 @@ class DeliveryNoteService
             ->when($search !== '', fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->where('number', 'like', "%{$search}%")
                 ->orWhere('recipient_name', 'like', "%{$search}%")
-                ->orWhereHas('sale', fn (Builder $sale) => $sale->where('number', 'like', "%{$search}%"))))
+                ->orWhereHas('sales', fn (Builder $sale) => $sale->where('number', 'like', "%{$search}%"))))
             ->orderByDesc('id')
             ->paginate($perPage)
             ->withQueryString();
@@ -150,8 +151,6 @@ class DeliveryNoteService
                 'recipient_name' => trim($noteInput['recipient_name']),
                 'recipient_phone' => $this->nullIfBlank($noteInput['recipient_phone'] ?? null),
                 'recipient_address' => $this->nullIfBlank($noteInput['recipient_address'] ?? null),
-                'driver_name' => $this->nullIfBlank($noteInput['driver_name'] ?? null),
-                'vehicle_number' => $this->nullIfBlank($noteInput['vehicle_number'] ?? null),
                 'notes' => $this->nullIfBlank($noteInput['notes'] ?? null),
                 'created_by' => $creator->id,
                 'created_by_name' => $creator->name,
@@ -180,24 +179,44 @@ class DeliveryNoteService
      * The receipt lines of a sale with how much of each is still not on an active delivery note, then the same for the
      * receipt it is linked to (see {@see self::linkedSaleOf()}), so one note can take both.
      *
-     * @return list<array{id: int, name: string, unit: string, quantity: string, remaining: string, sale_number: string}>
+     * @return list<DeliverableLine>
      */
     public function deliverableLines(Sale $sale): array
     {
-        $linkedSale = $this->linkedSaleOf($sale);
-        $sales = array_filter([$sale->loadMissing('items'), $linkedSale?->loadMissing('items')]);
-        $remainingBySaleItemId = $this->remainingQuantities(collect($sales)->flatMap(fn (Sale $deliverableSale) => $deliverableSale->items));
+        return $this->deliverableLinesOf(collect([$sale]))[$sale->id];
+    }
 
-        return collect($sales)
-            ->flatMap(fn (Sale $deliverableSale) => $deliverableSale->items->map(fn (SaleItem $saleItem): array => [
-                'id' => $saleItem->id,
-                'name' => $saleItem->product_name,
-                'unit' => $saleItem->unit_name,
-                'quantity' => $saleItem->quantity,
-                'remaining' => (string) $remainingBySaleItemId[$saleItem->id],
-                'sale_number' => $deliverableSale->number,
-            ]))
-            ->values()
+    /**
+     * {@see self::deliverableLines()} for many receipts with a fixed number of queries, so the receipt lookup of the
+     * delivery note form costs the same for ten results as for one.
+     *
+     * @param  Collection<int, Sale>  $sales
+     * @return array<int, list<DeliverableLine>> by receipt id
+     */
+    public function deliverableLinesOf(Collection $sales): array
+    {
+        $linkedSaleBySaleId = $this->linkedSalesOf($sales);
+        $sales->each(fn (Sale $sale) => $sale->loadMissing('items'));
+
+        $remainingBySaleItemId = $this->remainingQuantities(
+            $sales->concat($linkedSaleBySaleId)->flatMap(fn (Sale $deliverableSale) => $deliverableSale->items),
+        );
+
+        return $sales
+            ->mapWithKeys(fn (Sale $sale): array => [
+                $sale->id => collect([$sale, $linkedSaleBySaleId[$sale->id] ?? null])
+                    ->filter()
+                    ->flatMap(fn (Sale $deliverableSale) => $deliverableSale->items->map(fn (SaleItem $saleItem): array => [
+                        'id' => $saleItem->id,
+                        'name' => $saleItem->product_name,
+                        'unit' => $saleItem->unit_name,
+                        'quantity' => $saleItem->quantity,
+                        'remaining' => (string) $remainingBySaleItemId[$saleItem->id],
+                        'sale_number' => $deliverableSale->number,
+                    ]))
+                    ->values()
+                    ->all(),
+            ])
             ->all();
     }
 
@@ -243,6 +262,31 @@ class DeliveryNoteService
             ->where('status', SaleStatus::Completed)
             ->when($isLocked, fn (Builder $query) => $query->lockForUpdate())
             ->find($originSaleId);
+    }
+
+    /**
+     * {@see self::linkedSaleOf()} for many receipts with two queries.
+     *
+     * @param  Collection<int, Sale>  $sales
+     * @return array<int, Sale> the linked receipt (with `items`) by the id of the receipt that has one
+     */
+    private function linkedSalesOf(Collection $sales): array
+    {
+        $originSaleIdBySaleId = CustomerOrder::query()
+            ->whereIn('sale_id', $sales->pluck('id'))
+            ->whereNotNull('origin_sale_id')
+            ->pluck('origin_sale_id', 'sale_id');
+
+        $originSalesById = Sale::query()
+            ->with('items')
+            ->where('status', SaleStatus::Completed)
+            ->findMany($originSaleIdBySaleId->unique()->values())
+            ->keyBy('id');
+
+        return $originSaleIdBySaleId
+            ->map(fn (int $originSaleId): ?Sale => $originSalesById->get($originSaleId))
+            ->filter()
+            ->all();
     }
 
     /**

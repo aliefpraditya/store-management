@@ -74,7 +74,7 @@ watch([status, from, to], () => applyFilters());
                         <td><b>{{ note.number }}</b></td>
                         <td>{{ dateFormat.format(new Date(note.business_date)) }}</td>
                         <td>{{ note.recipient_name }}</td>
-                        <td>{{ note.sale_number }}</td>
+                        <td>{{ [note.sale_number, ...note.other_sale_numbers].join(', ') }}</td>
                         <td class="notes__right">{{ note.items_count }}</td>
                         <td><span class="chip" :class="deliveryNoteStatusChipClass[note.status]">{{ note.status_label }}</span></td>
                     </tr>

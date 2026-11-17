@@ -177,6 +177,42 @@ class DriverTest extends TestCase
         $this->assertNull($shipped->driver_name);
     }
 
+    public function test_a_driver_must_say_whether_they_are_active_and_a_blank_name_is_refused(): void
+    {
+        $this->save([['id' => null, 'name' => 'Pak Joko', 'is_active' => null]])->assertSessionHasErrors('drivers.0.is_active');
+        $this->save([['id' => null, 'name' => 'Pak Joko', 'is_active' => 'mungkin']])->assertSessionHasErrors('drivers.0.is_active');
+        $this->save([['id' => null, 'name' => '   ', 'is_active' => true]])->assertSessionHasErrors(['drivers.0.name' => 'Nama sopir wajib diisi.']);
+
+        $this->assertSame(0, $this->store->run(fn (): int => Driver::query()->count()));
+    }
+
+    public function test_the_driver_to_ship_with_must_be_an_existing_whole_number(): void
+    {
+        $note = $this->draftNote();
+        $ship = fn (mixed $driverId) => $this->actingAs($this->admin)->post($this->url('tenant.delivery-notes.ship', ['delivery_note' => $note->id]), ['driver_id' => $driverId]);
+
+        $ship('bukan-angka')->assertSessionHasErrors('driver_id');
+        $ship(999)->assertSessionHasErrors('driver_id');
+
+        $this->assertSame(DeliveryNoteStatus::Draft, $this->store->run(fn (): DeliveryNoteStatus => DeliveryNote::query()->findOrFail($note->id)->status));
+    }
+
+    public function test_a_note_that_is_no_longer_a_draft_cannot_be_shipped_again_with_another_driver(): void
+    {
+        $joko = $this->driver('Pak Joko');
+        $note = $this->store->run(function (): DeliveryNote {
+            $sale = Sale::factory()->create();
+
+            return DeliveryNote::factory()->create(['sale_id' => $sale->id, 'status' => DeliveryNoteStatus::Delivered, 'driver_name' => 'Pak Lama']);
+        });
+
+        $this->actingAs($this->admin)->post($this->url('tenant.delivery-notes.ship', ['delivery_note' => $note->id]), ['driver_id' => $joko->id])->assertSessionHas('error');
+
+        $unchanged = $this->store->run(fn (): DeliveryNote => DeliveryNote::query()->findOrFail($note->id));
+
+        $this->assertSame([DeliveryNoteStatus::Delivered, 'Pak Lama'], [$unchanged->status, $unchanged->driver_name]);
+    }
+
     public function test_a_switched_off_driver_cannot_be_chosen(): void
     {
         $budi = $this->driver('Pak Budi', false);

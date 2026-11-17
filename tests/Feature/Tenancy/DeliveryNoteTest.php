@@ -71,8 +71,6 @@ class DeliveryNoteTest extends TestCase
             'recipient_name' => 'Pak Budi',
             'recipient_phone' => '0812-0000',
             'recipient_address' => 'Jl. Mawar 5',
-            'driver_name' => 'Joko',
-            'vehicle_number' => 'B 1234 XY',
             'notes' => 'Taruh di gudang belakang',
             'items' => array_map(fn (array $item): array => ['sale_item_id' => $item[0]->id, 'quantity' => $item[1]], $items),
             ...$overrides,
@@ -144,7 +142,7 @@ class DeliveryNoteTest extends TestCase
         $response->assertRedirect($this->url('show', ['delivery_note' => $note->id]))->assertSessionHas('success', 'Surat jalan dibuat.');
 
         $this->assertSame('SJ/TDN/'.now()->format('ym').'/0001', $note->number);
-        $this->assertSame([DeliveryNoteStatus::Draft, $sale->id, 'Pak Budi', '0812-0000', 'Jl. Mawar 5', 'Joko', 'B 1234 XY'], [
+        $this->assertSame([DeliveryNoteStatus::Draft, $sale->id, 'Pak Budi', '0812-0000', 'Jl. Mawar 5', null, null], [
             $note->status, $note->sale_id, $note->recipient_name, $note->recipient_phone, $note->recipient_address, $note->driver_name, $note->vehicle_number,
         ]);
         $this->assertSame([$this->admin->id, $this->admin->name, today()->toDateString()], [$note->created_by, $note->created_by_name, $note->business_date->toDateString()]);

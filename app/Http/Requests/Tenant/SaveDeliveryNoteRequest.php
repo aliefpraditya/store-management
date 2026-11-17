@@ -29,8 +29,6 @@ class SaveDeliveryNoteRequest extends FormRequest
             'recipient_name' => ['required', 'string', 'max:255'],
             'recipient_phone' => ['nullable', 'string', 'max:255'],
             'recipient_address' => ['nullable', 'string', 'max:1000'],
-            'driver_name' => ['nullable', 'string', 'max:255'],
-            'vehicle_number' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sale_item_id' => ['required', 'integer', Rule::exists('sale_items', 'id')],
