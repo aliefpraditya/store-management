@@ -16,6 +16,7 @@ use App\Http\Controllers\Tenant\DashboardController as TenantDashboardController
 use App\Http\Controllers\Tenant\DeliveryNoteController;
 use App\Http\Controllers\Tenant\ExpenseCategoryController;
 use App\Http\Controllers\Tenant\ExpenseController;
+use App\Http\Controllers\Tenant\PriceLabelController;
 use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\ProductSearchController;
 use App\Http\Controllers\Tenant\ReportController;
@@ -141,6 +142,8 @@ Route::prefix('t/{tenant}')
             Route::post('products/bulk-prices', [BulkPriceController::class, 'apply'])->name('tenant.bulk-prices.apply');
             Route::post('products/barcode-labels/products', [BarcodeLabelController::class, 'products'])->name('tenant.barcode-labels.products');
             Route::get('products/barcode-labels/sheet', [BarcodeLabelController::class, 'sheet'])->name('tenant.barcode-labels.sheet');
+            Route::post('products/price-labels/units', [PriceLabelController::class, 'units'])->name('tenant.price-labels.units');
+            Route::get('products/price-labels/sheet', [PriceLabelController::class, 'sheet'])->name('tenant.price-labels.sheet');
             Route::resource('products', ProductController::class)->except(['show'])->names('tenant.products');
             Route::get('settings', [StoreSettingController::class, 'index'])->name('tenant.settings.index');
             Route::put('settings', [StoreSettingController::class, 'update'])->name('tenant.settings.update');

@@ -19,6 +19,7 @@ use App\Models\Product;
 use App\Models\Unit;
 use App\Services\BarcodeLabelService;
 use App\Services\BulkPriceService;
+use App\Services\PriceLabelService;
 use App\Services\ProductService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,15 +57,22 @@ class ProductController extends Controller
                 'limits' => [
                     'max_copies_per_product' => BarcodeLabelService::MAX_COPIES_PER_PRODUCT,
                     'max_labels' => BarcodeLabelService::MAX_LABELS,
-                    'min_width' => BarcodeLabelSheetRequest::MIN_WIDTH_MM,
-                    'max_width' => BarcodeLabelSheetRequest::MAX_WIDTH_MM,
-                    'min_height' => BarcodeLabelSheetRequest::MIN_HEIGHT_MM,
-                    'max_height' => BarcodeLabelSheetRequest::MAX_HEIGHT_MM,
-                    'max_columns' => BarcodeLabelSheetRequest::MAX_COLUMNS,
+                    ...$this->labelStockLimits(),
                 ],
                 'urls' => [
                     'products' => route('tenant.barcode-labels.products', ['tenant' => tenant('code')]),
                     'sheet' => route('tenant.barcode-labels.sheet', ['tenant' => tenant('code')]),
+                ],
+            ],
+            'price_label' => [
+                'limits' => [
+                    'max_copies_per_unit' => PriceLabelService::MAX_COPIES_PER_UNIT,
+                    'max_labels' => PriceLabelService::MAX_LABELS,
+                    ...$this->labelStockLimits(),
+                ],
+                'urls' => [
+                    'units' => route('tenant.price-labels.units', ['tenant' => tenant('code')]),
+                    'sheet' => route('tenant.price-labels.sheet', ['tenant' => tenant('code')]),
                 ],
             ],
             'bulk_price' => [
@@ -78,6 +86,22 @@ class ProductController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * The sizes of sticker stock the printing windows accept, the same for barcode stickers and price labels.
+     *
+     * @return array{min_width: int, max_width: int, min_height: int, max_height: int, max_columns: int}
+     */
+    private function labelStockLimits(): array
+    {
+        return [
+            'min_width' => BarcodeLabelSheetRequest::MIN_WIDTH_MM,
+            'max_width' => BarcodeLabelSheetRequest::MAX_WIDTH_MM,
+            'min_height' => BarcodeLabelSheetRequest::MIN_HEIGHT_MM,
+            'max_height' => BarcodeLabelSheetRequest::MAX_HEIGHT_MM,
+            'max_columns' => BarcodeLabelSheetRequest::MAX_COLUMNS,
+        ];
     }
 
     public function create(): Response

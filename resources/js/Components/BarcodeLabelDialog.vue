@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { postJson } from '../Composables/postJson';
 import { printSheet } from '../Composables/printSheet';
+import { useLabelStock } from '../Composables/useLabelStock';
 
 const props = defineProps({
     modelValue: { type: Boolean, required: true },
@@ -15,34 +16,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue']);
 
-const SIZE_STORAGE_KEY = 'barcode-label-size';
-
-/** The stock the store's printer is set up for (99 x 15 mm, three labels across), until another is typed. */
-const DEFAULT_SIZE = { width: 99, height: 15, columns: 3 };
-
-/** A sticker roll stays in the printer for weeks, so the size is remembered on this browser instead of asked every time. */
-function loadSavedSize() {
-    try {
-        const saved = JSON.parse(localStorage.getItem(SIZE_STORAGE_KEY));
-
-        return { width: Number(saved.width) || DEFAULT_SIZE.width, height: Number(saved.height) || DEFAULT_SIZE.height, columns: Number(saved.columns) || DEFAULT_SIZE.columns };
-    } catch {
-        return DEFAULT_SIZE;
-    }
-}
-
-function saveSize() {
-    try {
-        localStorage.setItem(SIZE_STORAGE_KEY, JSON.stringify({ width: width.value, height: height.value, columns: columns.value }));
-    } catch {
-        // Private windows may refuse storage; the size is then simply asked again next time.
-    }
-}
-
-const savedSize = loadSavedSize();
-const width = ref(savedSize.width);
-const height = ref(savedSize.height);
-const columns = ref(savedSize.columns);
+const { width, height, columns, labelWidth, problem: stockProblem, save: saveStock } = useLabelStock('barcode-label-size', () => props.limits);
 
 const products = ref([]);
 const isLoading = ref(false);
@@ -81,14 +55,6 @@ const totalCopies = computed(() => wantedCopies.value.reduce((sum, [, count]) =>
 
 const hasBadCount = computed(() => wantedCopies.value.some(([, count]) => count > props.limits.max_copies_per_product || !Number.isInteger(count)));
 
-const isSizeValid = computed(
-    () => width.value >= props.limits.min_width && width.value <= props.limits.max_width && height.value >= props.limits.min_height && height.value <= props.limits.max_height,
-);
-
-const areColumnsValid = computed(() => Number.isInteger(columns.value) && columns.value >= 1 && columns.value <= props.limits.max_columns);
-
-const labelWidth = computed(() => (areColumnsValid.value ? Math.round((width.value / columns.value) * 10) / 10 : null));
-
 const problem = computed(() => {
     if (hasBadCount.value) {
         return `Jumlah per barang harus bilangan bulat, paling banyak ${props.limits.max_copies_per_product}.`;
@@ -98,15 +64,7 @@ const problem = computed(() => {
         return `Paling banyak ${props.limits.max_labels} barcode sekali cetak. Kurangi jumlahnya atau cetak bertahap.`;
     }
 
-    if (!isSizeValid.value) {
-        return `Lebar stok ${props.limits.min_width}–${props.limits.max_width} mm, tinggi ${props.limits.min_height}–${props.limits.max_height} mm.`;
-    }
-
-    if (!areColumnsValid.value) {
-        return `Label ke samping 1–${props.limits.max_columns}.`;
-    }
-
-    return null;
+    return stockProblem.value;
 });
 
 const canPrint = computed(() => totalCopies.value > 0 && problem.value === null);
@@ -120,7 +78,7 @@ function print() {
     query.set('height', height.value);
     query.set('columns', columns.value);
 
-    saveSize();
+    saveStock();
 
     printSheet(() => `${props.urls.sheet}?${query}`);
 }

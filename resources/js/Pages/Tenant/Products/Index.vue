@@ -4,6 +4,7 @@ import { router, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import BarcodeLabelDialog from '../../../Components/BarcodeLabelDialog.vue';
 import BulkPriceDialog from '../../../Components/BulkPriceDialog.vue';
+import PriceLabelDialog from '../../../Components/PriceLabelDialog.vue';
 import SearchableSelect from '../../../Components/SearchableSelect.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
@@ -22,6 +23,8 @@ const props = defineProps({
     create_url: { type: String, required: true },
     /** What the window that prints barcode stickers for the ticked items needs. */
     barcode_label: { type: Object, required: true },
+    /** What the window that prints price labels for the ticked items needs. */
+    price_label: { type: Object, required: true },
     /** What the window that changes prices of many items at once needs. */
     bulk_price: { type: Object, required: true },
 });
@@ -52,6 +55,7 @@ const isPageSomeSelected = computed(() => pageIds.value.some((id) => selectedSet
 
 const isBulkOpen = ref(false);
 const isBarcodeOpen = ref(false);
+const isPriceLabelOpen = ref(false);
 
 /**
  * Adds items to the selection, unless that would pass the most one bulk change takes.
@@ -139,6 +143,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
     <StoreLayout title="Daftar Barang">
         <template #actions>
             <q-btn v-if="selectedIds.length > 0" outline no-caps color="primary" icon="qr_code_2" :label="`Cetak Barcode (${selectedIds.length})`" class="q-mr-sm" @click="isBarcodeOpen = true" />
+            <q-btn v-if="selectedIds.length > 0" outline no-caps color="primary" icon="sell" :label="`Cetak Label Harga (${selectedIds.length})`" class="q-mr-sm" @click="isPriceLabelOpen = true" />
             <q-btn v-if="selectedIds.length > 0" outline no-caps color="primary" icon="price_change" :label="`Ubah Harga (${selectedIds.length})`" class="q-mr-sm" @click="isBulkOpen = true" />
             <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Barang" @click="router.visit(create_url)" />
         </template>
@@ -233,6 +238,8 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
         </div>
 
         <BarcodeLabelDialog v-model="isBarcodeOpen" :product-ids="selectedIds" :urls="barcode_label.urls" :limits="barcode_label.limits" />
+
+        <PriceLabelDialog v-model="isPriceLabelOpen" :product-ids="selectedIds" :urls="price_label.urls" :limits="price_label.limits" />
 
         <BulkPriceDialog
             v-model="isBulkOpen"
