@@ -4,6 +4,7 @@ import { router, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import BarcodeLabelDialog from '../../../Components/BarcodeLabelDialog.vue';
 import BulkPriceDialog from '../../../Components/BulkPriceDialog.vue';
+import SearchableSelect from '../../../Components/SearchableSelect.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -146,18 +147,8 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
             <q-input v-model="search" outlined dense clearable placeholder="Cari nama atau SKU" class="filters__search">
                 <template #prepend><q-icon name="search" /></template>
             </q-input>
-            <q-select
-                v-model="category"
-                :options="[{ id: null, name: 'Semua kategori' }, ...categories]"
-                option-value="id"
-                option-label="name"
-                emit-value
-                map-options
-                outlined
-                dense
-                class="filters__select"
-            />
-            <q-select v-model="brand" :options="[{ id: '', name: 'Semua merek' }, ...brands]" option-value="id" option-label="name" emit-value map-options outlined dense class="filters__select" aria-label="Merek" />
+            <SearchableSelect v-model="category" :options="[{ id: null, name: 'Semua kategori' }, ...categories]" dense class="filters__select" aria-label="Kategori" />
+            <SearchableSelect v-model="brand" :options="[{ id: '', name: 'Semua merek' }, ...brands]" dense class="filters__select" aria-label="Merek" />
             <q-select v-model="status" :options="statusOptions" option-value="value" option-label="label" emit-value map-options outlined dense class="filters__select" />
             <q-select v-model="condition" :options="conditionOptions" option-value="value" option-label="label" emit-value map-options outlined dense class="filters__select" aria-label="Kondisi barang" />
         </div>
@@ -283,6 +274,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 
 .filters__select {
     flex: 1 1 170px;
+    min-width: 170px;
 }
 
 .selection {

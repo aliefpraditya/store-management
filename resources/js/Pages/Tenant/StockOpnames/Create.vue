@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
+import SearchableSelect from '../../../Components/SearchableSelect.vue';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -83,32 +84,8 @@ function submit() {
                 </div>
 
                 <div v-if="!isReturnsWarehouse && form.scope === 'category'" class="grid grid--two">
-                    <q-select
-                        v-model="form.category_id"
-                        :options="categories"
-                        option-value="id"
-                        option-label="name"
-                        emit-value
-                        map-options
-                        clearable
-                        label="Kategori"
-                        outlined
-                        :error="!!form.errors.category_id"
-                        :error-message="form.errors.category_id"
-                    />
-                    <q-select
-                        v-model="form.brand_id"
-                        :options="brands"
-                        option-value="id"
-                        option-label="name"
-                        emit-value
-                        map-options
-                        clearable
-                        label="Merek"
-                        outlined
-                        :error="!!form.errors.brand_id"
-                        :error-message="form.errors.brand_id"
-                    />
+                    <SearchableSelect v-model="form.category_id" :options="categories" clearable label="Kategori" :error="!!form.errors.category_id" :error-message="form.errors.category_id" />
+                    <SearchableSelect v-model="form.brand_id" :options="brands" clearable label="Merek" :error="!!form.errors.brand_id" :error-message="form.errors.brand_id" />
                 </div>
 
                 <div v-if="!isReturnsWarehouse" class="grid grid--two">
