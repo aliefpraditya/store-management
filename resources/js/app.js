@@ -8,7 +8,7 @@ import '../css/app.css';
 const pages = import.meta.glob('./Pages/**/*.vue');
 
 createInertiaApp({
-    title: (title) => (title ? `${title} - Mitra Manager` : 'Mitra Manager'),
+    title: (title) => (title ? `${title} - Mitra Hub` : 'Mitra Hub'),
     resolve: (name) => pages[`./Pages/${name}.vue`](),
     setup({ el, App, props, plugin }) {
         createApp({ render: () => h(App, props) })

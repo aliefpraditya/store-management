@@ -1,4 +1,4 @@
-# Mitra Manager
+# Mitra Hub
 
 A multi-store point-of-sale (POS) for retail stores in Indonesia. One central database holds the stores, users and store access; **each store has its own database**. The interface and the business documents are in Indonesian.
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this app does
 
-Multi-store POS (internal name: **Mitra Manager**) for Indonesian retail stores. One central database (stores, users, store access) plus **one database per store**. Phase 1 (R1) scope: store master, items (per-store, price per unit + conversion), stock opname, and sales (cashier, open/close cash, payments, receipts, returns, delivery notes, day close, expenses).
+Multi-store POS (app name: **Mitra Hub**; the repo, folder and central database keep the old name `mitra-manager`/`mitra_manager`) for Indonesian retail stores. One central database (stores, users, store access) plus **one database per store**. Phase 1 (R1) scope: store master, items (per-store, price per unit + conversion), stock opname, and sales (cashier, open/close cash, payments, receipts, returns, delivery notes, day close, expenses).
 
 > **Before working on features, read the docs in [docs/](docs/)**: [analisis-sistem.md](docs/analisis-sistem.md) is the source of truth for scope and business rules (UI/docs are in Indonesian); [wireframe.html](docs/wireframe.html) and [diagram.html](docs/diagram.html) cover screens and flows (`-r2` variants are Release 2); [estimasi-biaya.md](docs/estimasi-biaya.md) holds estimates. Do not expand into Release 2+ scope unless asked.
 

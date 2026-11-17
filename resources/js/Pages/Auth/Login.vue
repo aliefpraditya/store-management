@@ -28,7 +28,7 @@ function submit() {
         <q-page-container>
             <q-page class="login">
                 <section class="login__art">
-                    <h1>Mitra Manager</h1>
+                    <h1>Mitra Hub</h1>
                     <p>All-In-One POS, Stock, And Accounting System for Retail</p>
                 </section>
 

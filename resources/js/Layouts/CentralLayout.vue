@@ -9,7 +9,7 @@ defineProps({
 
 const page = usePage();
 
-const brand = { initial: 'P', name: 'Mitra Manager', sub: 'Pusat' };
+const brand = { initial: 'P', name: 'Mitra Hub', sub: 'Pusat' };
 
 const menuGroups = computed(() => [
     {
