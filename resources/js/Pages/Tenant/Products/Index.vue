@@ -244,7 +244,6 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
         <BulkPriceDialog
             v-model="isBulkOpen"
             :product-ids="selectedIds"
-            :units="bulk_price.units"
             :cost-methods="bulk_price.cost_methods"
             :selling-methods="bulk_price.selling_methods"
             :urls="bulk_price.urls"

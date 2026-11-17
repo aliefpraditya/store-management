@@ -130,11 +130,11 @@ class BulkPriceTest extends TestCase
             ->reloadOnly('matching_ids', fn (Assert $reload) => $reload->has('matching_ids', 3))
             ->has('brands', 1)
             ->where('bulk_price.max_products', 500)
-            ->where('bulk_price.units', ['DUS', 'PCS'])
             ->where('bulk_price.cost_methods.0', ['value' => 'percent', 'label' => 'Persen (naik atau turun)'])
             ->where('bulk_price.selling_methods.2', ['value' => 'set', 'label' => 'Setarakan ke harga tertentu', 'takes_value' => true])
             ->where('bulk_price.selling_methods.4', ['value' => 'keep_margin', 'label' => 'Pertahankan margin sekarang', 'takes_value' => false])
             ->where('bulk_price.cost_methods.2', ['value' => 'set', 'label' => 'Setarakan ke harga tertentu'])
+            ->where('bulk_price.urls.units', $this->url('units'))
             ->where('bulk_price.urls.preview', $this->url('preview'))
             ->where('bulk_price.urls.apply', $this->url('apply')));
 
@@ -351,15 +351,48 @@ class BulkPriceTest extends TestCase
         $this->assertSame(['70000.00', '100000.00'], $this->pricesOf($product, 'DUS'));
     }
 
-    public function test_a_nominal_change_needs_one_unit_to_be_chosen(): void
+    public function test_a_nominal_change_may_cover_every_unit_and_the_preview_shows_what_each_one_becomes(): void
     {
-        $ids = [$this->item()->id];
-        $message = 'Nominal Rp perlu dibatasi ke satu satuan: tambahan Rp yang sama tidak masuk akal untuk semua satuan (PCS dan DUS isi 12 tidak naik sama besar).';
+        $product = $this->item();
 
-        $this->preview(['product_ids' => $ids, 'cost_method' => 'nominal', 'cost_value' => 500])->assertJsonValidationErrors(['unit_code' => $message]);
-        $this->preview(['product_ids' => $ids, 'selling_method' => 'nominal', 'selling_value' => 500])->assertJsonValidationErrors(['unit_code' => $message]);
-        $this->preview(['product_ids' => $ids, 'unit_code' => 'PCS', 'cost_method' => 'nominal', 'cost_value' => 500])->assertOk();
-        $this->preview(['product_ids' => $ids, 'selling_method' => 'percent', 'selling_value' => 5])->assertOk();
+        $this->preview($this->payload($product, ['selling_method' => 'nominal', 'selling_value' => 500]))
+            ->assertOk()
+            ->assertJsonPath('data.totals.units_changed', 2)
+            ->assertJsonPath('data.products.0.units.0.new_price', '10500.00')
+            ->assertJsonPath('data.products.0.units.1.new_price', '110500.00');
+
+        $this->apply($this->payload($product, ['cost_method' => 'nominal', 'cost_value' => 500]))->assertSessionHas('success');
+
+        $this->assertSame('6500.00', $this->pricesOf($product, 'PCS')[0]);
+        $this->assertSame('70500.00', $this->pricesOf($product, 'DUS')[0]);
+    }
+
+    public function test_the_units_the_picked_items_come_in_are_listed_with_how_many_items_have_each(): void
+    {
+        $brush = $this->item('Kuas');
+        $paint = $this->item('Cat');
+        $wire = $this->wireProduct();
+
+        $this->actingAs($this->admin)->postJson($this->url('units'), ['product_ids' => [$brush->id, $paint->id, $wire->id]])
+            ->assertOk()
+            ->assertExactJson(['data' => [
+                ['code' => 'DUS', 'products_count' => 2],
+                ['code' => 'PCS', 'products_count' => 2],
+                ['code' => 'MTR', 'products_count' => 1],
+                ['code' => 'ROL', 'products_count' => 1],
+            ]]);
+
+        $this->actingAs($this->admin)->postJson($this->url('units'), ['product_ids' => [$wire->id]])
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+    }
+
+    public function test_listing_the_units_needs_picked_items_and_an_admin(): void
+    {
+        $brush = $this->item('Kuas');
+
+        $this->actingAs($this->admin)->postJson($this->url('units'), ['product_ids' => []])->assertUnprocessable()->assertJsonValidationErrors('product_ids');
+        $this->actingAs($this->storeUser())->postJson($this->url('units'), ['product_ids' => [$brush->id]])->assertForbidden();
     }
 
     public function test_applying_needs_the_preview_it_was_looked_at_from(): void

@@ -3,18 +3,17 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import { postJson } from '../Composables/postJson';
+import SearchableSelect from './SearchableSelect.vue';
 
 const props = defineProps({
     modelValue: { type: Boolean, required: true },
     /** The items ticked on the item list. @type {number[]} */
     productIds: { type: Array, required: true },
-    /** Codes of the units a change can be limited to. @type {string[]} */
-    units: { type: Array, required: true },
     /** @type {{value: string, label: string}[]} */
     costMethods: { type: Array, required: true },
     /** @type {{value: string, label: string, takes_value: boolean}[]} */
     sellingMethods: { type: Array, required: true },
-    /** @type {{preview: string, apply: string}} */
+    /** @type {{units: string, preview: string, apply: string}} */
     urls: { type: Object, required: true },
 });
 
@@ -40,6 +39,44 @@ const previewError = ref(null);
 const isPreviewing = ref(false);
 const isApplying = ref(false);
 
+/** The units the ticked items come in, with how many of the items have each. @type {import('vue').Ref<{code: string, products_count: number}[]>} */
+const itemUnits = ref([]);
+const areUnitsLoading = ref(false);
+const unitsError = ref(null);
+
+const unitOptions = computed(() => [
+    { id: '', name: 'Semua satuan' },
+    ...itemUnits.value.map((unit) => ({ id: unit.code, name: `${unit.code} · ${unit.products_count} barang` })),
+]);
+
+/** Only the units of the ticked items are offered, so the choice is never a unit none of them has. */
+async function loadUnits() {
+    areUnitsLoading.value = true;
+    unitsError.value = null;
+
+    try {
+        itemUnits.value = await postJson(props.urls.units, { product_ids: props.productIds });
+
+        if (!itemUnits.value.some((unit) => unit.code === unitCode.value)) {
+            unitCode.value = '';
+        }
+    } catch (error) {
+        itemUnits.value = [];
+        unitsError.value = error.message;
+    } finally {
+        areUnitsLoading.value = false;
+    }
+}
+
+watch(
+    () => props.modelValue,
+    (isOpen) => {
+        if (isOpen) {
+            loadUnits();
+        }
+    },
+);
+
 const sellingMethodOption = computed(() => props.sellingMethods.find((method) => method.value === sellingMethod.value) ?? null);
 
 const valueLabel = (method, setLabel) => {
@@ -58,24 +95,17 @@ const isSetChosen = computed(() => costMethod.value === 'set' || sellingMethod.v
 
 const isFilled = (value) => value !== '' && value !== null && value !== undefined;
 
-/** The same Rupiah added to every unit makes no sense (PCS and a DUS of 12), so a nominal change needs one unit. */
-const isUnitMissingForNominal = computed(() => (costMethod.value === 'nominal' || sellingMethod.value === 'nominal') && unitCode.value === '');
+/** The same Rupiah goes onto every unit (PCS and a DUS of 12 rise alike); the preview shows it, and applying confirms it. */
+const isNominalOnAllUnits = computed(() => (costMethod.value === 'nominal' || sellingMethod.value === 'nominal') && unitCode.value === '');
 
 const isChangeComplete = computed(
     () => (costMethod.value !== '' || sellingMethod.value !== '')
         && (costMethod.value === '' || isFilled(costValue.value))
         && (sellingMethod.value === '' || !sellingMethodOption.value.takes_value || isFilled(sellingValue.value))
-        && !(sellingMethod.value === 'keep_margin' && costMethod.value === '')
-        && !isUnitMissingForNominal.value,
+        && !(sellingMethod.value === 'keep_margin' && costMethod.value === ''),
 );
 
-const changeHint = computed(() => {
-    if (isUnitMissingForNominal.value) {
-        return 'Nominal Rp perlu dibatasi ke satu satuan lewat Satuan yang diubah.';
-    }
-
-    return sellingMethod.value === 'keep_margin' && costMethod.value === '' ? 'Mempertahankan margin hanya berarti bila harga beli ikut diubah.' : null;
-});
+const changeHint = computed(() => (sellingMethod.value === 'keep_margin' && costMethod.value === '' ? 'Mempertahankan margin hanya berarti bila harga beli ikut diubah.' : null));
 
 /** Everything the server needs to work out the same change for the preview and the apply. */
 const payload = computed(() => ({
@@ -188,15 +218,10 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
 
             <q-card-section class="bulk__body">
                 <div class="bulk__fields">
-                    <q-select
-                        v-model="unitCode"
-                        :options="[{ label: 'Semua satuan', value: '' }, ...units.map((code) => ({ label: `Hanya satuan ${code}`, value: code }))]"
-                        emit-value
-                        map-options
-                        outlined
-                        dense
-                        label="Satuan yang diubah"
-                    />
+                    <div>
+                        <SearchableSelect v-model="unitCode" :options="unitOptions" dense label="Satuan yang diubah" :loading="areUnitsLoading" />
+                        <p v-if="unitsError" class="bulk__note bulk__note--bad">{{ unitsError }}</p>
+                    </div>
 
                     <div class="bulk__pair">
                         <q-select v-model="costMethod" :options="[{ label: 'Harga beli tidak diubah', value: '' }, ...costMethods]" emit-value map-options outlined dense label="Harga beli (modal)" />
@@ -229,6 +254,7 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
                     </div>
 
                     <p v-if="changeHint" class="bulk__note bulk__note--bad">{{ changeHint }}</p>
+                    <p v-else-if="isNominalOnAllUnits" class="bulk__note">Nominal Rp yang sama ditambahkan ke tiap satuan, termasuk satuan yang isinya lebih banyak. Cek pratinjau di sebelah kanan, atau batasi lewat <i>Satuan yang diubah</i>.</p>
                     <p v-else-if="isSetChosen" class="bulk__note">Setarakan membuat tiap satuan yang diubah memakai harga yang sama. Batasi ke satu satuan lewat <i>Satuan yang diubah</i> bila harganya beda per satuan.</p>
                     <p v-else-if="sellingMethod === 'margin'" class="bulk__note">Harga jual = modal ÷ (1 − margin). Bila modal ikut diubah, dipakai modal yang baru.</p>
                     <p v-else-if="sellingMethod === 'keep_margin'" class="bulk__note">Margin tiap satuan sekarang dijaga: harga jual naik atau turun mengikuti modal yang baru.</p>

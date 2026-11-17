@@ -138,6 +138,7 @@ Route::prefix('t/{tenant}')
             Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->name('tenant.sales.void');
 
             Route::get('products/search', ProductSearchController::class)->name('tenant.products.search');
+            Route::post('products/bulk-prices/units', [BulkPriceController::class, 'units'])->name('tenant.bulk-prices.units');
             Route::post('products/bulk-prices/preview', [BulkPriceController::class, 'preview'])->name('tenant.bulk-prices.preview');
             Route::post('products/bulk-prices', [BulkPriceController::class, 'apply'])->name('tenant.bulk-prices.apply');
             Route::post('products/barcode-labels/products', [BarcodeLabelController::class, 'products'])->name('tenant.barcode-labels.products');

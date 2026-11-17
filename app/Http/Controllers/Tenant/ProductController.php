@@ -76,11 +76,11 @@ class ProductController extends Controller
                 ],
             ],
             'bulk_price' => [
-                'units' => Unit::query()->orderBy('code')->pluck('code'),
                 'cost_methods' => CostChangeMethod::options(),
                 'selling_methods' => SellingChangeMethod::options(),
                 'max_products' => BulkPriceService::MAX_PRODUCTS,
                 'urls' => [
+                    'units' => route('tenant.bulk-prices.units', ['tenant' => tenant('code')]),
                     'preview' => route('tenant.bulk-prices.preview', ['tenant' => tenant('code')]),
                     'apply' => route('tenant.bulk-prices.apply', ['tenant' => tenant('code')]),
                 ],

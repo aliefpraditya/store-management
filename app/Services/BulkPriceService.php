@@ -33,6 +33,29 @@ class BulkPriceService
     public function __construct(private readonly PriceChangeCalculator $calculator) {}
 
     /**
+     * The units the picked items come in, with how many of the items have each, for choosing which unit a change is
+     * limited to. The most common unit comes first.
+     *
+     * @param  list<int>  $productIds
+     * @return list<array{code: string, products_count: int}>
+     */
+    public function unitsOf(array $productIds): array
+    {
+        return ProductUnit::query()
+            ->whereIn('product_id', $productIds)
+            ->selectRaw('unit_code, count(distinct product_id) as products_count')
+            ->groupBy('unit_code')
+            ->orderByDesc('products_count')
+            ->orderBy('unit_code')
+            ->get()
+            ->map(fn (ProductUnit $productUnit): array => [
+                'code' => $productUnit->unit_code,
+                'products_count' => (int) $productUnit->getAttribute('products_count'),
+            ])
+            ->all();
+    }
+
+    /**
      * What the change would do to the picked items, without saving anything. Only items that change or are skipped are
      * listed, and only the first few of them; the totals count all. The fingerprint covers every picked item, listed
      * or not.

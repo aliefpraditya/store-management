@@ -6,6 +6,7 @@ use App\Exceptions\BulkPriceException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\ApplyBulkPriceRequest;
 use App\Http\Requests\Tenant\BulkPriceRequest;
+use App\Http\Requests\Tenant\PickBulkPriceProductsRequest;
 use App\Services\BulkPriceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -17,6 +18,11 @@ use Symfony\Component\HttpFoundation\Response as HttpResponse;
 class BulkPriceController extends Controller
 {
     public function __construct(private readonly BulkPriceService $bulkPrices) {}
+
+    public function units(PickBulkPriceProductsRequest $request): JsonResponse
+    {
+        return response()->json(['data' => $this->bulkPrices->unitsOf($request->productIds())]);
+    }
 
     public function preview(BulkPriceRequest $request): JsonResponse
     {
