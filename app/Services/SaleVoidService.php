@@ -10,6 +10,7 @@ use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
 use App\Exceptions\CodSaleException;
 use App\Models\CashShift;
+use App\Models\CustomerOrder;
 use App\Models\DailyClosing;
 use App\Models\DeliveryNote;
 use App\Models\Sale;
@@ -94,7 +95,7 @@ class SaleVoidService
             ! $sale->isCod() => CodSaleException::notCod(),
             DailyClosing::isClosedOn(today()) => CodSaleException::dayClosed(today()->format('d/m/Y')),
             $sale->payments->contains('method', PaymentMethod::ReturnCredit) => CodSaleException::paidByReturnCredit(),
-            $sale->payments->contains('method', PaymentMethod::OrderDeposit) => CodSaleException::paidByOrderDeposit(),
+            $this->collectsCustomerOrder($sale) => CodSaleException::collectsCustomerOrder(),
             $this->hasReturns($sale) => CodSaleException::hasReturns(),
             $sale->deliveryNotes->contains(fn (DeliveryNote $note): bool => $note->status->hasDeliveredGoods()) => CodSaleException::alreadyDelivered(),
             $sale->deliveryNotes->contains(fn (DeliveryNote $note): bool => $note->sale_id !== $sale->id && $note->status !== DeliveryNoteStatus::Cancelled) => CodSaleException::onCombinedDeliveryNote(),
@@ -112,6 +113,15 @@ class SaleVoidService
         if ($voidBlocker !== null) {
             throw $voidBlocker;
         }
+    }
+
+    /**
+     * Asked of the order, not of the payments: an order collected without a deposit has no `order_deposit` payment, yet
+     * voiding its receipt would put the goods back on the shelf while the order stays Completed and cannot be collected again.
+     */
+    private function collectsCustomerOrder(Sale $sale): bool
+    {
+        return CustomerOrder::query()->where('sale_id', $sale->id)->exists();
     }
 
     private function hasReturns(Sale $sale): bool

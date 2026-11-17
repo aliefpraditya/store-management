@@ -306,7 +306,9 @@ class SaleService
     /**
      * Every product must have enough in the warehouse for all its lines together, even when sold in different units.
      * What is set aside for customer orders that are ready to be collected is not available, except to the order being
-     * collected (`$collectedOrderId`). Stock rows are locked in a fixed order so two sales cannot wait on each other.
+     * collected (`$collectedOrderId`). Stock rows are locked in a fixed order so two sales cannot wait on each other,
+     * and the set-aside quantities are read only after that, with a locking read: an order marked ready at the same
+     * moment (it locks the same stock rows) is then either seen here or waits for this sale.
      *
      * @param  Collection<int, array{product_id: int, product_name: string, base_unit_code: string, base_quantity: string}>  $lines
      *
@@ -315,11 +317,13 @@ class SaleService
     private function requireStock(Collection $lines, int $warehouseId, ?int $collectedOrderId): void
     {
         $linesByProduct = $lines->groupBy('product_id')->sortKeys();
-        $reserved = CustomerOrderItem::reservedQuantities($warehouseId, $linesByProduct->keys()->all(), $collectedOrderId);
+        $productIds = $linesByProduct->keys()->all();
+        $lockedQuantities = $this->stockLedger->lockedQuantities($productIds, $warehouseId);
+        $reserved = CustomerOrderItem::reservedQuantities($warehouseId, $productIds, $collectedOrderId, isReadForDecision: true);
 
         foreach ($linesByProduct as $productId => $productLines) {
             $required = $productLines->reduce(fn (BigDecimal $sum, array $line): BigDecimal => $sum->plus($line['base_quantity']), BigDecimal::zero());
-            $available = BigDecimal::max(BigDecimal::of($this->stockLedger->lockedQuantity($productId, $warehouseId))->minus($reserved[$productId] ?? '0'), '0');
+            $available = BigDecimal::max(BigDecimal::of($lockedQuantities[$productId])->minus($reserved[$productId] ?? '0'), '0');
 
             if ($required->isGreaterThan($available)) {
                 throw SaleException::insufficientStock($productLines[0]['product_name'], SaleException::quantityText($available, $productLines[0]['base_unit_code']));
@@ -348,7 +352,7 @@ class SaleService
         }
 
         $lockedStocks = $this->stockLedger->lockedStocks($productIds, $warehouseId);
-        $reservedPacks = CustomerOrderItem::reservedPacks($warehouseId, $productIds, $collectedOrderId);
+        $reservedPacks = CustomerOrderItem::reservedPacks($warehouseId, $productIds, $collectedOrderId, isReadForDecision: true);
         $shelves = [];
         $packChanges = [];
 

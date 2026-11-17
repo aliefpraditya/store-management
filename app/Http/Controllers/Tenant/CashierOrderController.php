@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ApiErrorCode;
-use App\Enums\OrderStatus;
 use App\Exceptions\CustomerOrderException;
 use App\Http\Controllers\Concerns\AnswersJsonErrors;
 use App\Http\Controllers\Concerns\AnswersPrints;
@@ -15,7 +14,6 @@ use App\Services\CustomerOrderService;
 use App\Services\DeliveryNoteService;
 use App\Services\PrintCounter;
 use App\Services\StoreSettingService;
-use Brick\Math\BigDecimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -41,40 +39,29 @@ class CashierOrderController extends Controller
     ) {}
 
     /**
-     * The open orders, ready ones first (they are waiting for the customer), and how many are open in all.
+     * The open orders (ready ones first, see {@see CustomerOrderService::openOrdersFor()}), found by the `q` of the
+     * search box on the server, so an order that scanned in is found even when many orders are open. `meta.total` is how
+     * many orders match and `meta.counts` the numbers of the till's badge.
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        $openOrdersQuery = CustomerOrder::query()->whereIn('status', OrderStatus::unfinished());
+        $search = $request->string('q')->trim()->limit(100, '')->toString();
+        $openOrders = $this->customerOrders->openOrdersFor($search, self::LIST_LIMIT);
 
-        $orders = (clone $openOrdersQuery)
-            ->with(['items.product', 'payments', 'originSale.items', 'originSale.payments'])
-            ->orderByRaw("status = 'ready' desc")
-            ->orderBy('expected_date')
-            ->orderByDesc('id')
-            ->limit(self::LIST_LIMIT)
-            ->get();
+        $undeliveredBySaleId = $this->deliveryNotes->undeliveredLinesOf($openOrders['orders']->pluck('originSale')->filter()->unique('id'));
 
-        $coverage = $this->customerOrders->stockCoverageOf($orders);
-
-        $rows = $orders
-            ->sortBy(fn (CustomerOrder $order): int => match (true) {
-                $order->status === OrderStatus::Ready => 0,
-                $coverage[$order->id]['is_covered'] ?? false => 1,
-                default => 2,
-            })
+        $rows = $openOrders['orders']
             ->map(fn (CustomerOrder $order): array => [
                 ...CustomerOrderResource::make($order)->resolve(),
-                'stock_check' => $coverage[$order->id] ?? null,
-                'origin_sale_undelivered' => $this->undeliveredOfOriginSale($order),
+                'stock_check' => $openOrders['coverage'][$order->id] ?? null,
+                'origin_sale_undelivered' => $undeliveredBySaleId[$order->origin_sale_id] ?? [],
                 'origin_sale_cod_amount' => $order->originSale?->codAmount() ?? '0.00',
             ])
-            ->values()
             ->all();
 
         return response()->json([
             'data' => $rows,
-            'meta' => ['total' => $openOrdersQuery->count()],
+            'meta' => ['total' => $openOrders['total'], 'counts' => $openOrders['counts']],
         ]);
     }
 
@@ -122,25 +109,6 @@ class CashierOrderController extends Controller
                 'paper_width' => $this->settings->paperWidth(),
             ],
         ]);
-    }
-
-    /**
-     * What of the receipt made together with the order has still not gone out on a delivery note, so the cashier can
-     * deliver it together with the order instead of in a second trip.
-     *
-     * @return list<array{name: string, unit: string, remaining: string}>
-     */
-    private function undeliveredOfOriginSale(CustomerOrder $order): array
-    {
-        if ($order->originSale === null) {
-            return [];
-        }
-
-        return collect($this->deliveryNotes->deliverableLines($order->originSale))
-            ->filter(fn (array $line): bool => BigDecimal::of($line['remaining'])->isPositive())
-            ->map(fn (array $line): array => ['name' => $line['name'], 'unit' => $line['unit'], 'remaining' => $line['remaining']])
-            ->values()
-            ->all();
     }
 
     private function refused(CustomerOrderException $exception): JsonResponse

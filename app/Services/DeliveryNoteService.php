@@ -202,6 +202,32 @@ class DeliveryNoteService
     }
 
     /**
+     * What of each receipt's own lines is still not on an active delivery note, for many receipts with one query (the
+     * till's order list asks it for every order on the page). Lines that are fully on notes are left out.
+     *
+     * @param  Collection<int, Sale>  $sales  with `items` loaded
+     * @return array<int, list<array{name: string, unit: string, remaining: string}>> by receipt id
+     */
+    public function undeliveredLinesOf(Collection $sales): array
+    {
+        if ($sales->isEmpty()) {
+            return [];
+        }
+
+        $remainingBySaleItemId = $this->remainingQuantities($sales->flatMap(fn (Sale $sale) => $sale->items));
+
+        return $sales
+            ->mapWithKeys(fn (Sale $sale): array => [
+                $sale->id => $sale->items
+                    ->filter(fn (SaleItem $saleItem): bool => $remainingBySaleItemId[$saleItem->id]->isPositive())
+                    ->map(fn (SaleItem $saleItem): array => ['name' => $saleItem->product_name, 'unit' => $saleItem->unit_name, 'remaining' => (string) $remainingBySaleItemId[$saleItem->id]])
+                    ->values()
+                    ->all(),
+            ])
+            ->all();
+    }
+
+    /**
      * The receipt that was made together with a customer order this receipt collected, when it is still standing. Its
      * goods can go out on the same delivery note, so a customer who ordered part of a cart is delivered once, not twice.
      */

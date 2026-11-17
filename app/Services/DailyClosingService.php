@@ -7,6 +7,7 @@ use App\Enums\DailyClosingStatus;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\ExpenseSource;
 use App\Enums\ExpenseStatus;
+use App\Enums\OrderPaymentKind;
 use App\Enums\PaymentMethod;
 use App\Enums\SaleReturnStatus;
 use App\Enums\SaleStatus;
@@ -287,8 +288,8 @@ class DailyClosingService
             ->pluck('amount', 'kind');
 
         return [
-            'order_deposits_received' => $this->money($amountByKind[CustomerOrderPayment::KIND_DEPOSIT] ?? 0),
-            'order_deposits_refunded' => $this->money($amountByKind[CustomerOrderPayment::KIND_REFUND] ?? 0),
+            'order_deposits_received' => $this->money($amountByKind[OrderPaymentKind::Deposit->value] ?? 0),
+            'order_deposits_refunded' => $this->money($amountByKind[OrderPaymentKind::Refund->value] ?? 0),
         ];
     }
 

@@ -22,8 +22,11 @@ const isWorking = ref(false);
 /** @type {import('vue').Ref<object[]>} */
 const orders = ref([]);
 
-/** How many orders are open in all; more than the list holds when only some are shown. */
+/** How many orders match the search (all open orders when nothing is searched); more than the list holds when only some are shown. */
 const totalOpen = ref(0);
+
+/** The numbers of the till's badge, from the same server answer as the list, so a tab never counts an order it does not show. */
+const counts = ref({ open: 0, ready: 0, arrived: 0 });
 
 /** The order being cancelled, or null while the cancel window is closed. */
 const cancelTarget = ref(null);
@@ -53,32 +56,30 @@ const tabOf = (order) => {
     return order.stock_check?.is_covered ? 'arrived' : 'waiting';
 };
 
-const countOf = (value) => orders.value.filter((order) => tabOf(order) === value).length;
+const countOf = (value) => ({ ready: counts.value.ready, arrived: counts.value.arrived, waiting: counts.value.open - counts.value.ready - counts.value.arrived })[value];
 
 const isPaidInFull = (order) => Number(order.remaining) === 0 && Number(order.deposit) > 0;
 
-const normalizedSearch = computed(() => search.value.trim().toLowerCase());
+const isSearching = computed(() => search.value.trim() !== '');
 
-const isSearching = computed(() => normalizedSearch.value !== '');
-
-/** Searching looks through every list at once, by number (what a scanned barcode types), name or phone. */
-const visibleOrders = computed(() => {
-    if (isSearching.value) {
-        return orders.value.filter((order) => [order.number, order.customer_name, order.customer_phone].some((value) => value.toLowerCase().includes(normalizedSearch.value)));
-    }
-
-    return orders.value.filter((order) => tabOf(order) === tab.value);
-});
+/** Searching looks through every open order at once, on the server, by number (what a scanned barcode types), name or phone. */
+const visibleOrders = computed(() => (isSearching.value ? orders.value : orders.value.filter((order) => tabOf(order) === tab.value)));
 
 function fail(error) {
     $q.notify({ type: 'negative', message: error.message, position: 'top' });
 }
 
+/** The newest request wins: an answer for an earlier search that arrives late must not replace the list. */
+let lastRequestNumber = 0;
+
 async function load() {
+    const requestNumber = ++lastRequestNumber;
+    const query = search.value.trim();
+
     isLoading.value = true;
 
     try {
-        const response = await fetch(props.listUrl, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+        const response = await fetch(query === '' ? props.listUrl : `${props.listUrl}?q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
 
         if (!response.ok) {
             throw new Error('Daftar pesanan tidak bisa dimuat.');
@@ -86,20 +87,40 @@ async function load() {
 
         const body = await response.json();
 
+        if (requestNumber !== lastRequestNumber) {
+            return;
+        }
+
         orders.value = body.data;
         totalOpen.value = body.meta.total;
-        tab.value = TABS.find((candidate) => countOf(candidate.value) > 0)?.value ?? 'ready';
+        counts.value = body.meta.counts;
+
+        if (query === '') {
+            tab.value = TABS.find((candidate) => countOf(candidate.value) > 0)?.value ?? 'ready';
+        }
     } catch (error) {
         fail(error);
     } finally {
-        isLoading.value = false;
+        if (requestNumber === lastRequestNumber) {
+            isLoading.value = false;
+        }
     }
+}
+
+let searchTimer = null;
+
+/** Waits for a pause in typing before asking the server; a scanner types the whole number at once. */
+function onSearchInput(value) {
+    search.value = value ?? '';
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(load, 300);
 }
 
 watch(
     () => props.modelValue,
     (isOpen) => {
         if (isOpen) {
+            clearTimeout(searchTimer);
             orders.value = [];
             search.value = '';
             load();
@@ -180,7 +201,10 @@ function proceed(order) {
 }
 
 /** Enter in the search box acts on the order found, so scanning the number on a slip is enough to start. */
-function onSearchEnter() {
+async function onSearchEnter() {
+    clearTimeout(searchTimer);
+    await load();
+
     if (visibleOrders.value.length === 1) {
         proceed(visibleOrders.value[0]);
     }
@@ -217,13 +241,14 @@ async function act(url, body, successMessage) {
             <q-card-section class="orders__head">
                 <div class="orders__title">Pesanan pelanggan</div>
                 <q-input
-                    v-model="search"
+                    :model-value="search"
                     outlined
                     dense
                     clearable
                     autofocus
                     placeholder="Cari atau scan nomor pesanan, nama, telepon (Enter)"
                     class="orders__search"
+                    @update:model-value="onSearchInput"
                     @keydown.enter.prevent="onSearchEnter"
                 >
                     <template #prepend><q-icon name="search" /></template>

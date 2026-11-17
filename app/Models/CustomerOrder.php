@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\OrderPaymentKind;
 use App\Enums\OrderStatus;
 use Brick\Math\BigDecimal;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -83,7 +84,7 @@ class CustomerOrder extends Model implements AuditableContract
     public function depositBalance(): BigDecimal
     {
         return $this->payments->reduce(
-            fn (BigDecimal $sum, CustomerOrderPayment $payment): BigDecimal => $payment->kind === CustomerOrderPayment::KIND_DEPOSIT ? $sum->plus((string) $payment->amount) : $sum->minus((string) $payment->amount),
+            fn (BigDecimal $sum, CustomerOrderPayment $payment): BigDecimal => $payment->kind === OrderPaymentKind::Deposit ? $sum->plus((string) $payment->amount) : $sum->minus((string) $payment->amount),
             BigDecimal::zero(),
         );
     }

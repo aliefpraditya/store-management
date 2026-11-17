@@ -32,7 +32,7 @@ class CodSaleException extends Exception
 
     public static function onCombinedDeliveryNote(): self
     {
-        return new self('Barang nota ini ikut di surat jalan gabungan milik nota pengambilan pesanan. Void nota pengambilan itu dulu (surat jalannya ikut dibatalkan), atau batalkan surat jalan gabungannya.');
+        return new self('Barang nota ini ikut di surat jalan gabungan milik nota pengambilan pesanan. Batalkan surat jalan gabungannya dulu.');
     }
 
     public static function hasReturns(): self
@@ -45,7 +45,7 @@ class CodSaleException extends Exception
         return new self('Nota pengganti retur tidak bisa di-void. Pakai Retur.');
     }
 
-    public static function paidByOrderDeposit(): self
+    public static function collectsCustomerOrder(): self
     {
         return new self('Nota pengambilan pesanan tidak bisa di-void. Pakai Retur.');
     }

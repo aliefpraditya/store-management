@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\OrderStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -33,17 +34,21 @@ class CustomerOrderItem extends Model
      * How much of each product is set aside for customers whose goods have arrived, in the base unit. A sale of
      * something else must not take these goods. Pass the order being collected as `$exceptOrderId` so it can take its own.
      *
+     * `$isReadForDecision` is for a caller that has locked the stock rows and is about to decide on what it reads: the
+     * read is then a locking one, which sees what other transactions committed while this one waited for the lock, where
+     * a plain read keeps showing the snapshot of the transaction's first read.
+     *
      * @param  list<int>  $productIds
      * @return array<int, numeric-string> base quantity by product id, only for products that have something set aside
      */
-    public static function reservedQuantities(int $warehouseId, array $productIds, ?int $exceptOrderId = null): array
+    public static function reservedQuantities(int $warehouseId, array $productIds, ?int $exceptOrderId = null, bool $isReadForDecision = false): array
     {
         if ($productIds === []) {
             return [];
         }
 
-        return self::readyItemsQuery($warehouseId, $productIds, $exceptOrderId)
-            ->selectRaw('product_id, sum(base_quantity) as reserved')
+        return self::readyItemsQuery($warehouseId, $productIds, $exceptOrderId, $isReadForDecision)
+            ->selectRaw('customer_order_items.product_id, sum(customer_order_items.base_quantity) as reserved')
             ->pluck('reserved', 'product_id')
             ->map(fn (mixed $reserved): string => (string) $reserved)
             ->all();
@@ -52,34 +57,42 @@ class CustomerOrderItem extends Model
     /**
      * How many whole sealed packs of each product are set aside, for the lines of ready orders that ask for a pack unit
      * (a roll of wire). They are part of {@see self::reservedQuantities()} too; a sale of loose pieces may not open them.
+     * `$isReadForDecision` is explained there.
      *
      * @param  list<int>  $productIds
      * @return array<int, int> whole packs by product id, only for products that have packs set aside
      */
-    public static function reservedPacks(int $warehouseId, array $productIds, ?int $exceptOrderId = null): array
+    public static function reservedPacks(int $warehouseId, array $productIds, ?int $exceptOrderId = null, bool $isReadForDecision = false): array
     {
         if ($productIds === []) {
             return [];
         }
 
-        return self::readyItemsQuery($warehouseId, $productIds, $exceptOrderId)
-            ->where('is_sealed_pack', true)
-            ->selectRaw('product_id, sum(quantity) as reserved')
+        return self::readyItemsQuery($warehouseId, $productIds, $exceptOrderId, $isReadForDecision)
+            ->where('customer_order_items.is_sealed_pack', true)
+            ->selectRaw('customer_order_items.product_id, sum(customer_order_items.quantity) as reserved')
             ->pluck('reserved', 'product_id')
             ->map(fn (mixed $reserved): int => (int) $reserved)
             ->all();
     }
 
     /**
+     * A join, not a `whereHas`: a locking read locks the rows of every table of its own statement, but reads a nested
+     * subquery from the old snapshot, which could still show an order as not ready after it was marked ready.
+     *
      * @param  list<int>  $productIds
      * @return Builder<self>
      */
-    private static function readyItemsQuery(int $warehouseId, array $productIds, ?int $exceptOrderId): Builder
+    private static function readyItemsQuery(int $warehouseId, array $productIds, ?int $exceptOrderId, bool $isReadForDecision): Builder
     {
         return self::query()
-            ->whereHas('customerOrder', fn (Builder $orders) => $orders->where('status', 'ready')->where('warehouse_id', $warehouseId)->when($exceptOrderId, fn (Builder $query) => $query->whereKeyNot($exceptOrderId)))
-            ->whereIn('product_id', $productIds)
-            ->groupBy('product_id');
+            ->join('customer_orders', 'customer_orders.id', '=', 'customer_order_items.customer_order_id')
+            ->where('customer_orders.status', OrderStatus::Ready->value)
+            ->where('customer_orders.warehouse_id', $warehouseId)
+            ->when($exceptOrderId, fn (Builder $query) => $query->where('customer_orders.id', '!=', $exceptOrderId))
+            ->whereIn('customer_order_items.product_id', $productIds)
+            ->groupBy('customer_order_items.product_id')
+            ->when($isReadForDecision, fn (Builder $query) => $query->sharedLock());
     }
 
     /**

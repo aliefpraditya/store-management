@@ -3,11 +3,14 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Enums\DeliveryNoteStatus;
+use App\Enums\OrderPaymentKind;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
+use App\Enums\SaleStatus;
 use App\Enums\UserRole;
 use App\Models\CashShift;
 use App\Models\CustomerOrder;
+use App\Models\CustomerOrderPayment;
 use App\Models\DeliveryNote;
 use App\Models\Product;
 use App\Models\Sale;
@@ -19,6 +22,7 @@ use App\Services\DailyClosingService;
 use App\Services\DeliveryNoteService;
 use App\Services\ShiftService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -750,7 +754,7 @@ class CustomerOrderTest extends TestCase
         $this->actingAs($this->cashier)->getJson(route('tenant.cashier.cod.index', ['tenant' => $this->store->code]))->assertJsonPath('meta.total', 0);
     }
 
-    public function test_a_receipt_on_a_combined_note_cannot_be_voided_before_the_receipt_that_owns_the_note(): void
+    public function test_a_receipt_on_a_combined_note_cannot_be_voided_until_the_note_is_cancelled(): void
     {
         [$heldSale, $order] = $this->heldCodReceiptAndReadyOrder();
         $this->collectByCod($order, true)->assertSessionHas('last_sale');
@@ -760,12 +764,217 @@ class CustomerOrderTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonPath('code', 4223);
 
-        $this->actingAs($this->cashier)->postJson($this->codUrl('void', $collectingSale), ['reason' => 'Batal'])->assertOk();
+        $this->actingAs($this->cashier)->postJson($this->codUrl('void', $collectingSale), ['reason' => 'Batal'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Nota pengambilan pesanan tidak bisa di-void. Pakai Retur.');
 
-        $this->assertSame(DeliveryNoteStatus::Cancelled, $this->store->run(fn (): DeliveryNoteStatus => DeliveryNote::query()->sole()->status));
+        $this->store->run(fn () => app(DeliveryNoteService::class)->cancel(DeliveryNote::query()->sole()));
 
         $this->actingAs($this->cashier)->postJson($this->codUrl('void', $heldSale), ['reason' => 'Batal'])->assertOk();
         $this->assertSame('50.000', $this->stockInPieces($this->brush));
+        $this->assertSame(OrderStatus::Completed, $this->reloaded($order)->status);
+    }
+
+    public function test_the_receipt_that_collects_an_order_cannot_be_voided_even_when_no_deposit_was_paid(): void
+    {
+        $order = $this->placeOrder([[$this->paint, 20]]);
+        $this->putInStock($this->paint, '20');
+        $this->actingAs($this->cashier)->postJson($this->orderUrl('ready', $order))->assertOk();
+        $this->collectByCod($order, false)->assertSessionHas('last_sale');
+        $collectingSale = $this->store->run(fn (): Sale => Sale::query()->with('payments')->findOrFail($this->reloaded($order)->sale_id));
+
+        $this->assertNotContains(PaymentMethod::OrderDeposit, $collectingSale->payments->pluck('method')->all());
+
+        $this->actingAs($this->cashier)->postJson($this->codUrl('void', $collectingSale), ['reason' => 'Batal'])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 4223)
+            ->assertJsonPath('message', 'Nota pengambilan pesanan tidak bisa di-void. Pakai Retur.');
+
+        $this->assertSame(SaleStatus::Completed, $this->store->run(fn (): SaleStatus => Sale::query()->findOrFail($collectingSale->id)->status));
+        $this->assertSame(OrderStatus::Completed, $this->reloaded($order)->status);
+        $this->assertSame('0.000', $this->stockInPieces($this->paint));
+    }
+
+    public function test_a_deposit_cannot_be_given_back_by_someone_without_a_running_shift(): void
+    {
+        $order = $this->placeOrder([[$this->paint, 10]], ['method' => 'cash', 'amount' => 40000]);
+        $admin = $this->storeUser(UserRole::StoreAdmin);
+
+        $this->actingAs($admin)->postJson($this->orderUrl('cancel', $order), ['reason' => 'Batal'])
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 4224);
+
+        $this->assertSame(OrderStatus::Ordered, $this->reloaded($order)->status);
+        $this->assertSame(0, $this->store->run(fn (): int => CustomerOrderPayment::query()->where('kind', OrderPaymentKind::Refund)->count()));
+        $this->assertSame('40000.00', $this->expectedCash());
+    }
+
+    public function test_a_deposit_cannot_be_given_back_on_a_closed_day(): void
+    {
+        $order = $this->placeOrder([[$this->paint, 10]], ['method' => 'cash', 'amount' => 40000]);
+        $this->store->run(fn () => app(ShiftService::class)->close($this->shift, '40000', null));
+        $admin = $this->storeUser(UserRole::StoreAdmin);
+        $this->actingAs($admin)->post(route('tenant.daily-closings.store', ['tenant' => $this->store->code, 'date' => today()->toDateString()]))->assertSessionHasNoErrors();
+
+        $this->actingAs($this->cashier)->postJson($this->orderUrl('cancel', $order), ['reason' => 'Batal'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Hari '.today()->format('d/m/Y').' sudah ditutup, jadi uang muka belum bisa dikembalikan hari ini. Minta Super Admin membuka kembali hari itu.');
+
+        $this->assertSame(OrderStatus::Ordered, $this->reloaded($order)->status);
+    }
+
+    public function test_cancelling_a_ready_order_sets_its_goods_free_for_sale_again(): void
+    {
+        $order = $this->placeOrder([[$this->paint, 4]]);
+        $this->putInStock($this->paint, '5');
+        $this->actingAs($this->cashier)->postJson($this->orderUrl('ready', $order))->assertOk();
+        $sellTwo = fn () => $this->actingAs($this->cashier)->post($this->salesUrl(), [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => $this->lines([[$this->paint, 2]]),
+            'payments' => [['method' => 'cash', 'amount' => 20000]],
+        ]);
+
+        $sellTwo()->assertSessionHas('error');
+
+        $this->actingAs($this->cashier)->postJson($this->orderUrl('cancel', $order), ['reason' => 'Pelanggan batal'])->assertOk();
+
+        $sellTwo()->assertSessionHas('last_sale');
+        $this->assertSame('3.000', $this->stockInPieces($this->paint));
+    }
+
+    public function test_the_refund_is_booked_in_the_shift_of_the_one_who_cancels(): void
+    {
+        $order = $this->placeOrder([[$this->paint, 10]], ['method' => 'cash', 'amount' => 40000]);
+        $this->store->run(fn () => app(ShiftService::class)->close($this->shift, '40000', null));
+        $admin = $this->storeUser(UserRole::StoreAdmin);
+        $laterShift = $this->openShiftFor($admin);
+
+        $this->actingAs($admin)->postJson($this->orderUrl('cancel', $order), ['reason' => 'Batal'])->assertOk();
+
+        $refund = $this->store->run(fn (): CustomerOrderPayment => CustomerOrderPayment::query()->where('kind', OrderPaymentKind::Refund)->sole());
+        $summaryOf = fn (CashShift $shift): array => $this->store->run(fn (): array => app(ShiftService::class)->summarize($shift));
+
+        $this->assertSame($laterShift->id, $refund->cash_shift_id);
+        $this->assertSame('-40000.00', $summaryOf($laterShift)['order_deposit_cash']);
+        $this->assertSame('40000.00', $summaryOf($this->shift)['order_deposit_cash']);
+    }
+
+    public function test_the_admin_page_of_a_counted_shift_shows_the_cash_deposits(): void
+    {
+        $this->placeOrder([[$this->paint, 10]], ['method' => 'cash', 'amount' => 40000]);
+        $this->store->run(fn () => app(ShiftService::class)->close($this->shift, '40000', null));
+        $admin = $this->storeUser(UserRole::StoreAdmin);
+
+        $this->actingAs($admin)->get(route('tenant.shifts.show', ['tenant' => $this->store->code, 'shift' => $this->shift->id]))
+            ->assertInertia(fn (Assert $page) => $page->where('shift.order_deposit_cash', '40000.00')->where('shift.expected_cash', '40000.00'));
+    }
+
+    public function test_a_tender_of_several_cash_payments_takes_the_change_out_of_the_last_one(): void
+    {
+        $this->actingAs($this->cashier)->post($this->salesUrl(), [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => $this->lines([[$this->brush, 6]]),
+            'payments' => [['method' => 'cash', 'amount' => 50000], ['method' => 'qris', 'amount' => 20000], ['method' => 'cash', 'amount' => 30000]],
+            'order' => $this->orderPayload([[$this->paint, 2]], 20000),
+        ])->assertSessionHas('last_sale')->assertSessionHas('last_order');
+
+        $sale = $this->store->run(fn (): Sale => Sale::query()->firstOrFail());
+        $order = $this->reloaded($this->store->run(fn (): CustomerOrder => CustomerOrder::query()->firstOrFail()));
+
+        $this->assertSame('20000.00', (string) $sale->change_amount);
+        $this->assertSame(['qris:10000.00', 'cash:10000.00'], $order->payments->map(fn ($payment): string => "{$payment->method->value}:{$payment->amount}")->all());
+        $this->assertSame('60000.00', $this->expectedCash());
+    }
+
+    public function test_submitting_a_receipt_with_an_order_and_deposit_twice_returns_the_first_ones_even_after_a_product_is_switched_off(): void
+    {
+        $payload = [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => $this->lines([[$this->brush, 5]]),
+            'payments' => [['method' => 'cash', 'amount' => 70000]],
+            'order' => $this->orderPayload([[$this->paint, 2]], 20000),
+        ];
+
+        $this->actingAs($this->cashier)->post($this->salesUrl(), $payload)->assertSessionHas('last_sale')->assertSessionHas('last_order');
+        $this->store->run(fn () => $this->brush->forceFill(['is_active' => false])->save());
+
+        $this->actingAs($this->cashier)->post($this->salesUrl(), $payload)->assertSessionHas('last_sale')->assertSessionHas('last_order')->assertSessionMissing('error');
+
+        $this->assertSame(1, $this->store->run(fn (): int => Sale::query()->count()));
+        $this->assertSame(1, $this->store->run(fn (): int => CustomerOrder::query()->count()));
+        $this->assertSame(1, $this->store->run(fn (): int => CustomerOrderPayment::query()->count()));
+        $this->assertSame('70000.00', $this->expectedCash());
+    }
+
+    public function test_a_second_order_for_the_same_goods_cannot_be_marked_as_arrived_while_the_first_holds_them(): void
+    {
+        $first = $this->placeOrder([[$this->paint, 4]]);
+        $second = $this->placeOrder([[$this->paint, 4]]);
+        $this->putInStock($this->paint, '5');
+
+        $this->actingAs($this->cashier)->postJson($this->orderUrl('ready', $first))->assertOk();
+        $this->actingAs($this->cashier)->postJson($this->orderUrl('ready', $second))
+            ->assertUnprocessable()
+            ->assertJsonPath('code', 4224)
+            ->assertJsonPath('message', 'Stok Cat belum cukup untuk pesanan ini, tersedia 1 PCS. Masukkan barang yang datang lewat stok opname dulu.');
+
+        $this->assertSame(OrderStatus::Ordered, $this->reloaded($second)->status);
+    }
+
+    public function test_the_goods_set_aside_are_read_with_a_locking_read_after_the_stock_rows_are_locked(): void
+    {
+        $order = $this->placeOrder([[$this->paint, 4]]);
+        $this->putInStock($this->paint, '5');
+        $statements = [];
+        DB::listen(function ($query) use (&$statements): void {
+            $statements[] = $query->sql;
+        });
+
+        $this->actingAs($this->cashier)->postJson($this->orderUrl('ready', $order))->assertOk();
+        $this->actingAs($this->cashier)->post($this->salesUrl(), [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => $this->lines([[$this->paint, 1]]),
+            'payments' => [['method' => 'cash', 'amount' => 10000]],
+        ])->assertSessionHas('last_sale');
+
+        $isStockLock = fn (string $sql): bool => str_contains($sql, 'from `stocks`') && str_contains($sql, 'for update');
+        $isLockedReservationRead = fn (string $sql): bool => str_contains($sql, 'join `customer_orders`') && str_contains($sql, 'lock in share mode');
+
+        $reservationReads = array_keys(array_filter($statements, $isLockedReservationRead));
+        $stockLocks = array_keys(array_filter($statements, $isStockLock));
+
+        $this->assertCount(2, $reservationReads, 'Marking the order as arrived and the sale each read what is set aside.');
+        $this->assertLessThan($reservationReads[0], $stockLocks[0]);
+        $this->assertLessThan($reservationReads[1], $stockLocks[1]);
+    }
+
+    public function test_the_list_finds_an_order_by_number_name_or_phone_on_the_server(): void
+    {
+        $first = $this->placeOrder([[$this->paint, 1]]);
+        $this->placeOrder([[$this->paint, 2]]);
+        $url = fn (string $search): string => route('tenant.cashier.orders.index', ['tenant' => $this->store->code, 'q' => $search]);
+
+        $this->actingAs($this->cashier)->getJson($url($first->number))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.number', $first->number)
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('meta.counts.open', 2);
+
+        $this->actingAs($this->cashier)->getJson($url('budi'))->assertJsonCount(2, 'data');
+        $this->actingAs($this->cashier)->getJson($url('0812345'))->assertJsonCount(2, 'data');
+        $this->actingAs($this->cashier)->getJson($url('tidak ada'))->assertJsonCount(0, 'data')->assertJsonPath('meta.total', 0);
+    }
+
+    public function test_a_waiting_order_the_stock_covers_is_listed_before_an_older_one_it_does_not(): void
+    {
+        $notCovered = $this->placeOrder([[$this->paint, 10]]);
+        $covered = $this->placeOrder([[$this->brush, 1]]);
+
+        $this->actingAs($this->cashier)->getJson(route('tenant.cashier.orders.index', ['tenant' => $this->store->code]))
+            ->assertJsonPath('data.0.number', $covered->number)
+            ->assertJsonPath('data.1.number', $notCovered->number)
+            ->assertJsonPath('meta.counts', ['open' => 2, 'ready' => 0, 'arrived' => 1]);
     }
 
     public function test_the_payment_methods_of_the_till_do_not_offer_the_order_deposit(): void

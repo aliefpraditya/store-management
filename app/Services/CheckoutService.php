@@ -53,7 +53,7 @@ class CheckoutService
                 throw SaleException::deliveryHoldNeedsOrder();
             }
 
-            if ($orderInput !== null && $deposit->isPositive()) {
+            if ($orderInput !== null && $deposit->isPositive() && ! $this->isAlreadyRecorded($checkoutInput, $isSaleWanted)) {
                 $saleTotal = filled($checkoutInput['items'] ?? null) ? BigDecimal::of($this->sales->quote($checkoutInput['items'])['total']) : BigDecimal::zero();
                 $tender = $this->tenderSplitter->split($checkoutInput['payments'] ?? [], $saleTotal, $deposit);
 
@@ -69,5 +69,22 @@ class CheckoutService
 
             return ['sale' => $sale, 'order' => $order];
         }, StockService::DEADLOCK_ATTEMPTS);
+    }
+
+    /**
+     * Whether a double submit is coming in: every document this checkout would make already exists under its
+     * `client_uuid`. The receipt and the order are made in one transaction, so they exist together. The tender is then not
+     * priced and divided again, because the first receipt and order are returned as they were, and pricing again would
+     * refuse a cart whose product was switched off since.
+     *
+     * @param  CheckoutData  $checkoutInput
+     */
+    private function isAlreadyRecorded(array $checkoutInput, bool $isSaleWanted): bool
+    {
+        $orderInput = $checkoutInput['order'] ?? null;
+
+        return ($isSaleWanted || $orderInput !== null)
+            && (! $isSaleWanted || Sale::query()->where('client_uuid', $checkoutInput['client_uuid'])->exists())
+            && ($orderInput === null || CustomerOrder::query()->where('client_uuid', $orderInput['client_uuid'])->exists());
     }
 }

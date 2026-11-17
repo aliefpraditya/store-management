@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\CashShiftStatus;
+use App\Enums\OrderPaymentKind;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Exceptions\CustomerOrderException;
@@ -16,6 +17,7 @@ use App\Models\Sale;
 use App\Models\Stock;
 use App\Models\User;
 use Brick\Math\BigDecimal;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +32,7 @@ use Illuminate\Support\Facades\DB;
  *
  * @phpstan-import-type CartLine from CartPricer
  *
+ * @phpstan-type StockCoverage array{is_covered: bool, shortages: list<array{name: string, text: string}>}
  * @phpstan-type DepositInput array{method: string, amount: numeric-string|float|int, reference?: string|null}
  * @phpstan-type OrderData array{client_uuid: string, customer_name: string, customer_phone: string, customer_address?: string|null, source_note?: string|null, expected_date?: string|null, items: list<CartLine>, deposits?: list<DepositInput>, origin_sale_id?: int|null}
  */
@@ -80,7 +83,7 @@ class CustomerOrderService
             foreach ($deposits as $deposit) {
                 $order->payments()->create([
                     'cash_shift_id' => $shift->id,
-                    'kind' => CustomerOrderPayment::KIND_DEPOSIT,
+                    'kind' => OrderPaymentKind::Deposit,
                     'method' => PaymentMethod::from($deposit['method']),
                     'amount' => (string) BigDecimal::of((string) $deposit['amount'])->toScale(2),
                     'reference' => filled($deposit['reference'] ?? null) ? trim($deposit['reference']) : null,
@@ -116,15 +119,83 @@ class CustomerOrderService
     }
 
     /**
+     * The open orders for the till's list: ready ones first (they wait for the customer), then the waiting ones the stock
+     * already covers (they only need to be marked as arrived), then the rest; inside each group the nearest expected date
+     * first, orders without a date last. `$search` looks through all open orders by number, customer name or phone, so an
+     * order is found even when it is not among the first `$limit`. Only the orders of the page are loaded with their
+     * lines and payments. `total` is how many orders match; `counts` are the numbers of the till's badge, the same
+     * whatever was searched for.
+     *
+     * @return array{orders: Collection<int, CustomerOrder>, coverage: array<int, StockCoverage>, total: int, counts: array{open: int, ready: int, arrived: int}}
+     */
+    public function openOrdersFor(?string $search, int $limit): array
+    {
+        $coverage = $this->stockCoverageOfWaitingOrders();
+
+        $matchingOrders = CustomerOrder::query()
+            ->whereIn('status', OrderStatus::unfinished())
+            ->when(filled($search), fn (Builder $orders) => $orders->where(fn (Builder $match) => $match
+                ->where('number', 'like', "%{$search}%")
+                ->orWhere('customer_name', 'like', "%{$search}%")
+                ->orWhere('customer_phone', 'like', "%{$search}%")))
+            ->orderByRaw('expected_date is null')
+            ->orderBy('expected_date')
+            ->orderByDesc('id')
+            ->get(['id', 'status']);
+
+        $pageIds = $matchingOrders
+            ->sortBy(fn (CustomerOrder $order): int => $this->listRankOf($order, $coverage))
+            ->take($limit)
+            ->pluck('id')
+            ->all();
+
+        $pageOrders = CustomerOrder::query()
+            ->with(['items.product', 'payments', 'originSale.items', 'originSale.payments'])
+            ->findMany($pageIds)
+            ->sortBy(fn (CustomerOrder $order): int => array_search($order->id, $pageIds, true))
+            ->values();
+
+        return [
+            'orders' => $pageOrders,
+            'coverage' => $coverage,
+            'total' => $matchingOrders->count(),
+            'counts' => $this->openCounts($coverage),
+        ];
+    }
+
+    /**
+     * @param  array<int, StockCoverage>  $coverage
+     */
+    private function listRankOf(CustomerOrder $order, array $coverage): int
+    {
+        return match (true) {
+            $order->status === OrderStatus::Ready => 0,
+            $coverage[$order->id]['is_covered'] ?? false => 1,
+            default => 2,
+        };
+    }
+
+    /**
+     * {@see self::stockCoverageOf()} for every order that is waiting for its goods. The oldest order of the whole
+     * warehouse is served first, so the answer can only be given over all waiting orders, not over a page or a search.
+     *
+     * @return array<int, StockCoverage>
+     */
+    private function stockCoverageOfWaitingOrders(): array
+    {
+        return $this->stockCoverageOf(CustomerOrder::query()->where('status', OrderStatus::Ordered)->with('items.product:id,base_unit_code')->get());
+    }
+
+    /**
      * For orders still waiting for their goods: whether the stock now covers them, and what is still short. The oldest
      * order is served first from what is not already set aside for ready orders, and takes its share before the next one
      * is looked at, so two orders asking for the same goods are not both told that the stock is enough. Nothing is locked or
      * changed: the answer only tells staff which orders can be marked as arrived, and {@see self::markReady()} decides.
      *
      * @param  Collection<int, CustomerOrder>  $orders  with `items.product` loaded; orders that are not waiting are skipped
-     * @return array<int, array{is_covered: bool, shortages: list<array{name: string, text: string}>}> by order id
+     * @return array<int, StockCoverage> by order id
      */
-    public function stockCoverageOf(Collection $orders): array
+    private function stockCoverageOf(Collection $orders): array
     {
         $coverage = [];
 
@@ -145,7 +216,7 @@ class CustomerOrderService
 
     /**
      * @param  array<int, BigDecimal>  $available  what is left of each product, reduced here when the order is covered
-     * @return array{is_covered: bool, shortages: list<array{name: string, text: string}>}
+     * @return StockCoverage
      */
     private function coverageOfOrder(CustomerOrder $order, array &$available): array
     {
@@ -173,18 +244,26 @@ class CustomerOrderService
 
     /**
      * How many orders are open, ready to be collected, and still waiting but already covered by stock (they only need to
-     * be marked as arrived): the numbers the till's badge shows.
+     * be marked as arrived): the numbers the till's badge shows. The list of orders gives the same numbers
+     * ({@see self::openOrdersFor()}), so the badge never counts an order the list does not have.
      *
      * @return array{open: int, ready: int, arrived: int}
      */
     public function badgeCounts(): array
     {
-        $openOrders = CustomerOrder::query()->whereIn('status', OrderStatus::unfinished())->with('items.product')->get();
+        return $this->openCounts($this->stockCoverageOfWaitingOrders());
+    }
 
+    /**
+     * @param  array<int, StockCoverage>  $coverage
+     * @return array{open: int, ready: int, arrived: int}
+     */
+    private function openCounts(array $coverage): array
+    {
         return [
-            'open' => $openOrders->count(),
-            'ready' => $openOrders->where('status', OrderStatus::Ready)->count(),
-            'arrived' => collect($this->stockCoverageOf($openOrders))->where('is_covered', true)->count(),
+            'open' => CustomerOrder::query()->whereIn('status', OrderStatus::unfinished())->count(),
+            'ready' => CustomerOrder::query()->where('status', OrderStatus::Ready)->count(),
+            'arrived' => collect($coverage)->where('is_covered', true)->count(),
         ];
     }
 
@@ -228,6 +307,9 @@ class CustomerOrderService
      * canceller's running shift (so it lowers the cash that should be there); a deposit by transfer, QRIS or EDC goes back
      * to the account given.
      *
+     * The order is locked before the shift, while the receipt that collects an order locks the shift first; when the
+     * canceller is the cashier collecting the same order the two can deadlock, and the loser is simply run again.
+     *
      * @throws CustomerOrderException
      */
     public function cancel(CustomerOrder $order, User $canceller, string $reason, ?string $refundAccount): CustomerOrder
@@ -252,7 +334,7 @@ class CustomerOrderService
             ])->save();
 
             return $lockedOrder;
-        });
+        }, StockService::DEADLOCK_ATTEMPTS);
     }
 
     /**
@@ -309,25 +391,30 @@ class CustomerOrderService
 
     /**
      * Every product must be in the warehouse in full, on top of what other ready orders already hold. Stock rows are
-     * locked in product order like a sale does, so the two cannot wait on each other.
+     * locked in product order like a sale does, so the two cannot wait on each other, and what the other orders hold is
+     * read only after that, with a locking read: two orders marked ready at the same moment (or an order and a sale)
+     * wait for each other on the stock rows, so the second one sees what the first one set aside instead of setting
+     * aside the same goods again.
      *
      * @throws CustomerOrderException
      */
     private function requireGoodsInStock(CustomerOrder $order): void
     {
         $itemsByProduct = $order->items->groupBy('product_id')->sortKeys();
-        $reserved = CustomerOrderItem::reservedQuantities($order->warehouse_id, $itemsByProduct->keys()->all());
+        $productIds = $itemsByProduct->keys()->all();
+        $lockedStocks = $this->stockLedger->lockedStocks($productIds, $order->warehouse_id);
+        $reserved = CustomerOrderItem::reservedQuantities($order->warehouse_id, $productIds, isReadForDecision: true);
 
         foreach ($itemsByProduct as $productId => $productItems) {
             $required = $productItems->reduce(fn (BigDecimal $sum, CustomerOrderItem $item): BigDecimal => $sum->plus((string) $item->base_quantity), BigDecimal::zero());
-            $available = BigDecimal::of($this->stockLedger->lockedQuantity($productId, $order->warehouse_id))->minus($reserved[$productId] ?? '0');
+            $available = BigDecimal::of($lockedStocks[$productId]['quantity'])->minus($reserved[$productId] ?? '0');
 
             if ($required->isGreaterThan($available)) {
                 throw CustomerOrderException::goodsNotInStock($productItems->first()->product_name, SaleException::quantityText(BigDecimal::max($available, '0'), $productItems->first()->product->base_unit_code));
             }
         }
 
-        $this->requireWholePacksInStock($order, $itemsByProduct);
+        $this->requireWholePacksInStock($order, $itemsByProduct, $lockedStocks);
     }
 
     /**
@@ -335,10 +422,11 @@ class CustomerOrderService
      * take them (rolls whole, smaller units from the loose pieces first), after the rolls other ready orders hold.
      *
      * @param  Collection<int, Collection<int, CustomerOrderItem>>  $itemsByProduct
+     * @param  array<int, array{quantity: string, intact_packs: int}>  $lockedStocks  the rows locked by {@see self::requireGoodsInStock()}
      *
      * @throws CustomerOrderException
      */
-    private function requireWholePacksInStock(CustomerOrder $order, Collection $itemsByProduct): void
+    private function requireWholePacksInStock(CustomerOrder $order, Collection $itemsByProduct, array $lockedStocks): void
     {
         $packProductIds = $itemsByProduct->filter(fn (Collection $productItems): bool => $productItems->first()->product->sealedPackUnit() !== null)->keys()->all();
 
@@ -346,8 +434,7 @@ class CustomerOrderService
             return;
         }
 
-        $lockedStocks = $this->stockLedger->lockedStocks($packProductIds, $order->warehouse_id);
-        $reservedPacks = CustomerOrderItem::reservedPacks($order->warehouse_id, $packProductIds);
+        $reservedPacks = CustomerOrderItem::reservedPacks($order->warehouse_id, $packProductIds, isReadForDecision: true);
 
         foreach ($packProductIds as $productId) {
             $productItems = $itemsByProduct[$productId];
@@ -385,7 +472,7 @@ class CustomerOrderService
         }
 
         $refundShift = $this->runningShiftOf($canceller);
-        $deposits = $order->payments->where('kind', CustomerOrderPayment::KIND_DEPOSIT);
+        $deposits = $order->payments->where('kind', OrderPaymentKind::Deposit);
 
         if ($deposits->contains(fn (CustomerOrderPayment $deposit): bool => $deposit->method !== PaymentMethod::Cash) && blank($refundAccount)) {
             throw CustomerOrderException::refundAccountNeeded();
@@ -394,7 +481,7 @@ class CustomerOrderService
         foreach ($deposits as $deposit) {
             $order->payments()->create([
                 'cash_shift_id' => $refundShift->id,
-                'kind' => CustomerOrderPayment::KIND_REFUND,
+                'kind' => OrderPaymentKind::Refund,
                 'method' => $deposit->method,
                 'amount' => $deposit->amount,
                 'reference' => $deposit->method === PaymentMethod::Cash ? null : trim((string) $refundAccount),

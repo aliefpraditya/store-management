@@ -71,8 +71,8 @@ Route::prefix('t/{tenant}')
             Route::post('cod/{sale}/deliveries', [CashierCodController::class, 'delivered'])->name('cod.delivered');
             Route::post('cod/{sale}/voids', [CashierCodController::class, 'void'])->name('cod.void');
             Route::get('orders', [CashierOrderController::class, 'index'])->name('orders.index');
-            Route::post('orders/{order}/ready', [CashierOrderController::class, 'ready'])->name('orders.ready');
-            Route::post('orders/{order}/cancel', [CashierOrderController::class, 'cancel'])->name('orders.cancel');
+            Route::post('orders/{order}/arrivals', [CashierOrderController::class, 'ready'])->name('orders.ready');
+            Route::post('orders/{order}/cancellations', [CashierOrderController::class, 'cancel'])->name('orders.cancel');
             Route::post('orders/{order}/print', [CashierOrderController::class, 'print'])->name('orders.print');
             Route::get('orders/{order}/sheet', [CashierOrderController::class, 'sheet'])->middleware('signed')->name('orders.sheet');
             Route::get('expenses', [CashierExpenseController::class, 'index'])->name('expenses.index');

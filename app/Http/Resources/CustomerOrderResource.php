@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\OrderPaymentKind;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Models\CustomerOrder;
@@ -28,7 +29,7 @@ class CustomerOrderResource extends JsonResource
     public static function depositPaymentsOf(CustomerOrder $order): array
     {
         return $order->payments
-            ->where('kind', CustomerOrderPayment::KIND_DEPOSIT)
+            ->where('kind', OrderPaymentKind::Deposit)
             ->map(fn (CustomerOrderPayment $payment): array => ['method' => $payment->method->label(), 'amount' => (string) $payment->amount, 'reference' => $payment->reference])
             ->values()
             ->all();
@@ -41,7 +42,7 @@ class CustomerOrderResource extends JsonResource
     {
         $tenant = tenant('code');
         $deposit = $this->depositBalance();
-        $deposits = $this->payments->where('kind', CustomerOrderPayment::KIND_DEPOSIT);
+        $deposits = $this->payments->where('kind', OrderPaymentKind::Deposit);
 
         return [
             'id' => $this->id,

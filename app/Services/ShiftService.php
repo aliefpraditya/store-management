@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\CashShiftStatus;
+use App\Enums\OrderPaymentKind;
 use App\Enums\PaymentMethod;
 use App\Enums\SaleReturnStatus;
 use App\Enums\SaleStatus;
@@ -250,7 +251,7 @@ class ShiftService
             ->selectRaw('kind, sum(amount) as amount')
             ->pluck('amount', 'kind');
 
-        return BigDecimal::of((string) ($cashByKind[CustomerOrderPayment::KIND_DEPOSIT] ?? 0))->minus((string) ($cashByKind[CustomerOrderPayment::KIND_REFUND] ?? 0));
+        return BigDecimal::of((string) ($cashByKind[OrderPaymentKind::Deposit->value] ?? 0))->minus((string) ($cashByKind[OrderPaymentKind::Refund->value] ?? 0));
     }
 
     /**
