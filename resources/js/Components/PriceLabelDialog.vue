@@ -256,7 +256,7 @@ function print() {
 .labels__size {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
     border-top: 1px solid var(--app-line);
 }
