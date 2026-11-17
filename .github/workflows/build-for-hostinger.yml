@@ -67,6 +67,7 @@ jobs:
           SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
           SSH_PASSWORD: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
+          PHP_BIN: ${{ secrets.HOSTINGER_PHP_BIN }}
         run: |
           if [ -z "$SSH_HOST" ] || [ -z "$APP_PATH" ] || { [ -z "$SSH_KEY" ] && [ -z "$SSH_PASSWORD" ]; }; then
             echo "HOSTINGER_* secrets are not set: skipping the deploy and the migrations."
@@ -101,9 +102,13 @@ jobs:
             --exclude='/docs/' \
             ./ "$SSH_USER@$SSH_HOST:$APP_PATH/"
 
+          # The server's default `php` over SSH can be older than the app needs (Hostinger: 8.1), so the binary is
+          # configurable, e.g. /opt/alt/php83/usr/bin/php.
+          PHP_BIN="${PHP_BIN:-php}"
+
           # `migrate` is the central database, `tenants:migrate` every registered store database.
           $SSH_COMMAND "$SSH_USER@$SSH_HOST" "set -e
             cd '$APP_PATH'
-            php artisan migrate --force
-            php artisan tenants:migrate --force
-            php artisan optimize:clear"
+            '$PHP_BIN' artisan migrate --force
+            '$PHP_BIN' artisan tenants:migrate --force
+            '$PHP_BIN' artisan optimize:clear"
