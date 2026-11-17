@@ -8,7 +8,6 @@ use App\Enums\SaleReturnStatus;
 use App\Enums\SaleStatus;
 use App\Enums\StockOpnameReason;
 use App\Enums\StockOpnameStatus;
-use App\Models\DeliveryNote;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -198,7 +197,8 @@ class SalesReportService
 
     /**
      * How the receipts of the period were paid, before returns: what came in per method (cash after the change given
-     * back), COD apart as what is still to be paid on delivery (split by whether the goods have been delivered), and,
+     * back), COD apart as what is still to be paid on delivery (split by whether the goods have been delivered, on any
+     * note that carries them: the same meaning as the shift summary, see {@see CodSaleService}), and,
      * when there are any, what was settled by an order deposit taken before or by the credit of a returned receipt.
      * Together they add up to the sales of the period.
      *
@@ -224,7 +224,9 @@ class SalesReportService
         ]);
 
         $deliveredCod = BigDecimal::of((string) $this->codPaymentsQuery($from, $to)
-            ->whereIn('sales.id', DeliveryNote::query()->whereIn('status', DeliveryNoteStatus::withDeliveredGoods())->select('sale_id'))
+            ->whereIn('sales.id', Sale::query()
+                ->whereHas('deliveryNotes', fn (Builder $notes) => $notes->whereIn('delivery_notes.status', DeliveryNoteStatus::withDeliveredGoods()))
+                ->select('sales.id'))
             ->sum('sale_payments.amount'));
 
         $rows->push(['method' => 'cod_delivered', 'label' => 'COD (sudah diantar)', 'amount' => $this->money($deliveredCod)]);

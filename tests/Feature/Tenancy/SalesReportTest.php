@@ -2,12 +2,14 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Enums\DeliveryNoteStatus;
 use App\Enums\SaleReturnStatus;
 use App\Enums\StockOpnameReason;
 use App\Enums\StockOpnameScope;
 use App\Enums\StockOpnameStatus;
 use App\Enums\UserRole;
 use App\Models\CashShift;
+use App\Models\DeliveryNote;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SalePayment;
@@ -229,6 +231,26 @@ class SalesReportTest extends TestCase
                 ['method' => 'cod_delivered', 'label' => 'COD (sudah diantar)', 'amount' => '0.00'],
                 ['method' => 'cod_undelivered', 'label' => 'COD (belum diantar)', 'amount' => '20000.00'],
             ]));
+    }
+
+    public function test_cod_of_a_receipt_whose_goods_were_delivered_on_a_combined_note_counts_as_delivered(): void
+    {
+        $owner = $this->sell(2, [['method' => 'cod', 'amount' => 20000]], isCod: true);
+        $other = $this->sell(3, [['method' => 'cod', 'amount' => 30000]], isCod: true);
+
+        $this->store->run(function () use ($owner, $other): void {
+            DeliveryNote::query()->where('sale_id', $other->id)->get()->each->delete();
+
+            $combinedNote = DeliveryNote::query()->where('sale_id', $owner->id)->sole();
+            $combinedNote->sales()->attach($other->id);
+            $combinedNote->forceFill(['status' => DeliveryNoteStatus::Delivered])->save();
+        });
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->where('report.methods.4', ['method' => 'cod_delivered', 'label' => 'COD (sudah diantar)', 'amount' => '50000.00'])
+            ->where('report.methods.5', ['method' => 'cod_undelivered', 'label' => 'COD (belum diantar)', 'amount' => '0.00']));
+
+        $this->assertSame(2, $this->store->run(fn (): int => app(CodSaleService::class)->totalsOfShift($this->shift)['delivered']['count']));
     }
 
     public function test_cash_is_counted_after_the_change_given(): void

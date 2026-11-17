@@ -214,14 +214,14 @@ class CodSaleTest extends TestCase
         $this->assertSame(['count' => 1, 'amount' => '100000.00'], $summary['cod']['undelivered']);
     }
 
-    public function test_the_close_shift_figures_reach_the_cashier_screen(): void
+    public function test_the_cashier_screen_gets_the_cod_counts_but_no_amounts_because_the_drawer_is_counted_blind(): void
     {
         $this->sellCod();
 
         $this->actingAs($this->cashier)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
-            ->where('summary.cod.undelivered.count', 1)
-            ->where('summary.cod.undelivered.amount', '100000.00')
-            ->where('summary.cod.delivered.count', 0));
+            ->where('summary.cod', ['delivered_count' => 0, 'undelivered_count' => 1])
+            ->missing('summary.expected_cash')
+            ->missing('summary.total_sales'));
     }
 
     public function test_a_cashier_marks_a_cod_sale_as_delivered(): void

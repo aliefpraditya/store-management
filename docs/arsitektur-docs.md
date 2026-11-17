@@ -324,7 +324,7 @@ Ringkasan temuan penting dari bagian "Keterbatasan" tiap dokumen. Kolom **Status
 
 | # | Temuan | Dokumen | Status |
 |---|---|---|---|
-| 1 | Laporan penjualan menghitung "COD sudah diantar" dari `delivery_notes.sale_id` (nota pemilik saja), sedangkan ringkasan shift memakai pivot `delivery_note_sales`. Nota asal pesanan yang COD-nya ditahan lalu diantar lewat surat jalan gabungan tampil "belum diantar" di laporan dan "sudah diantar" di shift | [cod-dan-void](cod-dan-void-docs.md) | diverifikasi ulang (`SalesReportService.php:226-228`) |
+| 1 | ~~Laporan penjualan menghitung "COD sudah diantar" dari `delivery_notes.sale_id` (nota pemilik saja), sedangkan ringkasan shift memakai pivot `delivery_note_sales`~~ | [cod-dan-void](cod-dan-void-docs.md) | **diperbaiki 2026-11-17**: laporan kini memakai pivot yang sama, dijaga `SalesReportTest` |
 | 2 | `Product::HAS_TRANSACTIONS_SQL` tidak memeriksa `customer_order_items`, padahal FK-nya tidak cascade: barang yang hanya pernah dipesan dianggap boleh dihapus lalu berisiko galat 500 | [master-barang](master-barang-docs.md) | diverifikasi ulang (`Product.php:109-112`) |
 | 3 | `CodSaleService::markDelivered` tanpa retry deadlock, padahal mengunci nota lalu surat jalan dan Admin bisa menyelesaikan surat jalan yang sama bersamaan (void sudah memakai retry) | [cod-dan-void](cod-dan-void-docs.md) | diverifikasi ulang |
 | 4 | Idempotensi nota putus di jalur HTTP bila shift sudah ditutup: controller menolak "Buka shift dulu" sebelum service sempat mengembalikan nota pertama | [penjualan-kasir](penjualan-kasir-docs.md) | dikutip (`SaleController.php:24-28`) |
