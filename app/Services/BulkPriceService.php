@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  * @phpstan-import-type UnitPricePlan from PriceChangeCalculator
  *
  * @phpstan-type ProductPlan array{id: int, sku: string, name: string, category: string, brand: string|null, units: list<UnitPricePlan>, is_changed: bool, has_skipped: bool}
- * @phpstan-type BulkPriceTotals array{products_selected: int, products_changed: int, units_changed: int, units_skipped: int}
+ * @phpstan-type BulkPriceTotals array{products_selected: int, products_changed: int, units_changed: int, units_skipped: int, units_below_cost: int}
  */
 class BulkPriceService
 {
@@ -220,6 +220,7 @@ class BulkPriceService
             'products_changed' => $plans->where('is_changed', true)->count(),
             'units_changed' => $unitPlans->where('is_changed', true)->count(),
             'units_skipped' => $unitPlans->filter(fn (array $unitPlan): bool => $unitPlan['skip_reason'] !== null)->count(),
+            'units_below_cost' => $unitPlans->where('is_below_cost', true)->count(),
         ];
     }
 }

@@ -81,6 +81,40 @@ class PriceChangeCalculatorTest extends TestCase
         $this->assertFalse($plan['is_changed']);
     }
 
+    public function test_a_changed_unit_whose_price_ends_under_its_modal_is_flagged(): void
+    {
+        $plan = (new PriceChangeCalculator)->calculate($this->unit(), $this->change(['cost_method' => CostChangeMethod::Percent, 'cost_value' => '100']));
+
+        $this->assertTrue($plan['is_changed']);
+        $this->assertTrue($plan['is_below_cost']);
+    }
+
+    public function test_a_price_equal_to_the_modal_or_above_it_is_not_flagged(): void
+    {
+        $calculator = new PriceChangeCalculator;
+
+        $this->assertFalse($calculator->calculate($this->unit(), $this->change(['cost_method' => CostChangeMethod::Set, 'cost_value' => '10000']))['is_below_cost']);
+        $this->assertFalse($calculator->calculate($this->unit(), $this->change(['cost_method' => CostChangeMethod::Percent, 'cost_value' => '10']))['is_below_cost']);
+    }
+
+    public function test_a_unit_that_is_not_changed_or_not_sold_is_not_flagged_even_when_its_price_is_under_its_modal(): void
+    {
+        $calculator = new PriceChangeCalculator;
+        $alreadyBelowCost = $this->unit(cost: '12000.00');
+
+        $this->assertFalse($calculator->calculate($alreadyBelowCost, $this->change(['unit_code' => 'DUS', 'cost_method' => CostChangeMethod::Percent, 'cost_value' => '5']))['is_below_cost']);
+        $this->assertFalse($calculator->calculate($this->unit(overrides: ['is_sellable' => false]), $this->change(['cost_method' => CostChangeMethod::Percent, 'cost_value' => '100']))['is_below_cost']);
+    }
+
+    public function test_keeping_the_margin_while_the_modal_rises_is_not_flagged(): void
+    {
+        $plan = (new PriceChangeCalculator)->calculate($this->unit(), $this->change([
+            'cost_method' => CostChangeMethod::Percent, 'cost_value' => '100', 'selling_method' => SellingChangeMethod::KeepMargin,
+        ]));
+
+        $this->assertFalse($plan['is_below_cost']);
+    }
+
     public function test_a_price_rule_that_cannot_be_worked_out_also_leaves_the_modal_and_says_so(): void
     {
         $plan = (new PriceChangeCalculator)->calculate($this->unit('0.00', '10000.00'), $this->change([

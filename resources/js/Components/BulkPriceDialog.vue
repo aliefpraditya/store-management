@@ -202,6 +202,28 @@ function apply() {
     });
 }
 
+/**
+ * Selling under cost is allowed, but only after the admin confirms it, as on the item form. The units are counted from
+ * the whole change, not just the rows the preview lists.
+ */
+function confirmApply() {
+    const belowCostCount = preview.value.totals.units_below_cost;
+
+    if (belowCostCount === 0) {
+        apply();
+
+        return;
+    }
+
+    $q.dialog({
+        title: 'Harga jual di bawah modal',
+        message: `${belowCostCount} satuan akan berharga jual lebih rendah dari modalnya. Tetap terapkan?`,
+        cancel: { label: 'Periksa lagi', flat: true, noCaps: true },
+        ok: { label: 'Tetap terapkan', color: 'primary', unelevated: true, noCaps: true },
+        persistent: true,
+    }).onOk(apply);
+}
+
 /** Units worth showing in the preview: the ones that change or cannot be changed. */
 const affectedUnits = (product) => product.units.filter((unit) => unit.is_changed || unit.skip_reason !== null);
 
@@ -267,6 +289,7 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
                         <p class="bulk__summary" :class="{ 'bulk__summary--stale': isPreviewing }">
                             <b>{{ preview.totals.products_changed }}</b> barang berubah ({{ preview.totals.units_changed }} satuan) dari {{ preview.totals.products_selected }} yang dipilih.
                             <span v-if="preview.totals.units_skipped > 0" class="bulk__skipped">{{ preview.totals.units_skipped }} satuan dilewati.</span>
+                            <span v-if="preview.totals.units_below_cost > 0" class="bulk__skipped"><q-icon name="warning" size="16px" /> {{ preview.totals.units_below_cost }} satuan harga jualnya di bawah modal.</span>
                             <span v-if="isPreviewing" class="bulk__calculating">Menghitung ulang…</span>
                         </p>
 
@@ -283,7 +306,7 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
                                 </thead>
                                 <tbody>
                                     <template v-for="product in preview.products" :key="product.id">
-                                        <tr v-for="(unit, unitIndex) in affectedUnits(product)" :key="unit.unit_id">
+                                        <tr v-for="(unit, unitIndex) in affectedUnits(product)" :key="unit.unit_id" :class="{ 'bulk__row--below': unit.is_below_cost }">
                                             <td>
                                                 <template v-if="unitIndex === 0"><b>{{ product.name }}</b><small>{{ product.sku }}</small></template>
                                             </td>
@@ -295,6 +318,7 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
                                                     <template v-else>{{ priceFormat.format(unit.old_cost) }}</template>
                                                 </td>
                                                 <td class="bulk__right">
+                                                    <q-icon v-if="unit.is_below_cost" name="warning" color="negative" size="16px" class="q-mr-xs" aria-label="Di bawah modal"><q-tooltip>Harga jual di bawah modal</q-tooltip></q-icon>
                                                     <template v-if="isDifferent(unit.old_price, unit.new_price)">{{ priceFormat.format(unit.old_price) }} → <b>{{ priceFormat.format(unit.new_price) }}</b></template>
                                                     <template v-else>{{ priceFormat.format(unit.old_price) }}</template>
                                                 </td>
@@ -319,7 +343,7 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
                     :label="preview ? `Terapkan ke ${preview.totals.products_changed} barang` : 'Terapkan'"
                     :loading="isApplying"
                     :disable="!canApply"
-                    @click="apply"
+                    @click="confirmApply"
                 />
             </q-card-actions>
         </q-card>
@@ -404,6 +428,14 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
 }
 
 .bulk__skipped {
+    color: #be123c;
+}
+
+.bulk__row--below td {
+    background: #fff1f2;
+}
+
+.bulk__row--below td:last-child {
     color: #be123c;
 }
 

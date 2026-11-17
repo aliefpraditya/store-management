@@ -16,9 +16,11 @@ use Brick\Math\RoundingMode;
  *
  * A unit is either left as it is (outside the change, or nothing to change on it), changed, or skipped with the reason
  * it cannot be changed safely. When both prices change, the modal is changed first and a margin rule uses the new one.
+ * A changed unit that ends with its selling price under its modal is flagged (`is_below_cost`): it is allowed, but the
+ * admin confirms it before applying, as on the item form.
  *
  * @phpstan-type PriceChange array{unit_code: string|null, cost_method: CostChangeMethod|null, cost_value: numeric-string|null, selling_method: SellingChangeMethod|null, selling_value: numeric-string|null}
- * @phpstan-type UnitPricePlan array{unit_id: int, code: string, is_base: bool, old_cost: numeric-string, new_cost: numeric-string, old_price: numeric-string, new_price: numeric-string, is_changed: bool, skip_reason: string|null}
+ * @phpstan-type UnitPricePlan array{unit_id: int, code: string, is_base: bool, old_cost: numeric-string, new_cost: numeric-string, old_price: numeric-string, new_price: numeric-string, is_changed: bool, is_below_cost: bool, skip_reason: string|null}
  */
 class PriceChangeCalculator
 {
@@ -150,6 +152,7 @@ class PriceChangeCalculator
         $oldPriceText = (string) $oldPrice->toScale(self::MONEY_SCALE);
         $newCostText = (string) $newCost->toScale(self::MONEY_SCALE);
         $newPriceText = (string) $newPrice->toScale(self::MONEY_SCALE);
+        $isChanged = $skipReason === null && ($oldCostText !== $newCostText || $oldPriceText !== $newPriceText);
 
         return [
             'unit_id' => $unit->id,
@@ -159,7 +162,8 @@ class PriceChangeCalculator
             'new_cost' => $newCostText,
             'old_price' => $oldPriceText,
             'new_price' => $newPriceText,
-            'is_changed' => $skipReason === null && ($oldCostText !== $newCostText || $oldPriceText !== $newPriceText),
+            'is_changed' => $isChanged,
+            'is_below_cost' => $isChanged && $unit->is_sellable && $newPrice->isLessThan($newCost),
             'skip_reason' => $skipReason,
         ];
     }

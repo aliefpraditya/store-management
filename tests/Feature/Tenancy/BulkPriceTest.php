@@ -170,7 +170,7 @@ class BulkPriceTest extends TestCase
 
         $this->preview($this->payload($product, ['cost_method' => 'percent', 'cost_value' => 10, 'selling_method' => 'percent', 'selling_value' => 10]))
             ->assertOk()
-            ->assertJsonPath('data.totals', ['products_selected' => 1, 'products_changed' => 1, 'units_changed' => 2, 'units_skipped' => 0])
+            ->assertJsonPath('data.totals', ['products_selected' => 1, 'products_changed' => 1, 'units_changed' => 2, 'units_skipped' => 0, 'units_below_cost' => 0])
             ->assertJsonPath('data.products.0.name', 'Kuas')
             ->assertJsonPath('data.products.0.units.0.old_cost', '6000.00')
             ->assertJsonPath('data.products.0.units.0.new_cost', '6600.00')
@@ -187,7 +187,7 @@ class BulkPriceTest extends TestCase
 
         $this->preview($this->payload($product, ['cost_method' => 'set', 'cost_value' => 4000, 'selling_method' => 'set', 'selling_value' => 55000]))
             ->assertOk()
-            ->assertJsonPath('data.totals', ['products_selected' => 1, 'products_changed' => 1, 'units_changed' => 2, 'units_skipped' => 0])
+            ->assertJsonPath('data.totals', ['products_selected' => 1, 'products_changed' => 1, 'units_changed' => 2, 'units_skipped' => 0, 'units_below_cost' => 0])
             ->assertJsonPath('data.products.0.units.0.new_cost', '4000.00')
             ->assertJsonPath('data.products.0.units.0.new_price', '55000.00')
             ->assertJsonPath('data.products.0.units.1.new_cost', '4000.00')
@@ -233,6 +233,34 @@ class BulkPriceTest extends TestCase
             ->assertJsonPath('data.products.0.units.0.new_price', '10500.00')
             ->assertJsonPath('data.products.0.units.1.is_changed', false)
             ->assertJsonPath('data.products.0.units.1.new_price', '110000.00');
+    }
+
+    public function test_the_preview_counts_the_units_whose_price_would_end_under_their_modal(): void
+    {
+        $product = $this->item();
+
+        $this->preview($this->payload($product, ['cost_method' => 'percent', 'cost_value' => 100]))
+            ->assertOk()
+            ->assertJsonPath('data.totals.units_below_cost', 2)
+            ->assertJsonPath('data.products.0.units.0.is_below_cost', true)
+            ->assertJsonPath('data.products.0.units.1.is_below_cost', true);
+
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'cost_method' => 'set', 'cost_value' => 12000]))
+            ->assertJsonPath('data.totals.units_below_cost', 1)
+            ->assertJsonPath('data.products.0.units.0.is_below_cost', true)
+            ->assertJsonPath('data.products.0.units.1.is_below_cost', false);
+
+        $this->preview($this->payload($product, ['cost_method' => 'percent', 'cost_value' => 100, 'selling_method' => 'keep_margin']))
+            ->assertJsonPath('data.totals.units_below_cost', 0);
+    }
+
+    public function test_a_price_under_the_modal_is_counted_but_does_not_stop_the_change_from_being_applied(): void
+    {
+        $product = $this->item();
+
+        $this->apply($this->payload($product, ['cost_method' => 'percent', 'cost_value' => 100]))->assertSessionHas('success');
+
+        $this->assertSame(['12000.00', '10000.00'], $this->pricesOf($product, 'PCS'));
     }
 
     public function test_a_margin_sets_the_price_as_a_share_of_the_price_and_never_as_markup(): void
@@ -282,7 +310,7 @@ class BulkPriceTest extends TestCase
         $this->store->run(fn () => ProductUnit::query()->where('product_id', $free->id)->update(['cost_price' => 0]));
 
         $this->preview($this->payload($cheap, ['unit_code' => 'PCS', 'cost_method' => 'nominal', 'cost_value' => -7000]))
-            ->assertJsonPath('data.totals', ['products_selected' => 1, 'products_changed' => 0, 'units_changed' => 0, 'units_skipped' => 1])
+            ->assertJsonPath('data.totals', ['products_selected' => 1, 'products_changed' => 0, 'units_changed' => 0, 'units_skipped' => 1, 'units_below_cost' => 0])
             ->assertJsonPath('data.products.0.units.0.skip_reason', 'Modal akan jadi negatif.');
 
         $this->preview($this->payload($cheap, ['unit_code' => 'PCS', 'selling_method' => 'nominal', 'selling_value' => -20000]))
@@ -459,7 +487,7 @@ class BulkPriceTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.is_truncated', true)
             ->assertJsonCount(100, 'data.products')
-            ->assertJsonPath('data.totals', ['products_selected' => 101, 'products_changed' => 101, 'units_changed' => 202, 'units_skipped' => 0]);
+            ->assertJsonPath('data.totals', ['products_selected' => 101, 'products_changed' => 101, 'units_changed' => 202, 'units_skipped' => 0, 'units_below_cost' => 0]);
 
         $this->preview($this->payload(array_slice($products, 0, 100), ['selling_method' => 'percent', 'selling_value' => 10]))
             ->assertJsonPath('data.is_truncated', false)
