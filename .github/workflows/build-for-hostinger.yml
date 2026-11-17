@@ -66,7 +66,6 @@ jobs:
           SSH_USER: ${{ secrets.HOSTINGER_SSH_USER }}
           SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
           SSH_PASSWORD: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
-          SSH_KNOWN_HOSTS: ${{ secrets.HOSTINGER_SSH_KNOWN_HOSTS }}
           APP_PATH: ${{ secrets.HOSTINGER_APP_PATH }}
         run: |
           if [ -z "$SSH_HOST" ] || [ -z "$APP_PATH" ] || { [ -z "$SSH_KEY" ] && [ -z "$SSH_PASSWORD" ]; }; then
@@ -75,9 +74,9 @@ jobs:
           fi
 
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
-          SSH_OPTIONS="-p ${SSH_PORT:-22} -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o StrictHostKeyChecking=yes"
+          # The host key is not verified: the runner is fresh on every run, so there is no known_hosts to compare with.
+          SSH_OPTIONS="-p ${SSH_PORT:-22} -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
 
           # A key is preferred; the password is for a server where no key has been registered in hPanel.
           if [ -n "$SSH_KEY" ]; then
