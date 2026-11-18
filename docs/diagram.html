@@ -479,8 +479,8 @@ section:last-of-type{break-after:auto}
         enum scope "category, selected"
         bigint category_id FK
         bigint brand_id FK
-        enum status "draft, counting, review, posted, cancelled"
-        datetime deleted_at "soft delete, set when cancelled"
+        enum status "counting, review, posted, cancelled"
+        datetime deleted_at "soft delete, set when cancelled in review"
         datetime snapshot_at
         string reason_code "e.g. inter_store_transfer, opening_balance"
         bigint created_by

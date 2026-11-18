@@ -261,7 +261,7 @@
   <aside class="sb" data-side="store" data-on="Stok Opname" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>OPN/MU/2610/0002</h3><span class="b">Simpan</span><span class="b">Selesai hitung</span><span class="b ok">Posting</span></div>
   <div class="pg">
-    <div class="steps"><span class="done"><svg class="ic s"><use href="#i-check"/></svg>Draft</span><span class="cur">Menghitung</span><span>Review</span><span>Diposting</span></div>
+    <div class="steps"><span class="cur">Menghitung</span><span>Review</span><span>Diposting</span></div>
     <div class="g3"><div class="f"><span>Gudang</span><div class="in sel">Main Warehouse</div></div><div class="f"><span>Cakupan</span><div class="in sel">Barang terpilih</div></div><div class="f"><span>Alasan</span><div class="in sel">Penambahan stok</div></div></div>
     <div class="in ph" style="margin-bottom:14px"><svg class="ic s"><use href="#i-search"/></svg>Cari atau scan barang<span class="sp"></span><span class="mute">2 dari 3 dihitung</span></div>
     <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Stok sistem</th><th>Hitung fisik</th><th class="r">Selisih</th><th>Alasan</th><th>Catatan</th></tr>
@@ -271,7 +271,7 @@
     <div class="row mt"><span class="c warn">1 belum dihitung</span><span class="ink2">Nilai selisih <b style="color:var(--bad)">−Rp 72.875</b></span></div>
   </div></div>
 </div>
-<details class="nt"><summary>Catatan</summary><ul><li>Penjualan tetap jalan saat menghitung; selisih dihitung dari snapshot + mutasi.</li><li>Hanya Admin yang bisa posting. Hitungan boleh campur satuan.</li><li>Stok awal dan barang datang dimasukkan lewat sini.</li><li>Alasan tiap selisih dipilih dari daftar (Pembelian, Cek stok, Hilang, Rusak) yang bisa ditambah di Pengaturan Toko; teks bebas jadi Catatan.</li></ul></details>
+<details class="nt"><summary>Catatan</summary><ul><li>Penjualan tetap jalan saat menghitung; selisih dihitung dari snapshot + mutasi.</li><li>Hanya Admin yang bisa posting. Hitungan boleh campur satuan.</li><li>Opname langsung berstatus Menghitung. Tambah Barang meminta jumlahnya sekaligus (boleh beberapa satuan, mis. 1 ROL + 200 MTR).</li><li>Batal saat Menghitung menghapus opname.</li><li>Stok awal dan barang datang dimasukkan lewat sini.</li><li>Alasan tiap selisih dipilih dari daftar (Pembelian, Cek stok, Hilang, Rusak) yang bisa ditambah di Pengaturan Toko; teks bebas jadi Catatan.</li></ul></details>
 </section>
 
 <!-- 9b OPNAME REVIEW -->
@@ -280,7 +280,7 @@
   <aside class="sb" data-side="store" data-on="Stok Opname" data-who="Andi|Admin Toko"></aside>
   <div class="mn"><div class="tb"><h3>OPN/MU/2610/0003</h3><span class="b">Simpan Review</span><span class="b">Hitung Ulang</span><span class="b ok">Posting</span></div>
   <div class="pg">
-    <div class="steps"><span class="done"><svg class="ic s"><use href="#i-check"/></svg>Draft</span><span class="done"><svg class="ic s"><use href="#i-check"/></svg>Menghitung</span><span class="cur">Review</span><span>Diposting</span></div>
+    <div class="steps"><span class="done"><svg class="ic s"><use href="#i-check"/></svg>Menghitung</span><span class="cur">Review</span><span>Diposting</span></div>
     <div class="g3"><div class="card"><div class="mute">Dihitung</div><b>3 / 3</b></div><div class="card"><div class="mute">Selisih sudah direview</div><b style="color:var(--bad)">1 / 3</b></div><div class="card"><div class="mute">Nilai selisih (estimasi)</div><b style="color:var(--bad)">−Rp 91.875</b></div></div>
     <div class="row mt" style="margin-bottom:10px"><div class="in ph grow" style="flex:2"><svg class="ic s"><use href="#i-search"/></svg>Cari di daftar ini</div><div class="in sel grow">Selisih belum direview</div><span class="b">Tandai yang lengkap di halaman ini sudah direview</span></div>
     <div class="tbl"><table class="t"><tr><th>Barang</th><th class="r">Stok sistem</th><th>Hitung fisik</th><th class="r">Selisih</th><th>Alasan</th><th>Catatan</th><th class="ct">Direview</th></tr>

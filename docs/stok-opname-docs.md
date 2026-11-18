@@ -4,7 +4,7 @@
 > **Stack:** Laravel 13 (PHP 8.3), Inertia 3, Vue 3, Quasar 2, stancl/tenancy
 > **Audiens:** Engineer yang memelihara atau memperluas fitur ini
 > **Database:** per toko (semua tabel modul ini ada di DB toko, bukan DB pusat `mitra_manager`)
-> **Terakhir diperbarui:** 2026-11-17
+> **Terakhir diperbarui:** 2026-11-18
 
 ## 1. Ringkasan
 
@@ -21,8 +21,7 @@ Beberapa aturan yang membuat modul ini lebih rumit dari "hitung lalu timpa saldo
 
 ```mermaid
 flowchart LR
-    A["Admin buat opname<br/>gudang, cakupan, alasan"] --> B["Mulai Hitung<br/>snapshot + klaim barang"]
-    B --> C["Isi hitungan fisik<br/>boleh campur satuan"]
+    A["Admin buat opname<br/>gudang, cakupan, alasan<br/>langsung berstatus menghitung"] --> C["Tambah barang dan isi hitungan fisik<br/>boleh campur satuan"]
     C --> D["Selesai Hitung<br/>status review"]
     D --> E{"Alasan opname<br/>wajib review?<br/>routine atau returns_check"}
     E -->|"Ya"| F["Review selisih<br/>alasan, keputusan DG,<br/>tanda direview"]
@@ -39,8 +38,7 @@ flowchart LR
 flowchart TD
     subgraph ADM["Admin Toko / Super Admin"]
         A1(["Buka Opname Baru"]) --> A2["Isi gudang, tanggal,<br/>cakupan, alasan"]
-        A3["Mulai Hitung"]
-        A4["Isi hitungan per barang<br/>lalu Simpan"]
+        A4["Tambah barang (scope selected) dan<br/>isi hitungan per barang, lalu Simpan"]
         A5{"Masih ada barang<br/>belum dihitung?"}
         A6["Tandai belum dihitung = 0<br/>atau biarkan kosong"]
         A7["Selesai Hitung"]
@@ -54,26 +52,25 @@ flowchart TD
     subgraph SYS["Sistem"]
         S1{"Gudang bertipe returns?"}
         S2["Paksa reason_code returns_check<br/>dan scope selected, isi barang<br/>dari semua stok gudang retur"]
-        S3["Simpan draft dan beri nomor<br/>OPN/prefix/yymm/urut"]
-        S4["Kunci baris gudang, ambil snapshot,<br/>lewati barang milik opname aktif lain"]
-        S5{"Ada barang di daftar hitung?"}
-        S5X["Tolak: pilih minimal satu barang<br/>atau tidak ada barang untuk kategori dan merek"]
+        S3["Simpan opname berstatus menghitung dan beri nomor<br/>OPN/prefix/yymm/urut, snapshot_at = sekarang.<br/>Kunci baris gudang; scope kategori/merek mengisi<br/>daftar sekarang, lewati barang milik opname aktif lain"]
+        S5{"Scope kategori/merek<br/>tanpa barang?"}
+        S5X["Tolak dan batalkan pembuatan:<br/>tidak ada barang untuk kategori dan merek"]
         S6["Simpan hitungan dalam satuan dasar<br/>dan jumlah kemasan utuh"]
         S7{"Minimal satu barang<br/>sudah terhitung?"}
         S7X["Tolak: belum ada barang yang dihitung"]
         S8["Status review.<br/>Barang tetap terkunci dari penjualan<br/>bila pengaturan kunci aktif"]
         S9["Hapus tanda direview,<br/>kembali ke status menghitung"]
         S10["Proses posting<br/>lihat BPMN posting"]
-        S11{"Status masih draft?"}
-        S12["Hapus permanen draft<br/>nomor tidak dipakai lagi"]
+        S11{"Status masih menghitung?"}
+        S12["Hapus permanen opname beserta itemnya<br/>nomor tidak dipakai lagi"]
         S13["Status dibatalkan<br/>dan soft delete"]
     end
     A2 --> S1
     S1 -->|"Ya"| S2 --> S3
     S1 -->|"Tidak"| S3
-    S3 --> A3 --> S4 --> S5
-    S5 -->|"Tidak"| S5X --> A3
-    S5 -->|"Ya"| A4 --> S6 --> A5
+    S3 --> S5
+    S5 -->|"Ya"| S5X --> A2
+    S5 -->|"Tidak"| A4 --> S6 --> A5
     A5 -->|"Ya"| A6 --> A7
     A5 -->|"Tidak"| A7
     A7 --> S7
@@ -83,7 +80,7 @@ flowchart TD
     A9 -->|"Tidak"| A10 --> S10 --> A11
     AX --> S11
     S11 -->|"Ya"| S12 --> AY
-    S11 -->|"Tidak, menghitung atau review"| S13 --> AY
+    S11 -->|"Tidak, sudah review"| S13 --> AY
 ```
 
 **(c) BPMN — posting opname dan percabangannya** (semua di dalam satu transaksi DB)
@@ -229,7 +226,7 @@ Indeks: `(product_id, warehouse_id, moved_at)`, `(reference_type, reference_id)`
 
 ### `stock_opnames`
 
-Migrasi: `2026_10_27_152503_create_stock_opname_tables.php`, lalu `2026_10_29_135937_add_brand_to_stock_opnames_and_drop_all_scope.php`, `2026_10_29_152834_add_soft_deletes_to_stock_opnames.php`.
+Migrasi: `2026_10_27_152503_create_stock_opname_tables.php`, lalu `2026_10_29_135937_add_brand_to_stock_opnames_and_drop_all_scope.php`, `2026_10_29_152834_add_soft_deletes_to_stock_opnames.php`, `2026_11_18_100000_drop_draft_status_from_stock_opnames.php` (membuang status `draft`; opname draft yang masih ada dihapus beserta itemnya karena belum pernah mengambil snapshot atau menghitung apa pun).
 
 | Kolom | Tipe | Null | Catatan |
 |---|---|---|---|
@@ -240,13 +237,13 @@ Migrasi: `2026_10_27_152503_create_stock_opname_tables.php`, lalu `2026_10_29_13
 | `scope` | enum(`category`,`selected`) | tidak | `all` sudah dibuang (migrasi 2026-10-29); opname lama ber-scope `all` diubah menjadi `selected` |
 | `category_id` | bigint, FK ke `categories.id` | ya | hanya terisi untuk scope `category` |
 | `brand_id` | bigint, FK ke `brands.id` | ya | hanya untuk scope `category`. Scope ini berarti "kategori dan/atau merek" |
-| `status` | enum(`draft`,`counting`,`review`,`posted`,`cancelled`) | tidak | default `draft` |
-| `snapshot_at` | datetime | ya | terisi saat Mulai Hitung; hanya ditampilkan |
+| `status` | enum(`counting`,`review`,`posted`,`cancelled`) | tidak | default `counting`: opname langsung bisa dihitung begitu dibuat |
+| `snapshot_at` | datetime | ya | terisi saat opname dibuat; hanya ditampilkan |
 | `reason_code` | string | ya | **bukan enum DB**. Isinya nilai `StockOpnameReason`. Alasan nullable-nya tidak terbaca dari migrasi; kode menanganinya dengan `reason_code?->` di mana-mana, jadi opname tanpa alasan diperlakukan sebagai opname biasa tanpa review |
 | `created_by` | unsigned bigint | tidak | id pengguna pusat |
 | `approved_by` | unsigned bigint | ya | diisi pemosting saat posting (bukan langkah persetujuan terpisah) |
 | `posted_at` | datetime | ya | |
-| `deleted_at` | timestamp | ya | soft delete; terisi untuk opname yang dibatalkan setelah mulai |
+| `deleted_at` | timestamp | ya | soft delete; terisi untuk opname yang dibatalkan setelah masuk review (yang dibatalkan saat menghitung dihapus permanen) |
 | `created_at`, `updated_at` | timestamp | ya | |
 
 Indeks `(status, opname_date)`. Migrasi soft delete menyalin `updated_at` ke `deleted_at` untuk opname berstatus `cancelled` yang sudah ada.
@@ -260,7 +257,7 @@ Migrasi: `2026_10_27_152503_...`, `2026_11_02_120000_add_cost_price_at_posting_.
 | `id` | bigint, PK | | |
 | `stock_opname_id` | bigint, FK | tidak | `cascadeOnDelete` |
 | `product_id` | bigint, FK ke `products.id` | tidak | restrict; model memakai `withTrashed()` |
-| `snapshot_quantity` | decimal(15,3) | tidak | stok saat barang masuk daftar / saat Mulai Hitung. **Ditulis tetapi tidak pernah dibaca** (bagian 13) |
+| `snapshot_quantity` | decimal(15,3) | tidak | stok saat barang masuk daftar. **Ditulis tetapi tidak pernah dibaca** (bagian 13) |
 | `counted_quantity` | decimal(15,3) | ya | `NULL` = belum dihitung, **bukan** 0 |
 | `counted_packs` | unsigned int | ya | berapa dari hitungan itu kemasan utuh; `NULL` untuk barang tanpa satuan kemasan atau yang dihitung sebelum punya satuan kemasan |
 | `system_quantity_at_posting` | decimal(15,3) | ya | stok hidup terkunci saat posting; `NULL` sebelum posting |
@@ -410,7 +407,7 @@ Enum yang dipakai (semua di `app/Enums`):
 | `StockMovementType` | `opening_balance`, `sale`, `sale_void`, `sale_return`, `opname_adjustment` | `label()` bahasa Indonesia |
 | `StockReferenceType` | `stock_opname`, `sale`, `sale_return` | `modelClass()` memetakan nama pendek ke kelas; `StockService::referenceTypeOf()` dan `StockHistoryService` memakainya |
 | `StockOpnameScope` | `category`, `selected` | |
-| `StockOpnameStatus` | `draft`, `counting`, `review`, `posted`, `cancelled` | `isActive()` (draft/counting/review: memegang barangnya), `isCounting()` (counting/review: barang terkunci dari penjualan), `isErasedWhenCancelled()` (hanya draft) |
+| `StockOpnameStatus` | `counting`, `review`, `posted`, `cancelled` | `isActive()` (counting/review: memegang barangnya), `isCounting()` (counting/review: barang terkunci dari penjualan), `isErasedWhenCancelled()` (hanya counting) |
 | `StockOpnameReason` | `routine`, `opening_balance`, `stock_increase`, `damaged`, `lost`, `inter_store_transfer`, `correction`, `returns_check` | hanya `routine`, `opening_balance`, `stock_increase` yang `isSelectable()`; `damaged`..`correction` tinggal untuk opname lama; `returns_check` dipaksa untuk gudang retur. `isArrivalCount()` (= `stock_increase`), `requiresVarianceReview()` (`routine`, `returns_check`), `needsNoteForLargeVariance()` (bukan `opening_balance` / `stock_increase`) |
 | `OpnameReasonBehavior` | `plain`, `damaged` | `needsDamageDecision()` |
 
@@ -468,7 +465,6 @@ Halaman Inertia dan aksi redirect-back, bukan API JSON. Prefix `t/{tenant}/`; se
 | GET | `/stock-opnames/create` | `@create` | `tenant.stock-opnames.create` |
 | POST | `/stock-opnames` | `@store` | `tenant.stock-opnames.store` |
 | GET | `/stock-opnames/{stock_opname}` | `@show` (`withTrashed()`) | `tenant.stock-opnames.show` |
-| POST | `/stock-opnames/{stock_opname}/start` | `@start` | `tenant.stock-opnames.start` |
 | PUT | `/stock-opnames/{stock_opname}/counts` | `@saveCounts` | `tenant.stock-opnames.counts` |
 | PUT | `/stock-opnames/{stock_opname}/review` | `@saveReview` | `tenant.stock-opnames.review` |
 | POST | `/stock-opnames/{stock_opname}/items` | `@addItem` | `tenant.stock-opnames.items.store` |
@@ -591,13 +587,16 @@ Satu-satunya penulis `stocks` dan `stock_movements`. Tidak membuka transaksi sen
 
 Dependensi: `StockService`, `DocumentNumberGenerator`, `StoreSettingService`, `DamagedGoodsService`. Setiap method yang mengubah opname berjalan di `DB::transaction` dan **membaca ulang opname dengan `lockForUpdate()`** lewat `lockedInStatus()`, lalu memeriksa statusnya terhadap daftar status yang diizinkan; status yang dikirim UI tidak pernah dipercaya (lihat bagian 9).
 
-**Mencegah satu barang dihitung di dua opname aktif.** "Barang ada di opname aktif (draft/menghitung/review) lain pada gudang yang sama" dicek dengan membaca opname lain; dua request bersamaan bisa sama-sama lolos. Maka `lockWarehouseClaims()` mengunci **baris `warehouses`** lebih dulu di `create` (khusus Pemeriksaan Retur), `start`, dan `addProduct`, sehingga pemeriksaan itu antre. `busyProductIds()` memeriksa dalam potongan 500 id.
+**Mencegah satu barang dihitung di dua opname aktif.** "Barang ada di opname aktif (menghitung/review) lain pada gudang yang sama" dicek dengan membaca opname lain; dua request bersamaan bisa sama-sama lolos. Maka `lockWarehouseClaims()` mengunci **baris `warehouses`** lebih dulu di `create` dan `addProduct`, sehingga pemeriksaan itu antre. `busyProductIds()` memeriksa dalam potongan 500 id.
 
-**`create()`** — nomor dokumen dibuat di dalam transaksi (agar nomor tidak lompat bila rollback). `category_id`/`brand_id` hanya disimpan untuk scope `category`. Untuk `returns_check`, semua barang yang punya stok `> 0` di gudang retur langsung dimasukkan sebagai item (kecuali yang dipegang opname aktif lain), dengan `snapshot_quantity` = stok saat itu.
+**`create()`** — opname langsung dibuat berstatus `counting` dengan `snapshot_at = now()`; tidak ada status draft dan tidak ada langkah "Mulai Hitung". Nomor dokumen dibuat di dalam transaksi (agar nomor tidak lompat bila rollback). `category_id`/`brand_id` hanya disimpan untuk scope `category`. Mengembalikan `['opname' => ..., 'skippedCount' => ...]`. Isi daftar barang:
+- *Pemeriksaan Retur* (`returns_check`): semua barang yang punya stok `> 0` di gudang retur langsung dimasukkan sebagai item (kecuali yang dipegang opname aktif lain), dengan `snapshot_quantity` = stok saat itu.
+- *Scope `category`*: `createSnapshotItems()` mengambil semua `products` dengan `category_id` dan/atau `brand_id` (produk **tidak aktif ikut**, produk soft-deleted tidak), mengurangi yang sibuk (jumlahnya jadi `skippedCount`, dipakai controller untuk pesan), lalu `insert` per 500. Tidak ada barang yang cocok ditolak `noMatchingProducts`, dan karena satu transaksi, opname itu tidak jadi dibuat (controller kembali ke form dengan `flash.error`).
+- *Scope `selected`*: daftar mulai kosong dan terisi lewat `addProduct()`.
 
-**`addProduct()` / `removeItem()`** — hanya scope `selected` dan status draft/menghitung. Menambah barang yang sudah ada tidak melakukan apa pun (idempoten); barang yang dipegang opname aktif lain ditolak `productIsBusy`.
+**`addProduct()` / `removeItem()`** — hanya scope `selected` dan status menghitung. Menambah barang yang sudah ada tidak melakukan apa pun (idempoten); barang yang dipegang opname aktif lain ditolak `productIsBusy`. `snapshot_quantity` barang diambil saat barang itu ditambahkan.
 
-**`start()`** — hanya dari draft. Scope `selected`: buang barang yang sementara itu dipegang opname lain (`dropProductsHeldElsewhere`, jumlahnya dikembalikan ke controller untuk pesan), lalu segarkan `snapshot_quantity` semua item; daftar kosong ditolak `noProducts`. Scope `category`: ambil semua `products` dengan `category_id` dan/atau `brand_id` (produk **tidak aktif ikut**, produk soft-deleted tidak), kurangi yang sibuk, `insert` per 500; kosong ditolak `noMatchingProducts`. Lalu `status = counting`, `snapshot_at = now()`.
+**`addCountedProduct()`** — menambah barang **sekaligus** menyimpan hitungannya, supaya menghitung satu rak tidak perlu dua langkah per barang. Dalam satu transaksi: `addProduct()` lalu `saveCounts()` untuk item itu. Barang yang sudah ada di opname hanya diganti hitungannya; alasan dan catatannya dipertahankan. `parts` boleh memuat beberapa satuan (1 ROL + 200 MTR), diproses `saveCounts()` seperti hitungan biasa.
 
 **`saveCounts()`** — hanya status menghitung. Tiap baris berisi beberapa `parts` (satuan + jumlah). `toBaseQuantity()` menjumlahkan `jumlah x conversion_factor` per bagian dan menolak total di atas `MAX_BASE_QUANTITY`; hasil dibulatkan `HalfUp` ke 3 desimal; **semua bagian kosong = `NULL` (belum dihitung)**. `toWholePacks()` menghitung berapa bagian yang ditulis dalam satuan kemasan utuh barang itu (harus bilangan bulat, kalau tidak `sealedPacksNotWhole`); barang tanpa satuan kemasan dapat `NULL`, barang berkemasan yang hitungannya hanya dalam satuan dasar dapat `0`. Alasan bertipe Rusak ditolak bila gudang bukan gudang jual.
 
@@ -619,7 +618,7 @@ Dependensi: `StockService`, `DocumentNumberGenerator`, `StoreSettingService`, `D
 - *Cabang Pemeriksaan Retur (`postReturnsItem`)*: (1) bila hitungan berbeda dari catatan, selisihnya dicatat dulu di gudang retur; (2) **seluruh** jumlah terhitung keluar dari gudang retur (gudang retur jadi kosong untuk barang itu); (3) `+dead_stock` ke gudang dead stock; (4) `+damaged_goods` ke produk DG di **gudang asal** (`returns_for_warehouse_id`); (5) `+full_price` ke gudang asal. Rol utuh yang kembali ke rak = `full_price_packs`, atau (bila tidak disebut) yang muat: `max(0, min(rolTerhitung - rolDeadStock - rolDG, floor(full_price / konversi)))`. Dead stock dan DG diasumsikan potongan lepas bila rolnya tidak disebut. Gudang yang tidak punya `returns_for_warehouse_id` melempar `notAReturnsWarehouse`. Barang yang tidak dihitung tetap di gudang retur.
 - *Retry*: seluruh `post()` dipanggil dengan `DB::transaction($callback, DEADLOCK_ATTEMPTS)`; Laravel mengulang hanya pada deadlock, dan karena semuanya rollback, mengulang aman.
 
-**`cancel()`** — dari draft/menghitung/review. Draft: item dihapus lalu `forceDelete()` (nomor tidak diputar balik di `document_sequences`). Selainnya: `status = cancelled` + soft delete; hitungan tetap tersimpan, barangnya langsung bebas dipegang opname lain (`activeValues()` tidak lagi memuatnya dan query ber-join menyaring `deleted_at`).
+**`cancel()`** — dari menghitung/review. Menghitung: item dihapus lalu `forceDelete()` (nomor tidak diputar balik di `document_sequences`; hitungan yang sudah diisi ikut hilang, stok tidak berubah karena belum ada yang diposting). Review: `status = cancelled` + soft delete; hitungan tetap tersimpan, barangnya langsung bebas dipegang opname lain (`activeValues()` tidak lagi memuatnya dan query ber-join menyaring `deleted_at`).
 
 **`productIdsBeingCounted()`** — publik, dipakai `SaleService`, `CashierCatalogService`, dan `SaleReturnService`: barang di opname berstatus menghitung atau review pada gudang itu (`StockOpnameStatus::countingValues()`), menyaring `stock_opnames.deleted_at IS NULL`.
 
@@ -703,7 +702,7 @@ Membaca opname untuk layar tinjau. `itemsQuery()` meng-`JOIN products` dan `LEFT
 | `StockHistoryController` | membangun filter dari query string (`product`, `warehouse`, dan `DateRangeRequest::fromDate()/toDate()` yang membuang tanggal tidak valid agar tidak berujung halaman galat) |
 | `SaveStockOpnameRequest` | aturan header opname + penimpaan untuk gudang retur |
 | `SaveStockOpnameCountsRequest`, `SaveStockOpnameReviewRequest` | validasi baris + pemeriksaan `after()` bahwa tiap baris milik opname ini dan alasan nonaktif hanya boleh bertahan di baris yang sudah memakainya |
-| `AddStockOpnameProductRequest` | `product_id` ada dan belum soft-deleted |
+| `AddStockOpnameProductRequest` | `product_id` ada dan belum soft-deleted; `parts` (opsional) = hitungan barang itu, satu jumlah per satuan, tiap satuan milik barang |
 | `StockOpnameResource` | header + flag `can_*` (hanya tampilan; server tetap memeriksa) + `urls` bernama |
 | `StockOpnameItemResource` | baris barang: `system_quantity`, `counted_*`, `variance`, `variance_value`, blok `damage` (keputusan + konteks DG) |
 | `StockOpnameListResource`, `StockMovementResource` | baris daftar opname dan baris histori |
@@ -757,6 +756,8 @@ Kelengkapan keputusan dan penandaan "sudah direview" **bukan** tugas Form Reques
 
 `product_id`: `required`, `integer`, `exists:products,id` dengan `deleted_at IS NULL`. Pesan: `Pilih barang.` / `Barang tidak ditemukan.`
 
+`parts` (opsional, dikirim dialog Tambah Barang di layar): `nullable`, `array`, `min:1`; `parts.*.unit_code` `required`, `string`, dan harus salah satu satuan barang itu (`after()`); `parts.*.quantity` `required`, `numeric`, `min:0`, `max:999999999`, `decimal:0,3`. Bentuknya sama dengan `counts.*.parts`, sehingga satu barang bisa dihitung dalam beberapa satuan sekaligus (1 ROL + 200 MTR). Bila `parts` ada, barang ditambah dan hitungannya disimpan dalam satu transaksi.
+
 ### Pengaturan toko terkait
 
 `large_variance_threshold`: `Ambang selisih harus berupa angka.`, `...harus lebih dari 0. Kosongkan untuk tanpa batas.`, `...harus bilangan bulat rupiah.` (di `SaveStoreSettingsRequest`, modul pengaturan).
@@ -769,17 +770,16 @@ Server selalu membaca ulang status opname dari DB di bawah `lockForUpdate()` (`l
 
 | Endpoint | Dicek ulang di server | Diblokir |
 |---|---|---|
-| `store` | gudang aktif; untuk gudang retur, alasan dan scope ditimpa | alasan `returns_check` untuk gudang bukan retur |
-| `start` | status = draft (terkunci); kunci baris gudang | opname bukan draft; daftar kosong; tidak ada barang untuk kategori/merek |
-| `items.store` | status draft/menghitung; scope `selected`; barang tidak dipegang opname aktif lain | scope `category`; barang sibuk (`productIsBusy`) |
-| `items.destroy` | status draft/menghitung; scope `selected`. Item hanya ditemukan lewat `scopeBindings()` di opname yang sama | scope `category`; status lain. **`removeItem()` sendiri tidak memeriksa item itu milik opname**: bergantung pada binding rute |
+| `store` | gudang aktif; untuk gudang retur, alasan dan scope ditimpa; kunci baris gudang | alasan `returns_check` untuk gudang bukan retur; tidak ada barang untuk kategori/merek |
+| `items.store` | status menghitung; scope `selected`; barang tidak dipegang opname aktif lain; bila ada `parts`, satuan milik barang dan hitungan disimpan dalam transaksi yang sama | scope `category`; status lain; barang sibuk (`productIsBusy`) |
+| `items.destroy` | status menghitung; scope `selected`. Item hanya ditemukan lewat `scopeBindings()` di opname yang sama | scope `category`; status lain. **`removeItem()` sendiri tidak memeriksa item itu milik opname**: bergantung pada binding rute |
 | `counts` | status menghitung; tiap `item_id` milik opname ini (Form Request); satuan milik barang; alasan Rusak hanya di gudang jual | status lain; alasan nonaktif yang belum dipakai item |
 | `zero-uncounted` | status menghitung | status lain |
 | `finish` | status menghitung; minimal satu barang terhitung | `nothingCounted` |
 | `reopen` | status review | status lain; menghapus semua tanda direview |
 | `review` | status review; item milik opname ini; kelengkapan baris dinilai terhadap **stok hidup** | centang pada barang belum dihitung atau belum lengkap |
 | `post` | status review (terkunci); ambang selisih besar; kelengkapan review terhadap stok terkunci saat itu; saldo tidak pernah diambil dari klien | status lain; selisih besar tanpa catatan; review belum lengkap; keputusan DG yang tak lagi berjumlah pas karena stok berubah |
-| `cancel` | status draft/menghitung/review | opname `posted`/`cancelled` (404 atau `wrongStatus`) |
+| `cancel` | status menghitung (dihapus permanen) atau review (soft delete) | opname `posted`/`cancelled` (404 atau `wrongStatus`) |
 
 Penjagaan di sisi penjualan yang bergantung pada opname: `SaleService::requireNoOpnameLock()` (hanya bila `lock_sales_during_opname` aktif) menolak baris barang yang sedang dihitung di gudang kasir; `SaleReturnService::requireNoInspectionOfReturnedGoods()` (selalu aktif, tidak bergantung pengaturan) menolak menyetujui retur selama barangnya diperiksa di opname gudang retur, supaya barang yang baru masuk tidak terbaca sebagai selisih.
 
@@ -795,17 +795,17 @@ Tidak ada kerangka i18n. Seluruh teks antarmuka dan pesan galat adalah string In
 
 Berpijak pada kode; butir yang sudah dicatat di `docs/hasil-review-kode.md` saya verifikasi ulang ke kode sebelum menuliskannya.
 
-1. **`stock_opname_items.snapshot_quantity` ditulis tapi tidak pernah dibaca.** Grep di `app/`, `resources/js`, `routes/`, `config/`, `database/` hanya menemukan penulisan (`StockOpnameService.php:94,120,980,1007`), cast model, dan factory. "Stok sistem" di layar dan di posting adalah stok **hidup** (`StockOpnameReport::SYSTEM_QUANTITY_SQL`, `lockedStocks()`), sehingga kolom ini adalah beban tak terpakai. `snapshot_at` hanya ditampilkan.
+1. **`stock_opname_items.snapshot_quantity` ditulis tapi tidak pernah dibaca.** Grep di `app/`, `resources/js`, `routes/`, `config/`, `database/` hanya menemukan penulisan (`StockOpnameService`: `addProduct()`, `addProductsWaitingInWarehouse()`, `createSnapshotItems()`), cast model, dan factory. "Stok sistem" di layar dan di posting adalah stok **hidup** (`StockOpnameReport::SYSTEM_QUANTITY_SQL`, `lockedStocks()`), sehingga kolom ini adalah beban tak terpakai. `snapshot_at` hanya ditampilkan.
 2. **`approved_by` dan `reviewed_by` ditulis tetapi tidak dibaca** di `app/` maupun `resources/js` (`StockOpnameService.php:361,451`). Halaman opname hanya menampilkan `created_by`. Siapa yang meninjau dan memposting hanya terlihat lewat `audits` untuk `stock_opnames`; `StockOpnameItem` sendiri **tidak `Auditable`**, padahal keputusan DG dan tanda review menentukan mutasi stok (juga tercatat di `docs/hasil-review-kode.md` bagian 9).
 3. **Tidak ada tipe pergerakan "transfer".** Pelepasan gudang retur, pemindahan ke dead stock, dan pembuatan stok DG semuanya `opname_adjustment` di dua gudang atau lebih (`StockOpnameService.php:316-318`). Pemindahan murni tidak bisa dibedakan dari koreksi sungguhan kecuali lewat `note`, sehingga laporan yang menjumlah `opname_adjustment` sebagai untung/rugi stok akan ikut menghitung perpindahan. Transfer antar-gudang adalah R2.
 4. **Tidak ada UI atau service untuk mengelola gudang.** Gudang hanya lahir dari `StoreDatabaseSeeder` (`MAIN`, `DEAD`, `RETUR`) dan migrasi 2026-11-08. `is_default` tidak unik di DB; `deadStockWarehouse()` memilih `is_default` dulu lalu `id` terkecil di antara dead stock aktif, jadi dua gudang dead stock aktif diam-diam menghasilkan satu pilihan.
 5. **`StockService::record()` tidak menjaga saldo tak negatif.** Penjagaan hanya di pemanggil (`SaleService::requireStock()`); satu-satunya pengaman level DB adalah `intact_packs` bertipe *unsigned* yang gagal sebagai `QueryException` mentah (bukan pesan ramah) bila perubahan rol membuatnya negatif. Tidak ada perintah rekonsiliasi `stocks` terhadap `stock_movements` (`app/Console` kosong), dan ledger "tidak pernah diubah/dihapus" hanya konvensi tanpa pelindung DB.
-6. **Pembuatan opname tidak idempoten.** Aturan `client_uuid` di CLAUDE.md berlaku untuk tulisan kasir; `StockOpnameService::create()` (`:57-82`) tidak punya padanannya, jadi klik ganda membuat dua draft dan menghabiskan dua nomor. Aksi sesudahnya aman dari klik ganda karena dijaga status terkunci.
+6. **Pembuatan opname tidak idempoten.** Aturan `client_uuid` di CLAUDE.md berlaku untuk tulisan kasir; `StockOpnameService::create()` tidak punya padanannya, jadi klik ganda membuat dua opname dan menghabiskan dua nomor. Aksi sesudahnya aman dari klik ganda karena dijaga status terkunci.
 7. **Opname mengabaikan stok yang disisihkan pesanan siap diambil.** `post()` tidak memanggil `CustomerOrderItem::reservedQuantities()`: selisih kurang bisa menurunkan stok di bawah jumlah yang disisihkan; baru gagal aman saat pengambilan (`docs/hasil-review-kode.md` bagian 11, "OOS").
-8. **Kunci penjualan saat opname tidak diserialkan dengan Mulai Hitung** (`SaleService.php:292-304`): satu penjualan yang lolos tepat sebelum opname dimulai tetap masuk. Stok aman karena posting membaca stok hidup terkunci; dicatat sebagai diterima.
+8. **Kunci penjualan saat opname tidak diserialkan dengan pembuatan opname** (`SaleService.php:292-304`): satu penjualan yang lolos tepat sebelum opname dibuat tetap masuk. Stok aman karena posting membaca stok hidup terkunci; dicatat sebagai diterima.
 9. **`countUncountedAsZero` tidak mengisi `counted_packs`** (`StockOpnameService.php:262`). Untuk barang berkemasan, `packChangeOf()` lalu menghapus semua rol utuh (`:887-894`), tetapi `StockOpnameReport::sealedPackDrops()` hanya mendaftar baris dengan `counted_packs` terisi (`:139`), jadi konfirmasi posting tidak memperingatkan rol yang akan hilang untuk barang yang "ditandai 0". Terkait: hitungan hanya dalam satuan dasar disimpan `counted_packs = 0` dan menghapus rol utuh; satu-satunya pengaman adalah konfirmasi UI (`hasil-review-kode.md` bagian 10).
 10. **Pencarian di layar opname tidak meng-escape `%` dan `_`** (`StockOpnameReport.php:74-76`), berbeda dari `Product::scopeSearch()` yang meng-escape-nya.
-11. **Pemeriksaan Retur memakai snapshot saat pembuatan draft.** Barang gudang retur dimasukkan di `create()` (`StockOpnameService.php:75-78`, `88-96`), dan `start()` hanya menyegarkan `snapshot_quantity` item yang ada. Retur yang disetujui di antara `create` dan `start` tidak otomatis masuk daftar; harus ditambah manual (`can_manage_products` memperbolehkannya) atau menunggu pemeriksaan berikutnya. Retur sesudah `start` ditolak sampai pemeriksaan selesai (`SaleReturnService`).
+11. **Pemeriksaan Retur memakai daftar barang saat opname dibuat.** Barang gudang retur dimasukkan sekali di `create()` (`addProductsWaitingInWarehouse()`). Retur yang disetujui sebelum opname dibuat ikut terbaca; retur sesudahnya ditolak sampai pemeriksaan selesai (`SaleReturnService`), jadi daftar tidak berubah selama menghitung.
 12. **`stock_movements.type` dan `warehouses.type` adalah enum DB**, sementara `stock_opnames.reason_code` hanya `string`. Tipe pergerakan baru butuh `ALTER TABLE` (pola yang sama sudah dipakai migrasi 2026-11-08); nilai `reason_code` baru cukup di enum PHP tanpa migrasi, yang juga berarti DB tidak menolak nilai ngawur.
 13. **Pergerakan penyesuaian kemasan tanpa dokumen.** `StockService::resetIntactPacks()` (`:124-138`) menulis `opname_adjustment` berjumlah 0 tanpa `reference` dan `user_id`; di Histori Stok tampil sebagai "Opname" tanpa nomor dokumen.
 14. **Dokumen `StockHistoryService`** menyebut "receipt" di PHPDoc kelas, tetapi `StockReferenceType` hanya memuat `stock_opname`, `sale`, `sale_return` (penerimaan adalah R2).
