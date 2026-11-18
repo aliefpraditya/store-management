@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import DamagedGoodsDialog from '../../../Components/DamagedGoodsDialog.vue';
@@ -23,7 +23,6 @@ const page = usePage();
 const $q = useQuasar();
 
 const steps = [
-    { status: 'draft', label: 'Draft' },
     { status: 'counting', label: 'Menghitung' },
     { status: 'review', label: 'Review' },
     { status: 'posted', label: 'Diposting' },
@@ -590,11 +589,11 @@ function post() {
     postAction(props.opname.urls.post);
 }
 
-/** A draft is erased for good; a started opname is cancelled and hidden from the list but kept. */
+/** An opname still being counted is erased for good; one in review is cancelled and hidden from the list but kept. */
 function cancelOpname() {
     confirmDialog(
         props.opname.is_erased_on_cancel
-            ? { title: 'Hapus draft opname?', message: 'Draft ini dihapus dan tidak disimpan.', okLabel: 'Hapus draft', okColor: 'negative' }
+            ? { title: 'Hapus opname?', message: 'Opname ini dihapus beserta hitungannya dan tidak disimpan. Stok tidak berubah.', okLabel: 'Hapus opname', okColor: 'negative' }
             : { title: 'Batalkan opname?', message: 'Stok tidak berubah. Opname disembunyikan dari daftar dan hanya bisa dilihat lewat filter status Dibatalkan.', okLabel: 'Batalkan opname', okColor: 'negative' },
         () => postAction(props.opname.urls.cancel),
     );
@@ -602,24 +601,72 @@ function cancelOpname() {
 
 const isAddDialogOpen = ref(false);
 const productToAdd = ref(null);
+/**
+ * The count typed for the picked product, one part per unit (1 ROL and 200 MTR are two parts), like a row of the table.
+ * @type {import('vue').Ref<{unit_code: string, quantity: string}[]>}
+ */
+const addedParts = ref([]);
+const isAdding = ref(false);
+const productSearchField = ref(null);
+const firstAddedQuantityField = ref(null);
 
-function addProduct(product) {
+/** Only the first quantity box is kept, to move the cursor there once a product is picked. */
+function trackFirstAddedQuantityField(field, partIndex) {
+    if (partIndex === 0) {
+        firstAddedQuantityField.value = field;
+    }
+}
+
+/**
+ * A picked product waits for its quantity, so adding and counting it is one step.
+ * @param {{id: number, base_unit: string}|null} product
+ */
+function pickProductToAdd(product) {
     if (product === null) {
         return;
     }
 
+    addedParts.value = [{ unit_code: product.base_unit, quantity: '' }];
+    nextTick(() => firstAddedQuantityField.value?.focus());
+}
+
+function addAddedPart() {
+    const unusedUnitCode = productToAdd.value.units.find((unitCode) => !addedParts.value.some((part) => part.unit_code === unitCode));
+
+    addedParts.value.push({ unit_code: unusedUnitCode ?? productToAdd.value.units[0], quantity: '' });
+}
+
+/**
+ * Adds the picked product together with its count, then keeps the dialog open and back on the search box, so a shelf can
+ * be counted item after item without touching the mouse. A unit left empty is not part of the count.
+ */
+function addProduct() {
+    if (productToAdd.value === null || isAdding.value) {
+        return;
+    }
+
+    const filledParts = addedParts.value.filter((part) => part.quantity !== '' && part.quantity !== null);
+
+    if (filledParts.length === 0) {
+        firstAddedQuantityField.value?.focus();
+
+        return;
+    }
+
+    isAdding.value = true;
+
+    const payload = { product_id: productToAdd.value.id, parts: filledParts };
+
     afterSavingCounts(() =>
-        router.post(
-            props.opname.urls.add_item,
-            { product_id: product.id },
-            {
-                preserveScroll: true,
-                onFinish: () => {
-                    productToAdd.value = null;
-                    isAddDialogOpen.value = false;
-                },
+        router.post(props.opname.urls.add_item, payload, {
+            preserveScroll: true,
+            onSuccess: () => {
+                productToAdd.value = null;
+                nextTick(() => productSearchField.value?.focus());
             },
-        ),
+            onError: (errors) => $q.notify({ type: 'negative', position: 'top', message: Object.values(errors)[0] ?? 'Barang gagal ditambahkan.' }),
+            onFinish: () => (isAdding.value = false),
+        }),
     );
 }
 
@@ -649,8 +696,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 <template>
     <StoreLayout :title="opname.number">
         <template #actions>
-            <q-btn v-if="opname.can_cancel" flat no-caps color="negative" :label="opname.is_erased_on_cancel ? 'Hapus Draft' : 'Batalkan'" class="q-mr-sm" @click="cancelOpname" />
-            <q-btn v-if="opname.can_start" color="primary" unelevated no-caps label="Mulai Hitung" @click="postAction(opname.urls.start)" />
+            <q-btn v-if="opname.can_cancel" flat no-caps color="negative" :label="opname.is_erased_on_cancel ? 'Hapus Opname' : 'Batalkan'" class="q-mr-sm" @click="cancelOpname" />
             <q-btn v-if="opname.can_count" outline no-caps color="primary" label="Simpan" :disable="!isDirty" class="q-mr-sm" @click="saveCounts()" />
             <q-btn v-if="opname.can_count" color="primary" unelevated no-caps label="Selesai Hitung" @click="finishCounting" />
             <q-btn v-if="opname.can_reopen" flat no-caps label="Hitung Ulang" class="q-mr-sm" @click="postAction(opname.urls.reopen)" />
@@ -678,7 +724,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 
         <section v-if="summary.items_count > 0" class="kpis">
             <div class="kpi"><small>{{ opname.is_counting_arrivals ? 'Diisi' : 'Dihitung' }}</small><b>{{ summary.counted_count }} / {{ summary.items_count }}</b></div>
-            <div v-if="opname.requires_review && opname.status !== 'counting' && opname.status !== 'draft'" class="kpi">
+            <div v-if="opname.requires_review && opname.status !== 'counting'" class="kpi">
                 <small>Selisih sudah direview</small>
                 <b :class="{ 'kpi--bad': unreviewedCount > 0 }">{{ summary.reviewed_count }} / {{ summary.review_count }}</b>
             </div>
@@ -724,8 +770,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                 <tbody>
                     <tr v-if="items.data.length === 0">
                         <td colspan="9" class="lines__empty">
-                            <template v-if="opname.status === 'draft' && opname.scope !== 'selected'">Barang masuk daftar hitung saat opname dimulai.</template>
-                            <template v-else-if="opname.can_manage_products && summary.items_count === 0">Tambahkan barang yang akan dihitung.</template>
+                            <template v-if="opname.can_manage_products && summary.items_count === 0">Tambahkan barang yang akan dihitung.</template>
                             <template v-else>Tidak ada barang yang cocok.</template>
                         </td>
                     </tr>
@@ -878,11 +923,68 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
         <q-dialog v-model="isAddDialogOpen" @hide="productToAdd = null">
             <q-card class="add-dialog">
                 <q-card-section>
-                    <div class="add-dialog__title">Tambah barang yang dihitung</div>
-                    <ProductSearchSelect v-model="productToAdd" :search-url="opname.urls.product_search" label="Cari nama atau SKU" autofocus @update:model-value="addProduct" />
+                    <div class="add-dialog__title">Tambah dan hitung barang</div>
+                    <ProductSearchSelect
+                        ref="productSearchField"
+                        v-model="productToAdd"
+                        :search-url="opname.urls.product_search"
+                        label="Cari nama atau SKU"
+                        autofocus
+                        @update:model-value="pickProductToAdd"
+                    />
+                    <div v-if="productToAdd" class="add-dialog__count">
+                        <div v-for="(part, partIndex) in addedParts" :key="partIndex" class="parts__row">
+                            <q-input
+                                :ref="(field) => trackFirstAddedQuantityField(field, partIndex)"
+                                v-model="part.quantity"
+                                type="number"
+                                min="0"
+                                step="any"
+                                outlined
+                                dense
+                                hide-bottom-space
+                                :placeholder="opname.is_counting_arrivals ? 'jumlah datang' : 'isi hitungan'"
+                                class="parts__quantity"
+                                :aria-label="`Jumlah ${productToAdd.name}`"
+                                @keydown.enter.prevent="addProduct"
+                            />
+                            <q-select
+                                v-model="part.unit_code"
+                                :options="productToAdd.units"
+                                outlined
+                                dense
+                                hide-bottom-space
+                                class="parts__unit"
+                                :aria-label="`Satuan ${productToAdd.name}`"
+                            />
+                            <q-btn
+                                v-if="partIndex > 0"
+                                flat
+                                round
+                                dense
+                                size="sm"
+                                icon="close"
+                                color="grey-7"
+                                aria-label="Hapus satuan"
+                                @click="addedParts.splice(partIndex, 1)"
+                            />
+                        </div>
+                        <q-btn
+                            v-if="addedParts.length < productToAdd.units.length"
+                            flat
+                            dense
+                            no-caps
+                            icon="add"
+                            label="Satuan lain"
+                            color="grey-8"
+                            class="add-dialog__more-units"
+                            @click="addAddedPart"
+                        />
+                    </div>
                 </q-card-section>
                 <q-card-actions align="right">
                     <q-btn flat no-caps label="Tutup" v-close-popup />
+                    <q-btn v-if="productToAdd" unelevated no-caps color="primary" label="Tambah" :loading="isAdding" @click="addProduct" />
                 </q-card-actions>
             </q-card>
         </q-dialog>
@@ -1063,6 +1165,17 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
     margin-bottom: 14px;
     font-size: 15px;
     font-weight: 700;
+}
+
+.add-dialog__count {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.add-dialog__more-units {
+    align-self: flex-start;
 }
 
 .filters {

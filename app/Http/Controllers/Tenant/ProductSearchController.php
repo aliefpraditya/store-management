@@ -23,6 +23,7 @@ class ProductSearchController extends Controller
                 'sku' => $product->sku,
                 'name' => $product->name,
                 'base_unit' => $product->baseUnit->code,
+                'units' => $product->productUnits->pluck('unit_code')->values(),
             ])->values(),
         ]);
     }

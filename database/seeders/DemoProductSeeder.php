@@ -138,7 +138,7 @@ class DemoProductSeeder extends Seeder
 
         $userId = User::query()->where('is_super_admin', true)->value('id') ?? throw new \RuntimeException('Create a super admin first: the opname needs a user.');
 
-        $opname = $opnames->create([
+        ['opname' => $opname] = $opnames->create([
             'warehouse_id' => DB::table('warehouses')->where('is_default', true)->value('id'),
             'opname_date' => now()->toDateString(),
             'scope' => StockOpnameScope::Selected->value,
@@ -150,8 +150,6 @@ class DemoProductSeeder extends Seeder
         foreach ($specs as $spec) {
             $opnames->addProduct($opname, $productsBySku[$spec['sku']]);
         }
-
-        $opnames->start($opname);
 
         $counts = [];
 

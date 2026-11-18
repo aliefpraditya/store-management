@@ -52,11 +52,18 @@ class StockOpnameService
     ) {}
 
     /**
+     * Creates an opname that is already counting, so products can be added and counted right away. A category/brand
+     * opname takes its products now (those another active opname of the warehouse holds are left out); a "selected
+     * products" opname starts empty and fills as products are added.
+     *
      * @param  array{warehouse_id: int, opname_date: string, scope: string, category_id?: int|null, brand_id?: int|null, reason_code: string}  $opnameInput
+     * @return array{opname: StockOpname, skippedCount: int} how many products were left out because another opname holds them
+     *
+     * @throws StockOpnameException
      */
-    public function create(array $opnameInput, int $userId): StockOpname
+    public function create(array $opnameInput, int $userId): array
     {
-        return DB::transaction(function () use ($opnameInput, $userId): StockOpname {
+        return DB::transaction(function () use ($opnameInput, $userId): array {
             $date = Carbon::parse($opnameInput['opname_date']);
             $scope = StockOpnameScope::from($opnameInput['scope']);
 
@@ -67,17 +74,21 @@ class StockOpnameService
                 'scope' => $scope,
                 'category_id' => $scope === StockOpnameScope::Category ? ($opnameInput['category_id'] ?? null) : null,
                 'brand_id' => $scope === StockOpnameScope::Category ? ($opnameInput['brand_id'] ?? null) : null,
-                'status' => StockOpnameStatus::Draft,
+                'status' => StockOpnameStatus::Counting,
+                'snapshot_at' => now(),
                 'reason_code' => $opnameInput['reason_code'],
                 'created_by' => $userId,
             ]);
 
+            $this->lockWarehouseClaims($opname);
+
             if ($opname->reason_code?->isReturnsCheck()) {
-                $this->lockWarehouseClaims($opname);
                 $this->addProductsWaitingInWarehouse($opname);
             }
 
-            return $opname;
+            $skippedCount = $scope === StockOpnameScope::Category ? $this->createSnapshotItems($opname) : 0;
+
+            return ['opname' => $opname, 'skippedCount' => $skippedCount];
         });
     }
 
@@ -103,7 +114,7 @@ class StockOpnameService
     public function addProduct(StockOpname $opname, Product $product): void
     {
         DB::transaction(function () use ($opname, $product): void {
-            $opname = $this->lockedInStatus($opname, 'menambah barang', StockOpnameStatus::Draft, StockOpnameStatus::Counting);
+            $opname = $this->lockedInStatus($opname, 'menambah barang', StockOpnameStatus::Counting);
             $this->requireSelectedScope($opname);
             $this->lockWarehouseClaims($opname);
 
@@ -123,43 +134,36 @@ class StockOpnameService
     }
 
     /**
+     * Adds a product and stores its count in one step, for counting a shelf item by item. A product already on the opname
+     * keeps its reason and note, and only its count is replaced.
+     *
+     * @param  list<CountPart>  $parts
+     *
+     * @throws StockOpnameException
+     */
+    public function addCountedProduct(StockOpname $opname, Product $product, array $parts): void
+    {
+        DB::transaction(function () use ($opname, $product, $parts): void {
+            $this->addProduct($opname, $product);
+
+            $item = $opname->items()->where('product_id', $product->id)->firstOrFail();
+
+            $this->saveCounts($opname, [
+                ['item_id' => $item->id, 'parts' => $parts, 'reason_id' => $item->reason_id, 'note' => $item->note],
+            ]);
+        });
+    }
+
+    /**
      * @throws StockOpnameException
      */
     public function removeItem(StockOpname $opname, StockOpnameItem $item): void
     {
         DB::transaction(function () use ($opname, $item): void {
-            $opname = $this->lockedInStatus($opname, 'menghapus barang', StockOpnameStatus::Draft, StockOpnameStatus::Counting);
+            $opname = $this->lockedInStatus($opname, 'menghapus barang', StockOpnameStatus::Counting);
             $this->requireSelectedScope($opname);
 
             $item->delete();
-        });
-    }
-
-    /**
-     * Takes the snapshot and opens counting. For the category/brand scope the items are created here; products
-     * another active opname of the same warehouse already holds are left out.
-     *
-     * @return int how many products were left out
-     *
-     * @throws StockOpnameException
-     */
-    public function start(StockOpname $opname): int
-    {
-        return DB::transaction(function () use ($opname): int {
-            $opname = $this->lockedInStatus($opname, 'dimulai', StockOpnameStatus::Draft);
-
-            $this->lockWarehouseClaims($opname);
-
-            if ($opname->scope === StockOpnameScope::Selected) {
-                $skippedCount = $this->dropProductsHeldElsewhere($opname);
-                $this->refreshSelectedSnapshots($opname);
-            } else {
-                $skippedCount = $this->createSnapshotItems($opname);
-            }
-
-            $opname->forceFill(['status' => StockOpnameStatus::Counting, 'snapshot_at' => now()])->save();
-
-            return $skippedCount;
         });
     }
 
@@ -782,17 +786,17 @@ class StockOpnameService
     }
 
     /**
-     * A draft is erased for good (its number is not handed out again). Once counting has started the opname is
-     * marked cancelled and soft deleted: hidden from the list, but its counts stay as a record.
+     * An opname still being counted is erased for good (its number is not handed out again). Once it is in
+     * review the opname is marked cancelled and soft deleted: hidden from the list, but its counts stay as a record.
      *
-     * @return bool true when the draft was erased, false when it was kept soft deleted
+     * @return bool true when the opname was erased, false when it was kept soft deleted
      *
      * @throws StockOpnameException
      */
     public function cancel(StockOpname $opname): bool
     {
         return DB::transaction(function () use ($opname): bool {
-            $opname = $this->lockedInStatus($opname, 'dibatalkan', StockOpnameStatus::Draft, StockOpnameStatus::Counting, StockOpnameStatus::Review);
+            $opname = $this->lockedInStatus($opname, 'dibatalkan', StockOpnameStatus::Counting, StockOpnameStatus::Review);
 
             if ($opname->status->isErasedWhenCancelled()) {
                 $opname->items()->delete();
@@ -943,41 +947,6 @@ class StockOpnameService
     {
         if ($opname->scope !== StockOpnameScope::Selected) {
             throw StockOpnameException::notSelectedScope();
-        }
-    }
-
-    /**
-     * Products picked into a draft that another active opname of the warehouse holds by now (picked there first, or while
-     * two requests raced) are taken out, so a product is never counted in two opnames at once.
-     *
-     * @return int how many products were taken out
-     */
-    private function dropProductsHeldElsewhere(StockOpname $opname): int
-    {
-        $heldElsewhereIds = $this->busyProductIds($opname, $opname->items()->pluck('product_id')->all());
-
-        if ($heldElsewhereIds !== []) {
-            $opname->items()->whereIn('product_id', $heldElsewhereIds)->delete();
-        }
-
-        return count($heldElsewhereIds);
-    }
-
-    /**
-     * @throws StockOpnameException
-     */
-    private function refreshSelectedSnapshots(StockOpname $opname): void
-    {
-        $productIds = $opname->items()->pluck('product_id')->all();
-
-        if ($productIds === []) {
-            throw StockOpnameException::noProducts();
-        }
-
-        $quantities = $this->currentQuantities($opname, $productIds);
-
-        foreach ($opname->items()->get() as $item) {
-            $item->forceFill(['snapshot_quantity' => $quantities[$item->product_id] ?? '0'])->save();
         }
     }
 

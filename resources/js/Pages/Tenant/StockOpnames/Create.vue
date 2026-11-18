@@ -28,7 +28,7 @@ const form = useForm({
 const isReturnsWarehouse = computed(() => props.warehouses.find((warehouse) => warehouse.id === form.warehouse_id)?.is_returns ?? false);
 
 const scopeHints = {
-    category: 'Semua barang dari kategori dan/atau merek yang dipilih masuk daftar hitung saat opname dimulai. Pilih salah satu atau keduanya.',
+    category: 'Semua barang dari kategori dan/atau merek yang dipilih langsung masuk daftar hitung saat opname dibuat. Pilih salah satu atau keduanya.',
     selected: 'Anda memilih barangnya sendiri, cocok untuk opname rutin, barang datang, atau stok awal beberapa barang.',
 };
 
@@ -104,7 +104,7 @@ function submit() {
                 </div>
             </section>
 
-            <p class="note">Setelah dibuat, opname masih draft. Stok baru berubah ketika opname diposting.</p>
+            <p class="note">Setelah dibuat, opname langsung bisa dihitung. Stok baru berubah ketika opname diposting.</p>
         </q-form>
     </StoreLayout>
 </template>

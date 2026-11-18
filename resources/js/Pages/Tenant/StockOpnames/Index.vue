@@ -15,7 +15,6 @@ const page = usePage();
 const status = ref(props.filters.status);
 
 const statusChipClass = {
-    draft: 'chip--off',
     counting: 'chip--warn',
     review: 'chip--warn',
     posted: 'chip--ok',

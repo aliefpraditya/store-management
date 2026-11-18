@@ -4,7 +4,6 @@ namespace App\Enums;
 
 enum StockOpnameStatus: string
 {
-    case Draft = 'draft';
     case Counting = 'counting';
     case Review = 'review';
     case Posted = 'posted';
@@ -13,7 +12,6 @@ enum StockOpnameStatus: string
     public function label(): string
     {
         return match ($this) {
-            self::Draft => 'Draft',
             self::Counting => 'Menghitung',
             self::Review => 'Review',
             self::Posted => 'Diposting',
@@ -26,12 +24,12 @@ enum StockOpnameStatus: string
      */
     public function isActive(): bool
     {
-        return in_array($this, [self::Draft, self::Counting, self::Review], true);
+        return in_array($this, [self::Counting, self::Review], true);
     }
 
     /**
      * An opname whose products are being counted: the stock of those products is not to be sold while the store has
-     * chosen to lock sales during opname. A draft has taken no snapshot yet, and a posted or cancelled one is over.
+     * chosen to lock sales during opname. A posted or cancelled one is over.
      */
     public function isCounting(): bool
     {
@@ -47,12 +45,13 @@ enum StockOpnameStatus: string
     }
 
     /**
-     * A cancelled draft is erased for good: nothing was counted, so there is nothing to keep. Any later status is
-     * soft deleted instead, hidden from the list but kept as a record.
+     * An opname cancelled while still being counted is erased for good: nothing was posted and no review was done, so
+     * there is nothing to keep. Once it is in review it is soft deleted instead, hidden from the list but kept as a
+     * record.
      */
     public function isErasedWhenCancelled(): bool
     {
-        return $this === self::Draft;
+        return $this === self::Counting;
     }
 
     /**

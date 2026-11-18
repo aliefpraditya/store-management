@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { useQuasar } from 'quasar';
 
 const props = defineProps({
-    /** The chosen product ({ id, sku, name, base_unit }) or null. */
+    /** The chosen product ({ id, sku, name, base_unit, units }) or null. */
     modelValue: { type: Object, default: null },
     /** Endpoint that answers `?q=` with `{ data: product[] }`. */
     searchUrl: { type: String, required: true },
@@ -17,7 +17,10 @@ const emit = defineEmits(['update:modelValue']);
 const $q = useQuasar();
 
 const options = ref([]);
+const select = ref(null);
 let latestSearchId = 0;
+
+defineExpose({ focus: () => select.value?.focus() });
 let isFailureShown = false;
 
 /**
@@ -75,6 +78,7 @@ function searchProducts(typed, update, abort) {
 
 <template>
     <q-select
+        ref="select"
         :model-value="modelValue"
         :options="options"
         :label="label"

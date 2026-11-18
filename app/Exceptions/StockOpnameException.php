@@ -41,11 +41,6 @@ class StockOpnameException extends Exception
         return new self('Gudang ini bukan gudang retur, jadi barangnya tidak bisa dilepas ke gudang asal.');
     }
 
-    public static function noProducts(): self
-    {
-        return new self('Pilih minimal satu barang sebelum mulai menghitung.');
-    }
-
     public static function noMatchingProducts(): self
     {
         return new self('Tidak ada barang untuk kategori dan merek itu.');

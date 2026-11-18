@@ -24,8 +24,8 @@ class StockOpnameFactory extends Factory
             'opname_date' => now()->toDateString(),
             'scope' => StockOpnameScope::Selected,
             'category_id' => null,
-            'status' => StockOpnameStatus::Draft,
-            'snapshot_at' => null,
+            'status' => StockOpnameStatus::Counting,
+            'snapshot_at' => now(),
             'reason_code' => null,
             'created_by' => 1,
         ];

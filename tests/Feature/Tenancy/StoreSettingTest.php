@@ -289,13 +289,10 @@ class StoreSettingTest extends TestCase
         $this->sellBrushes($shift, 1);
 
         $this->save(['lock_sales_during_opname' => true]);
-        $this->store->run(fn () => StockOpname::query()->update(['status' => StockOpnameStatus::Draft]));
-        $this->sellBrushes($shift, 1);
-
         $this->store->run(fn () => StockOpname::query()->update(['status' => StockOpnameStatus::Posted]));
         $this->sellBrushes($shift, 1);
 
-        $this->assertSame('97.000', $this->stockInPieces($this->brush));
+        $this->assertSame('98.000', $this->stockInPieces($this->brush));
         $this->actingAs($this->cashier)->getJson(route('tenant.cashier.products', ['tenant' => $this->store->code, 'q' => 'Kuas']))->assertJsonPath('data.0.is_being_counted', false);
     }
 

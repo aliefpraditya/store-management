@@ -83,7 +83,6 @@ class StockOpnameReturnsCheckTest extends TestCase
         $opname = $this->store->run(fn (): StockOpname => StockOpname::query()->latest('id')->firstOrFail());
         $item = $this->store->run(fn (): StockOpnameItem => StockOpnameItem::query()->where('stock_opname_id', $opname->id)->firstOrFail());
 
-        $this->actingAs($this->admin)->post($this->url('start', ['stock_opname' => $opname->id]))->assertSessionHas('success');
         $this->actingAs($this->admin)->put($this->url('counts', ['stock_opname' => $opname->id]), ['counts' => [[
             'item_id' => $item->id,
             'parts' => [['unit_code' => 'PCS', 'quantity' => $counted]],

@@ -147,7 +147,7 @@ class StockOpnameTest extends TestCase
 
     private function opnameInStatus(StockOpnameStatus $status, StockOpnameScope $scope = StockOpnameScope::Selected): StockOpname
     {
-        return $this->opname(['status' => $status, 'scope' => $scope, 'snapshot_at' => $status === StockOpnameStatus::Draft ? null : now()]);
+        return $this->opname(['status' => $status, 'scope' => $scope, 'snapshot_at' => now()]);
     }
 
     private function addItem(StockOpname $opname, Product $product, ?string $counted = null, string $snapshot = '0'): StockOpnameItem
@@ -183,20 +183,6 @@ class StockOpnameTest extends TestCase
     private function action(string $route, StockOpname $opname): TestResponse
     {
         return $this->actingAs($this->admin)->post($this->url($route, ['stock_opname' => $opname->id]));
-    }
-
-    public function test_starting_a_draft_leaves_out_products_another_active_opname_holds(): void
-    {
-        $kept = $this->makeProduct('Cat A', '5');
-        $held = $this->makeProduct('Cat B', '5');
-        $draft = $this->opnameInStatus(StockOpnameStatus::Draft);
-        $this->addItem($draft, $kept);
-        $this->addItem($draft, $held);
-        $this->addItem($this->opnameInStatus(StockOpnameStatus::Draft), $held);
-
-        $this->action('start', $draft)->assertSessionHas('success', 'Snapshot stok diambil. 1 barang dilewati karena sedang dihitung di opname lain.');
-
-        $this->assertSame([$kept->id], $this->inStore(fn () => $draft->items()->pluck('product_id')->all()));
     }
 
     public function test_only_admins_may_use_stock_opname(): void
@@ -237,13 +223,13 @@ class StockOpnameTest extends TestCase
     public function test_the_list_can_be_filtered_by_status(): void
     {
         $this->opname(['status' => StockOpnameStatus::Posted]);
-        $this->opname(['status' => StockOpnameStatus::Draft]);
+        $this->opname(['status' => StockOpnameStatus::Counting]);
 
         $this->actingAs($this->admin)->get($this->url('index', ['status' => 'posted']))
             ->assertInertia(fn (Assert $page) => $page->has('opnames.data', 1)->where('opnames.data.0.status', 'posted'));
     }
 
-    public function test_an_opname_is_created_as_a_draft_with_a_numbered_document(): void
+    public function test_an_opname_is_created_already_counting_with_a_numbered_document(): void
     {
         $response = $this->createOpname();
 
@@ -251,9 +237,50 @@ class StockOpnameTest extends TestCase
         $response->assertRedirect($this->url('show', ['stock_opname' => $opname->id]))->assertSessionHas('success');
 
         $this->assertSame('OPN/TOP/2610/0001', $opname->number);
-        $this->assertSame(StockOpnameStatus::Draft, $opname->status);
+        $this->assertSame(StockOpnameStatus::Counting, $opname->status);
+        $this->assertNotNull($opname->snapshot_at);
+        $this->assertSame(0, $this->inStore(fn () => $opname->items()->count()));
         $this->assertSame($this->admin->id, $opname->created_by);
         $this->assertSame(StockOpnameReason::Routine, $opname->reason_code);
+    }
+
+    public function test_a_new_selected_opname_can_add_and_count_a_product_right_away(): void
+    {
+        $paint = $this->makeProduct('Cat', '10');
+        $this->createOpname();
+        $opname = $this->inStore(fn () => StockOpname::query()->firstOrFail());
+
+        $this->actingAs($this->admin)
+            ->post($this->url('items.store', ['stock_opname' => $opname->id]), ['product_id' => $paint->id, 'parts' => [['unit_code' => 'PAIL', 'quantity' => '9']]])
+            ->assertSessionHas('success');
+
+        $this->assertSame('9.000', $this->item($opname, $paint)->counted_quantity);
+    }
+
+    public function test_a_new_category_opname_takes_its_products_at_once_and_says_which_were_left_out(): void
+    {
+        $paints = $this->inStore(fn () => Category::factory()->create());
+        $kept = $this->makeProduct('Cat', '24', $paints);
+        $held = $this->makeProduct('Kuas', '3', $paints);
+        $this->addItem($this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected), $held);
+
+        $this->createOpname(['scope' => 'category', 'category_id' => $paints->id])
+            ->assertSessionHas('success', 'Opname dibuat. 1 barang dilewati karena sedang dihitung di opname lain.');
+
+        $opname = $this->inStore(fn () => StockOpname::query()->where('scope', StockOpnameScope::Category)->firstOrFail());
+        $this->assertSame(StockOpnameStatus::Counting, $opname->status);
+        $this->assertSame('24.000', $this->item($opname, $kept)->snapshot_quantity);
+        $this->assertSame(1, $this->inStore(fn () => $opname->items()->count()));
+    }
+
+    public function test_a_category_opname_with_no_matching_products_is_not_created(): void
+    {
+        $empty = $this->inStore(fn () => Category::factory()->create());
+
+        $this->createOpname(['scope' => 'category', 'category_id' => $empty->id])
+            ->assertSessionHas('error', 'Tidak ada barang untuk kategori dan merek itu.');
+
+        $this->assertSame(0, $this->inStore(fn () => StockOpname::withTrashed()->count()));
     }
 
     public function test_numbers_run_on_within_a_month_and_restart_in_the_next(): void
@@ -290,6 +317,9 @@ class StockOpnameTest extends TestCase
     {
         $category = $this->inStore(fn () => Category::factory()->create());
         $brand = $this->inStore(fn () => Brand::factory()->create());
+        $this->makeProduct('Cat', '1', $category);
+        $this->makeProduct('Kuas', '1', null, '1000', $brand);
+        $this->makeProduct('Cat Nippon', '1', $category, '1000', $brand);
 
         $message = 'Pilih kategori atau merek, boleh salah satu.';
         $this->createOpname(['scope' => 'category'])->assertSessionHasErrors(['category_id' => $message, 'brand_id' => $message]);
@@ -338,26 +368,24 @@ class StockOpnameTest extends TestCase
 
     /**
      * @param  array<string, mixed>  $filter  `category_id` and/or `brand_id`
-     * @return list<int> ids of the products an opname with that filter holds after it starts
+     * @return list<int> ids of the products an opname with that filter holds once it is created
      */
-    private function startedCategoryOpnameProductIds(array $filter): array
+    private function createdCategoryOpnameProductIds(array $filter): array
     {
-        $opname = $this->opname(['scope' => StockOpnameScope::Category, ...$filter]);
+        $this->createOpname(['scope' => 'category', ...$filter])->assertSessionHas('success');
 
-        $this->action('start', $opname);
-
-        return $this->inStore(fn () => $opname->items()->orderBy('product_id')->pluck('product_id')->all());
+        return $this->inStore(fn () => StockOpname::query()->latest('id')->firstOrFail()->items()->orderBy('product_id')->pluck('product_id')->all());
     }
 
-    public function test_starting_a_category_opname_snapshots_the_products_of_that_category(): void
+    public function test_creating_a_category_opname_snapshots_the_products_of_that_category(): void
     {
         $paints = $this->inStore(fn () => Category::factory()->create());
         $paint = $this->makeProduct('Cat', '24', $paints);
         $brush = $this->makeProduct('Kuas', '0', $paints);
         $nails = $this->makeProduct('Paku', '9');
-        $opname = $this->opname(['scope' => StockOpnameScope::Category, 'category_id' => $paints->id]);
 
-        $this->action('start', $opname)->assertSessionHas('success');
+        $this->createOpname(['scope' => 'category', 'category_id' => $paints->id])->assertSessionHas('success');
+        $opname = $this->inStore(fn () => StockOpname::query()->firstOrFail());
 
         $this->assertSame(StockOpnameStatus::Counting, $this->statusOf($opname));
         $this->assertNotNull($this->inStore(fn () => $opname->fresh()->snapshot_at));
@@ -379,7 +407,7 @@ class StockOpnameTest extends TestCase
         $this->makeProduct('Cat Lain', '1', $paints, '1000', $other);
         $this->makeProduct('Tanpa merek', '1', $paints);
 
-        $this->assertSame([$nipponPaint->id, $nipponBrush->id], $this->startedCategoryOpnameProductIds(['brand_id' => $nippon->id]));
+        $this->assertSame([$nipponPaint->id, $nipponBrush->id], $this->createdCategoryOpnameProductIds(['brand_id' => $nippon->id]));
     }
 
     public function test_a_category_and_brand_opname_takes_only_products_matching_both(): void
@@ -392,18 +420,7 @@ class StockOpnameTest extends TestCase
         $this->makeProduct('Kuas Nippon', '1', $tools, '1000', $nippon);
         $this->makeProduct('Cat Lain', '1', $paints, '1000', $other);
 
-        $this->assertSame([$match->id], $this->startedCategoryOpnameProductIds(['category_id' => $paints->id, 'brand_id' => $nippon->id]));
-    }
-
-    public function test_a_category_opname_with_no_matching_products_cannot_start(): void
-    {
-        $empty = $this->inStore(fn () => Category::factory()->create());
-        $opname = $this->opname(['scope' => StockOpnameScope::Category, 'category_id' => $empty->id]);
-
-        $this->action('start', $opname)->assertSessionHas('error', 'Tidak ada barang untuk kategori dan merek itu.');
-
-        $this->assertSame(StockOpnameStatus::Draft, $this->statusOf($opname));
-        $this->assertSame(0, $this->inStore(fn () => $opname->items()->count()));
+        $this->assertSame([$match->id], $this->createdCategoryOpnameProductIds(['category_id' => $paints->id, 'brand_id' => $nippon->id]));
     }
 
     public function test_the_show_page_names_the_category_and_brand(): void
@@ -419,32 +436,10 @@ class StockOpnameTest extends TestCase
             ->where('opname.can_manage_products', false));
     }
 
-    public function test_a_selected_opname_cannot_start_without_products(): void
-    {
-        $opname = $this->opnameInStatus(StockOpnameStatus::Draft, StockOpnameScope::Selected);
-
-        $this->action('start', $opname)->assertSessionHas('error', 'Pilih minimal satu barang sebelum mulai menghitung.');
-
-        $this->assertSame(StockOpnameStatus::Draft, $this->statusOf($opname));
-    }
-
-    public function test_a_selected_opname_refreshes_its_snapshot_when_it_starts(): void
-    {
-        $paint = $this->makeProduct('Cat', '10');
-        $opname = $this->opnameInStatus(StockOpnameStatus::Draft, StockOpnameScope::Selected);
-        $this->addItem($opname, $paint, null, '10');
-        $this->setStock($paint, '14');
-
-        $this->action('start', $opname);
-
-        $this->assertSame('14.000', $this->item($opname, $paint)->snapshot_quantity);
-        $this->assertSame(StockOpnameStatus::Counting, $this->statusOf($opname));
-    }
-
     public function test_products_can_be_added_to_and_removed_from_a_selected_opname(): void
     {
         $paint = $this->makeProduct('Cat', '7');
-        $opname = $this->opnameInStatus(StockOpnameStatus::Draft, StockOpnameScope::Selected);
+        $opname = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
 
         $this->actingAs($this->admin)->post($this->url('items.store', ['stock_opname' => $opname->id]), ['product_id' => $paint->id])
             ->assertSessionHas('success');
@@ -456,6 +451,62 @@ class StockOpnameTest extends TestCase
 
         $this->actingAs($this->admin)->delete($this->url('items.destroy', ['stock_opname' => $opname->id, 'item' => $item->id]))
             ->assertSessionHas('success');
+
+        $this->assertSame(0, $this->inStore(fn () => $opname->items()->count()));
+    }
+
+    public function test_a_product_can_be_added_and_counted_in_one_step(): void
+    {
+        $paint = $this->makeProduct('Cat', '10');
+        $opname = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
+
+        $this->actingAs($this->admin)
+            ->post($this->url('items.store', ['stock_opname' => $opname->id]), ['product_id' => $paint->id, 'parts' => [['unit_code' => 'DUS', 'quantity' => '2'], ['unit_code' => 'PAIL', 'quantity' => '3']]])
+            ->assertSessionHas('success');
+
+        $item = $this->item($opname, $paint);
+        $this->assertSame('11.000', $item->counted_quantity);
+        $this->assertSame('10.000', $item->snapshot_quantity);
+    }
+
+    public function test_counting_a_product_already_on_the_opname_replaces_its_count_but_keeps_its_note(): void
+    {
+        $paint = $this->makeProduct('Cat');
+        $opname = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
+        $item = $this->addItem($opname, $paint, '5');
+        $this->inStore(fn () => $item->forceFill(['note' => 'Rak belakang'])->save());
+
+        $this->actingAs($this->admin)
+            ->post($this->url('items.store', ['stock_opname' => $opname->id]), ['product_id' => $paint->id, 'parts' => [['unit_code' => 'PAIL', 'quantity' => '8']]])
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, $this->inStore(fn () => $opname->items()->count()));
+        $this->assertSame('8.000', $this->item($opname, $paint)->counted_quantity);
+        $this->assertSame('Rak belakang', $this->item($opname, $paint)->note);
+    }
+
+    public function test_a_product_cannot_be_added_and_counted_once_counting_is_finished(): void
+    {
+        $paint = $this->makeProduct('Cat');
+        $opname = $this->opnameInStatus(StockOpnameStatus::Review, StockOpnameScope::Selected);
+
+        $this->actingAs($this->admin)
+            ->post($this->url('items.store', ['stock_opname' => $opname->id]), ['product_id' => $paint->id, 'parts' => [['unit_code' => 'PAIL', 'quantity' => '3']]])
+            ->assertSessionHas('error');
+
+        $this->assertSame(0, $this->inStore(fn () => $opname->items()->count()));
+    }
+
+    public function test_an_added_count_needs_a_quantity_in_one_of_the_products_units(): void
+    {
+        $paint = $this->makeProduct('Cat');
+        $opname = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
+        $url = $this->url('items.store', ['stock_opname' => $opname->id]);
+
+        $this->actingAs($this->admin)->post($url, ['product_id' => $paint->id, 'parts' => [['unit_code' => 'PAIL', 'quantity' => '']]])
+            ->assertSessionHasErrors('parts.0.quantity');
+        $this->actingAs($this->admin)->post($url, ['product_id' => $paint->id, 'parts' => [['unit_code' => 'ROL', 'quantity' => '1']]])
+            ->assertSessionHasErrors('parts.0.unit_code');
 
         $this->assertSame(0, $this->inStore(fn () => $opname->items()->count()));
     }
@@ -489,7 +540,7 @@ class StockOpnameTest extends TestCase
         $paint = $this->makeProduct('Cat');
         $first = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
         $this->addItem($first, $paint);
-        $second = $this->opnameInStatus(StockOpnameStatus::Draft, StockOpnameScope::Selected);
+        $second = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
 
         $this->actingAs($this->admin)->post($this->url('items.store', ['stock_opname' => $second->id]), ['product_id' => $paint->id])
             ->assertSessionHas('error', 'Cat sedang dihitung di opname lain untuk gudang ini.');
@@ -504,7 +555,7 @@ class StockOpnameTest extends TestCase
         $this->addItem($posted, $paint);
         $cancelled = $this->opnameInStatus(StockOpnameStatus::Cancelled, StockOpnameScope::Selected);
         $this->addItem($cancelled, $paint);
-        $next = $this->opnameInStatus(StockOpnameStatus::Draft, StockOpnameScope::Selected);
+        $next = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
 
         $this->actingAs($this->admin)->post($this->url('items.store', ['stock_opname' => $next->id]), ['product_id' => $paint->id])
             ->assertSessionHas('success');
@@ -519,20 +570,6 @@ class StockOpnameTest extends TestCase
 
         $this->actingAs($this->admin)->post($this->url('items.store', ['stock_opname' => $deadOpname->id]), ['product_id' => $paint->id])
             ->assertSessionHas('success');
-    }
-
-    public function test_starting_a_category_opname_leaves_out_products_held_elsewhere_and_says_so(): void
-    {
-        $paints = $this->inStore(fn () => Category::factory()->create());
-        $held = $this->makeProduct('Cat', '0', $paints);
-        $free = $this->makeProduct('Kuas', '0', $paints);
-        $other = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
-        $this->addItem($other, $held);
-        $opname = $this->opname(['scope' => StockOpnameScope::Category, 'category_id' => $paints->id]);
-
-        $this->action('start', $opname)->assertSessionHas('success', fn (string $message): bool => str_contains($message, '1 barang dilewati'));
-
-        $this->assertSame([$free->id], $this->inStore(fn () => $opname->items()->pluck('product_id')->all()));
     }
 
     public function test_counts_in_mixed_units_are_added_up_in_the_base_unit(): void
@@ -606,7 +643,7 @@ class StockOpnameTest extends TestCase
 
     public function test_counts_can_only_be_saved_while_counting(): void
     {
-        foreach ([StockOpnameStatus::Draft, StockOpnameStatus::Review, StockOpnameStatus::Posted] as $status) {
+        foreach ([StockOpnameStatus::Review, StockOpnameStatus::Posted] as $status) {
             $opname = $this->opnameInStatus($status);
             $item = $this->addItem($opname, $this->makeProduct("Cat {$status->value}"));
 
@@ -929,25 +966,9 @@ class StockOpnameTest extends TestCase
         $this->assertSame(0, $this->inStore(fn () => StockMovement::query()->count()));
 
         $this->action('cancel', $opname)->assertNotFound();
-        $this->action('start', $opname)->assertNotFound();
     }
 
-    public function test_cancelling_a_draft_deletes_it_and_its_items_and_goes_back_to_the_list(): void
-    {
-        $paint = $this->makeProduct('Cat', '5');
-        $draft = $this->opnameInStatus(StockOpnameStatus::Draft, StockOpnameScope::Selected);
-        $this->addItem($draft, $paint, null, '5');
-        $kept = $this->opnameInStatus(StockOpnameStatus::Review, StockOpnameScope::Selected);
-
-        $this->action('cancel', $draft)->assertRedirect($this->url('index'))->assertSessionHas('success', 'Draft opname dihapus.');
-
-        $this->assertSame([$kept->id], $this->inStore(fn () => StockOpname::withTrashed()->pluck('id')->all()));
-        $this->assertSame(0, $this->inStore(fn () => StockOpnameItem::query()->count()));
-        $this->assertSame('5.000', $this->stockOf($paint));
-        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $draft->id]))->assertNotFound();
-    }
-
-    public function test_a_deleted_drafts_number_is_not_used_again(): void
+    public function test_a_deleted_opnames_number_is_not_used_again(): void
     {
         $this->createOpname();
         $first = $this->inStore(fn () => StockOpname::query()->firstOrFail());
@@ -961,28 +982,29 @@ class StockOpnameTest extends TestCase
         );
     }
 
-    public function test_cancelling_an_opname_still_counting_soft_deletes_it_and_frees_the_products(): void
+    public function test_cancelling_an_opname_still_counting_erases_it_with_its_counts_and_frees_the_products(): void
     {
         $paint = $this->makeProduct('Cat', '5');
         $opname = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
         $this->addItem($opname, $paint, '3', '5');
+        $kept = $this->opnameInStatus(StockOpnameStatus::Review, StockOpnameScope::Selected);
 
-        $this->action('cancel', $opname)->assertRedirect($this->url('index'))->assertSessionHas('success', 'Opname dibatalkan.');
+        $this->action('cancel', $opname)->assertRedirect($this->url('index'))->assertSessionHas('success', 'Opname dihapus.');
 
-        $this->assertSame(0, $this->inStore(fn () => StockOpname::query()->count()));
-        $this->assertSame(1, $this->inStore(fn () => StockOpname::onlyTrashed()->where('status', StockOpnameStatus::Cancelled)->count()));
-        $this->assertSame(1, $this->inStore(fn () => StockOpnameItem::query()->count()));
+        $this->assertSame([$kept->id], $this->inStore(fn () => StockOpname::withTrashed()->pluck('id')->all()));
+        $this->assertSame(0, $this->inStore(fn () => StockOpnameItem::query()->count()));
         $this->assertSame('5.000', $this->stockOf($paint));
+        $this->actingAs($this->admin)->get($this->url('show', ['stock_opname' => $opname->id]))->assertNotFound();
 
-        $next = $this->opnameInStatus(StockOpnameStatus::Draft, StockOpnameScope::Selected);
+        $next = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
         $this->actingAs($this->admin)->post($this->url('items.store', ['stock_opname' => $next->id]), ['product_id' => $paint->id])->assertSessionHas('success');
     }
 
-    public function test_only_a_cancelled_draft_is_erased_for_good(): void
+    public function test_only_a_counting_opname_is_erased_for_good_when_cancelled(): void
     {
-        $this->assertTrue(StockOpnameStatus::Draft->isErasedWhenCancelled());
+        $this->assertTrue(StockOpnameStatus::Counting->isErasedWhenCancelled());
 
-        foreach ([StockOpnameStatus::Counting, StockOpnameStatus::Review, StockOpnameStatus::Posted, StockOpnameStatus::Cancelled] as $status) {
+        foreach ([StockOpnameStatus::Review, StockOpnameStatus::Posted, StockOpnameStatus::Cancelled] as $status) {
             $this->assertFalse($status->isErasedWhenCancelled(), $status->value);
         }
     }
@@ -990,7 +1012,7 @@ class StockOpnameTest extends TestCase
     public function test_cancelled_opnames_are_hidden_from_the_list_until_the_cancelled_filter_is_chosen(): void
     {
         $this->opname(['status' => StockOpnameStatus::Posted, 'number' => 'OPN/TOP/2610/0001']);
-        $cancelled = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
+        $cancelled = $this->opnameInStatus(StockOpnameStatus::Review, StockOpnameScope::Selected);
         $this->action('cancel', $cancelled);
 
         $this->actingAs($this->admin)->get($this->url('index'))
@@ -1001,7 +1023,7 @@ class StockOpnameTest extends TestCase
 
     public function test_a_cancelled_opname_can_still_be_opened_but_not_changed(): void
     {
-        $opname = $this->opnameInStatus(StockOpnameStatus::Counting, StockOpnameScope::Selected);
+        $opname = $this->opnameInStatus(StockOpnameStatus::Review, StockOpnameScope::Selected);
         $this->addItem($opname, $this->makeProduct('Cat'), '3');
         $this->action('cancel', $opname);
 
@@ -1133,7 +1155,7 @@ class StockOpnameTest extends TestCase
 
     public function test_adding_a_product_locks_the_warehouse_before_checking_whether_another_opname_holds_it(): void
     {
-        $opname = $this->opnameInStatus(StockOpnameStatus::Draft);
+        $opname = $this->opnameInStatus(StockOpnameStatus::Counting);
         $paint = $this->makeProduct('Cat');
 
         $statements = $this->statementsDuring(fn () => $this->actingAs($this->admin)->post($this->url('items.store', ['stock_opname' => $opname->id]), ['product_id' => $paint->id])->assertSessionHas('success'));
@@ -1146,12 +1168,12 @@ class StockOpnameTest extends TestCase
         $this->assertLessThan($busyCheckAt, $lockAt);
     }
 
-    public function test_starting_a_category_opname_locks_the_warehouse_before_choosing_its_products(): void
+    public function test_creating_a_category_opname_locks_the_warehouse_before_choosing_its_products(): void
     {
-        $opname = $this->opnameInStatus(StockOpnameStatus::Draft, StockOpnameScope::Category);
-        $this->makeProduct('Cat');
+        $paints = $this->inStore(fn () => Category::factory()->create());
+        $this->makeProduct('Cat', '0', $paints);
 
-        $statements = $this->statementsDuring(fn () => $this->action('start', $opname)->assertSessionHas('success'));
+        $statements = $this->statementsDuring(fn () => $this->createOpname(['scope' => 'category', 'category_id' => $paints->id])->assertSessionHas('success'));
 
         $lockAt = $this->firstStatementWith($statements, ['from `warehouses`', 'for update']);
         $busyCheckAt = $this->firstStatementWith($statements, ['from `stock_opname_items`', 'join `stock_opnames`']);

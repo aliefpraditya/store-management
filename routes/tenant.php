@@ -155,7 +155,6 @@ Route::prefix('t/{tenant}')
                 Route::get('create', [StockOpnameController::class, 'create'])->name('create');
                 Route::post('/', [StockOpnameController::class, 'store'])->name('store');
                 Route::get('{stock_opname}', [StockOpnameController::class, 'show'])->withTrashed()->name('show');
-                Route::post('{stock_opname}/start', [StockOpnameController::class, 'start'])->name('start');
                 Route::put('{stock_opname}/counts', [StockOpnameController::class, 'saveCounts'])->name('counts');
                 Route::put('{stock_opname}/review', [StockOpnameController::class, 'saveReview'])->name('review');
                 Route::post('{stock_opname}/items', [StockOpnameController::class, 'addItem'])->name('items.store');

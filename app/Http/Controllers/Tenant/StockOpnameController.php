@@ -82,9 +82,15 @@ class StockOpnameController extends Controller
 
     public function store(SaveStockOpnameRequest $request): RedirectResponse
     {
-        $opname = $this->opnameService->create($request->validated(), $request->user()->id);
+        try {
+            ['opname' => $opname, 'skippedCount' => $skippedCount] = $this->opnameService->create($request->validated(), $request->user()->id);
+        } catch (StockOpnameException $exception) {
+            return back()->withInput()->with('error', $exception->getMessage());
+        }
 
-        return redirect()->route('tenant.stock-opnames.show', ['tenant' => tenant('code'), 'stock_opname' => $opname->id])->with('success', 'Opname dibuat.');
+        return redirect()
+            ->route('tenant.stock-opnames.show', ['tenant' => tenant('code'), 'stock_opname' => $opname->id])
+            ->with('success', $skippedCount === 0 ? 'Opname dibuat, silakan mulai menghitung.' : "Opname dibuat. {$skippedCount} barang dilewati karena sedang dihitung di opname lain.");
     }
 
     public function show(Request $request, StockOpname $stockOpname): Response
@@ -111,17 +117,6 @@ class StockOpnameController extends Controller
         ]);
     }
 
-    public function start(StockOpname $stockOpname): RedirectResponse
-    {
-        return $this->redirectBackWithOutcome(function () use ($stockOpname): string {
-            $skippedCount = $this->opnameService->start($stockOpname);
-
-            return $skippedCount === 0
-                ? 'Snapshot stok diambil, silakan mulai menghitung.'
-                : "Snapshot stok diambil. {$skippedCount} barang dilewati karena sedang dihitung di opname lain.";
-        });
-    }
-
     public function saveCounts(SaveStockOpnameCountsRequest $request, StockOpname $stockOpname): RedirectResponse
     {
         return $this->redirectBackWithOutcome(function () use ($request, $stockOpname): string {
@@ -143,9 +138,18 @@ class StockOpnameController extends Controller
     public function addItem(AddStockOpnameProductRequest $request, StockOpname $stockOpname): RedirectResponse
     {
         return $this->redirectBackWithOutcome(function () use ($request, $stockOpname): string {
-            $this->opnameService->addProduct($stockOpname, Product::query()->findOrFail($request->validated('product_id')));
+            $product = Product::query()->findOrFail($request->validated('product_id'));
+            $parts = $request->validated('parts');
 
-            return 'Barang ditambahkan.';
+            if ($parts === null) {
+                $this->opnameService->addProduct($stockOpname, $product);
+
+                return 'Barang ditambahkan.';
+            }
+
+            $this->opnameService->addCountedProduct($stockOpname, $product, $parts);
+
+            return "{$product->name} ditambahkan dan dihitung.";
         });
     }
 
@@ -203,7 +207,7 @@ class StockOpnameController extends Controller
         }
 
         return redirect()->route('tenant.stock-opnames.index', ['tenant' => tenant('code')])
-            ->with('success', $wasErased ? 'Draft opname dihapus.' : 'Opname dibatalkan.');
+            ->with('success', $wasErased ? 'Opname dihapus.' : 'Opname dibatalkan.');
     }
 
     /**

@@ -11,7 +11,8 @@ use Illuminate\Translation\PotentiallyTranslatedString;
 use Illuminate\Validation\Rule;
 
 /**
- * Starts a new opname: the header only. The products come later (all/category at start, selected by hand).
+ * Starts a new opname: the header only. A category/brand opname takes its products when it is created, a selected one
+ * gets them as they are added by hand.
  */
 class SaveStockOpnameRequest extends FormRequest
 {
