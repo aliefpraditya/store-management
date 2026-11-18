@@ -100,7 +100,7 @@ async function print(receipt) {
         <q-card class="history">
             <q-card-section class="history__head">
                 <div class="history__title">Nota shift ini</div>
-                <q-input v-model="query" outlined dense clearable autofocus placeholder="Cari nomor nota atau nama pelanggan">
+                <q-input :model-value="query" outlined dense clearable autofocus placeholder="Cari nomor nota atau nama pelanggan" @update:model-value="query = $event ?? ''">
                     <template #prepend><q-icon name="search" /></template>
                 </q-input>
             </q-card-section>

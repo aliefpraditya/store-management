@@ -751,10 +751,11 @@ onBeforeUnmount(() => {
                     <section class="finder">
                         <q-input
                             ref="searchInput"
-                            v-model="searchTerm"
+                            :model-value="searchTerm"
                             outlined
                             clearable
                             placeholder="Cari nama atau SKU, atau scan barcode (Enter)"
+                            @update:model-value="searchTerm = $event ?? ''"
                             class="finder__input"
                             @keydown.enter.prevent="submitSearch"
                             @keydown="onSearchKeydown"
