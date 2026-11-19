@@ -39,6 +39,15 @@ class RoleManagementTest extends TestCase
         $this->assertEqualsCanonicalizing(Permission::values(), PermissionRow::query()->pluck('name')->all());
     }
 
+    public function test_permission_rows_carry_the_labels_of_the_permission_enum(): void
+    {
+        $labels = PermissionRow::query()->pluck('label', 'name');
+
+        foreach (Permission::cases() as $permission) {
+            $this->assertSame($permission->label(), $labels[$permission->value], "The label of {$permission->value} differs from its row.");
+        }
+    }
+
     public function test_system_roles_ship_with_their_permissions(): void
     {
         $this->assertSame(['cashier.use'], $this->permissionNamesOf($this->roleNamed(UserRole::Cashier)));

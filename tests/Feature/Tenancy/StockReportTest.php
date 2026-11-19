@@ -1,0 +1,283 @@
+<?php
+
+namespace Tests\Feature\Tenancy;
+
+use App\Enums\UserRole;
+use App\Models\Brand;
+use App\Models\Category;
+use App\Models\Product;
+use App\Models\Stock;
+use App\Models\Store;
+use App\Models\User;
+use App\Models\Warehouse;
+use Closure;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
+use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\BuildsCashierFixtures;
+use Tests\Concerns\PreparesStoreDatabase;
+use Tests\TestCase;
+
+class StockReportTest extends TestCase
+{
+    use BuildsCashierFixtures, PreparesStoreDatabase, RefreshDatabase;
+
+    private const STORE_DATABASE = 'store_test_stock_report';
+
+    private Store $store;
+
+    private User $admin;
+
+    private User $cashier;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->store = $this->prepareStoreDatabase(['code' => 'test_stock_report', 'receipt_prefix' => 'TSK', 'name' => 'Toko Uji']);
+        $this->admin = $this->storeUser(UserRole::StoreAdmin);
+        $this->cashier = $this->storeUser();
+    }
+
+    /**
+     * @param  array<string, string|int|float>  $query
+     */
+    private function url(array $query = []): string
+    {
+        return route('tenant.reports.stock', ['tenant' => $this->store->code, ...$query]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private function product(string $name, string $costPrice = '1000', array $attributes = []): Product
+    {
+        return $this->store->run(fn (): Product => Product::factory()->create(['name' => $name, 'cost_price' => $costPrice, ...$attributes]));
+    }
+
+    /**
+     * @param  'MAIN'|'DEAD'|'RETUR'  $warehouseCode
+     */
+    private function putInStock(Product $product, string $quantity, string $warehouseCode = 'MAIN'): void
+    {
+        $this->store->run(fn () => Stock::query()->updateOrInsert(
+            ['product_id' => $product->id, 'warehouse_id' => Warehouse::query()->where('code', $warehouseCode)->value('id')],
+            ['quantity' => $quantity],
+        ));
+    }
+
+    /**
+     * Five active products â€” Kuas 10 at 6.000 with a minimum of 20, Cat with none left, Ember at -3, Paku 4 in the
+     * shelf with 2 in dead stock and 6 waiting in the returns warehouse at 500, Tali 3 without a purchase price â€” and
+     * an inactive Cat Lama that still holds 5 at 100 and an inactive Kaleng that holds nothing.
+     */
+    private function stockTheShelves(): void
+    {
+        $this->putInStock($this->product('Kuas', '6000', ['min_stock' => 20]), '10');
+        $this->putInStock($this->product('Cat'), '0');
+        $this->putInStock($this->product('Ember'), '-3');
+
+        $nails = $this->product('Paku', '500');
+        $this->putInStock($nails, '4');
+        $this->putInStock($nails, '2', 'DEAD');
+        $this->putInStock($nails, '6', 'RETUR');
+
+        $this->putInStock($this->product('Tali', '0'), '3');
+        $this->putInStock($this->product('Cat Lama', '100', ['is_active' => false]), '5');
+        $this->product('Kaleng', '100', ['is_active' => false]);
+    }
+
+    /**
+     * @param  callable(Assert): mixed  $assertions  Run once the deferred parts have loaded.
+     * @param  array<string, string|int|float>  $query
+     */
+    private function assertReport(callable $assertions, array $query = []): void
+    {
+        $this->actingAs($this->admin)->get($this->url($query))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Tenant/Reports/Stock')
+            ->loadDeferredProps(fn (Assert $reload) => $assertions($reload)));
+    }
+
+    /**
+     * Whether the rows of the table, in this order, are the products of these names.
+     *
+     * @param  list<string>  $names
+     */
+    private function namesAre(array $names): Closure
+    {
+        return fn (Collection $rows): bool => $rows->pluck('name')->all() === $names;
+    }
+
+    public function test_only_users_who_may_see_reports_may_open_the_stock_report(): void
+    {
+        $this->actingAs($this->cashier)->get($this->url())->assertForbidden();
+    }
+
+    public function test_the_parts_of_the_report_are_loaded_apart_from_the_page(): void
+    {
+        $this->actingAs($this->admin)->get($this->url())->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->missing('summary')
+            ->missing('groups')
+            ->missing('positions')
+            ->has('statuses', 5)
+            ->where('filters', ['search' => '', 'category' => null, 'brand' => null, 'status' => '']));
+    }
+
+    public function test_the_summary_counts_and_values_the_stock_that_is_there(): void
+    {
+        $this->stockTheShelves();
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('summary', [
+                'products_count' => 5,
+                'below_minimum_count' => 1,
+                'out_of_stock_count' => 1,
+                'negative_count' => 1,
+                'sellable_value' => '62500.00',
+                'dead_stock' => ['products_count' => 1, 'value' => '1000.00'],
+                'returns_waiting' => ['products_count' => 1, 'value' => '3000.00'],
+                'products_without_cost' => 1,
+            ]));
+    }
+
+    public function test_a_store_without_products_has_a_report_of_zeroes(): void
+    {
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('summary.products_count', 0)
+            ->where('summary.sellable_value', '0.00')
+            ->where('groups.total', 0)
+            ->where('groups.data', [])
+            ->where('positions.total', 0)
+            ->where('positions.data', []));
+    }
+
+    public function test_the_table_lists_products_by_name_with_their_stock_per_kind_of_warehouse(): void
+    {
+        $this->stockTheShelves();
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('positions.total', 6)
+            ->where('positions.data', $this->namesAre(['Cat', 'Cat Lama', 'Ember', 'Kuas', 'Paku', 'Tali']))
+            ->where('positions.data.4.sellable_stock', fn ($quantity) => (float) $quantity === 4.0)
+            ->where('positions.data.4.dead_stock', fn ($quantity) => (float) $quantity === 2.0)
+            ->where('positions.data.4.returns_stock', fn ($quantity) => (float) $quantity === 6.0)
+            ->where('positions.data.4.sellable_value', '2000.00')
+            ->where('positions.data.3.is_below_minimum', true)
+            ->where('positions.data.2.has_negative_stock', true)
+            ->where('positions.data.2.sellable_value', '0.00')
+            ->where('positions.data.1.is_active', false));
+    }
+
+    public function test_an_inactive_product_without_stock_is_not_in_the_report(): void
+    {
+        $this->stockTheShelves();
+
+        $this->assertReport(fn (Assert $report) => $report->where('positions.data', fn ($rows) => ! $rows->pluck('name')->contains('Kaleng')));
+    }
+
+    public function test_each_stock_condition_narrows_the_table_to_its_products(): void
+    {
+        $this->stockTheShelves();
+
+        $expected = [
+            'below_minimum' => ['Kuas'],
+            'out_of_stock' => ['Cat'],
+            'negative' => ['Ember'],
+            'dead_stock' => ['Paku'],
+            'returns_waiting' => ['Paku'],
+        ];
+
+        foreach ($expected as $status => $names) {
+            $this->assertReport(fn (Assert $report) => $report->where('positions.data', $this->namesAre($names))->where('positions.total', count($names)), ['status' => $status]);
+        }
+    }
+
+    public function test_an_inactive_product_is_neither_low_nor_out_of_stock(): void
+    {
+        $this->putInStock($this->product('Cat Lama', '100', ['is_active' => false, 'min_stock' => 50]), '0');
+        $this->putInStock($this->product('Kuas Lama', '100', ['is_active' => false, 'min_stock' => 50]), '5');
+
+        $this->assertReport(fn (Assert $report) => $report->where('positions.total', 1)->where('positions.data.0.name', 'Kuas Lama'));
+        $this->assertReport(fn (Assert $report) => $report->where('positions.total', 0), ['status' => 'below_minimum']);
+        $this->assertReport(fn (Assert $report) => $report->where('positions.total', 0), ['status' => 'out_of_stock']);
+    }
+
+    public function test_the_table_can_be_searched_and_narrowed_by_category_and_brand(): void
+    {
+        $this->store->run(function (): void {
+            $paint = Category::factory()->create(['name' => 'Cat']);
+            $tools = Category::factory()->create(['name' => 'Alat']);
+            $brand = Brand::factory()->create(['name' => 'Dulux']);
+
+            Product::factory()->create(['name' => 'Cat Tembok', 'sku' => 'CT-1', 'category_id' => $paint->id, 'brand_id' => $brand->id]);
+            Product::factory()->create(['name' => 'Cat Kayu', 'sku' => 'CK-1', 'category_id' => $paint->id]);
+            Product::factory()->create(['name' => 'Palu', 'sku' => 'PL-1', 'category_id' => $tools->id]);
+        });
+        [$paintId, $brandId] = $this->store->run(fn (): array => [Category::query()->where('name', 'Cat')->value('id'), Brand::query()->where('name', 'Dulux')->value('id')]);
+
+        $this->assertReport(fn (Assert $report) => $report->where('positions.data', $this->namesAre(['Cat Kayu', 'Cat Tembok'])), ['category' => $paintId]);
+        $this->assertReport(fn (Assert $report) => $report->where('positions.data', $this->namesAre(['Cat Tembok'])), ['category' => $paintId, 'brand' => $brandId]);
+        $this->assertReport(fn (Assert $report) => $report->where('positions.data', $this->namesAre(['Cat Kayu', 'Cat Tembok'])), ['search' => 'cat']);
+        $this->assertReport(fn (Assert $report) => $report->where('positions.data', $this->namesAre(['Palu'])), ['search' => 'PL-1']);
+    }
+
+    public function test_a_typed_percent_in_the_search_is_not_a_wildcard(): void
+    {
+        $this->product('Kuas');
+        $this->product('Diskon 50% Cat');
+
+        $this->assertReport(fn (Assert $report) => $report->where('positions.data', $this->namesAre(['Diskon 50% Cat'])), ['search' => '%']);
+    }
+
+    public function test_the_stock_value_is_shared_out_per_category_with_the_biggest_first(): void
+    {
+        $this->store->run(function (): void {
+            Category::factory()->create(['name' => 'Alat']);
+            Category::factory()->create(['name' => 'Cat']);
+        });
+        [$tools, $paint] = $this->store->run(fn (): array => [Category::query()->where('name', 'Alat')->value('id'), Category::query()->where('name', 'Cat')->value('id')]);
+        $this->putInStock($this->product('Palu', '2000', ['category_id' => $tools]), '1');
+        $this->putInStock($this->product('Cat Tembok', '6000', ['category_id' => $paint]), '10');
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('groups.grouping', 'category')
+            ->where('groups.total', 2)
+            ->where('groups.data.0', ['id' => $paint, 'name' => 'Cat', 'products_count' => 1, 'value' => '60000.00', 'share_percent' => '96.8'])
+            ->where('groups.data.1', ['id' => $tools, 'name' => 'Alat', 'products_count' => 1, 'value' => '2000.00', 'share_percent' => '3.2']));
+    }
+
+    public function test_products_without_a_brand_are_one_group_of_their_own(): void
+    {
+        $brandId = $this->store->run(fn (): int => Brand::factory()->create(['name' => 'Dulux'])->id);
+        $this->putInStock($this->product('Cat Tembok', '1000', ['brand_id' => $brandId]), '3');
+        $this->putInStock($this->product('Palu', '1000'), '1');
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('groups.grouping', 'brand')
+            ->where('groups.data.0', ['id' => $brandId, 'name' => 'Dulux', 'products_count' => 1, 'value' => '3000.00', 'share_percent' => '75.0'])
+            ->where('groups.data.1', ['id' => null, 'name' => '(Tanpa merek)', 'products_count' => 1, 'value' => '1000.00', 'share_percent' => '25.0']), ['groups_by' => 'brand']);
+    }
+
+    public function test_a_page_past_the_last_gives_the_last_one(): void
+    {
+        $this->store->run(fn () => Product::factory()->count(16)->create());
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('positions.current_page', 2)
+            ->where('positions.last_page', 2)
+            ->where('positions.from', 16)
+            ->where('positions.to', 16)
+            ->where('positions.total', 16)
+            ->has('positions.data', 1), ['positions_page' => 9]);
+    }
+
+    public function test_a_page_size_that_is_not_an_option_is_the_first_option_and_a_bad_filter_is_left_out(): void
+    {
+        $this->stockTheShelves();
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('positions.per_page', 15)
+            ->where('positions.total', 6)
+            ->where('groups.per_page', 5), ['positions_per_page' => 7, 'groups_per_page' => 7, 'status' => 'bogus', 'category' => 'abc', 'brand' => '-4']);
+    }
+}

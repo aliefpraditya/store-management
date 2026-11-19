@@ -12,6 +12,8 @@ use App\Services\SalesReportService;
  */
 class SalesReportRequest extends DateRangeRequest
 {
+    use ReadsTableQuery;
+
     public function productsPage(): int
     {
         return $this->positiveInteger('products_page');
@@ -58,26 +60,5 @@ class SalesReportRequest extends DateRangeRequest
         }
 
         return $this->groupsSort() === 'name' ? 'asc' : 'desc';
-    }
-
-    private function positiveInteger(string $key): int
-    {
-        return max(filter_var($this->query($key), FILTER_VALIDATE_INT) ?: 1, 1);
-    }
-
-    /**
-     * @param  list<int|string>  $options
-     */
-    private function optionOrFirst(string $key, array $options): int|string
-    {
-        $value = $this->query($key);
-
-        foreach ($options as $option) {
-            if ((string) $option === $value) {
-                return $option;
-            }
-        }
-
-        return $options[0];
     }
 }

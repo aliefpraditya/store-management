@@ -53,7 +53,10 @@ const menuGroups = computed(() => {
         },
         {
             label: 'Laporan',
-            items: [{ label: 'Laporan Penjualan', icon: 'bar_chart', href: store.value.reports_url, can: ['reports.view'] }],
+            items: [
+                { label: 'Laporan Penjualan', icon: 'bar_chart', href: store.value.reports_url, can: ['reports.view'] },
+                { label: 'Laporan Stok', icon: 'inventory', href: store.value.stock_report_url, can: ['reports.view'] },
+            ],
         },
         {
             label: 'Pengaturan',

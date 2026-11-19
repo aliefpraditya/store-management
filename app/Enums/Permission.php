@@ -42,7 +42,7 @@ enum Permission: string
             self::ShiftsReview => 'Rekap shift: putuskan selisih kas',
             self::ExpensesManage => 'Kelola pengeluaran',
             self::DailyClosingsManage => 'Tutup hari dan buka kembali',
-            self::ReportsView => 'Lihat laporan penjualan',
+            self::ReportsView => 'Lihat laporan (penjualan dan stok)',
             self::SettingsManage => 'Ubah pengaturan toko dan satuan',
         };
     }
