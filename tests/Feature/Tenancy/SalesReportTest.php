@@ -8,12 +8,15 @@ use App\Enums\StockOpnameReason;
 use App\Enums\StockOpnameScope;
 use App\Enums\StockOpnameStatus;
 use App\Enums\UserRole;
+use App\Models\Brand;
 use App\Models\CashShift;
+use App\Models\Category;
 use App\Models\DeliveryNote;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SalePayment;
 use App\Models\SaleReturn;
+use App\Models\Stock;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
 use App\Models\Store;
@@ -60,7 +63,16 @@ class SalesReportTest extends TestCase
         $this->shift = $this->openShiftFor($this->cashier);
     }
 
+    /**
+     * The report of the last seven days, today the last one, unless the query says otherwise: the tests count days
+     * from there (`summary.days.6` is today).
+     */
     private function url(array $query = [], string $name = 'sales'): string
+    {
+        return $this->urlWithoutPeriod(['from' => today()->subDays(6)->toDateString(), 'to' => today()->toDateString(), ...$query], $name);
+    }
+
+    private function urlWithoutPeriod(array $query = [], string $name = 'sales'): string
     {
         return route("tenant.reports.{$name}", ['tenant' => $this->store->code, ...$query]);
     }
@@ -140,13 +152,14 @@ class SalesReportTest extends TestCase
         $this->postedOpname(StockOpnameReason::ReturnsCheck, '9', '0', CarbonImmutable::now()->subDays(10));
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.totals.dead_stock_loss', '18000.00')
-            ->where('report.totals.gross_profit', '2000.00')
-            ->where('report.days.6.dead_stock_loss', '18000.00')
-            ->where('report.days.6.gross_profit', '2000.00')
-            ->where('report.days.5.dead_stock_loss', '0.00')
-            ->where('report.products.0.cost', '48000.00')
-            ->where('report.products.0.profit', '2000.00'));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.totals.dead_stock_loss', '18000.00')
+                ->where('summary.totals.gross_profit', '2000.00')
+                ->where('summary.days.6.dead_stock_loss', '18000.00')
+                ->where('summary.days.6.gross_profit', '2000.00')
+                ->where('summary.days.5.dead_stock_loss', '0.00')
+                ->where('products.data.0.cost', '48000.00')
+                ->where('products.data.0.profit', '2000.00')));
     }
 
     public function test_a_product_with_only_dead_stock_in_the_period_is_listed_with_its_loss(): void
@@ -154,11 +167,12 @@ class SalesReportTest extends TestCase
         $this->postedOpname(StockOpnameReason::ReturnsCheck, '2', '0');
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.totals.gross_profit', '-12000.00')
-            ->where('report.products.0.name', 'Kuas')
-            ->where('report.products.0.revenue', '0.00')
-            ->where('report.products.0.cost', '12000.00')
-            ->where('report.products.0.profit', '-12000.00'));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.totals.gross_profit', '-12000.00')
+                ->where('products.data.0.name', 'Kuas')
+                ->where('products.data.0.revenue', '0.00')
+                ->where('products.data.0.cost', '12000.00')
+                ->where('products.data.0.profit', '-12000.00')));
     }
 
     public function test_only_admins_may_see_the_report(): void
@@ -167,16 +181,18 @@ class SalesReportTest extends TestCase
         $this->actingAs($this->cashier)->get($this->url(name: 'sales.sheet'))->assertForbidden();
     }
 
-    public function test_the_report_covers_the_last_week_when_no_dates_are_given(): void
+    public function test_the_report_covers_the_whole_of_this_month_when_no_dates_are_given(): void
     {
-        $this->actingAs($this->admin)->get($this->url())->assertOk()->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->urlWithoutPeriod())->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Tenant/Reports/Sales')
-            ->where('report.from', today()->subDays(6)->toDateString())
-            ->where('report.to', today()->toDateString())
-            ->has('report.days', 7)
-            ->where('report.totals.net_total', '0.00')
-            ->where('report.totals.receipt_count', 0)
-            ->where('report.products', []));
+            ->where('period.from', today()->startOfMonth()->toDateString())
+            ->where('period.to', today()->endOfMonth()->toDateString())
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('summary.days', today()->daysInMonth)
+                ->where('summary.totals.net_total', '0.00')
+                ->where('summary.totals.receipt_count', 0)
+                ->where('products.data', [])
+                ->where('products.total', 0)));
     }
 
     public function test_the_totals_are_net_of_returns_and_leave_out_void_receipts(): void
@@ -184,7 +200,8 @@ class SalesReportTest extends TestCase
         $this->sellInAWeek();
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.totals', ['gross_total' => '100000.00', 'returns_total' => '20000.00', 'net_total' => '80000.00', 'receipt_count' => 3, 'dead_stock_loss' => '0.00', 'gross_profit' => '32000.00', 'voids_count' => 0, 'voids_total' => '0.00']));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.totals', ['gross_total' => '100000.00', 'returns_total' => '20000.00', 'net_total' => '80000.00', 'receipt_count' => 3, 'dead_stock_loss' => '0.00', 'gross_profit' => '32000.00', 'voids_count' => 0, 'voids_total' => '0.00', 'margin_percent' => '40.0'])));
     }
 
     public function test_each_day_has_its_own_figures_and_days_without_sales_are_listed(): void
@@ -192,9 +209,10 @@ class SalesReportTest extends TestCase
         $this->sellInAWeek();
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.days.6', ['date' => today()->toDateString(), 'gross_total' => '70000.00', 'returns_total' => '20000.00', 'net_total' => '50000.00', 'receipt_count' => 2, 'dead_stock_loss' => '0.00', 'gross_profit' => '20000.00', 'voids_count' => 0, 'voids_total' => '0.00'])
-            ->where('report.days.5', ['date' => today()->subDay()->toDateString(), 'gross_total' => '30000.00', 'returns_total' => '0.00', 'net_total' => '30000.00', 'receipt_count' => 1, 'dead_stock_loss' => '0.00', 'gross_profit' => '12000.00', 'voids_count' => 0, 'voids_total' => '0.00'])
-            ->where('report.days.0.net_total', '0.00'));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.days.6', ['date' => today()->toDateString(), 'gross_total' => '70000.00', 'returns_total' => '20000.00', 'net_total' => '50000.00', 'receipt_count' => 2, 'dead_stock_loss' => '0.00', 'gross_profit' => '20000.00', 'voids_count' => 0, 'voids_total' => '0.00'])
+                ->where('summary.days.5', ['date' => today()->subDay()->toDateString(), 'gross_total' => '30000.00', 'returns_total' => '0.00', 'net_total' => '30000.00', 'receipt_count' => 1, 'dead_stock_loss' => '0.00', 'gross_profit' => '12000.00', 'voids_count' => 0, 'voids_total' => '0.00'])
+                ->where('summary.days.0.net_total', '0.00')));
     }
 
     public function test_the_period_can_be_narrowed(): void
@@ -203,19 +221,21 @@ class SalesReportTest extends TestCase
         $today = today()->toDateString();
 
         $this->actingAs($this->admin)->get($this->url(['from' => $today, 'to' => $today]))->assertInertia(fn (Assert $page) => $page
-            ->has('report.days', 1)
-            ->where('report.totals.gross_total', '70000.00')
-            ->where('report.totals.receipt_count', 2));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('summary.days', 1)
+                ->where('summary.totals.gross_total', '70000.00')
+                ->where('summary.totals.receipt_count', 2)));
     }
 
     public function test_a_start_after_the_end_is_swapped_and_a_huge_period_is_cut_back(): void
     {
         $this->actingAs($this->admin)->get($this->url(['from' => today()->toDateString(), 'to' => today()->subDays(2)->toDateString()]))->assertInertia(fn (Assert $page) => $page
-            ->where('report.from', today()->subDays(2)->toDateString())
-            ->where('report.to', today()->toDateString())
-            ->has('report.days', 3));
+            ->where('period.from', today()->subDays(2)->toDateString())
+            ->where('period.to', today()->toDateString())
+            ->loadDeferredProps(fn (Assert $reload) => $reload->has('summary.days', 3)));
 
-        $this->actingAs($this->admin)->get($this->url(['from' => '2000-01-01', 'to' => today()->toDateString()]))->assertInertia(fn (Assert $page) => $page->has('report.days', 366));
+        $this->actingAs($this->admin)->get($this->url(['from' => '2000-01-01', 'to' => today()->toDateString()]))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->has('summary.days', 366)));
     }
 
     public function test_what_came_in_is_split_by_method_with_cod_apart_and_split_by_delivery(): void
@@ -223,14 +243,15 @@ class SalesReportTest extends TestCase
         $this->sellInAWeek();
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.methods', [
-                ['method' => 'cash', 'label' => 'Tunai', 'amount' => '50000.00'],
-                ['method' => 'transfer', 'label' => 'Transfer', 'amount' => '30000.00'],
-                ['method' => 'qris', 'label' => 'QRIS', 'amount' => '0.00'],
-                ['method' => 'edc', 'label' => 'EDC', 'amount' => '0.00'],
-                ['method' => 'cod_delivered', 'label' => 'COD (sudah diantar)', 'amount' => '0.00'],
-                ['method' => 'cod_undelivered', 'label' => 'COD (belum diantar)', 'amount' => '20000.00'],
-            ]));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('payments.methods', [
+                    ['method' => 'cash', 'label' => 'Tunai', 'amount' => '50000.00'],
+                    ['method' => 'transfer', 'label' => 'Transfer', 'amount' => '30000.00'],
+                    ['method' => 'qris', 'label' => 'QRIS', 'amount' => '0.00'],
+                    ['method' => 'edc', 'label' => 'EDC', 'amount' => '0.00'],
+                    ['method' => 'cod_delivered', 'label' => 'COD (sudah diantar)', 'amount' => '0.00'],
+                    ['method' => 'cod_undelivered', 'label' => 'COD (belum diantar)', 'amount' => '20000.00'],
+                ])));
     }
 
     public function test_cod_of_a_receipt_whose_goods_were_delivered_on_a_combined_note_counts_as_delivered(): void
@@ -247,8 +268,9 @@ class SalesReportTest extends TestCase
         });
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.methods.4', ['method' => 'cod_delivered', 'label' => 'COD (sudah diantar)', 'amount' => '50000.00'])
-            ->where('report.methods.5', ['method' => 'cod_undelivered', 'label' => 'COD (belum diantar)', 'amount' => '0.00']));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('payments.methods.4', ['method' => 'cod_delivered', 'label' => 'COD (sudah diantar)', 'amount' => '50000.00'])
+                ->where('payments.methods.5', ['method' => 'cod_undelivered', 'label' => 'COD (belum diantar)', 'amount' => '0.00'])));
 
         $this->assertSame(2, $this->store->run(fn (): int => app(CodSaleService::class)->totalsOfShift($this->shift)['delivered']['count']));
     }
@@ -257,15 +279,407 @@ class SalesReportTest extends TestCase
     {
         $this->sell(1, [['method' => 'cash', 'amount' => 20000]]);
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page->where('report.methods.0.amount', '10000.00'));
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('payments.methods.0.amount', '10000.00')));
     }
 
-    public function test_sales_are_split_by_cashier(): void
+    public function test_neither_the_screen_nor_the_print_sheet_splits_the_sales_by_cashier(): void
     {
         $this->sellInAWeek();
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.cashiers', [['cashier_name' => $this->cashier->name, 'receipt_count' => 3, 'total' => '100000.00']]));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('payments.methods')
+                ->missing('payments.cashiers')));
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.sheet'))->assertInertia(fn (Assert $page) => $page
+            ->has('report.methods')
+            ->missing('report.cashiers'));
+    }
+
+    public function test_the_totals_say_the_margin_and_nothing_sold_has_none(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('summary.totals.margin_percent', '40.0')));
+
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(30)->toDateString(), 'to' => today()->subDays(20)->toDateString()]))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.totals.margin_percent', '0.0')
+                ->where('summary.receipts', ['median_total' => '0.00', 'median_lines' => '0.0', 'average_total' => '0.00'])));
+    }
+
+    /**
+     * One receipt with a line for each of the products given, a piece of each at 10.000.
+     *
+     * @param  list<Product>  $products
+     */
+    private function sellOneOfEach(array $products): void
+    {
+        $this->store->run(fn (): Sale => app(SaleService::class)->create($this->shift, $this->cashier, [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => array_map(fn (Product $product): array => ['product_unit_id' => $this->unitOf($product, 'PCS')->id, 'quantity' => 1], $products),
+            'payments' => [['method' => 'cash', 'amount' => count($products) * 10000]],
+        ]));
+    }
+
+    public function test_a_typical_receipt_is_the_median_so_one_big_receipt_does_not_pull_it_away(): void
+    {
+        $pencil = $this->sellableProduct('Pensil', '50');
+        $pen = $this->sellableProduct('Pulpen', '50');
+        $ruler = $this->sellableProduct('Penggaris', '50');
+
+        $this->sellOneOfEach([$pencil]);
+        $this->sellOneOfEach([$pen]);
+        $this->sellOneOfEach([$pencil, $pen, $ruler]);
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.totals.gross_total', '50000.00')
+                ->where('summary.receipts', ['median_total' => '10000.00', 'median_lines' => '1.0', 'average_total' => '16666.67'])));
+    }
+
+    public function test_with_an_even_number_of_receipts_the_median_is_the_mean_of_the_two_in_the_middle(): void
+    {
+        $pencil = $this->sellableProduct('Pensil', '50');
+        $pen = $this->sellableProduct('Pulpen', '50');
+
+        $this->sellOneOfEach([$pencil]);
+        $this->sellOneOfEach([$pencil, $pen]);
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('summary.receipts', ['median_total' => '15000.00', 'median_lines' => '1.5', 'average_total' => '15000.00'])));
+    }
+
+    public function test_the_median_receipt_leaves_out_voided_receipts_and_those_outside_the_period(): void
+    {
+        $pencil = $this->sellableProduct('Pensil', '50');
+
+        $this->sellOneOfEach([$pencil]);
+        $this->sell(9, [['method' => 'cash', 'amount' => 90000]], 20);
+        $voided = $this->sell(8, [['method' => 'cash', 'amount' => 80000]]);
+        $this->store->run(fn () => Sale::query()->whereKey($voided->id)->update(['status' => 'voided']));
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('summary.receipts', ['median_total' => '10000.00', 'median_lines' => '1.0', 'average_total' => '10000.00'])));
+    }
+
+    public function test_the_period_is_compared_with_the_one_of_the_same_length_just_before_it(): void
+    {
+        $this->sell(3, [['method' => 'cash', 'amount' => 30000]]);
+        $this->sell(2, [['method' => 'cash', 'amount' => 20000]], 8);
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->missing('comparison')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('comparison.from', today()->subDays(13)->toDateString())
+                ->where('comparison.to', today()->subDays(7)->toDateString())
+                ->where('comparison.totals.net_total', '20000.00')
+                ->where('comparison.totals.receipt_count', 1)
+                ->where('comparison.change_percent', ['net_total' => '50.0', 'receipt_count' => '0.0', 'gross_profit' => '50.0'])));
+    }
+
+    public function test_a_fall_is_a_negative_percent_and_a_period_after_nothing_has_no_percent(): void
+    {
+        $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+        $this->sell(4, [['method' => 'cash', 'amount' => 40000]], 8);
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('comparison.change_percent.net_total', '-75.0')));
+
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(30)->toDateString(), 'to' => today()->subDays(24)->toDateString()]))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('comparison.change_percent', ['net_total' => null, 'receipt_count' => null, 'gross_profit' => null])));
+    }
+
+    public function test_a_period_that_is_not_over_yet_is_compared_by_the_days_that_have_come(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-19 10:00'));
+        $service = app(SalesReportService::class);
+
+        $comparison = $this->store->run(fn (): array => $service->comparison(CarbonImmutable::parse('2026-11-01'), CarbonImmutable::parse('2026-11-30')));
+
+        $this->assertSame(['2026-10-13', '2026-10-31'], [$comparison['from'], $comparison['to']]);
+
+        $past = $this->store->run(fn (): array => $service->comparison(CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-31')));
+
+        $this->assertSame(['2026-08-31', '2026-09-30'], [$past['from'], $past['to']]);
+    }
+
+    /**
+     * Stationery: four pencils of the brand Faber (40.000) and one pen without a brand (10.000). Paint: two cans
+     * without a brand (20.000). Each piece sells for 10.000 at a cost of 6.000, so every group has a margin of 40%.
+     */
+    private function sellInCategoriesAndBrands(): void
+    {
+        $stationery = $this->store->run(fn (): Category => Category::factory()->create(['name' => 'Alat Tulis']));
+        $paint = $this->store->run(fn (): Category => Category::factory()->create(['name' => 'Cat']));
+        $faber = $this->store->run(fn (): Brand => Brand::factory()->create(['name' => 'Faber']));
+
+        foreach ([
+            [$this->sellableProduct('Pensil', '50', ['category_id' => $stationery->id, 'brand_id' => $faber->id]), 4],
+            [$this->sellableProduct('Pulpen', '50', ['category_id' => $stationery->id, 'brand_id' => null]), 1],
+            [$this->sellableProduct('Cat Tembok', '50', ['category_id' => $paint->id, 'brand_id' => null]), 2],
+        ] as [$product, $pieces]) {
+            $this->store->run(fn (): Sale => app(SaleService::class)->create($this->shift, $this->cashier, [
+                'client_uuid' => (string) Str::uuid(),
+                'items' => [['product_unit_id' => $this->unitOf($product, 'PCS')->id, 'quantity' => $pieces]],
+                'payments' => [['method' => 'cash', 'amount' => $pieces * 10000]],
+            ]));
+        }
+    }
+
+    public function test_the_sales_are_grouped_by_category_with_the_biggest_first_to_begin_with(): void
+    {
+        $this->sellInCategoriesAndBrands();
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->missing('groups')
+            ->where('group_per_page_options', [5, 10])
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('groups.grouping', 'category')
+                ->where('groups.sort', 'revenue')
+                ->where('groups.direction', 'desc')
+                ->where('groups.total', 2)
+                ->where('groups.per_page', 5)
+                ->where('groups.data.0.name', 'Alat Tulis')
+                ->where('groups.data.0.product_count', 2)
+                ->where('groups.data.0.revenue', '50000.00')
+                ->where('groups.data.0.cost', '30000.00')
+                ->where('groups.data.0.profit', '20000.00')
+                ->where('groups.data.0.margin_percent', '40.0')
+                ->where('groups.data.0.share_percent', '71.4')
+                ->where('groups.data.1.name', 'Cat')
+                ->where('groups.data.1.share_percent', '28.6')));
+    }
+
+    public function test_the_sales_can_be_grouped_by_brand_with_the_products_of_no_brand_together(): void
+    {
+        $this->sellInCategoriesAndBrands();
+
+        $this->actingAs($this->admin)->get($this->url(['groups_by' => 'brand']))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('groups.grouping', 'brand')
+                ->where('groups.total', 2)
+                ->where('groups.data.0.name', 'Faber')
+                ->where('groups.data.0.revenue', '40000.00')
+                ->where('groups.data.1.id', null)
+                ->where('groups.data.1.name', '(Tanpa merek)')
+                ->where('groups.data.1.product_count', 2)
+                ->where('groups.data.1.revenue', '30000.00')));
+    }
+
+    public function test_the_groups_can_be_ordered_by_name_or_by_a_figure_either_way(): void
+    {
+        $this->sellInCategoriesAndBrands();
+
+        $orders = [
+            ['groups_sort' => 'name', 'expected' => ['Alat Tulis', 'Cat']],
+            ['groups_sort' => 'name', 'groups_direction' => 'desc', 'expected' => ['Cat', 'Alat Tulis']],
+            ['groups_sort' => 'profit', 'groups_direction' => 'asc', 'expected' => ['Cat', 'Alat Tulis']],
+            ['groups_sort' => 'profit', 'expected' => ['Alat Tulis', 'Cat']],
+            ['groups_sort' => 'margin', 'expected' => ['Alat Tulis', 'Cat']],
+            ['groups_sort' => 'nonsense', 'groups_direction' => 'sideways', 'expected' => ['Alat Tulis', 'Cat']],
+        ];
+
+        foreach ($orders as $order) {
+            $expected = $order['expected'];
+            unset($order['expected']);
+
+            $this->actingAs($this->admin)->get($this->url($order))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload
+                    ->where('groups.data', fn ($groups): bool => collect($groups)->pluck('name')->all() === $expected)));
+        }
+    }
+
+    public function test_the_groups_are_paged_on_the_server_five_or_ten_at_a_time(): void
+    {
+        $this->sellDifferentProducts(12);
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('groups.data', 5)
+                ->where('groups.total', 12)
+                ->where('groups.last_page', 3)
+                ->where('groups.from', 1)
+                ->where('groups.to', 5)));
+
+        $this->actingAs($this->admin)->get($this->url(['groups_per_page' => 10, 'groups_page' => 2]))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('groups.data', 2)
+                ->where('groups.per_page', 10)
+                ->where('groups.current_page', 2)
+                ->where('groups.from', 11)
+                ->where('groups.to', 12)));
+
+        foreach (['7', '0', 'abc'] as $notAnOption) {
+            $this->actingAs($this->admin)->get($this->url(['groups_per_page' => $notAnOption, 'groups_page' => 99]))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload->where('groups.per_page', 5)->where('groups.current_page', 3)));
+        }
+    }
+
+    /**
+     * Four completed receipts of five brushes (50.000 each), each with one brush returned (10.000, a cost of 6.000).
+     */
+    private function sellAndReturn(): void
+    {
+        foreach (range(1, 4) as $unused) {
+            $sale = $this->sell(5, [['method' => 'cash', 'amount' => 50000]]);
+
+            $this->store->run(fn () => app(SaleReturnService::class)->createApproved($sale, $this->shift, $this->admin, [
+                'client_uuid' => (string) Str::uuid(),
+                'refund_method' => 'cash',
+                'items' => [['sale_item_id' => $sale->items[0]->id, 'quantity' => 1, 'disposition' => 'resellable']],
+            ]));
+        }
+    }
+
+    /**
+     * An inspection of the returns warehouse: for each product how many units went back on the shelf, to damaged goods
+     * and to dead stock, at the cost the inspection was posted with.
+     *
+     * @param  list<array{0: Product, 1: string, 2: string, 3: string, 4: string}>  $items  Product, full price, damaged goods, dead stock, cost.
+     */
+    private function inspectReturns(array $items, ?CarbonImmutable $postedAt = null, StockOpnameStatus $status = StockOpnameStatus::Posted, StockOpnameReason $reason = StockOpnameReason::ReturnsCheck): void
+    {
+        $this->store->run(function () use ($items, $postedAt, $status, $reason): void {
+            $opname = StockOpname::factory()->create([
+                'warehouse_id' => $this->returnsWarehouse()->id,
+                'reason_code' => $reason,
+                'scope' => StockOpnameScope::Selected,
+                'status' => $status,
+                'snapshot_at' => now(),
+                'posted_at' => $postedAt ?? now(),
+                'created_by' => $this->admin->id,
+            ]);
+
+            foreach ($items as [$product, $fullPrice, $damaged, $deadStock, $cost]) {
+                StockOpnameItem::factory()->create([
+                    'stock_opname_id' => $opname->id,
+                    'product_id' => $product->id,
+                    'full_price_quantity' => $fullPrice,
+                    'damaged_goods_quantity' => $damaged,
+                    'dead_stock_quantity' => $deadStock,
+                    'cost_price_at_posting' => $cost,
+                    'variance' => '0',
+                ]);
+            }
+        });
+    }
+
+    public function test_the_units_an_inspection_decided_are_split_into_sellable_damaged_and_dead_stock_at_cost(): void
+    {
+        $paint = $this->sellableProduct('Cat', '10');
+
+        $this->inspectReturns([[$this->brush, '3', '1', '2', '6000'], [$paint, '0', '0', '5', '2000']]);
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->missing('return_details')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('return_details.outcomes', [
+                    ['outcome' => 'resellable', 'label' => 'Bisa dijual lagi', 'products_count' => 1, 'cost_total' => '18000.00', 'share_percent' => '39.1'],
+                    ['outcome' => 'damaged_goods', 'label' => 'Barang rusak (DG)', 'products_count' => 1, 'cost_total' => '6000.00', 'share_percent' => '13.0'],
+                    ['outcome' => 'dead_stock', 'label' => 'Dead stock', 'products_count' => 2, 'cost_total' => '22000.00', 'share_percent' => '47.8'],
+                ])));
+    }
+
+    public function test_only_inspections_of_returns_posted_in_the_period_count(): void
+    {
+        $this->inspectReturns([[$this->brush, '1', '0', '0', '6000']]);
+        $this->inspectReturns([[$this->brush, '9', '9', '9', '6000']], CarbonImmutable::now()->subDays(10));
+        $this->inspectReturns([[$this->brush, '9', '9', '9', '6000']], status: StockOpnameStatus::Counting);
+        $this->inspectReturns([[$this->brush, '9', '9', '9', '6000']], reason: StockOpnameReason::Routine);
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('return_details.outcomes.0.cost_total', '6000.00')
+                ->where('return_details.outcomes.1.cost_total', '0.00')
+                ->where('return_details.outcomes.2.cost_total', '0.00')
+                ->where('return_details.outcomes.0.share_percent', '100.0')));
+    }
+
+    public function test_what_came_back_in_the_period_is_valued_at_cost(): void
+    {
+        $this->sellAndReturn();
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('return_details.returned', ['products_count' => 1, 'cost_total' => '24000.00'])));
+    }
+
+    public function test_what_waits_in_the_returns_warehouse_is_counted_whatever_the_period(): void
+    {
+        $paint = $this->sellableProduct('Cat', '10', ['cost_price' => 2000]);
+        $this->store->run(function () use ($paint): void {
+            Stock::query()->updateOrInsert(['product_id' => $this->brush->id, 'warehouse_id' => $this->returnsWarehouse()->id], ['quantity' => '5']);
+            Stock::query()->updateOrInsert(['product_id' => $paint->id, 'warehouse_id' => $this->returnsWarehouse()->id], ['quantity' => '3']);
+            Stock::query()->updateOrInsert(['product_id' => $this->brush->id, 'warehouse_id' => $this->mainWarehouse()->id], ['quantity' => '100']);
+        });
+
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(30)->toDateString(), 'to' => today()->subDays(20)->toDateString()]))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('return_details.waiting', ['products_count' => 2, 'cost_total' => '36000.00'])));
+    }
+
+    public function test_the_products_returned_most_often_come_with_their_share_of_what_was_sold(): void
+    {
+        $this->sellAndReturn();
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('return_details.products', [[
+                    'product_id' => $this->brush->id,
+                    'name' => 'Kuas',
+                    'unit' => 'PCS',
+                    'returns_count' => 4,
+                    'quantity' => '4.000',
+                    'total' => '40000.00',
+                    'rate_percent' => '20.0',
+                ]])));
+    }
+
+    public function test_a_product_returned_from_an_earlier_period_has_no_share(): void
+    {
+        $old = $this->sell(3, [['method' => 'cash', 'amount' => 30000]], 40);
+        $this->store->run(fn () => app(SaleReturnService::class)->createApproved($old, $this->shift, $this->admin, [
+            'client_uuid' => (string) Str::uuid(),
+            'refund_method' => 'cash',
+            'items' => [['sale_item_id' => $old->items[0]->id, 'quantity' => 1, 'disposition' => 'resellable']],
+        ]));
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('return_details.products.0.rate_percent', null)));
+    }
+
+    public function test_the_return_details_leave_out_the_reasons_and_who_handled_the_returns(): void
+    {
+        $this->sellAndReturn();
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('return_details.outcomes')
+                ->has('return_details.products')
+                ->missing('return_details.reasons')
+                ->missing('return_details.cashiers')));
+    }
+
+    public function test_nothing_returned_leaves_the_figures_at_nothing(): void
+    {
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('return_details.returned', ['products_count' => 0, 'cost_total' => '0.00'])
+                ->where('return_details.waiting', ['products_count' => 0, 'cost_total' => '0.00'])
+                ->where('return_details.outcomes.0.share_percent', '0.0')
+                ->where('return_details.products', [])));
+    }
+
+    public function test_the_groups_add_up_to_the_products(): void
+    {
+        $this->sellInCategoriesAndBrands();
+        $this->sell(2, [['method' => 'cash', 'amount' => 20000]]);
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('groups.data', fn ($groups): bool => collect($groups)->reduce(fn (string $sum, $group): string => bcadd($sum, $group['revenue'], 2), '0') === '90000.00')
+                ->where('products.total', 4)));
     }
 
     public function test_the_profit_per_product_is_after_returns_with_its_margin(): void
@@ -273,17 +687,17 @@ class SalesReportTest extends TestCase
         $this->sellInAWeek();
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.products', [[
-                'product_id' => $this->brush->id,
-                'name' => 'Kuas',
-                'unit' => 'PCS',
-                'quantity' => '8.000',
-                'revenue' => '80000.00',
-                'cost' => '48000.00',
-                'profit' => '32000.00',
-                'margin_percent' => '40.0',
-                'is_cost_missing' => false,
-            ]]));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('products.data', [[
+                    'product_id' => $this->brush->id,
+                    'name' => 'Kuas',
+                    'unit' => 'PCS',
+                    'quantity' => '8.000',
+                    'revenue' => '80000.00',
+                    'cost' => '48000.00',
+                    'profit' => '32000.00',
+                    'margin_percent' => '40.0',
+                ]])));
     }
 
     public function test_products_are_listed_best_profit_first(): void
@@ -298,8 +712,9 @@ class SalesReportTest extends TestCase
         ]));
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.products.0.name', 'Cat')
-            ->where('report.products.1.name', 'Kuas'));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('products.data.0.name', 'Cat')
+                ->where('products.data.1.name', 'Kuas')));
     }
 
     public function test_the_print_sheet_has_the_same_report_with_the_letterhead(): void
@@ -314,6 +729,9 @@ class SalesReportTest extends TestCase
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
             ->where('urls.sheet', $this->url(['from' => today()->subDays(6)->toDateString(), 'to' => today()->toDateString()], 'sales.sheet')));
+
+        $this->actingAs($this->admin)->get($this->urlWithoutPeriod())->assertInertia(fn (Assert $page) => $page
+            ->where('urls.sheet', $this->urlWithoutPeriod(['from' => today()->startOfMonth()->toDateString(), 'to' => today()->endOfMonth()->toDateString()], 'sales.sheet')));
     }
 
     public function test_a_period_that_had_to_be_cut_back_says_so(): void
@@ -321,7 +739,7 @@ class SalesReportTest extends TestCase
         $this->actingAs($this->admin)->get($this->url(['from' => '2000-01-01', 'to' => today()->toDateString()]))->assertInertia(fn (Assert $page) => $page
             ->where('is_period_cut_back', true)
             ->where('max_days', 366)
-            ->where('report.from', today()->subDays(365)->toDateString()));
+            ->where('period.from', today()->subDays(365)->toDateString()));
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page->where('is_period_cut_back', false));
         $this->actingAs($this->admin)->get($this->url(['from' => today()->toDateString(), 'to' => today()->subDays(2)->toDateString()]))->assertInertia(fn (Assert $page) => $page->where('is_period_cut_back', false));
@@ -332,8 +750,9 @@ class SalesReportTest extends TestCase
         $service = app(SalesReportService::class);
         $today = CarbonImmutable::today();
 
-        $this->assertSame([$today->subDays(6)->toDateString(), $today->toDateString(), false], $this->periodDates($service->period(null, null)));
-        $this->assertSame([$today->subDays(10)->toDateString(), $today->toDateString(), false], $this->periodDates($service->period($today->subDays(10), null)));
+        $this->assertSame([$today->startOfMonth()->toDateString(), $today->endOfMonth()->toDateString(), false], $this->periodDates($service->period(null, null)));
+        $this->assertSame([$today->startOfMonth()->toDateString(), $today->endOfMonth()->toDateString(), false], $this->periodDates($service->period($today->subDays(10), null)));
+        $this->assertSame([$today->startOfMonth()->toDateString(), $today->endOfMonth()->toDateString(), false], $this->periodDates($service->period(null, $today->subDays(10))));
         $this->assertSame([$today->subDays(2)->toDateString(), $today->toDateString(), false], $this->periodDates($service->period($today, $today->subDays(2))));
         $this->assertSame([$today->subDays(365)->toDateString(), $today->toDateString(), false], $this->periodDates($service->period($today->subDays(365), $today)));
         $this->assertSame([$today->subDays(365)->toDateString(), $today->toDateString(), true], $this->periodDates($service->period($today->subDays(400), $today)));
@@ -350,10 +769,10 @@ class SalesReportTest extends TestCase
 
     public function test_dates_that_are_not_dates_are_left_out_as_if_they_were_not_sent(): void
     {
-        foreach (['from=abc', 'from=2026-02-30&to=nonsense', 'from[]=x&to[]=y'] as $query) {
-            $this->actingAs($this->admin)->get($this->url().'?'.$query)->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->where('report.from', today()->subDays(6)->toDateString())
-                ->where('report.to', today()->toDateString()));
+        foreach (['from=abc', 'from=2026-02-30&to=nonsense', 'from[]=x&to[]=y', 'from=2026-01-01', 'to=2026-01-01', 'from=&to='] as $query) {
+            $this->actingAs($this->admin)->get($this->urlWithoutPeriod().'?'.$query)->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('period.from', today()->startOfMonth()->toDateString())
+                ->where('period.to', today()->endOfMonth()->toDateString()));
         }
     }
 
@@ -363,14 +782,15 @@ class SalesReportTest extends TestCase
         $this->store->run(fn () => app(SaleVoidService::class)->void($sale, $this->cashier, 'Ditolak', null));
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.days.5.gross_total', '0.00')
-            ->where('report.days.5.voids_count', 0)
-            ->where('report.days.6.voids_count', 1)
-            ->where('report.days.6.voids_total', '100000.00')
-            ->where('report.totals.gross_total', '0.00')
-            ->where('report.totals.voids_count', 1)
-            ->where('report.totals.voids_total', '100000.00')
-            ->where('report.methods.0.amount', '0.00'));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.days.5.gross_total', '0.00')
+                ->where('summary.days.5.voids_count', 0)
+                ->where('summary.days.6.voids_count', 1)
+                ->where('summary.days.6.voids_total', '100000.00')
+                ->where('summary.totals.gross_total', '0.00')
+                ->where('summary.totals.voids_count', 1)
+                ->where('summary.totals.voids_total', '100000.00')
+                ->where('payments.methods.0.amount', '0.00')));
     }
 
     public function test_the_methods_add_up_to_the_sales_of_the_period(): void
@@ -384,10 +804,11 @@ class SalesReportTest extends TestCase
         });
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.totals.gross_total', '130000.00')
-            ->where('report.methods', fn ($methods): bool => collect($methods)->reduce(fn (string $sum, $row): string => bcadd($sum, $row['amount'], 2), '0') === '130000.00')
-            ->where('report.methods.6', ['method' => 'order_deposit', 'label' => 'Uang muka pesanan', 'amount' => '20000.00'])
-            ->where('report.methods.7', ['method' => 'return_credit', 'label' => 'Kredit retur', 'amount' => '10000.00']));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.totals.gross_total', '130000.00')
+                ->where('payments.methods', fn ($methods): bool => collect($methods)->reduce(fn (string $sum, $row): string => bcadd($sum, $row['amount'], 2), '0') === '130000.00')
+                ->where('payments.methods.6', ['method' => 'order_deposit', 'label' => 'Uang muka pesanan', 'amount' => '20000.00'])
+                ->where('payments.methods.7', ['method' => 'return_credit', 'label' => 'Kredit retur', 'amount' => '10000.00'])));
     }
 
     public function test_cod_is_split_by_whether_the_goods_were_delivered(): void
@@ -397,8 +818,9 @@ class SalesReportTest extends TestCase
         $this->store->run(fn () => app(CodSaleService::class)->markDelivered($delivered));
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.methods.4.amount', '20000.00')
-            ->where('report.methods.5.amount', '30000.00'));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('payments.methods.4.amount', '20000.00')
+                ->where('payments.methods.5.amount', '30000.00')));
     }
 
     public function test_a_return_takes_the_day_it_was_made_and_one_not_approved_is_not_counted(): void
@@ -415,11 +837,12 @@ class SalesReportTest extends TestCase
         });
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.days.5.gross_total', '30000.00')
-            ->where('report.days.5.returns_total', '0.00')
-            ->where('report.days.6.gross_total', '0.00')
-            ->where('report.days.6.returns_total', '30000.00')
-            ->where('report.days.6.net_total', '-30000.00'));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.days.5.gross_total', '30000.00')
+                ->where('summary.days.5.returns_total', '0.00')
+                ->where('summary.days.6.gross_total', '0.00')
+                ->where('summary.days.6.returns_total', '30000.00')
+                ->where('summary.days.6.net_total', '-30000.00')));
     }
 
     public function test_a_return_after_midnight_in_a_shift_of_the_day_before_counts_on_the_day_of_the_shift_everywhere(): void
@@ -442,9 +865,10 @@ class SalesReportTest extends TestCase
         });
 
         $this->actingAs($this->admin)->get($this->url(['from' => $shiftDay->toDateString(), 'to' => $shiftDay->copy()->addDay()->toDateString()]))->assertInertia(fn (Assert $page) => $page
-            ->where('report.days.0.returns_total', '20000.00')
-            ->where('report.days.0.net_total', '30000.00')
-            ->where('report.days.1.returns_total', '0.00'));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.days.0.returns_total', '20000.00')
+                ->where('summary.days.0.net_total', '30000.00')
+                ->where('summary.days.1.returns_total', '0.00')));
     }
 
     public function test_the_voids_of_the_report_follow_the_business_day_of_the_void(): void
@@ -453,13 +877,14 @@ class SalesReportTest extends TestCase
         $this->store->run(fn () => Sale::query()->whereKey($sale->id)->update(['status' => 'voided', 'voided_at' => today()->addDay()->setTime(0, 30), 'void_business_date' => today()]));
 
         $this->actingAs($this->admin)->get($this->url(['from' => today()->toDateString(), 'to' => today()->addDay()->toDateString()]))->assertInertia(fn (Assert $page) => $page
-            ->where('report.days.0.voids_count', 1)
-            ->where('report.days.1.voids_count', 0));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.days.0.voids_count', 1)
+                ->where('summary.days.1.voids_count', 0)));
     }
 
-    public function test_only_the_best_thirty_products_are_listed_and_the_count_says_how_many_there_are(): void
+    private function sellDifferentProducts(int $count): void
     {
-        foreach (range(1, 31) as $number) {
+        foreach (range(1, $count) as $number) {
             $product = $this->sellableProduct("Barang {$number}", '10');
             $this->store->run(fn (): Sale => app(SaleService::class)->create($this->shift, $this->cashier, [
                 'client_uuid' => (string) Str::uuid(),
@@ -467,11 +892,109 @@ class SalesReportTest extends TestCase
                 'payments' => [['method' => 'cash', 'amount' => 10000]],
             ]));
         }
+    }
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+    public function test_the_print_sheet_lists_only_the_best_thirty_products_and_the_count_says_how_many_there_are(): void
+    {
+        $this->sellDifferentProducts(31);
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.sheet'))->assertInertia(fn (Assert $page) => $page
             ->has('report.products', 30)
             ->where('report.product_count', 31)
-            ->where('report.product_limit', 30));
+            ->where('report.product_limit', 30)
+            ->where('report.products_without_cost', 0));
+    }
+
+    public function test_the_screen_pages_the_products_on_the_server_seven_at_a_time_to_begin_with(): void
+    {
+        $this->sellDifferentProducts(16);
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->where('per_page_options', [7, 15, 30])
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('products.data', 7)
+                ->where('products.total', 16)
+                ->where('products.per_page', 7)
+                ->where('products.current_page', 1)
+                ->where('products.last_page', 3)
+                ->where('products.from', 1)
+                ->where('products.to', 7)));
+
+        $this->actingAs($this->admin)->get($this->url(['products_page' => 3]))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('products.data', 2)
+                ->where('products.current_page', 3)
+                ->where('products.from', 15)
+                ->where('products.to', 16)));
+    }
+
+    public function test_the_products_page_size_is_one_of_the_options_and_anything_else_is_the_first_option(): void
+    {
+        $this->sellDifferentProducts(16);
+
+        $this->actingAs($this->admin)->get($this->url(['products_per_page' => 15]))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('products.data', 15)
+                ->where('products.per_page', 15)
+                ->where('products.last_page', 2)));
+
+        foreach (['30', '5', '100', 'abc', '0'] as $perPage) {
+            $this->actingAs($this->admin)->get($this->url(['products_per_page' => $perPage]))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload->where('products.per_page', $perPage === '30' ? 30 : 7)));
+        }
+    }
+
+    public function test_a_page_past_the_last_gives_the_last_and_one_that_is_not_a_number_gives_the_first(): void
+    {
+        $this->sellDifferentProducts(9);
+
+        $this->actingAs($this->admin)->get($this->url(['products_page' => 99]))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('products.current_page', 2)->has('products.data', 2)));
+
+        foreach (['abc', '0', '-3'] as $notAPage) {
+            $this->actingAs($this->admin)->get($this->url(['products_page' => $notAPage]))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload->where('products.current_page', 1)));
+        }
+    }
+
+    public function test_the_parts_of_the_screen_are_deferred_and_turning_a_products_page_asks_for_that_part_only(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->has('period')
+            ->missing('summary')
+            ->missing('comparison')
+            ->missing('payments')
+            ->missing('products')
+            ->missing('groups')
+            ->missing('return_details')
+            ->reloadOnly('products', fn (Assert $reload) => $reload
+                ->has('products.data', 1)
+                ->missing('summary')
+                ->missing('payments')
+                ->missing('groups')
+                ->missing('return_details'))
+            ->reloadOnly('groups', fn (Assert $reload) => $reload
+                ->has('groups.data', 1)
+                ->missing('summary')
+                ->missing('products')
+                ->missing('return_details'))
+            ->reloadOnly('return_details', fn (Assert $reload) => $reload
+                ->has('return_details.outcomes', 3)
+                ->missing('summary')
+                ->missing('products')
+                ->missing('groups')));
+    }
+
+    public function test_every_part_of_the_screen_loads_in_a_group_of_its_own_so_they_load_side_by_side(): void
+    {
+        $response = $this->actingAs($this->admin)->get($this->url())->assertOk();
+
+        $this->assertEquals(
+            ['summary' => ['summary'], 'comparison' => ['comparison'], 'payments' => ['payments'], 'products' => ['products'], 'groups' => ['groups'], 'return_details' => ['return_details']],
+            $response->viewData('page')['deferredProps'],
+        );
     }
 
     public function test_a_product_sold_without_a_cost_is_told(): void
@@ -486,8 +1009,9 @@ class SalesReportTest extends TestCase
         $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
 
         $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
-            ->where('report.products_without_cost', 1)
-            ->where('report.totals.gross_profit', '14000.00'));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.products_without_cost', 1)
+                ->where('summary.totals.gross_profit', '14000.00')));
     }
 
     public function test_the_figures_of_one_day_match_the_day_closing(): void
@@ -497,12 +1021,13 @@ class SalesReportTest extends TestCase
         $closing = $this->store->run(fn (): array => app(DailyClosingService::class)->summarize(today()));
 
         $this->actingAs($this->admin)->get($this->url(['from' => $today, 'to' => $today]))->assertInertia(fn (Assert $page) => $page
-            ->where('report.totals.gross_total', $closing['total_sales'])
-            ->where('report.totals.receipt_count', $closing['sales_count'])
-            ->where('report.methods.0.amount', $closing['sales_cash'])
-            ->where('report.methods.1.amount', $closing['sales_transfer'])
-            ->where('report.methods.2.amount', $closing['sales_qris'])
-            ->where('report.methods.3.amount', $closing['sales_edc'])
-            ->where('report.methods', fn ($methods): bool => bcadd($methods[4]['amount'], $methods[5]['amount'], 2) === $closing['sales_cod']));
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.totals.gross_total', $closing['total_sales'])
+                ->where('summary.totals.receipt_count', $closing['sales_count'])
+                ->where('payments.methods.0.amount', $closing['sales_cash'])
+                ->where('payments.methods.1.amount', $closing['sales_transfer'])
+                ->where('payments.methods.2.amount', $closing['sales_qris'])
+                ->where('payments.methods.3.amount', $closing['sales_edc'])
+                ->where('payments.methods', fn ($methods): bool => bcadd($methods[4]['amount'], $methods[5]['amount'], 2) === $closing['sales_cod'])));
     }
 }

@@ -5,20 +5,26 @@ namespace App\Services;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\SaleReturnStatus;
+use App\Enums\SalesGrouping;
 use App\Enums\SaleStatus;
 use App\Enums\StockOpnameReason;
 use App\Enums\StockOpnameStatus;
+use App\Enums\WarehouseType;
+use App\Models\Brand;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalePayment;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
+use App\Models\Stock;
 use App\Models\StockOpnameItem;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Collection;
 
 /**
@@ -40,13 +46,13 @@ use Illuminate\Support\Collection;
  * count it twice. Voided receipts are left out of the sales and the methods. A COD sale counts when it is made, whether or not the
  * goods have been delivered.
  *
- * The figures of the methods and the cashiers are of the sales, before returns: returns are not tied to the cashier who
- * sold, nor to the method the sale was paid by.
+ * The figures of the methods are of the sales, before returns: returns are not tied to the method the sale was paid by.
+ * The report has no figures per cashier: what sells says more about the goods than about who rang them up.
  *
- * @phpstan-type ReportTotals array{gross_total: string, returns_total: string, net_total: string, receipt_count: int, dead_stock_loss: string, gross_profit: string, voids_count: int, voids_total: string}
+ * @phpstan-type ReportTotals array{gross_total: string, returns_total: string, net_total: string, receipt_count: int, dead_stock_loss: string, gross_profit: string, voids_count: int, voids_total: string, margin_percent: string}
  * @phpstan-type ReportDay array{date: string, gross_total: string, returns_total: string, net_total: string, receipt_count: int, dead_stock_loss: string, gross_profit: string, voids_count: int, voids_total: string}
- * @phpstan-type ReportProduct array{product_id: int, name: string, unit: string, quantity: string, revenue: string, cost: string, profit: string, margin_percent: string, is_cost_missing: bool}
- * @phpstan-type SalesReport array{from: string, to: string, totals: ReportTotals, days: list<ReportDay>, methods: list<array{method: string, label: string, amount: string}>, cashiers: list<array{cashier_name: string, receipt_count: int, total: string}>, products: list<ReportProduct>, product_count: int, product_limit: int, products_without_cost: int}
+ * @phpstan-type ReportProduct array{product_id: int, name: string, unit: string, quantity: string, revenue: string, cost: string, profit: string, margin_percent: string}
+ * @phpstan-type SalesReport array{from: string, to: string, totals: ReportTotals, days: list<ReportDay>, methods: list<array{method: string, label: string, amount: string}>, products: list<ReportProduct>, product_count: int, product_limit: int, products_without_cost: int}
  * @phpstan-type ReportPeriod array{from: CarbonImmutable, to: CarbonImmutable, is_cut_back: bool}
  */
 class SalesReportService
@@ -54,22 +60,33 @@ class SalesReportService
     /** The most days of one report, so a mistyped date cannot ask for years of rows. */
     public const MAX_DAYS = 366;
 
-    /** A report without dates covers the last week, today included. */
-    private const DEFAULT_DAYS = 7;
-
     private const PRODUCT_LIMIT = 30;
 
+    /** How long the lists of returns are, since they are for what stands out. */
+    private const RETURN_LIST_LIMIT = 5;
+
+    /** How many rows a table of the screen may show per page, the first being the one it starts with. */
+    public const PER_PAGE_OPTIONS = [7, 15, 30];
+
+    /** The page sizes of the table per category or brand, which is a shorter list. */
+    public const GROUP_PER_PAGE_OPTIONS = [5, 10];
+
+    /** What the table per category or brand can be ordered by, the first being the order it starts in. */
+    public const GROUP_SORTS = ['revenue', 'profit', 'margin', 'name'];
+
     /**
-     * The period asked for, made one the report can give: a missing end is today, a missing start is a week before the
-     * end, a start after the end is swapped, and a period longer than {@see self::MAX_DAYS} is cut back from its start
+     * The period asked for, made one the report can give. A period needs both its days: with either missing the report
+     * is of the whole of this month (its first to its last day, so the chart shows the month filling up). A start after
+     * the end is swapped, and a period longer than {@see self::MAX_DAYS} (a year) is cut back from its start
      * (`is_cut_back` says so, for the page to tell).
      *
      * @return ReportPeriod
      */
     public function period(?CarbonImmutable $from, ?CarbonImmutable $to): array
     {
-        $to ??= CarbonImmutable::today();
-        $from ??= $to->subDays(self::DEFAULT_DAYS - 1);
+        if ($from === null || $to === null) {
+            return ['from' => CarbonImmutable::today()->startOfMonth(), 'to' => CarbonImmutable::today()->endOfMonth()->startOfDay(), 'is_cut_back' => false];
+        }
 
         if ($from->greaterThan($to)) {
             [$from, $to] = [$to, $from];
@@ -81,25 +98,366 @@ class SalesReportService
     }
 
     /**
+     * The whole report in one piece, for the print sheet: the top {@see self::PRODUCT_LIMIT} products only, so a sheet
+     * stays a few pages. The screen asks for the same figures in parts ({@see self::summary()},
+     * {@see self::comparison()}, {@see self::payments()}, {@see self::productsPage()}, {@see self::groupsPage()}) so
+     * each can load on its own.
+     *
      * @return SalesReport
      */
     public function report(CarbonImmutable $from, CarbonImmutable $to): array
     {
         $productRows = $this->productRows($from, $to);
-        $days = $this->days($from, $to);
 
         return [
             'from' => $from->toDateString(),
             'to' => $to->toDateString(),
-            'totals' => $this->totals($days),
-            'days' => $days,
-            'methods' => $this->methods($from, $to),
-            'cashiers' => $this->cashiers($from, $to),
+            ...$this->summary($from, $to),
+            ...$this->payments($from, $to),
             'products' => $productRows->take(self::PRODUCT_LIMIT)->values()->all(),
             'product_count' => $productRows->count(),
             'product_limit' => self::PRODUCT_LIMIT,
-            'products_without_cost' => $productRows->where('is_cost_missing', true)->count(),
         ];
+    }
+
+    /**
+     * The totals, the figures per day, what a typical receipt is (see {@see self::receiptMedians()}), and how many
+     * sold products have no purchase price (their profit equals their sales, which the page warns about next to the
+     * profit).
+     *
+     * @return array{totals: ReportTotals, days: list<ReportDay>, receipts: array{median_total: string, median_lines: string, average_total: string}, products_without_cost: int}
+     */
+    public function summary(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $days = $this->days($from, $to);
+        $totals = $this->totals($days);
+
+        return [
+            'totals' => $totals,
+            'days' => $days,
+            'receipts' => [...$this->receiptMedians($from, $to), 'average_total' => $this->averageReceiptTotal($totals)],
+            'products_without_cost' => $this->productsWithoutCostCount($from, $to),
+        ];
+    }
+
+    /**
+     * The mean receipt, shown beside the median: the sales divided by the receipts, so the gap between the two says how
+     * much a few big receipts weigh in the sales.
+     *
+     * @param  ReportTotals  $totals
+     */
+    private function averageReceiptTotal(array $totals): string
+    {
+        if ($totals['receipt_count'] === 0) {
+            return $this->money(0);
+        }
+
+        return $this->money(BigDecimal::of($totals['gross_total'])->dividedBy($totals['receipt_count'], 2, RoundingMode::HalfUp));
+    }
+
+    /**
+     * What a typical receipt of the period is: the median of its total and of how many different products it carries.
+     * The median and not the mean, because a few big receipts (a contractor buying by the dozen) would pull a mean far
+     * from what most customers buy. With an even number of receipts it is the mean of the two in the middle.
+     *
+     * @return array{median_total: string, median_lines: string}
+     */
+    private function receiptMedians(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $totals = $this->salesQuery($from, $to)->toBase()->selectRaw('total as median_input');
+        $lines = $this->soldItemsQuery($from, $to)->toBase()->groupBy('sale_items.sale_id')->selectRaw('count(*) as median_input');
+
+        return [
+            'median_total' => $this->money($this->median($totals)),
+            'median_lines' => (string) BigDecimal::of((string) ($this->median($lines) ?? 0))->toScale(1, RoundingMode::HalfUp),
+        ];
+    }
+
+    /**
+     * The median of the `median_input` column of a query, worked out by the database: MySQL has no median, so the rows
+     * are ranked and the one in the middle (the two, when the count is even) is averaged.
+     *
+     * @param  QueryBuilder  $values  Selects one column, aliased `median_input`, a row per value.
+     */
+    private function median(QueryBuilder $values): ?string
+    {
+        $connection = $values->getConnection();
+
+        $ranked = $connection->query()
+            ->fromSub($values, 'median_values')
+            ->selectRaw('median_input, row_number() over (order by median_input) as row_rank, count(*) over () as row_count');
+
+        $median = $connection->query()
+            ->fromSub($ranked, 'median_ranked')
+            ->whereRaw('row_rank in (floor((row_count + 1) / 2), floor((row_count + 2) / 2))')
+            ->avg('median_input');
+
+        return $median === null ? null : (string) $median;
+    }
+
+    /**
+     * @return array{methods: list<array{method: string, label: string, amount: string}>}
+     */
+    public function payments(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        return ['methods' => $this->methods($from, $to)];
+    }
+
+    /**
+     * The period before this one, as long as the days of this one that have come (a month that is half over is set
+     * against the half-month before it, not a whole one), and how the net sales, the receipts and the profit moved
+     * against it, in percent of what they were (`null` when they were nothing, so there is nothing to move from).
+     *
+     * @return array{from: string, to: string, totals: ReportTotals, change_percent: array{net_total: string|null, receipt_count: string|null, gross_profit: string|null}}
+     */
+    public function comparison(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $previousFrom = $from->subDays($this->elapsedDays($from, $to));
+        $previousTo = $from->subDay();
+        $current = $this->totals($this->days($from, $to));
+        $previous = $this->totals($this->days($previousFrom, $previousTo));
+
+        return [
+            'from' => $previousFrom->toDateString(),
+            'to' => $previousTo->toDateString(),
+            'totals' => $previous,
+            'change_percent' => [
+                'net_total' => $this->changePercent($current['net_total'], $previous['net_total']),
+                'receipt_count' => $this->changePercent($current['receipt_count'], $previous['receipt_count']),
+                'gross_profit' => $this->changePercent($current['gross_profit'], $previous['gross_profit']),
+            ],
+        ];
+    }
+
+    /**
+     * One page of the profit per product, best first. A page past the last one gives the last.
+     *
+     * @return array{data: list<ReportProduct>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int}
+     */
+    public function productsPage(CarbonImmutable $from, CarbonImmutable $to, int $page, int $perPage): array
+    {
+        return $this->paginate($this->productRows($from, $to), $page, $perPage);
+    }
+
+    /**
+     * One page of the sales per category or per brand, from the same figures as the products (after returns, with the
+     * dead stock loss), so the groups add up to the products. Products without a category or brand are one group of
+     * their own. `$sort` is `name`, `revenue`, `profit` or `margin`, `$direction` `asc` or `desc`.
+     *
+     * @return array{data: list<array{id: int|null, name: string, product_count: int, revenue: string, cost: string, profit: string, margin_percent: string, share_percent: string}>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int, grouping: string, sort: string, direction: string}
+     */
+    public function groupsPage(CarbonImmutable $from, CarbonImmutable $to, SalesGrouping $grouping, string $sort, string $direction, int $page, int $perPage): array
+    {
+        $productRows = $this->productRows($from, $to);
+        $groupOfProduct = Product::query()->withTrashed()->whereIn('id', $productRows->pluck('product_id'))->pluck($grouping->productColumn(), 'id');
+        $names = match ($grouping) {
+            SalesGrouping::Category => Category::query()->pluck('name', 'id'),
+            SalesGrouping::Brand => Brand::query()->pluck('name', 'id'),
+        };
+        $totalRevenue = $productRows->reduce(fn (BigDecimal $total, array $row): BigDecimal => $total->plus($row['revenue']), BigDecimal::zero());
+
+        $groups = $productRows
+            ->groupBy(fn (array $row): int|string => $groupOfProduct[$row['product_id']] ?? '')
+            ->map(function (Collection $rows, int|string $groupId) use ($names, $grouping, $totalRevenue): array {
+                $revenue = $rows->reduce(fn (BigDecimal $total, array $row): BigDecimal => $total->plus($row['revenue']), BigDecimal::zero());
+                $cost = $rows->reduce(fn (BigDecimal $total, array $row): BigDecimal => $total->plus($row['cost']), BigDecimal::zero());
+                $profit = $revenue->minus($cost);
+
+                return [
+                    'id' => $groupId === '' ? null : (int) $groupId,
+                    'name' => $groupId === '' ? $grouping->emptyLabel() : ($names[$groupId] ?? $grouping->emptyLabel()),
+                    'product_count' => $rows->count(),
+                    'revenue' => $this->money($revenue),
+                    'cost' => $this->money($cost),
+                    'profit' => $this->money($profit),
+                    'margin_percent' => $revenue->isPositive() ? (string) $profit->multipliedBy(100)->dividedBy($revenue, 1, RoundingMode::HalfUp) : '0.0',
+                    'share_percent' => $totalRevenue->isPositive() ? (string) $revenue->multipliedBy(100)->dividedBy($totalRevenue, 1, RoundingMode::HalfUp) : '0.0',
+                ];
+            });
+
+        $sortValue = fn (array $group): float|string => $sort === 'name' ? mb_strtolower($group['name']) : (float) $group[$sort === 'margin' ? 'margin_percent' : $sort];
+
+        // Groups that tie keep a stable order by name, so a page does not shuffle between requests.
+        $sorted = $groups->sort(function (array $first, array $second) use ($sortValue, $direction): int {
+            $order = $sortValue($first) <=> $sortValue($second);
+
+            return ($direction === 'desc' ? -$order : $order) ?: mb_strtolower($first['name']) <=> mb_strtolower($second['name']);
+        })->values();
+
+        return [...$this->paginate($sorted, $page, $perPage), 'grouping' => $grouping->value, 'sort' => $sort, 'direction' => $direction];
+    }
+
+    /**
+     * What comes back in returns, for the page to show what stands out: what became of the goods ({@see
+     * self::returnOutcomes()}) and the products returned most often. It stops at the goods and leaves out who handled the
+     * returns, and the reasons given, which are typed freely and too wide to say anything: what comes back says more
+     * about what was sold than about who sold it. On the same business days as the rest of the report, the products
+     * list being the top few, since it is there to catch the eye.
+     *
+     * @return array{returned: array{products_count: int, cost_total: string}, outcomes: list<array{outcome: string, label: string, products_count: int, cost_total: string, share_percent: string}>, waiting: array{products_count: int, cost_total: string}, products: list<array{product_id: int, name: string, unit: string, returns_count: int, quantity: string, total: string, rate_percent: string|null}>}
+     */
+    public function returnDetails(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        return [
+            ...$this->returnOutcomes($from, $to),
+            'products' => $this->mostReturnedProducts($from, $to),
+        ];
+    }
+
+    /**
+     * What became of the goods that came back. `returned` is what came back in the period. `outcomes` is what the
+     * inspections of the returns warehouse posted in the period decided for every unit they counted (put back on the
+     * shelf at full price, sent on as damaged goods to be sold cheaper, or written off as dead stock), so it can be goods
+     * that came back before the period: an inspection is not tied to the returns it checks. `waiting` is what is in the
+     * returns warehouse now, not yet inspected, whatever the period. Everything is valued at cost, since the units of
+     * different products cannot be added up; the share is of the cost of what was decided.
+     *
+     * @return array{returned: array{products_count: int, cost_total: string}, outcomes: list<array{outcome: string, label: string, products_count: int, cost_total: string, share_percent: string}>, waiting: array{products_count: int, cost_total: string}}
+     */
+    private function returnOutcomes(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $returned = $this->returnedItemsQuery($from, $to)
+            ->selectRaw('count(distinct sale_return_items.product_id) as products, coalesce(sum(sale_return_items.cost_total), 0) as cost')
+            ->first();
+
+        $decided = StockOpnameItem::query()
+            ->join('stock_opnames', 'stock_opnames.id', '=', 'stock_opname_items.stock_opname_id')
+            ->where('stock_opnames.status', StockOpnameStatus::Posted)
+            ->where('stock_opnames.reason_code', StockOpnameReason::ReturnsCheck)
+            ->whereBetween('stock_opnames.posted_at', [$from->startOfDay(), $to->endOfDay()])
+            ->selectRaw(collect(['full_price' => 'full_price_quantity', 'damaged_goods' => 'damaged_goods_quantity', 'dead_stock' => 'dead_stock_quantity'])
+                ->map(fn (string $column, string $key): string => "count(distinct case when stock_opname_items.{$column} > 0 then stock_opname_items.product_id end) as {$key}_products, coalesce(sum(stock_opname_items.{$column} * stock_opname_items.cost_price_at_posting), 0) as {$key}_cost")
+                ->implode(', '))
+            ->first();
+
+        $outcomes = collect([
+            ['outcome' => 'resellable', 'label' => 'Bisa dijual lagi', 'key' => 'full_price'],
+            ['outcome' => 'damaged_goods', 'label' => 'Barang rusak (DG)', 'key' => 'damaged_goods'],
+            ['outcome' => 'dead_stock', 'label' => 'Dead stock', 'key' => 'dead_stock'],
+        ]);
+        $decidedCost = $outcomes->reduce(fn (BigDecimal $total, array $outcome): BigDecimal => $total->plus((string) $decided->{"{$outcome['key']}_cost"}), BigDecimal::zero());
+
+        $waiting = Stock::query()
+            ->join('warehouses', 'warehouses.id', '=', 'stocks.warehouse_id')
+            ->join('products', 'products.id', '=', 'stocks.product_id')
+            ->where('warehouses.type', WarehouseType::Returns)
+            ->where('stocks.quantity', '>', 0)
+            ->selectRaw('count(distinct stocks.product_id) as products, coalesce(sum(stocks.quantity * products.cost_price), 0) as cost')
+            ->first();
+
+        return [
+            'returned' => ['products_count' => (int) $returned->products, 'cost_total' => $this->money($returned->cost)],
+            'outcomes' => $outcomes->map(function (array $outcome) use ($decided, $decidedCost): array {
+                $cost = BigDecimal::of((string) $decided->{"{$outcome['key']}_cost"});
+
+                return [
+                    'outcome' => $outcome['outcome'],
+                    'label' => $outcome['label'],
+                    'products_count' => (int) $decided->{"{$outcome['key']}_products"},
+                    'cost_total' => $this->money($cost),
+                    'share_percent' => $decidedCost->isPositive() ? (string) $cost->multipliedBy(100)->dividedBy($decidedCost, 1, RoundingMode::HalfUp) : '0.0',
+                ];
+            })->all(),
+            'waiting' => ['products_count' => (int) $waiting->products, 'cost_total' => $this->money($waiting->cost)],
+        ];
+    }
+
+    /**
+     * The products that came back in most returns, with what share of what was sold of them in the period that is
+     * (`null` when none of it was sold in the period: it came back from an earlier sale).
+     *
+     * @return list<array{product_id: int, name: string, unit: string, returns_count: int, quantity: string, total: string, rate_percent: string|null}>
+     */
+    private function mostReturnedProducts(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $returned = $this->returnedItemsQuery($from, $to)
+            ->groupBy('sale_return_items.product_id')
+            ->selectRaw('sale_return_items.product_id as product_id, count(distinct sale_return_items.sale_return_id) as returns, sum(sale_return_items.base_quantity) as quantity, sum(sale_return_items.refund_subtotal) as total')
+            ->orderByDesc('returns')
+            ->orderByDesc('quantity')
+            ->orderBy('product_id')
+            ->limit(self::RETURN_LIST_LIMIT)
+            ->get();
+
+        $productIds = $returned->pluck('product_id');
+        $sold = $this->soldItemsQuery($from, $to)
+            ->whereIn('sale_items.product_id', $productIds)
+            ->groupBy('sale_items.product_id')
+            ->selectRaw('sale_items.product_id as product_id, sum(sale_items.base_quantity) as quantity')
+            ->pluck('quantity', 'product_id');
+        $products = Product::query()->withTrashed()->whereIn('id', $productIds)->get(['id', 'name', 'base_unit_code'])->keyBy('id');
+
+        return $returned->map(function ($row) use ($sold, $products): array {
+            $soldQuantity = BigDecimal::of((string) ($sold[$row->product_id] ?? 0));
+
+            return [
+                'product_id' => (int) $row->product_id,
+                'name' => $products[$row->product_id]->name ?? '(barang dihapus)',
+                'unit' => $products[$row->product_id]->base_unit_code ?? '',
+                'returns_count' => (int) $row->returns,
+                'quantity' => (string) BigDecimal::of((string) $row->quantity)->toScale(3),
+                'total' => $this->money($row->total),
+                'rate_percent' => $soldQuantity->isPositive() ? (string) BigDecimal::of((string) $row->quantity)->multipliedBy(100)->dividedBy($soldQuantity, 1, RoundingMode::HalfUp) : null,
+            ];
+        })->all();
+    }
+
+    /**
+     * @template TRow
+     *
+     * @param  Collection<int, TRow>  $rows
+     * @return array{data: list<TRow>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int}
+     */
+    private function paginate(Collection $rows, int $page, int $perPage): array
+    {
+        $lastPage = max((int) ceil($rows->count() / $perPage), 1);
+        $currentPage = min(max($page, 1), $lastPage);
+        $pageRows = $rows->forPage($currentPage, $perPage)->values();
+
+        return [
+            'data' => $pageRows->all(),
+            'current_page' => $currentPage,
+            'last_page' => $lastPage,
+            'per_page' => $perPage,
+            'from' => $pageRows->isEmpty() ? null : ($currentPage - 1) * $perPage + 1,
+            'to' => $pageRows->isEmpty() ? null : ($currentPage - 1) * $perPage + $pageRows->count(),
+            'total' => $rows->count(),
+        ];
+    }
+
+    /**
+     * How many days of the period have come: all of them, or up to today for a period that runs past it.
+     */
+    private function elapsedDays(CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        $today = CarbonImmutable::today();
+        $lastDay = $to->greaterThan($today) && $from->lessThanOrEqualTo($today) ? $today : $to;
+
+        return (int) round($from->diffInDays($lastDay)) + 1;
+    }
+
+    private function changePercent(string|int $current, string|int $previous): ?string
+    {
+        $previousAmount = BigDecimal::of((string) $previous);
+
+        if ($previousAmount->isZero()) {
+            return null;
+        }
+
+        return (string) BigDecimal::of((string) $current)->minus($previousAmount)->multipliedBy(100)->dividedBy($previousAmount->abs(), 1, RoundingMode::HalfUp);
+    }
+
+    /**
+     * Products sold in the period whose items all carry no cost, so their profit is their whole sales.
+     */
+    private function productsWithoutCostCount(CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        return $this->soldItemsQuery($from, $to)
+            ->groupBy('sale_items.product_id')
+            ->havingRaw('sum(sale_items.cost_total) = 0 and sum(sale_items.subtotal) > 0')
+            ->selectRaw('sale_items.product_id')
+            ->get()
+            ->count();
     }
 
     /**
@@ -183,15 +541,21 @@ class SalesReportService
     {
         $sum = fn (string $field): BigDecimal => collect($days)->reduce(fn (BigDecimal $total, array $day): BigDecimal => $total->plus($day[$field]), BigDecimal::zero());
 
+        $gross = $sum('gross_total');
+        $net = $sum('net_total');
+        $profit = $sum('gross_profit');
+        $receiptCount = (int) collect($days)->sum('receipt_count');
+
         return [
-            'gross_total' => $this->money($sum('gross_total')),
+            'gross_total' => $this->money($gross),
             'returns_total' => $this->money($sum('returns_total')),
-            'net_total' => $this->money($sum('net_total')),
-            'receipt_count' => (int) collect($days)->sum('receipt_count'),
+            'net_total' => $this->money($net),
+            'receipt_count' => $receiptCount,
             'dead_stock_loss' => $this->money($sum('dead_stock_loss')),
-            'gross_profit' => $this->money($sum('gross_profit')),
+            'gross_profit' => $this->money($profit),
             'voids_count' => (int) collect($days)->sum('voids_count'),
             'voids_total' => $this->money($sum('voids_total')),
+            'margin_percent' => $net->isPositive() ? (string) $profit->multipliedBy(100)->dividedBy($net, 1, RoundingMode::HalfUp) : '0.0',
         ];
     }
 
@@ -242,20 +606,6 @@ class SalesReportService
     }
 
     /**
-     * @return list<array{cashier_name: string, receipt_count: int, total: string}>
-     */
-    private function cashiers(CarbonImmutable $from, CarbonImmutable $to): array
-    {
-        return $this->salesQuery($from, $to)
-            ->groupBy('cashier_id', 'cashier_name')
-            ->selectRaw('cashier_name, count(*) as receipts, sum(total) as total')
-            ->orderByDesc('total')
-            ->get()
-            ->map(fn ($row): array => ['cashier_name' => $row->cashier_name, 'receipt_count' => (int) $row->receipts, 'total' => $this->money($row->total)])
-            ->all();
-    }
-
-    /**
      * The estimated profit per product, best first: what it sold for minus its cost, after what came back.
      *
      * @return Collection<int, ReportProduct>
@@ -297,7 +647,6 @@ class SalesReportService
                 'cost' => $this->money($cost),
                 'profit' => $this->money($profit),
                 'margin_percent' => $revenue->isZero() ? '0.0' : (string) $profit->multipliedBy(100)->dividedBy($revenue, 1, RoundingMode::HalfUp),
-                'is_cost_missing' => isset($sold[$productId]) && BigDecimal::of((string) $sold[$productId]->cost)->isZero() && BigDecimal::of((string) $sold[$productId]->revenue)->isPositive(),
             ];
         })->sortByDesc(fn (array $row): float => (float) $row['profit'])->values();
     }

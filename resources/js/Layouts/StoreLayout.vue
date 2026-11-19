@@ -49,8 +49,11 @@ const menuGroups = computed(() => {
                 { label: 'Rekap Shift', icon: 'schedule', href: store.value.shifts_url, can: ['shifts.review'] },
                 { label: 'Pengeluaran', icon: 'remove_circle_outline', href: store.value.expenses_url, can: ['expenses.manage'] },
                 { label: 'Tutup Hari', icon: 'lock', href: store.value.daily_closings_url, can: ['daily_closings.manage'] },
-                { label: 'Laporan', icon: 'bar_chart', href: store.value.reports_url, can: ['reports.view'] },
             ],
+        },
+        {
+            label: 'Laporan',
+            items: [{ label: 'Laporan Penjualan', icon: 'bar_chart', href: store.value.reports_url, can: ['reports.view'] }],
         },
         {
             label: 'Pengaturan',

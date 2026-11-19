@@ -3,7 +3,7 @@ import { formatDeduction, formatRupiah } from '../Composables/useMoneyFormat';
 import { formatQuantity } from '../Composables/useQuantityFormat';
 
 defineProps({
-    /** @type {{from: string, to: string, store: {name: string, address: string|null, phone: string|null}, totals: Record<string, string|number>, days: object[], methods: object[], cashiers: object[], products: object[]}} */
+    /** @type {{from: string, to: string, store: {name: string, address: string|null, phone: string|null}, totals: Record<string, string|number>, days: object[], methods: object[], products: object[]}} */
     report: { type: Object, required: true },
 });
 
@@ -47,14 +47,6 @@ const asLocalDate = (isoDay) => new Date(`${isoDay}T00:00:00`);
                 <tr class="sales-print__total"><td>Penjualan</td><td>{{ formatRupiah(report.totals.gross_total) }}</td></tr>
                 <tr><td>Retur disetujui (tidak dipecah per metode)</td><td>{{ formatDeduction(report.totals.returns_total) }}</td></tr>
                 <tr class="sales-print__total"><td>Penjualan bersih</td><td>{{ formatRupiah(report.totals.net_total) }}</td></tr>
-            </tbody>
-        </table>
-
-        <h2>Per kasir (penjualan, sebelum retur)</h2>
-        <table class="sales-print__rows">
-            <tbody>
-                <tr v-for="cashier in report.cashiers" :key="cashier.cashier_name"><td>{{ cashier.cashier_name }} · {{ cashier.receipt_count }} nota</td><td>{{ formatRupiah(cashier.total) }}</td></tr>
-                <tr v-if="report.cashiers.length === 0"><td colspan="2">Belum ada penjualan pada periode ini.</td></tr>
             </tbody>
         </table>
 
