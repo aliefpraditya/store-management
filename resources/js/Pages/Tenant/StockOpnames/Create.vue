@@ -32,6 +32,13 @@ const scopeHints = {
     selected: 'Anda memilih barangnya sendiri, cocok untuk opname rutin, barang datang, atau stok awal beberapa barang.',
 };
 
+/** The reasons differ in what is typed (total on the shelf vs. what arrived), so the hint says it right under the buttons. */
+const reasonHints = {
+    routine: 'Cek berkala. Isi total barang yang ada di rak; selisih dengan stok sistem diberi alasan lalu direview Admin sebelum diposting.',
+    opening_balance: 'Mencatat stok awal saat mulai memakai sistem. Isi total barang yang ada di rak.',
+    stock_increase: 'Barang datang. Isi jumlah yang datang, bukan total di rak: jumlah itu ditambahkan ke stok yang sudah ada.',
+};
+
 function submit() {
     form.post(props.store_url);
 }
@@ -88,19 +95,19 @@ function submit() {
                     <SearchableSelect v-model="form.brand_id" :options="brands" clearable label="Merek" :error="!!form.errors.brand_id" :error-message="form.errors.brand_id" />
                 </div>
 
-                <div v-if="!isReturnsWarehouse" class="grid grid--two">
-                    <q-select
+                <div v-if="!isReturnsWarehouse" class="field">
+                    <span class="field__label">Alasan</span>
+                    <q-btn-toggle
                         v-model="form.reason_code"
-                        :options="reasons"
-                        option-value="value"
-                        option-label="label"
-                        emit-value
-                        map-options
-                        label="Alasan"
-                        outlined
-                        :error="!!form.errors.reason_code"
-                        :error-message="form.errors.reason_code"
+                        :options="reasons.map((reason) => ({ label: reason.label, value: reason.value }))"
+                        no-caps
+                        unelevated
+                        toggle-color="primary"
+                        color="grey-3"
+                        text-color="grey-8"
                     />
+                    <small>{{ reasonHints[form.reason_code] }}</small>
+                    <small v-if="form.errors.reason_code" class="field__error">{{ form.errors.reason_code }}</small>
                 </div>
             </section>
 
