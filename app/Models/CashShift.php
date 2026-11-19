@@ -3,8 +3,8 @@
 namespace App\Models;
 
 use App\Enums\CashShiftStatus;
+use App\Enums\Permission;
 use App\Enums\ShiftDifferenceStatus;
-use App\Enums\UserRole;
 use Database\Factories\CashShiftFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -54,16 +54,29 @@ class CashShift extends Model implements AuditableContract
     }
 
     /**
-     * The role the cashier of the shift has in this store now. `cashier_id` points at a central user, so it is looked up;
-     * a user who is gone, or who has lost access to the store, counts as a cashier (the lowest role). Must run while the
-     * store's tenancy is initialized.
+     * Whether the cashier of the shift may review shifts themself, so that only a Super Admin can decide theirs. `cashier_id`
+     * points at a central user, so it is looked up; a user who is gone, or who has lost access to the store, counts as an
+     * ordinary cashier. Must run while the store's tenancy is initialized.
      */
-    public function cashierRole(): UserRole
+    public function isWorkedByReviewer(): bool
     {
         /** @var Store $store */
         $store = tenant();
 
-        return User::query()->find($this->cashier_id)?->roleIn($store) ?? UserRole::Cashier;
+        return User::query()->find($this->cashier_id)?->hasPermissionIn($store, Permission::ShiftsReview) ?? false;
+    }
+
+    /**
+     * Who decides the cash difference of this shift: the store's admin for an ordinary cashier, the Super Admin for someone
+     * who reviews shifts, and a Super Admin decides their own. Must run while the store's tenancy is initialized.
+     */
+    public function reviewerLabel(): string
+    {
+        if (User::query()->find($this->cashier_id)?->is_super_admin) {
+            return 'Super Admin (Anda sendiri bisa memutuskannya di Rekap Shift)';
+        }
+
+        return $this->isWorkedByReviewer() ? 'Super Admin' : 'Admin Toko';
     }
 
     /**

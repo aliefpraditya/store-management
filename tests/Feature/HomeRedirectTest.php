@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\StoreStatus;
 use App\Enums\UserRole;
+use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\LandingRouteResolver;
@@ -50,7 +51,7 @@ class HomeRedirectTest extends TestCase
     {
         $store = Store::factory()->create(['status' => StoreStatus::Inactive]);
         $cashier = User::factory()->create();
-        $store->users()->attach($cashier->id, ['role' => UserRole::Cashier->value]);
+        $store->users()->attach($cashier->id, ['role_id' => Role::idOf(UserRole::Cashier)]);
 
         $this->actingAs($cashier)->get(route('home'))->assertRedirect(route('login'));
 

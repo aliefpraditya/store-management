@@ -50,7 +50,7 @@ Route::prefix('t/{tenant}')
     ->group(function () {
         Route::get('/', TenantDashboardController::class)->name('tenant.dashboard');
 
-        Route::prefix('cashier')->name('tenant.cashier.')->group(function () {
+        Route::prefix('cashier')->name('tenant.cashier.')->middleware('permission:cashier.use')->group(function () {
             Route::get('/', [CashierController::class, 'index'])->name('index');
             Route::get('products', CashierProductController::class)->name('products');
             Route::post('shifts', [ShiftController::class, 'store'])->name('shifts.store');
@@ -80,64 +80,72 @@ Route::prefix('t/{tenant}')
             Route::post('expenses', [CashierExpenseController::class, 'store'])->name('expenses.store');
         });
 
-        Route::middleware('store.admin')->group(function () {
-            Route::prefix('delivery-notes')->name('tenant.delivery-notes.')->group(function () {
-                Route::get('/', [DeliveryNoteController::class, 'index'])->name('index');
+        Route::prefix('delivery-notes')->name('tenant.delivery-notes.')->group(function () {
+            Route::middleware('permission:delivery_notes.manage')->group(function () {
                 Route::get('create', [DeliveryNoteController::class, 'create'])->name('create');
                 Route::get('sales', [DeliveryNoteController::class, 'sales'])->name('sales');
                 Route::post('/', [DeliveryNoteController::class, 'store'])->name('store');
-                Route::get('{delivery_note}', [DeliveryNoteController::class, 'show'])->name('show');
                 Route::post('{delivery_note}/ship', [DeliveryNoteController::class, 'ship'])->name('ship');
                 Route::post('{delivery_note}/complete', [DeliveryNoteController::class, 'complete'])->name('complete');
                 Route::post('{delivery_note}/cancel', [DeliveryNoteController::class, 'cancel'])->name('cancel');
+            });
+
+            Route::middleware('permission:delivery_notes.view')->group(function () {
+                Route::get('/', [DeliveryNoteController::class, 'index'])->name('index');
+                Route::get('{delivery_note}', [DeliveryNoteController::class, 'show'])->name('show');
                 Route::post('{delivery_note}/print', [DeliveryNoteController::class, 'print'])->name('print');
                 Route::get('{delivery_note}/sheet', [DeliveryNoteController::class, 'sheet'])->middleware('signed')->name('sheet');
             });
+        });
 
-            Route::prefix('shifts')->name('tenant.shifts.')->group(function () {
-                Route::get('/', [ShiftRecapController::class, 'index'])->name('index');
-                Route::get('{shift}', [ShiftRecapController::class, 'show'])->name('show');
-                Route::get('{shift}/sheet', [ShiftRecapController::class, 'sheet'])->name('sheet');
-                Route::post('{shift}/approve', [ShiftRecapController::class, 'approve'])->name('approve');
-                Route::post('{shift}/reject', [ShiftRecapController::class, 'reject'])->name('reject');
-            });
+        Route::prefix('shifts')->name('tenant.shifts.')->middleware('permission:shifts.review')->group(function () {
+            Route::get('/', [ShiftRecapController::class, 'index'])->name('index');
+            Route::get('{shift}', [ShiftRecapController::class, 'show'])->name('show');
+            Route::get('{shift}/sheet', [ShiftRecapController::class, 'sheet'])->name('sheet');
+            Route::post('{shift}/approve', [ShiftRecapController::class, 'approve'])->name('approve');
+            Route::post('{shift}/reject', [ShiftRecapController::class, 'reject'])->name('reject');
+        });
 
-            Route::prefix('returns')->name('tenant.returns.')->group(function () {
-                Route::get('/', [SaleReturnController::class, 'index'])->name('index');
-                Route::get('create', [SaleReturnController::class, 'create'])->name('create');
-                Route::get('sales', [SaleReturnController::class, 'sales'])->name('sales');
-                Route::post('/', [SaleReturnController::class, 'store'])->name('store');
-                Route::get('{sale_return}', [SaleReturnController::class, 'show'])->name('show');
-                Route::post('{sale_return}/approve', [SaleReturnController::class, 'approve'])->name('approve');
-                Route::post('{sale_return}/reject', [SaleReturnController::class, 'reject'])->name('reject');
-                Route::get('{sale_return}/sheet', [SaleReturnController::class, 'sheet'])->name('sheet');
-            });
+        Route::prefix('returns')->name('tenant.returns.')->middleware('permission:returns.manage')->group(function () {
+            Route::get('/', [SaleReturnController::class, 'index'])->name('index');
+            Route::get('create', [SaleReturnController::class, 'create'])->name('create');
+            Route::get('sales', [SaleReturnController::class, 'sales'])->name('sales');
+            Route::post('/', [SaleReturnController::class, 'store'])->name('store');
+            Route::get('{sale_return}', [SaleReturnController::class, 'show'])->name('show');
+            Route::post('{sale_return}/approve', [SaleReturnController::class, 'approve'])->name('approve');
+            Route::post('{sale_return}/reject', [SaleReturnController::class, 'reject'])->name('reject');
+            Route::get('{sale_return}/sheet', [SaleReturnController::class, 'sheet'])->name('sheet');
+        });
 
-            // A sheet is `signed` only when a POST first counts its print and hands out the address (receipts, orders, delivery notes); report sheets that anyone with this access may open again need no signature.
+        // A sheet is `signed` only when a POST first counts its print and hands out the address (receipts, orders, delivery notes); report sheets that anyone with this access may open again need no signature.
+        Route::middleware('permission:reports.view')->group(function () {
             Route::get('reports/sales', [ReportController::class, 'sales'])->name('tenant.reports.sales');
             Route::get('reports/sales/sheet', [ReportController::class, 'salesSheet'])->name('tenant.reports.sales.sheet');
+        });
 
-            Route::prefix('daily-closings')->name('tenant.daily-closings.')->group(function () {
-                Route::get('/', [DailyClosingController::class, 'index'])->name('index');
-                Route::get('{date}', [DailyClosingController::class, 'show'])->where('date', '\d{4}-\d{2}-\d{2}')->name('show');
-                Route::post('{date}', [DailyClosingController::class, 'store'])->where('date', '\d{4}-\d{2}-\d{2}')->name('store');
-                Route::post('{date}/reopenings', [DailyClosingController::class, 'reopen'])->where('date', '\d{4}-\d{2}-\d{2}')->name('reopen');
-                Route::get('{date}/sheet', [DailyClosingController::class, 'sheet'])->where('date', '\d{4}-\d{2}-\d{2}')->name('sheet');
-            });
+        Route::prefix('daily-closings')->name('tenant.daily-closings.')->middleware('permission:daily_closings.manage')->group(function () {
+            Route::get('/', [DailyClosingController::class, 'index'])->name('index');
+            Route::get('{date}', [DailyClosingController::class, 'show'])->where('date', '\d{4}-\d{2}-\d{2}')->name('show');
+            Route::post('{date}', [DailyClosingController::class, 'store'])->where('date', '\d{4}-\d{2}-\d{2}')->name('store');
+            Route::post('{date}/reopenings', [DailyClosingController::class, 'reopen'])->where('date', '\d{4}-\d{2}-\d{2}')->name('reopen');
+            Route::get('{date}/sheet', [DailyClosingController::class, 'sheet'])->where('date', '\d{4}-\d{2}-\d{2}')->name('sheet');
+        });
 
-            Route::prefix('expenses')->name('tenant.expenses.')->group(function () {
-                Route::get('/', [ExpenseController::class, 'index'])->name('index');
-                Route::post('/', [ExpenseController::class, 'store'])->name('store');
-                Route::post('categories', [ExpenseCategoryController::class, 'store'])->name('categories.store');
-                Route::put('categories/{category}', [ExpenseCategoryController::class, 'update'])->name('categories.update');
-                Route::post('{expense}/voids', [ExpenseController::class, 'void'])->name('void');
-            });
+        Route::prefix('expenses')->name('tenant.expenses.')->middleware('permission:expenses.manage')->group(function () {
+            Route::get('/', [ExpenseController::class, 'index'])->name('index');
+            Route::post('/', [ExpenseController::class, 'store'])->name('store');
+            Route::post('categories', [ExpenseCategoryController::class, 'store'])->name('categories.store');
+            Route::put('categories/{category}', [ExpenseCategoryController::class, 'update'])->name('categories.update');
+            Route::post('{expense}/voids', [ExpenseController::class, 'void'])->name('void');
+        });
 
-            Route::get('sales', [SaleHistoryController::class, 'index'])->name('tenant.sales.index');
-            Route::get('sales/{sale}', [SaleHistoryController::class, 'show'])->name('tenant.sales.show');
-            Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->name('tenant.sales.void');
+        Route::get('sales', [SaleHistoryController::class, 'index'])->middleware('permission:sales.view')->name('tenant.sales.index');
+        Route::get('sales/{sale}', [SaleHistoryController::class, 'show'])->middleware('permission:sales.view')->name('tenant.sales.show');
+        Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->middleware('permission:sales.void')->name('tenant.sales.void');
 
-            Route::get('products/search', ProductSearchController::class)->name('tenant.products.search');
+        Route::get('products/search', ProductSearchController::class)->middleware('permission:stock_opnames.count,stock_opnames.post,stock_history.view')->name('tenant.products.search');
+
+        Route::middleware('permission:products.manage')->group(function () {
             Route::post('products/bulk-prices/units', [BulkPriceController::class, 'units'])->name('tenant.bulk-prices.units');
             Route::post('products/bulk-prices/preview', [BulkPriceController::class, 'preview'])->name('tenant.bulk-prices.preview');
             Route::post('products/bulk-prices', [BulkPriceController::class, 'apply'])->name('tenant.bulk-prices.apply');
@@ -146,26 +154,36 @@ Route::prefix('t/{tenant}')
             Route::post('products/price-labels/units', [PriceLabelController::class, 'units'])->name('tenant.price-labels.units');
             Route::get('products/price-labels/sheet', [PriceLabelController::class, 'sheet'])->name('tenant.price-labels.sheet');
             Route::resource('products', ProductController::class)->except(['show'])->names('tenant.products');
-            Route::get('settings', [StoreSettingController::class, 'index'])->name('tenant.settings.index');
-            Route::put('settings', [StoreSettingController::class, 'update'])->name('tenant.settings.update');
-            Route::resource('settings/units', UnitController::class)->only(['store', 'update', 'destroy'])->names('tenant.units');
+        });
 
-            Route::prefix('stock-opnames')->name('tenant.stock-opnames.')->scopeBindings()->group(function () {
-                Route::get('/', [StockOpnameController::class, 'index'])->name('index');
+        Route::get('settings', [StoreSettingController::class, 'index'])->middleware('permission:settings.manage')->name('tenant.settings.index');
+        Route::put('settings', [StoreSettingController::class, 'update'])->middleware('permission:settings.manage')->name('tenant.settings.update');
+        // The item form adds units too, so whoever manages items may manage them.
+        Route::resource('settings/units', UnitController::class)->only(['store', 'update', 'destroy'])->middleware('permission:settings.manage,products.manage')->names('tenant.units');
+
+        Route::prefix('stock-opnames')->name('tenant.stock-opnames.')->scopeBindings()->group(function () {
+            Route::middleware('permission:stock_opnames.count')->group(function () {
                 Route::get('create', [StockOpnameController::class, 'create'])->name('create');
                 Route::post('/', [StockOpnameController::class, 'store'])->name('store');
-                Route::get('{stock_opname}', [StockOpnameController::class, 'show'])->withTrashed()->name('show');
                 Route::put('{stock_opname}/counts', [StockOpnameController::class, 'saveCounts'])->name('counts');
-                Route::put('{stock_opname}/review', [StockOpnameController::class, 'saveReview'])->name('review');
                 Route::post('{stock_opname}/items', [StockOpnameController::class, 'addItem'])->name('items.store');
                 Route::delete('{stock_opname}/items/{item}', [StockOpnameController::class, 'removeItem'])->name('items.destroy');
                 Route::post('{stock_opname}/zero-uncounted', [StockOpnameController::class, 'countUncountedAsZero'])->name('zero-uncounted');
                 Route::post('{stock_opname}/finish', [StockOpnameController::class, 'finish'])->name('finish');
-                Route::post('{stock_opname}/reopen', [StockOpnameController::class, 'reopen'])->name('reopen');
-                Route::post('{stock_opname}/post', [StockOpnameController::class, 'post'])->name('post');
                 Route::post('{stock_opname}/cancel', [StockOpnameController::class, 'cancel'])->name('cancel');
             });
 
-            Route::get('stock-history', [StockHistoryController::class, 'index'])->name('tenant.stock-history.index');
+            Route::middleware('permission:stock_opnames.count,stock_opnames.post')->group(function () {
+                Route::get('/', [StockOpnameController::class, 'index'])->name('index');
+                Route::get('{stock_opname}', [StockOpnameController::class, 'show'])->withTrashed()->name('show');
+                Route::post('{stock_opname}/reopen', [StockOpnameController::class, 'reopen'])->name('reopen');
+            });
+
+            Route::middleware('permission:stock_opnames.post')->group(function () {
+                Route::put('{stock_opname}/review', [StockOpnameController::class, 'saveReview'])->name('review');
+                Route::post('{stock_opname}/post', [StockOpnameController::class, 'post'])->name('post');
+            });
         });
+
+        Route::get('stock-history', [StockHistoryController::class, 'index'])->middleware('permission:stock_history.view')->name('tenant.stock-history.index');
     });

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ApiErrorCode;
 use App\Enums\OrderStatus;
+use App\Enums\Permission;
 use App\Exceptions\ShiftException;
 use App\Http\Controllers\Concerns\AnswersPrints;
 use App\Http\Controllers\Controller;
@@ -54,7 +55,7 @@ class ShiftReceiptController extends Controller
 
         /** @var Store $store */
         $store = tenant();
-        $isAdmin = $request->user()->isAdminIn($store);
+        $isAdmin = $request->user()->hasPermissionIn($store, Permission::SalesView);
         $sales = $this->saleHistoryService->ofShift($shift, $request->string('q')->toString(), self::RESULT_LIMIT);
 
         return response()->json(['data' => $sales->map(fn (Sale $sale): array => $this->withLinks(SaleDetailResource::make($sale)->resolve(), $sale, $isAdmin))->all()]);

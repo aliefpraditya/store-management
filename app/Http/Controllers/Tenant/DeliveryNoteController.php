@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\DeliveryNoteStatus;
+use App\Enums\Permission;
 use App\Exceptions\DeliveryNoteException;
 use App\Http\Controllers\Concerns\PrintsDeliveryNotes;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureUserCanAccessStore;
 use App\Http\Requests\Tenant\CompleteDeliveryNoteRequest;
 use App\Http\Requests\Tenant\DateRangeRequest;
 use App\Http\Requests\Tenant\SaveDeliveryNoteRequest;
@@ -62,6 +64,7 @@ class DeliveryNoteController extends Controller
             ],
             'statuses' => collect(DeliveryNoteStatus::cases())->map(fn (DeliveryNoteStatus $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
             'create_url' => route('tenant.delivery-notes.create', ['tenant' => tenant('code')]),
+            'can_create' => EnsureUserCanAccessStore::grants($request, Permission::DeliveryNotesManage),
         ]);
     }
 

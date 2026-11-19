@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Enums\UserRole;
+use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -38,7 +40,7 @@ class StoreAccessTest extends TestCase
     {
         $store = $this->store();
         $user = User::factory()->create();
-        $store->users()->attach($user->id, ['role' => 'cashier']);
+        $store->users()->attach($user->id, ['role_id' => Role::idOf(UserRole::Cashier)]);
 
         $this->actingAs($user)
             ->get('/t/test_access/cashier')
@@ -68,7 +70,7 @@ class StoreAccessTest extends TestCase
     {
         $store = $this->store();
         $user = User::factory()->create(['is_active' => false]);
-        $store->users()->attach($user->id, ['role' => 'admin']);
+        $store->users()->attach($user->id, ['role_id' => Role::idOf(UserRole::StoreAdmin)]);
 
         $this->actingAs($user)
             ->get('/t/test_access/cashier')
@@ -79,7 +81,7 @@ class StoreAccessTest extends TestCase
     {
         $store = $this->store(['status' => 'provisioning']);
         $user = User::factory()->create();
-        $store->users()->attach($user->id, ['role' => 'admin']);
+        $store->users()->attach($user->id, ['role_id' => Role::idOf(UserRole::StoreAdmin)]);
 
         $this->actingAs($user)
             ->get('/t/test_access/cashier')

@@ -67,12 +67,13 @@ HTTP Request
 
 ### Multi-store tenancy (stancl/tenancy, by path)
 
--   Central DB `mitra_manager`: `stores`, `users`, `store_users`, `store_provisioning_logs`, audits, sessions/cache/queue. Per-store DB (e.g. `store_mitra_utama`): all store data, migrations in `database/migrations/tenant`.
+-   Central DB `mitra_manager`: `stores`, `users`, `store_users`, `roles`, `permissions`, `role_permissions`, `permission_user`, `store_provisioning_logs`, audits, sessions/cache/queue. Per-store DB (e.g. `store_mitra_utama`): all store data, migrations in `database/migrations/tenant`.
 -   Store routes live in `routes/tenant.php` under `t/{tenant}/...` with middleware `web` → `InitializeTenancyByPath` → `auth` → `store.access`. Tenant key = `stores.code` (snake_case store name, e.g. `mitra_utama`).
 -   `store.access` (`EnsureUserCanAccessStore`): user must be active, store `active`, and the user a super admin or linked in `store_users`.
 -   **Store databases are never created/dropped automatically** (Hostinger hPanel: 1 user per DB). Connection details live in `stores.db_name/db_username/db_password/db_host` (password encrypted). Add store tables as migrations in the tenant folder.
 -   **Pitfall — default connection switches to the store DB** while tenancy is initialized. Sessions/cache/queue are therefore forced onto the central connection in `config/session.php`, `config/cache.php`, `config/queue.php`. **Any new model that lives in the central DB must use the `CentralConnection` trait** (see `User`). In tests, DB column defaults (e.g. `is_active`) are absent on factory-built models unless set in the factory.
--   Roles: Super Admin (central dashboard, cross-store stock lookup, only they) · Admin Toko · Kasir (cashier screen only). Non-super-admins go straight to their store.
+-   Roles & permissions: Super Admin (`users.is_super_admin`; central dashboard, cross-store stock lookup, roles page; holds every permission) · store roles are rows of the central `roles` table (system ones: Admin Toko, Kasir, Petugas Gudang; Super Admin adds more under Pusat → Peran & Izin). `store_users.role_id` gives a user their role, `role_permissions` its permissions, `permission_user` extra permissions for one user. Non-super-admins go straight to their store.
+-   **Every store route must carry `permission:<name>[,<name>]`** (middleware `EnsureUserHasPermission`; any one listed permission passes). Permission names live in the `App\Enums\Permission` enum and must also exist as `permissions` rows (add them in a migration; a test fails while enum and table differ). Hide UI by the same permission (shared `auth.permissions`, or `can_*` flags on resources) but never rely on that alone.
 
 ### Routes
 

@@ -2,7 +2,7 @@
 
 use App\Http\Middleware\EnsureUserCanAccessStore;
 use App\Http\Middleware\EnsureUserHasNoOpenShift;
-use App\Http\Middleware\EnsureUserIsStoreAdmin;
+use App\Http\Middleware\EnsureUserHasPermission;
 use App\Http\Middleware\EnsureUserIsSuperAdmin;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RememberOpenShift;
@@ -26,7 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'store.access' => EnsureUserCanAccessStore::class,
             'super.admin' => EnsureUserIsSuperAdmin::class,
-            'store.admin' => EnsureUserIsStoreAdmin::class,
+            'permission' => EnsureUserHasPermission::class,
             'shift.none-open' => EnsureUserHasNoOpenShift::class,
             'shift.remember' => RememberOpenShift::class,
         ]);

@@ -18,6 +18,7 @@ const menuGroups = computed(() => [
             { label: 'Dashboard', icon: 'space_dashboard', href: page.props.app_urls.central_dashboard, isExact: true },
             { label: 'Master Toko', icon: 'storefront', href: page.props.app_urls.central_stores },
             { label: 'User & Akses', icon: 'group', href: page.props.app_urls.central_users },
+            { label: 'Peran & Izin', icon: 'admin_panel_settings', href: page.props.app_urls.central_roles },
             { label: 'Pengaturan', icon: 'settings', href: page.props.app_urls.central_settings },
         ],
     },

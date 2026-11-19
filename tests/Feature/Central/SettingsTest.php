@@ -4,6 +4,7 @@ namespace Tests\Feature\Central;
 
 use App\Enums\UserRole;
 use App\Models\AppSetting;
+use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\AppSettingService;
@@ -31,7 +32,7 @@ class SettingsTest extends TestCase
 
         foreach ([UserRole::StoreAdmin, UserRole::Cashier] as $role) {
             $user = User::factory()->create();
-            $user->stores()->attach($store->id, ['role' => $role->value]);
+            $user->stores()->attach($store->id, ['role_id' => Role::idOf($role)]);
 
             $this->actingAs($user)->get(route('central.settings.index'))->assertForbidden();
             $this->actingAs($user)

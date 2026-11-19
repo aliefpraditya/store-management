@@ -3,7 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
-use App\Enums\UserRole;
+use App\Enums\Permission as PermissionName;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -49,7 +49,17 @@ class User extends Authenticatable implements AuditableContract
      */
     public function stores(): BelongsToMany
     {
-        return $this->belongsToMany(Store::class, 'store_users')->withPivot('role')->withTimestamps();
+        return $this->belongsToMany(Store::class, 'store_users')->withPivot('role_id')->withTimestamps();
+    }
+
+    /**
+     * Permissions given to this user on top of what their role holds.
+     *
+     * @return BelongsToMany<Permission, $this>
+     */
+    public function permissions(): BelongsToMany
+    {
+        return $this->belongsToMany(Permission::class, 'permission_user');
     }
 
     /**
@@ -61,50 +71,75 @@ class User extends Authenticatable implements AuditableContract
     }
 
     /**
-     * The role this user has inside one store (a super admin is a super admin everywhere).
+     * The role this user has inside one store (a super admin is a super admin everywhere); null when they have no access
+     * to it.
      */
-    public function roleIn(Store $store): ?UserRole
+    public function roleIn(Store $store): ?Role
     {
         if ($this->is_super_admin) {
-            return UserRole::SuperAdmin;
+            return Role::superAdmin();
         }
 
-        $storeRole = $this->stores()->whereKey($store->getKey())->first()?->pivot->role;
+        $roleId = $this->stores()->whereKey($store->getKey())->first()?->pivot->role_id;
 
-        return $storeRole === null ? null : UserRole::from($storeRole);
+        return $roleId === null ? null : Role::query()->find($roleId);
     }
 
     /**
-     * Whether this user manages the store (store admin or super admin) rather than only working its till.
+     * What this user may do in the store: the permissions of their role plus those given to them directly. A super admin
+     * may do everything; someone without access to the store, nothing.
+     *
+     * @return list<string>
      */
-    public function isAdminIn(Store $store): bool
+    public function permissionNamesIn(Store $store): array
     {
-        return in_array($this->roleIn($store), [UserRole::SuperAdmin, UserRole::StoreAdmin], true);
+        $role = $this->roleIn($store);
+
+        return $role === null ? [] : $this->permissionNamesWith($role);
     }
 
     /**
-     * A cashier works with the receipts they made; an admin works with any receipt of the store.
+     * Same as {@see permissionNamesIn()} for a role already looked up, so a request does not look it up twice.
+     *
+     * @return list<string>
+     */
+    public function permissionNamesWith(Role $role): array
+    {
+        if ($role->isSuperAdmin()) {
+            return PermissionName::values();
+        }
+
+        return $role->permissions()->pluck('name')->merge($this->permissions()->pluck('name'))->unique()->values()->all();
+    }
+
+    public function hasPermissionIn(Store $store, PermissionName $permission): bool
+    {
+        return in_array($permission->value, $this->permissionNamesIn($store), true);
+    }
+
+    /**
+     * A cashier works with the receipts they made; whoever may see the store's receipts works with any of them.
      */
     public function canHandleReceipt(Sale $sale, Store $store): bool
     {
-        return $sale->cashier_id === $this->id || $this->isAdminIn($store);
+        return $sale->cashier_id === $this->id || $this->hasPermissionIn($store, PermissionName::SalesView);
     }
 
     /**
      * Null only for a non-super-admin who has no store yet.
      *
-     * @return Attribute<UserRole|null, never>
+     * @return Attribute<Role|null, never>
      */
     protected function role(): Attribute
     {
-        return Attribute::get(function (): ?UserRole {
+        return Attribute::get(function (): ?Role {
             if ($this->is_super_admin) {
-                return UserRole::SuperAdmin;
+                return Role::superAdmin();
             }
 
-            $storeRole = $this->assignedStore()?->pivot->role;
+            $roleId = $this->assignedStore()?->pivot->role_id;
 
-            return $storeRole === null ? null : UserRole::from($storeRole);
+            return $roleId === null ? null : Role::query()->find($roleId);
         });
     }
 }

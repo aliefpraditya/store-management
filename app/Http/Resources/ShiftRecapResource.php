@@ -72,7 +72,7 @@ class ShiftRecapResource extends JsonResource
             'decided_by_name' => $this->difference_approved_by === null ? null : User::query()->find($this->difference_approved_by)?->name,
             'decided_at' => $this->difference_approved_at?->toIso8601String(),
             'approval_note' => $this->approval_note,
-            'reviewer_label' => $this->cashierRole()->reviewerLabel(),
+            'reviewer_label' => $this->reviewerLabel(),
             'is_own_shift' => $this->cashier_id === $request->user()->id,
             'can_decide' => $isDifferencePending && $this->decisionBlockedReason === null,
             'decision_blocked_reason' => $isDifferencePending ? $this->decisionBlockedReason : null,

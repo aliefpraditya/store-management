@@ -12,6 +12,7 @@ use App\Models\Category;
 use App\Models\OpnameReason;
 use App\Models\Product;
 use App\Models\ProductUnit;
+use App\Models\Role;
 use App\Models\Stock;
 use App\Models\StockMovement;
 use App\Models\StockOpname;
@@ -50,7 +51,7 @@ class StockOpnameTest extends TestCase
     private function userWithRole(UserRole $role): User
     {
         $user = User::factory()->create();
-        $this->store->users()->attach($user->id, ['role' => $role->value]);
+        $this->store->users()->attach($user->id, ['role_id' => Role::idOf($role)]);
 
         return $user;
     }

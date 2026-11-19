@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\CashShiftStatus;
 use App\Enums\PaymentMethod;
+use App\Enums\Permission;
 use App\Enums\SaleReturnStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CashShiftResource;
@@ -50,7 +51,7 @@ class CashierController extends Controller
             'order_counts' => fn () => $this->customerOrders->badgeCounts(),
             'pending_return_count' => fn () => $shift === null ? 0 : SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Pending)->count(),
             'closed_shift' => fn () => $request->session()->pull('closed_shift'),
-            'can_leave_to_dashboard' => $request->user()->isAdminIn($store),
+            'can_leave_to_dashboard' => $request->user()->hasPermissionIn($store, Permission::DashboardView),
             'urls' => [
                 'open_shift' => route('tenant.cashier.shifts.store', ['tenant' => $code]),
                 'shift_report' => $shift === null ? null : route('tenant.cashier.shifts.report', ['tenant' => $code, 'shift' => $shift->id]),

@@ -13,6 +13,8 @@ const store = computed(() => page.props.store);
 
 const user = computed(() => page.props.auth.user);
 
+const permissions = computed(() => page.props.auth.permissions);
+
 const brand = computed(() => ({ initial: store.value.receipt_prefix, name: store.value.name, sub: 'Toko' }));
 
 /**
@@ -22,38 +24,38 @@ const menuGroups = computed(() => {
     const groups = [
         {
             label: null,
-            items: [{ label: 'Dashboard', icon: 'space_dashboard', href: store.value.dashboard_url, isExact: true }],
+            items: [{ label: 'Dashboard', icon: 'space_dashboard', href: store.value.dashboard_url, isExact: true, can: ['dashboard.view'] }],
         },
-        { label: 'Barang', items: [{ label: 'Daftar Barang', icon: 'inventory_2', href: store.value.products_url }] },
+        { label: 'Barang', items: [{ label: 'Daftar Barang', icon: 'inventory_2', href: store.value.products_url, can: ['products.manage'] }] },
         {
             label: 'Stok',
             items: [
-                { label: 'Stok Opname', icon: 'fact_check', href: store.value.stock_opnames_url },
-                { label: 'Histori Stok', icon: 'layers', href: store.value.stock_history_url },
+                { label: 'Stok Opname', icon: 'fact_check', href: store.value.stock_opnames_url, can: ['stock_opnames.count', 'stock_opnames.post'] },
+                { label: 'Histori Stok', icon: 'layers', href: store.value.stock_history_url, can: ['stock_history.view'] },
             ],
         },
         {
             label: 'Penjualan',
             items: [
-                { label: 'Kasir', icon: 'shopping_cart', href: store.value.cashier_url },
-                { label: 'Riwayat Nota', icon: 'receipt_long', href: store.value.sales_url },
-                { label: 'Surat Jalan', icon: 'local_shipping', href: store.value.delivery_notes_url },
-                { label: 'Retur', icon: 'undo', href: store.value.returns_url, badge: page.props.menu_badges?.returns ?? 0, badgeHint: 'retur menunggu persetujuan' },
+                { label: 'Kasir', icon: 'shopping_cart', href: store.value.cashier_url, can: ['cashier.use'] },
+                { label: 'Riwayat Nota', icon: 'receipt_long', href: store.value.sales_url, can: ['sales.view'] },
+                { label: 'Surat Jalan', icon: 'local_shipping', href: store.value.delivery_notes_url, can: ['delivery_notes.view'] },
+                { label: 'Retur', icon: 'undo', href: store.value.returns_url, badge: page.props.menu_badges?.returns ?? 0, badgeHint: 'retur menunggu persetujuan', can: ['returns.manage'] },
             ],
         },
         {
             label: 'Kas & Harian',
             items: [
-                { label: 'Rekap Shift', icon: 'schedule', href: store.value.shifts_url },
-                { label: 'Pengeluaran', icon: 'remove_circle_outline', href: store.value.expenses_url },
-                { label: 'Tutup Hari', icon: 'lock', href: store.value.daily_closings_url },
-                { label: 'Laporan', icon: 'bar_chart', href: store.value.reports_url },
+                { label: 'Rekap Shift', icon: 'schedule', href: store.value.shifts_url, can: ['shifts.review'] },
+                { label: 'Pengeluaran', icon: 'remove_circle_outline', href: store.value.expenses_url, can: ['expenses.manage'] },
+                { label: 'Tutup Hari', icon: 'lock', href: store.value.daily_closings_url, can: ['daily_closings.manage'] },
+                { label: 'Laporan', icon: 'bar_chart', href: store.value.reports_url, can: ['reports.view'] },
             ],
         },
         {
             label: 'Pengaturan',
             items: [
-                { label: 'Pengaturan Toko', icon: 'settings', href: store.value.settings_url },
+                { label: 'Pengaturan Toko', icon: 'settings', href: store.value.settings_url, can: ['settings.manage'] },
             ],
         },
     ];
@@ -65,12 +67,14 @@ const menuGroups = computed(() => {
         });
     }
 
-    return groups;
+    return groups
+        .map((group) => ({ ...group, items: group.items.filter((item) => !item.can || item.can.some((permission) => permissions.value.includes(permission))) }))
+        .filter((group) => group.items.length > 0);
 });
 </script>
 
 <template>
-    <AppShell :title="title" :menu-groups="menuGroups" :brand="brand" :role-label="user.is_super_admin ? 'Super Admin' : 'Admin Toko'">
+    <AppShell :title="title" :menu-groups="menuGroups" :brand="brand" :role-label="page.props.auth.role_label">
         <template v-if="$slots.back" #back>
             <slot name="back" />
         </template>

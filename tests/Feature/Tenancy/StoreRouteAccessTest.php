@@ -4,7 +4,7 @@ namespace Tests\Feature\Tenancy;
 
 use App\Http\Middleware\EnsureUserCanAccessStore;
 use App\Http\Middleware\EnsureUserHasNoOpenShift;
-use App\Http\Middleware\EnsureUserIsStoreAdmin;
+use App\Http\Middleware\EnsureUserHasPermission;
 use App\Http\Middleware\RememberOpenShift;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Routing\Route as RoutingRoute;
@@ -13,7 +13,7 @@ use Stancl\Tenancy\Middleware\InitializeTenancyByPath;
 use Tests\TestCase;
 
 /**
- * Every page of a store is behind tenancy, login and store access; item pages are for admins only.
+ * Every page of a store is behind tenancy, login and store access, and every page but the dashboard needs a permission.
  */
 class StoreRouteAccessTest extends TestCase
 {
@@ -64,7 +64,7 @@ class StoreRouteAccessTest extends TestCase
         }
     }
 
-    public function test_the_cashier_screen_routes_are_open_to_every_user_of_the_store(): void
+    public function test_the_cashier_screen_routes_need_only_the_cashier_permission(): void
     {
         $cashierRoutes = array_filter($this->storeRoutes(), fn (RoutingRoute $route): bool => $this->isOpenToCashiers($route));
 
@@ -74,7 +74,7 @@ class StoreRouteAccessTest extends TestCase
             $middleware = app('router')->gatherRouteMiddleware($route);
 
             $this->assertContains(EnsureUserCanAccessStore::class, $middleware, "{$route->getName()} must check store access");
-            $this->assertNotContains(EnsureUserIsStoreAdmin::class, $middleware, "{$route->getName()} is for cashiers too");
+            $this->assertContains(EnsureUserHasPermission::class.':cashier.use', $middleware, "{$route->getName()} is for whoever may use the cashier screen");
         }
     }
 
@@ -88,9 +88,9 @@ class StoreRouteAccessTest extends TestCase
     }
 
     /**
-     * Only the dashboard (which sends cashiers to their screen) and the cashier screen are open to cashiers.
+     * Only the dashboard (which sends whoever may not see it to their own page) is open to every user of the store; the rest asks for a permission.
      */
-    public function test_every_other_store_route_is_for_store_admins_only(): void
+    public function test_every_other_store_route_needs_a_permission(): void
     {
         $adminRoutes = array_filter(
             $this->storeRoutes(),
@@ -101,7 +101,7 @@ class StoreRouteAccessTest extends TestCase
 
         $this->assertCount(7, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.products.')));
         $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.units.')));
-        $this->assertCount(14, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-opnames.')));
+        $this->assertCount(13, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-opnames.')));
         $this->assertCount(1, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-history.')));
         $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.sales.')));
         $this->assertCount(10, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.delivery-notes.')));
@@ -111,16 +111,17 @@ class StoreRouteAccessTest extends TestCase
         $this->assertCount(5, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.daily-closings.')));
         $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.settings.')));
         $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.reports.')));
-        $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.bulk-prices.')));
+        $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.bulk-prices.')));
         $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.barcode-labels.')));
-        $this->assertCount(69, $adminRoutes);
+        $this->assertCount(71, $adminRoutes);
 
         foreach ($adminRoutes as $route) {
-            $this->assertContains(
-                EnsureUserIsStoreAdmin::class,
+            $permissionMiddleware = array_filter(
                 app('router')->gatherRouteMiddleware($route),
-                "{$route->getName()} must be store admin only",
+                fn (string $middleware): bool => str_starts_with($middleware, EnsureUserHasPermission::class),
             );
+
+            $this->assertNotEmpty($permissionMiddleware, "{$route->getName()} must need a permission");
         }
     }
 }

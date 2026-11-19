@@ -4,6 +4,7 @@ namespace Tests\Feature\Central;
 
 use App\Enums\UserRole;
 use App\Http\Middleware\EnsureUserIsSuperAdmin;
+use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Auth\Middleware\Authenticate;
@@ -38,7 +39,7 @@ class CentralAccessTest extends TestCase
     {
         $store = Store::factory()->create();
         $target = User::factory()->create(['name' => 'Target', 'username' => 'target']);
-        $target->stores()->attach($store->id, ['role' => UserRole::Cashier->value]);
+        $target->stores()->attach($store->id, ['role_id' => Role::idOf(UserRole::Cashier)]);
 
         $payload = [
             'name' => 'Diubah',
@@ -51,7 +52,7 @@ class CentralAccessTest extends TestCase
 
         foreach ([UserRole::StoreAdmin, UserRole::Cashier] as $role) {
             $actor = User::factory()->create();
-            $actor->stores()->attach($store->id, ['role' => $role->value]);
+            $actor->stores()->attach($store->id, ['role_id' => Role::idOf($role)]);
 
             $this->actingAs($actor);
 
@@ -68,7 +69,7 @@ class CentralAccessTest extends TestCase
         $this->assertSame('Target', $target->name);
         $this->assertSame('target', $target->username);
         $this->assertTrue($target->is_active);
-        $this->assertSame(UserRole::Cashier, $target->role);
+        $this->assertSame(UserRole::Cashier->value, $target->role?->name);
         $this->assertFalse(Hash::check('diubah-diubah', $target->password));
         $this->assertDatabaseMissing('users', ['username' => 'diubah']);
     }

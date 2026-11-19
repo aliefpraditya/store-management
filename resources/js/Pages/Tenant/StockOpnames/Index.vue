@@ -8,6 +8,7 @@ const props = defineProps({
     filters: { type: Object, required: true },
     statuses: { type: Array, required: true },
     create_url: { type: String, required: true },
+    can_create: { type: Boolean, required: true },
 });
 
 const page = usePage();
@@ -33,7 +34,7 @@ watch(status, () => applyFilters());
 <template>
     <StoreLayout title="Stok Opname">
         <template #actions>
-            <q-btn color="primary" unelevated no-caps icon="add" label="Opname Baru" @click="router.visit(create_url)" />
+            <q-btn v-if="can_create" color="primary" unelevated no-caps icon="add" label="Opname Baru" @click="router.visit(create_url)" />
         </template>
 
         <div class="filters">

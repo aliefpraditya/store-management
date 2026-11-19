@@ -8,6 +8,7 @@ use App\Models\CashShift;
 use App\Models\DeliveryNote;
 use App\Models\Product;
 use App\Models\Register;
+use App\Models\Role;
 use App\Models\Sale;
 use App\Models\SaleReturn;
 use App\Models\Stock;
@@ -38,7 +39,7 @@ class StoreDashboardTest extends TestCase
     private function userWithRole(UserRole $role): User
     {
         $user = User::factory()->create();
-        $this->store->users()->attach($user->id, ['role' => $role->value]);
+        $this->store->users()->attach($user->id, ['role_id' => Role::idOf($role)]);
 
         return $user;
     }

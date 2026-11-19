@@ -8,6 +8,7 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductUnit;
+use App\Models\Role;
 use App\Models\SaleItem;
 use App\Models\Stock;
 use App\Models\Store;
@@ -44,7 +45,7 @@ class ProductManagementTest extends TestCase
     private function userWithRole(UserRole $role): User
     {
         $user = User::factory()->create();
-        $this->store->users()->attach($user->id, ['role' => $role->value]);
+        $this->store->users()->attach($user->id, ['role_id' => Role::idOf($role)]);
 
         return $user;
     }

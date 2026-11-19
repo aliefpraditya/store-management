@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\CashShiftStatus;
+use App\Enums\Permission;
 use App\Exceptions\ShiftException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\CloseShiftRequest;
@@ -47,7 +48,7 @@ class ShiftController extends Controller
         /** @var Store $store */
         $store = tenant();
         $user = $request->user();
-        abort_unless($user->isAdminIn($store) || $shift->cashier_id === $user->id, Response::HTTP_FORBIDDEN);
+        abort_unless($user->hasPermissionIn($store, Permission::ShiftsReview) || $shift->cashier_id === $user->id, Response::HTTP_FORBIDDEN);
 
         try {
             $closedShift = $this->shiftService->close(

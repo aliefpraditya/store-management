@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Enums\CashShiftStatus;
 use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
-use App\Enums\UserRole;
 use App\Exceptions\ShiftException;
 use App\Models\CashShift;
 use App\Models\User;
@@ -59,7 +58,7 @@ class ShiftRecapService
             $user->is_super_admin => null,
             $shift->cashier_id === $user->id => ShiftException::cannotDecideOwnShift(),
             $shift->closed_by === $user->id => ShiftException::cannotDecideShiftYouClosed(),
-            $shift->cashierRole() !== UserRole::Cashier => ShiftException::onlySuperAdminDecidesAnAdminShift(),
+            $shift->isWorkedByReviewer() => ShiftException::onlySuperAdminDecidesAnAdminShift(),
             default => null,
         };
     }

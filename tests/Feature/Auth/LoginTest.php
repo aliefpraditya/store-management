@@ -3,6 +3,8 @@
 namespace Tests\Feature\Auth;
 
 use App\Enums\StoreStatus;
+use App\Enums\UserRole;
+use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -20,7 +22,7 @@ class LoginTest extends TestCase
     {
         $store = Store::factory()->create(['status' => $storeStatus]);
         $user = User::factory()->create(['password' => self::PASSWORD]);
-        $store->users()->attach($user->id, ['role' => 'admin']);
+        $store->users()->attach($user->id, ['role_id' => Role::idOf(UserRole::StoreAdmin)]);
 
         return [$user, $store];
     }

@@ -3,8 +3,10 @@
 namespace Tests\Feature\Central;
 
 use App\Enums\StoreStatus;
+use App\Enums\UserRole;
 use App\Enums\WarehouseType;
 use App\Exceptions\StoreProvisioningException;
+use App\Models\Role;
 use App\Models\Store;
 use App\Models\StoreProvisioningLog;
 use App\Models\User;
@@ -501,7 +503,7 @@ class StoreManagementTest extends TestCase
     {
         $store = Store::factory()->create();
         $user = User::factory()->create();
-        $store->users()->attach($user->id, ['role' => 'admin']);
+        $store->users()->attach($user->id, ['role_id' => Role::idOf(UserRole::StoreAdmin)]);
 
         $this->actingAs($this->superAdmin())->patch(route('central.stores.status', $store), ['is_active' => false]);
 

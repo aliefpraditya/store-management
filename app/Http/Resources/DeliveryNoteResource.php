@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\Permission;
+use App\Http\Middleware\EnsureUserCanAccessStore;
 use App\Models\DeliveryNote;
 use App\Models\Sale;
 use Illuminate\Http\Request;
@@ -22,6 +24,7 @@ class DeliveryNoteResource extends JsonResource
     public function toArray(Request $request): array
     {
         $actionUrl = fn (string $action): string => route("tenant.delivery-notes.{$action}", ['tenant' => tenant('code'), 'delivery_note' => $this->id]);
+        $mayManage = EnsureUserCanAccessStore::grants($request, Permission::DeliveryNotesManage);
 
         return [
             'id' => $this->id,
@@ -41,7 +44,7 @@ class DeliveryNoteResource extends JsonResource
             'print_count' => $this->print_count,
             'sale' => [
                 'number' => $this->sale->number,
-                'show_url' => route('tenant.sales.show', ['tenant' => tenant('code'), 'sale' => $this->sale_id]),
+                'show_url' => EnsureUserCanAccessStore::grants($request, Permission::SalesView) ? route('tenant.sales.show', ['tenant' => tenant('code'), 'sale' => $this->sale_id]) : null,
             ],
             'other_sale_numbers' => $this->items->loadMissing('saleItem.sale')
                 ->map(fn ($item): string => $item->saleItem->sale->number)
@@ -49,7 +52,7 @@ class DeliveryNoteResource extends JsonResource
                 ->reject(fn (string $number): bool => $number === $this->sale->number)
                 ->values()
                 ->all(),
-            'return_sales' => $this->returnSales(),
+            'return_sales' => EnsureUserCanAccessStore::grants($request, Permission::ReturnsManage) ? $this->returnSales() : [],
             'items' => $this->items->map(fn ($item): array => [
                 'id' => $item->id,
                 'name' => $item->product_name,
@@ -58,9 +61,9 @@ class DeliveryNoteResource extends JsonResource
                 'quantity_delivered' => $item->quantity_delivered,
                 'quantity_returned' => $item->quantity_returned,
             ])->values()->all(),
-            'can_ship' => $this->status->canBeShipped(),
-            'can_complete' => $this->status->canBeCompleted(),
-            'can_cancel' => $this->status->canBeCancelled(),
+            'can_ship' => $mayManage && $this->status->canBeShipped(),
+            'can_complete' => $mayManage && $this->status->canBeCompleted(),
+            'can_cancel' => $mayManage && $this->status->canBeCancelled(),
             'urls' => [
                 'index' => route('tenant.delivery-notes.index', ['tenant' => tenant('code')]),
                 'ship' => $actionUrl('ship'),

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Central;
 
 use App\Enums\UserRole;
+use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,7 +23,7 @@ class UserManagementTest extends TestCase
     private function storeUser(UserRole $role, ?Store $store = null, array $attributes = []): User
     {
         $user = User::factory()->create($attributes);
-        $user->stores()->attach(($store ?? Store::factory()->create())->id, ['role' => $role->value]);
+        $user->stores()->attach(($store ?? Store::factory()->create())->id, ['role_id' => Role::idOf($role)]);
 
         return $user;
     }
@@ -89,7 +90,7 @@ class UserManagementTest extends TestCase
             );
     }
 
-    public function test_form_offers_the_three_roles_and_all_stores(): void
+    public function test_form_offers_every_role_and_all_stores(): void
     {
         Store::factory()->create(['name' => 'Mitra Utama']);
 
@@ -102,7 +103,8 @@ class UserManagementTest extends TestCase
                 ->where('roles.0.value', 'super_admin')
                 ->where('roles.1.value', 'admin')
                 ->where('roles.2.value', 'cashier')
-                ->has('roles', 3)
+                ->where('roles.3.value', 'warehouse')
+                ->has('roles', 4)
                 ->has('stores', 1)
             );
     }
@@ -120,7 +122,7 @@ class UserManagementTest extends TestCase
 
         $this->assertFalse($user->is_super_admin);
         $this->assertTrue(Hash::check('rahasia', $user->password));
-        $this->assertSame(UserRole::Cashier, $user->role);
+        $this->assertSame(UserRole::Cashier->value, $user->role?->name);
         $this->assertSame($store->id, $user->assignedStore()->id);
     }
 
@@ -131,7 +133,7 @@ class UserManagementTest extends TestCase
         $this->actingAs($this->superAdmin())
             ->post(route('central.users.store'), $this->payload($store, ['role' => 'admin', 'username' => 'andi']));
 
-        $this->assertSame(UserRole::StoreAdmin, User::query()->where('username', 'andi')->firstOrFail()->role);
+        $this->assertSame(UserRole::StoreAdmin->value, User::query()->where('username', 'andi')->firstOrFail()->role?->name);
     }
 
     public function test_super_admin_is_created_without_a_store(): void
@@ -144,7 +146,7 @@ class UserManagementTest extends TestCase
         $user = User::query()->where('username', 'bos')->firstOrFail();
 
         $this->assertTrue($user->is_super_admin);
-        $this->assertSame(UserRole::SuperAdmin, $user->role);
+        $this->assertSame(UserRole::SuperAdmin->value, $user->role?->name);
         $this->assertNull($user->assignedStore());
     }
 
@@ -160,7 +162,7 @@ class UserManagementTest extends TestCase
     public function test_unknown_role_is_rejected(): void
     {
         $this->actingAs($this->superAdmin())
-            ->post(route('central.users.store'), $this->payload(Store::factory()->create(), ['role' => 'warehouse']))
+            ->post(route('central.users.store'), $this->payload(Store::factory()->create(), ['role' => 'accountant']))
             ->assertSessionHasErrors('role');
     }
 
@@ -222,7 +224,7 @@ class UserManagementTest extends TestCase
 
         $user = $user->fresh();
 
-        $this->assertSame(UserRole::StoreAdmin, $user->role);
+        $this->assertSame(UserRole::StoreAdmin->value, $user->role?->name);
         $this->assertSame([$newStore->id], $user->stores()->pluck('stores.id')->all());
     }
 

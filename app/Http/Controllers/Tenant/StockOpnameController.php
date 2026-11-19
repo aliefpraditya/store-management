@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\Permission;
 use App\Enums\StockOpnameReason;
 use App\Enums\StockOpnameScope;
 use App\Enums\StockOpnameStatus;
 use App\Exceptions\StockOpnameException;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureUserCanAccessStore;
 use App\Http\Requests\Tenant\AddStockOpnameProductRequest;
 use App\Http\Requests\Tenant\SaveStockOpnameCountsRequest;
 use App\Http\Requests\Tenant\SaveStockOpnameRequest;
@@ -62,6 +64,7 @@ class StockOpnameController extends Controller
             'filters' => ['status' => $statusFilter],
             'statuses' => collect(StockOpnameStatus::cases())->map(fn (StockOpnameStatus $case): array => ['value' => $case->value, 'label' => $case->label()])->all(),
             'create_url' => route('tenant.stock-opnames.create', ['tenant' => tenant('code')]),
+            'can_create' => EnsureUserCanAccessStore::grants($request, Permission::StockOpnamesCount),
         ]);
     }
 

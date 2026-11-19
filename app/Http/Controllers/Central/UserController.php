@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers\Central;
 
-use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Central\SaveUserRequest;
 use App\Http\Resources\UserResource;
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\UserService;
@@ -50,7 +51,7 @@ class UserController extends Controller
     public function edit(User $user): Response
     {
         return Inertia::render('Central/Users/Form', [
-            'user' => UserResource::make($user->load('stores'))->resolve(),
+            'user' => UserResource::make($user->load(['stores', 'permissions']))->resolve(),
             'form_action' => ['url' => route('central.users.update', $user), 'method' => 'put'],
             ...$this->formOptions(),
         ]);
@@ -64,18 +65,21 @@ class UserController extends Controller
     }
 
     /**
-     * @return array{roles: list<array{value: string, label: string}>, stores: list<array{id: int, name: string}>}
+     * @return array{roles: list<array{value: string, label: string, is_store_role: bool}>, stores: list<array{id: int, name: string}>, permission_groups: list<array{group: string, permissions: list<array{name: string, label: string}>}>}
      */
     private function formOptions(): array
     {
         return [
-            'roles' => UserRole::options(),
+            'roles' => Role::query()->orderBy('id')->get()->prepend(Role::superAdmin())
+                ->map(fn (Role $role): array => ['value' => $role->name, 'label' => $role->label, 'is_store_role' => ! $role->isSuperAdmin()])
+                ->all(),
             'stores' => Store::query()->orderBy('name')->get(['id', 'name'])->toArray(),
+            'permission_groups' => Permission::groupedForForm(),
         ];
     }
 
     /**
-     * @return array{name: string, username: string, password: string|null, role: UserRole, store_id: int|null, is_active: bool}
+     * @return array{name: string, username: string, password: string|null, role: string, store_id: int|null, permissions: list<string>, is_active: bool}
      */
     private function userAttributes(SaveUserRequest $request): array
     {
@@ -83,8 +87,9 @@ class UserController extends Controller
             'name' => $request->string('name')->toString(),
             'username' => $request->string('username')->toString(),
             'password' => $request->input('password'),
-            'role' => $request->enum('role', UserRole::class),
+            'role' => $request->string('role')->toString(),
             'store_id' => $request->integer('store_id') ?: null,
+            'permissions' => $request->input('permissions', []),
             'is_active' => $request->boolean('is_active'),
         ];
     }

@@ -2,11 +2,13 @@
 import { computed, ref } from 'vue';
 import { router, useForm, usePage } from '@inertiajs/vue3';
 import CentralLayout from '../../../Layouts/CentralLayout.vue';
+import PermissionChecklist from '../../../Components/PermissionChecklist.vue';
 
 const props = defineProps({
     user: { type: Object, default: null },
     roles: { type: Array, required: true },
     stores: { type: Array, required: true },
+    permission_groups: { type: Array, required: true },
     form_action: { type: Object, required: true },
 });
 
@@ -21,6 +23,7 @@ const form = useForm({
     password: '',
     role: props.user?.role?.value ?? 'cashier',
     store_id: props.user?.store?.id ?? null,
+    permissions: props.user?.extra_permissions ?? [],
     is_active: props.user?.is_active ?? true,
 });
 
@@ -100,6 +103,12 @@ function submit() {
                 :error-message="form.errors.store_id"
             />
 
+            <q-expansion-item v-if="isStoreNeeded" label="Izin tambahan" caption="Di luar izin yang sudah dimiliki perannya" class="user-form__extra" dense-toggle>
+                <div class="user-form__extra-body">
+                    <PermissionChecklist v-model="form.permissions" :groups="permission_groups" />
+                </div>
+            </q-expansion-item>
+
             <q-toggle v-model="form.is_active" label="Aktif" color="positive" :disable="isOwnAccount" />
 
             <div class="user-form__actions">
@@ -144,6 +153,15 @@ function submit() {
     margin-top: 4px;
     color: var(--app-mute);
     font-size: 12px;
+}
+
+.user-form__extra {
+    border: 1px solid var(--app-line);
+    border-radius: 10px;
+}
+
+.user-form__extra-body {
+    padding: 4px 16px 16px;
 }
 
 .user-form__actions {

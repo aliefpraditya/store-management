@@ -919,6 +919,11 @@ flowchart TD
 erDiagram
     users ||--o{ store_users : "assigned to"
     stores ||--o{ store_users : "has members"
+    roles ||--o{ store_users : "held as"
+    roles ||--o{ role_permissions : "grants"
+    permissions ||--o{ role_permissions : "granted by"
+    users ||--o{ permission_user : "given extra"
+    permissions ||--o{ permission_user : "given to"
     stores ||--o{ store_provisioning_logs : "setup history"
 
     users {
@@ -947,7 +952,27 @@ erDiagram
     store_users {
         bigint store_id PK, FK
         bigint user_id PK, FK
-        enum role "admin, cashier (super admin = users.is_super_admin)"
+        bigint role_id FK "roles (super admin = users.is_super_admin, no role)"
+    }
+    roles {
+        bigint id PK
+        string name UK "admin, cashier, warehouse, or snake_case of the label"
+        string label UK "shown in the UI"
+        boolean is_system "shipped with the app: not renamed or deleted"
+    }
+    permissions {
+        bigint id PK
+        string name UK "e.g. stock_opnames.count, mirrors the Permission enum"
+        string label
+        string group
+    }
+    role_permissions {
+        bigint role_id PK, FK
+        bigint permission_id PK, FK
+    }
+    permission_user {
+        bigint user_id PK, FK
+        bigint permission_id PK, FK "extra permission on top of the role"
     }
     store_provisioning_logs {
         bigint id PK
@@ -1643,8 +1668,15 @@ erDiagram
 |---|---|---|
 | Super Admin (`users.is_super_admin`) | Semua toko + pusat | **Dashboard Pusat**: tombol toko, Master Toko, **Cek Stok Barang**, User & Akses |
 | Admin Toko (`admin`) | 1 toko | Langsung ke **Dashboard Toko** (semua menu toko) |
-| ~~Warehouse (`warehouse`)~~ | — | **Ditunda**: untuk saat ini hanya 3 peran (Super Admin, Admin Toko, Kasir). Peran gudang ditambahkan lagi bila R2 membutuhkannya |
+| Petugas Gudang (`warehouse`) | 1 toko | **Stok Opname** dan **Surat Jalan** (lihat + cetak). Bawaan: menghitung opname, **tanpa** posting selisih (posting tetap Admin Toko; Super Admin boleh memberinya izin posting) |
+| Peran buatan Super Admin | 1 toko | Menu mengikuti izin yang dicentang di **Pusat → Peran & Izin** |
 | Cashier (`cashier`) | 1 toko | **Layar Kasir saja**, tanpa sidebar. Riwayat shift ini, cetak ulang, ajukan void/retur, buka/tutup shift ada **di dalam** layar kasir |
+
+**Peran & izin**
+1. Peran adalah baris di tabel `roles`; izin (`permissions`, mis. `stock_opnames.count`, `delivery_notes.view`, `shifts.review`) ditentukan kode, satu izin per kemampuan yang dicek di server. `role_permissions` menyatakan izin tiap peran; `permission_user` memberi **izin tambahan** ke satu user di luar perannya. Izin efektif user di toko = izin perannya + izin tambahannya. Super Admin (`users.is_super_admin`) memegang semua izin dan tidak punya peran toko.
+2. Super Admin membuat peran baru dan mengatur izinnya di **Pusat → Peran & Izin**. Peran bawaan (`admin`, `cashier`, `warehouse`) izinnya boleh diubah tetapi namanya tetap dan tidak bisa dihapus; peran yang masih dipakai user tidak bisa dihapus. Perubahan izin peran dan izin tambahan user tercatat di audit.
+3. Setiap rute toko dijaga middleware `permission:...` (cukup salah satu izin yang disebut); menu dan tombol di layar mengikuti izin yang sama, tetapi yang menegakkan tetap server. Pengguna tanpa izin `dashboard.view` diarahkan ke halaman pertama yang izinnya dimiliki.
+4. Izin bawaan: Admin Toko = semua; Kasir = `cashier.use`; Petugas Gudang = `stock_opnames.count` + `delivery_notes.view`. Izin baru ditambahkan lewat migrasi yang memasukkan barisnya ke `permissions` (tes memeriksa enum dan tabel sama).
 
 **Matriks persetujuan**
 | Tindakan | Siapa mengajukan | Siapa menyetujui |
@@ -1662,7 +1694,7 @@ erDiagram
 2. Kebijakan MVP: user non-super-admin ditugaskan ke **tepat satu toko** (pivot `store_users` dipertahankan untuk kelak). Bila kelak >1 toko → pemilih toko.
 3. **Penamaan toko:** `stores.code` = **snake_case dari nama toko** (huruf kecil, angka, underscore; 3–40 karakter; unik; tidak bisa diubah). Nama DB = `store_{code}` (di Hostinger otomatis diberi **prefiks akun**, mis. `u123456789_store_mitra_utama`, dan disimpan penuh di `stores.db_name`), URL = `/t/{code}/`. Contoh: "Mitra Utama" → `mitra_utama` → DB `store_mitra_utama`. Sistem mengusulkan kode dari nama (spasi → `_`, tanpa tanda baca) dan Super Admin boleh mengedit sebelum disimpan. Karena kode panjang, **nomor dokumen** memakai `stores.receipt_prefix` (singkat, mis. `MU`, bisa diubah) agar nota thermal tetap ringkas.
 4. Perubahan skema lewat `tenants:migrate` dengan laporan per toko; `stores.schema_version` terlihat di Master Toko.
-5. Otorisasi di **backend** (policy per role); uji otomatis isolasi toko A vs B.
+5. Otorisasi di **backend** (izin per peran + izin tambahan per user, lihat **Peran & izin**); uji otomatis isolasi toko A vs B dan akses per peran.
 6. Pengaturan toko: nama/alamat/footer nota, ukuran kertas, izinkan stok minus, wajib approval penerimaan, ambang selisih besar opname, kunci penjualan saat opname. (Tidak ada pengaturan pembulatan harga dan batas hari retur.)
 7. **Register**: kode, nama, gudang jual; perangkat terdaftar bisa dicabut Admin.
 

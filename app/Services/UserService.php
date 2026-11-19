@@ -3,17 +3,21 @@
 namespace App\Services;
 
 use App\Enums\UserRole;
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use OwenIt\Auditing\Events\AuditCustom;
 
 /**
- * Creates and changes user accounts together with their store assignment.
+ * Creates and changes user accounts together with their store assignment, role, and the permissions given to them on top
+ * of the role.
  *
  * A super admin has no store; every other user belongs to exactly one store (analisis-sistem 7.0).
  *
- * @phpstan-type UserAttributes array{name: string, username: string, password?: string|null, role: UserRole, store_id?: int|null, is_active: bool}
+ * @phpstan-type UserAttributes array{name: string, username: string, password?: string|null, role: string, store_id?: int|null, permissions?: list<string>, is_active: bool}
+ * @phpstan-type Access array{store_id: int, role: string, permissions: list<string>}|array{}
  */
 class UserService
 {
@@ -29,11 +33,11 @@ class UserService
                 'password' => $userAttributes['password'],
             ]);
             $user->forceFill([
-                'is_super_admin' => $userAttributes['role'] === UserRole::SuperAdmin,
+                'is_super_admin' => $userAttributes['role'] === UserRole::SuperAdmin->value,
                 'is_active' => $userAttributes['is_active'],
             ])->save();
 
-            $this->assignStore($user, $userAttributes['role'], $userAttributes['store_id'] ?? null);
+            $this->assignAccess($user, $userAttributes);
 
             return $user;
         });
@@ -54,11 +58,11 @@ class UserService
             }
 
             $user->forceFill([
-                'is_super_admin' => $userAttributes['role'] === UserRole::SuperAdmin,
+                'is_super_admin' => $userAttributes['role'] === UserRole::SuperAdmin->value,
                 'is_active' => $userAttributes['is_active'],
             ])->save();
 
-            $this->assignStore($user, $userAttributes['role'], $userAttributes['store_id'] ?? null);
+            $this->assignAccess($user, $userAttributes);
 
             return $user;
         });
@@ -69,46 +73,61 @@ class UserService
         $user->forceFill(['is_active' => $isActive])->save();
     }
 
-    private function assignStore(User $user, UserRole $role, ?int $storeId): void
+    /**
+     * A super admin holds every permission already, so they get no store, role, or extra permissions.
+     *
+     * @param  UserAttributes  $userAttributes
+     */
+    private function assignAccess(User $user, array $userAttributes): void
     {
-        $previousAssignment = $this->currentAssignmentOf($user);
+        $previousAccess = $this->currentAccessOf($user);
 
-        if ($role->isStoreRole()) {
-            $user->stores()->sync([$storeId => ['role' => $role->value]]);
-        } else {
+        if ($userAttributes['role'] === UserRole::SuperAdmin->value) {
             $user->stores()->detach();
+            $user->permissions()->detach();
+        } else {
+            $user->stores()->sync([$userAttributes['store_id'] => ['role_id' => Role::query()->where('name', $userAttributes['role'])->value('id')]]);
+            $user->permissions()->sync(Permission::query()->whereIn('name', $userAttributes['permissions'] ?? [])->pluck('id'));
         }
 
-        $this->auditAssignmentChange($user, $previousAssignment, $this->currentAssignmentOf($user));
+        $this->auditAccessChange($user, $previousAccess, $this->currentAccessOf($user));
     }
 
     /**
-     * @return array{store_id: int, role: string}|array{}
+     * @return Access
      */
-    private function currentAssignmentOf(User $user): array
+    private function currentAccessOf(User $user): array
     {
         $store = $user->stores()->first();
 
-        return $store === null ? [] : ['store_id' => $store->id, 'role' => $store->pivot->role];
+        if ($store === null) {
+            return [];
+        }
+
+        return [
+            'store_id' => $store->id,
+            'role' => (string) Role::query()->whereKey($store->pivot->role_id)->value('name'),
+            'permissions' => $user->permissions()->orderBy('name')->pluck('name')->all(),
+        ];
     }
 
     /**
      * Written by hand because the package's relation audit (auditSync) only compares related keys, so a
      * cashier promoted to store admin in the same store would leave no record.
      *
-     * @param  array{store_id: int, role: string}|array{}  $previousAssignment
-     * @param  array{store_id: int, role: string}|array{}  $currentAssignment
+     * @param  Access  $previousAccess
+     * @param  Access  $currentAccess
      */
-    private function auditAssignmentChange(User $user, array $previousAssignment, array $currentAssignment): void
+    private function auditAccessChange(User $user, array $previousAccess, array $currentAccess): void
     {
-        if ($previousAssignment === $currentAssignment) {
+        if ($previousAccess === $currentAccess) {
             return;
         }
 
         $user->auditEvent = 'store_assignment_changed';
         $user->isCustomEvent = true;
-        $user->auditCustomOld = ['store_assignment' => $previousAssignment];
-        $user->auditCustomNew = ['store_assignment' => $currentAssignment];
+        $user->auditCustomOld = ['store_assignment' => $previousAccess];
+        $user->auditCustomNew = ['store_assignment' => $currentAccess];
 
         Event::dispatch(new AuditCustom($user));
 

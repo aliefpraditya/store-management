@@ -7,6 +7,7 @@ use App\Models\CashShift;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\Register;
+use App\Models\Role;
 use App\Models\Stock;
 use App\Models\Unit;
 use App\Models\User;
@@ -22,7 +23,7 @@ trait BuildsCashierFixtures
     protected function storeUser(UserRole $role = UserRole::Cashier): User
     {
         $user = User::factory()->create();
-        $this->store->users()->attach($user->id, ['role' => $role->value]);
+        $this->store->users()->attach($user->id, ['role_id' => Role::idOf($role)]);
 
         return $user;
     }

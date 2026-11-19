@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * Expects the `stores` relation to be loaded. Never exposes the password or email.
+ * Expects the `stores` relation to be loaded (and `permissions` for the edit form). Never exposes the password or email.
  *
  * @mixin User
  */
@@ -25,8 +25,9 @@ class UserResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'username' => $this->username,
-            'role' => $role === null ? null : ['value' => $role->value, 'label' => $role->label(), 'is_store_role' => $role->isStoreRole()],
+            'role' => $role === null ? null : ['value' => $role->name, 'label' => $role->label, 'is_store_role' => ! $role->isSuperAdmin()],
             'store' => $store === null ? null : ['id' => $store->id, 'name' => $store->name],
+            'extra_permissions' => $this->whenLoaded('permissions', fn () => $this->permissions->pluck('name')->all(), []),
             'is_active' => $this->is_active,
             'is_self' => $this->is($request->user()),
             'edit_url' => route('central.users.edit', $this->resource),

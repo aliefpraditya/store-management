@@ -2,8 +2,10 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\Permission;
 use App\Enums\StockOpnameScope;
 use App\Enums\StockOpnameStatus;
+use App\Http\Middleware\EnsureUserCanAccessStore;
 use App\Models\StockOpname;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -23,6 +25,8 @@ class StockOpnameResource extends JsonResource
         $isIn = fn (StockOpnameStatus ...$statuses): bool => in_array($this->status, $statuses, true);
         $isSelectedScope = $this->scope === StockOpnameScope::Selected;
         $actionUrl = fn (string $action, array $parameters = []): string => route("tenant.stock-opnames.{$action}", ['tenant' => tenant('code'), 'stock_opname' => $this->id, ...$parameters]);
+        $mayCount = EnsureUserCanAccessStore::grants($request, Permission::StockOpnamesCount);
+        $mayPost = EnsureUserCanAccessStore::grants($request, Permission::StockOpnamesPost);
 
         return [
             'id' => $this->id,
@@ -41,15 +45,15 @@ class StockOpnameResource extends JsonResource
             'snapshot_at' => $this->snapshot_at?->toIso8601String(),
             'posted_at' => $this->posted_at?->toIso8601String(),
             'created_by' => $this->creator?->name,
-            'can_count' => $isIn(StockOpnameStatus::Counting),
-            'can_manage_products' => $isSelectedScope && $isIn(StockOpnameStatus::Counting),
-            'can_finish' => $isIn(StockOpnameStatus::Counting),
+            'can_count' => $mayCount && $isIn(StockOpnameStatus::Counting),
+            'can_manage_products' => $mayCount && $isSelectedScope && $isIn(StockOpnameStatus::Counting),
+            'can_finish' => $mayCount && $isIn(StockOpnameStatus::Counting),
             'requires_review' => (bool) $this->reason_code?->requiresVarianceReview(),
-            'can_review' => $isIn(StockOpnameStatus::Review) && $this->reason_code?->requiresVarianceReview() === true,
-            'can_reopen' => $isIn(StockOpnameStatus::Review),
-            'can_post' => $isIn(StockOpnameStatus::Review),
+            'can_review' => $mayPost && $isIn(StockOpnameStatus::Review) && $this->reason_code?->requiresVarianceReview() === true,
+            'can_reopen' => ($mayCount || $mayPost) && $isIn(StockOpnameStatus::Review),
+            'can_post' => $mayPost && $isIn(StockOpnameStatus::Review),
             'is_erased_on_cancel' => $this->status->isErasedWhenCancelled(),
-            'can_cancel' => $isIn(StockOpnameStatus::Counting, StockOpnameStatus::Review),
+            'can_cancel' => $mayCount && $isIn(StockOpnameStatus::Counting, StockOpnameStatus::Review),
             'urls' => [
                 'index' => route('tenant.stock-opnames.index', ['tenant' => tenant('code')]),
                 'show' => $actionUrl('show'),

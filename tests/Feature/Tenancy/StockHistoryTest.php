@@ -5,6 +5,7 @@ namespace Tests\Feature\Tenancy;
 use App\Enums\StockMovementType;
 use App\Enums\UserRole;
 use App\Models\Product;
+use App\Models\Role;
 use App\Models\Stock;
 use App\Models\StockMovement;
 use App\Models\StockOpname;
@@ -34,7 +35,7 @@ class StockHistoryTest extends TestCase
 
         $this->store = $this->prepareStoreDatabase(['code' => 'test_history']);
         $this->admin = User::factory()->create();
-        $this->store->users()->attach($this->admin->id, ['role' => UserRole::StoreAdmin->value]);
+        $this->store->users()->attach($this->admin->id, ['role_id' => Role::idOf(UserRole::StoreAdmin)]);
     }
 
     private function url(array $query = []): string
@@ -73,7 +74,7 @@ class StockHistoryTest extends TestCase
     public function test_only_admins_may_open_the_stock_history(): void
     {
         $cashier = User::factory()->create();
-        $this->store->users()->attach($cashier->id, ['role' => UserRole::Cashier->value]);
+        $this->store->users()->attach($cashier->id, ['role_id' => Role::idOf(UserRole::Cashier)]);
 
         $this->actingAs($cashier)->get($this->url())->assertForbidden();
     }

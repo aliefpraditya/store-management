@@ -7,6 +7,7 @@ use App\Models\CashShift;
 use App\Models\ExpenseCategory;
 use App\Models\Product;
 use App\Models\Register;
+use App\Models\Role;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Models\User;
@@ -287,7 +288,7 @@ class ShiftRecapTest extends TestCase
     public function test_a_cashier_who_became_an_admin_before_the_decision_is_reviewed_by_the_super_admin(): void
     {
         $shift = $this->shiftClosedWithShortage();
-        $this->cashier->stores()->updateExistingPivot($this->store->getKey(), ['role' => UserRole::StoreAdmin->value]);
+        $this->cashier->stores()->updateExistingPivot($this->store->getKey(), ['role_id' => Role::idOf(UserRole::StoreAdmin)]);
 
         $this->actingAs($this->admin)->post($this->url('approve', ['shift' => $shift->id]), ['note' => 'ok'])
             ->assertSessionHas('error', 'Selisih kas shift Admin Toko hanya bisa diputuskan Super Admin.');

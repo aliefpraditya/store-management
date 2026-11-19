@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Enums\StoreStatus;
 use App\Enums\UserRole;
+use App\Models\Role;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -38,13 +39,20 @@ class DatabaseSeeder extends Seeder
             'username' => 'admin.mu',
             'email' => 'admin.mu@example.test',
         ]);
-        $store->users()->attach($storeAdmin->id, ['role' => UserRole::StoreAdmin->value]);
+        $store->users()->attach($storeAdmin->id, ['role_id' => Role::idOf(UserRole::StoreAdmin)]);
 
         $cashier = User::factory()->create([
             'name' => 'Kasir Mitra Utama',
             'username' => 'kasir.mu',
             'email' => 'kasir.mu@example.test',
         ]);
-        $store->users()->attach($cashier->id, ['role' => UserRole::Cashier->value]);
+        $store->users()->attach($cashier->id, ['role_id' => Role::idOf(UserRole::Cashier)]);
+
+        $warehouseStaff = User::factory()->create([
+            'name' => 'Petugas Gudang Mitra Utama',
+            'username' => 'gudang.mu',
+            'email' => 'gudang.mu@example.test',
+        ]);
+        $store->users()->attach($warehouseStaff->id, ['role_id' => Role::idOf(UserRole::WarehouseStaff)]);
     }
 }

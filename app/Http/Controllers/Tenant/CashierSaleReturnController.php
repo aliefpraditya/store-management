@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ApiErrorCode;
 use App\Enums\PaymentMethod;
+use App\Enums\Permission;
 use App\Enums\ReturnResolution;
 use App\Enums\SaleStatus;
 use App\Exceptions\SaleReturnException;
@@ -133,7 +134,7 @@ class CashierSaleReturnController extends Controller
         /** @var Store $store */
         $store = tenant();
 
-        return $request->user()->isAdminIn($store);
+        return $request->user()->hasPermissionIn($store, Permission::ReturnsManage);
     }
 
     /**

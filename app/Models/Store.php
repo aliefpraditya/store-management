@@ -120,7 +120,7 @@ class Store extends BaseTenant implements AuditableContract, TenantWithDatabase
      */
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'store_users')->withPivot('role')->withTimestamps();
+        return $this->belongsToMany(User::class, 'store_users')->withPivot('role_id')->withTimestamps();
     }
 
     /**

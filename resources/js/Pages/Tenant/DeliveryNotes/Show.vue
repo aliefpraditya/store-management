@@ -139,7 +139,7 @@ async function print() {
                 <div>
                     <b>{{ note.number }}</b>
                     <small>{{ dateFormat.format(new Date(note.business_date)) }} · dibuat {{ note.created_by_name }}</small>
-                    <small>Nota <a :href="note.sale.show_url" @click.prevent="router.visit(note.sale.show_url)">{{ note.sale.number }}</a><template v-if="note.other_sale_numbers.length > 0">, juga memuat barang dari nota {{ note.other_sale_numbers.join(', ') }}</template></small>
+                    <small>Nota <a v-if="note.sale.show_url" :href="note.sale.show_url" @click.prevent="router.visit(note.sale.show_url)">{{ note.sale.number }}</a><template v-else>{{ note.sale.number }}</template><template v-if="note.other_sale_numbers.length > 0">, juga memuat barang dari nota {{ note.other_sale_numbers.join(', ') }}</template></small>
                 </div>
                 <span class="chip" :class="deliveryNoteStatusChipClass[note.status]">{{ note.status_label }}</span>
             </header>

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Central;
 
 use App\Enums\UserRole;
+use App\Models\Role;
 use App\Models\User;
 use App\Rules\NotDeactivatingOwnAccount;
 use App\Services\AppSettingService;
@@ -36,11 +37,13 @@ class SaveUserRequest extends FormRequest
                 $editedUser === null ? 'required' : 'nullable',
                 'string', 'min:'.app(AppSettingService::class)->passwordMinLength(),
             ],
-            'role' => ['required', Rule::enum(UserRole::class), $this->ownRoleRule()],
+            'role' => ['required', Rule::in([UserRole::SuperAdmin->value, ...Role::query()->pluck('name')]), $this->ownRoleRule()],
             'store_id' => [
-                Rule::requiredIf(fn (): bool => $this->enum('role', UserRole::class)?->isStoreRole() ?? false),
+                Rule::requiredIf(fn (): bool => $this->input('role') !== UserRole::SuperAdmin->value),
                 'nullable', 'integer', Rule::exists('stores', 'id'),
             ],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', Rule::exists('permissions', 'name')],
             'is_active' => ['required', 'boolean', new NotDeactivatingOwnAccount($editedUser, $this->user())],
         ];
     }
@@ -59,7 +62,8 @@ class SaveUserRequest extends FormRequest
             'password.required' => 'Password wajib diisi.',
             'password.min' => 'Password minimal :min karakter.',
             'role.required' => 'Pilih peran.',
-            'role.enum' => 'Peran tidak dikenal.',
+            'role.in' => 'Peran tidak dikenal.',
+            'permissions.*.exists' => 'Izin tidak dikenal.',
             'store_id.required' => 'Pilih toko.',
             'store_id.exists' => 'Toko tidak ditemukan.',
         ];
@@ -83,7 +87,7 @@ class SaveUserRequest extends FormRequest
     private function ownRoleRule(): \Closure
     {
         return function (string $attribute, mixed $value, \Closure $fail): void {
-            if ($this->isEditingOwnAccount() && $value !== $this->editedUser()->role?->value) {
+            if ($this->isEditingOwnAccount() && $value !== $this->editedUser()->role?->name) {
                 $fail('Anda tidak bisa mengubah peran akun sendiri.');
             }
         };

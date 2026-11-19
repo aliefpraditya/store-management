@@ -43,6 +43,9 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $request->user()?->only(['name', 'email', 'is_super_admin']),
+                // What the user holds in the store of this page, for hiding what they may not use; the server still enforces it.
+                'role_label' => fn () => $request->attributes->get(EnsureUserCanAccessStore::ROLE_ATTRIBUTE)?->label,
+                'permissions' => fn () => $request->attributes->get(EnsureUserCanAccessStore::PERMISSIONS_ATTRIBUTE, []),
             ],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
@@ -58,6 +61,7 @@ class HandleInertiaRequests extends Middleware
                 'central_dashboard' => route('central.dashboard'),
                 'central_stores' => route('central.stores.index'),
                 'central_users' => route('central.users.index'),
+                'central_roles' => route('central.roles.index'),
                 'central_settings' => route('central.settings.index'),
                 'login' => route('login'),
                 'logout' => route('logout'),
