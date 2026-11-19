@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../Composables/postJson';
 import { printSheet } from '../../Composables/printSheet';
+import { usePrintTargets } from '../../Composables/usePrintTargets';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 
@@ -19,6 +20,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'delivery', 'hidden']);
 
 const $q = useQuasar();
+
+const { printHintOf } = usePrintTargets();
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -154,7 +157,9 @@ async function printNote(note) {
             <q-card-section v-if="sale?.is_cod" class="done__notes">
                 <div v-for="note in sale.delivery_notes" :key="note.id" class="done__note">
                     <span>Surat jalan <b>{{ note.number }}</b> sudah dibuat. Cetak dan sertakan saat barang diantar.</span>
-                    <q-btn color="primary" unelevated dense no-caps icon="print" label="Cetak Surat Jalan" :loading="printingId === note.id" @click="printNote(note)" />
+                    <q-btn color="primary" unelevated dense no-caps icon="print" label="Cetak Surat Jalan" :loading="printingId === note.id" @click="printNote(note)">
+                        <q-tooltip v-if="printHintOf('delivery_note')">{{ printHintOf('delivery_note') }}</q-tooltip>
+                    </q-btn>
                 </div>
             </q-card-section>
 
@@ -188,6 +193,10 @@ async function printNote(note) {
                 </dl>
             </q-card-section>
 
+            <q-card-section v-if="printHintOf('receipt')" class="done__printer">
+                <small>{{ printHintOf('receipt') }}</small>
+            </q-card-section>
+
             <q-card-actions align="right">
                 <q-btn v-if="sale" outline no-caps color="primary" icon="local_shipping" label="Surat Jalan" :disable="isPrinting" @click="openDelivery" />
                 <q-btn color="primary" unelevated no-caps icon="print" :label="printButtonLabel" :loading="isPrinting" autofocus @click="printAndFinish" />
@@ -200,6 +209,13 @@ async function printNote(note) {
 .done {
     width: 420px;
     max-width: 94vw;
+}
+
+.done__printer {
+    padding-top: 0;
+    padding-bottom: 0;
+    color: #546e7a;
+    text-align: right;
 }
 
 .done__change {

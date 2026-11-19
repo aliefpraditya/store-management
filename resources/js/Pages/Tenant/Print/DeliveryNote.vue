@@ -11,7 +11,7 @@ defineProps({
 <template>
     <Head :title="`Surat Jalan ${note.number}`" />
 
-    <PrintPage paper-width="9.5in">
+    <PrintPage paper-width="9.5in" printer-kind="delivery_note">
         <DeliveryNoteSheet :note="note" />
     </PrintPage>
 </template>

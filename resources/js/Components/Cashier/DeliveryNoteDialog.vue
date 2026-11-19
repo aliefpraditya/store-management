@@ -5,6 +5,7 @@ import { postJson } from '../../Composables/postJson';
 import { printSheet } from '../../Composables/printSheet';
 import { newUuid } from '../../Composables/useCart';
 import { deliveryNoteStatusChipClass } from '../../Composables/useDeliveryNoteStatus';
+import { usePrintTargets } from '../../Composables/usePrintTargets';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
 
 const props = defineProps({
@@ -16,6 +17,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue']);
 
 const $q = useQuasar();
+
+const { printHintOf } = usePrintTargets();
 
 const isLoading = ref(false);
 const isSaving = ref(false);
@@ -198,7 +201,9 @@ async function print(note) {
                         <div class="delivery__note">
                             <b>{{ note.number }}</b>
                             <span class="chip" :class="deliveryNoteStatusChipClass[note.status]">{{ note.status_label }}</span>
-                            <q-btn outline no-caps dense color="primary" icon="print" :label="note.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="printingId === note.id" class="delivery__print" @click="print(note)" />
+                            <q-btn outline no-caps dense color="primary" icon="print" :label="note.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="printingId === note.id" class="delivery__print" @click="print(note)">
+                                <q-tooltip v-if="printHintOf('delivery_note')">{{ printHintOf('delivery_note') }}</q-tooltip>
+                            </q-btn>
                         </div>
                         <ul class="delivery__items">
                             <li v-for="item in note.items" :key="item.sale_item_id">
@@ -239,7 +244,9 @@ async function print(note) {
                 <q-btn flat no-caps label="Tutup" v-close-popup />
                 <template v-if="hasAnythingLeft">
                     <q-btn outline no-caps color="primary" label="Buat" :disable="!canSave" :loading="isSaving" @click="create(false)" />
-                    <q-btn color="primary" unelevated no-caps icon="print" label="Buat & Cetak" :disable="!canSave" :loading="isSaving" @click="create(true)" />
+                    <q-btn color="primary" unelevated no-caps icon="print" label="Buat & Cetak" :disable="!canSave" :loading="isSaving" @click="create(true)">
+                        <q-tooltip v-if="printHintOf('delivery_note')">{{ printHintOf('delivery_note') }}</q-tooltip>
+                    </q-btn>
                 </template>
             </q-card-actions>
         </q-card>

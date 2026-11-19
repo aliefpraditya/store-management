@@ -9,23 +9,27 @@ use Brick\Math\RoundingMode;
 use Illuminate\Support\Facades\DB;
 
 /**
- * The settings an admin keeps for one store: how its paper (receipt, delivery note, reports) reads, and two rules of
- * the stock opname. Each has a default that holds until it is changed, and a blank text goes back to the default. Must
- * run while the store's tenancy is initialized.
+ * The settings an admin keeps for one store: how its paper (receipt, delivery note, reports) reads, which printers print
+ * the receipt and the delivery note, and two rules of the stock opname. Each has a default that holds until it is
+ * changed, and a blank text goes back to the default. Must run while the store's tenancy is initialized.
  *
  * @phpstan-type Letterhead array{name: string, address: string|null, phone: string|null}
- * @phpstan-type StoreSettings array{receipt_name: string, receipt_address: string, receipt_phone: string, receipt_footer: string, paper_width: int, large_variance_threshold: string, lock_sales_during_opname: bool, auto_print_receipt: bool}
+ * @phpstan-type PrintTarget array{name: string, width_mm: float, height_mm: float|null}
+ * @phpstan-type StoreSettings array{receipt_name: string, receipt_address: string, receipt_phone: string, receipt_footer: string, paper_width: int, receipt_printer: string, delivery_note_printer: string, is_qz_tray_enabled: bool, large_variance_threshold: string, lock_sales_during_opname: bool, auto_print_receipt: bool}
  */
 class StoreSettingService
 {
     public const DEFAULT_RECEIPT_FOOTER = "Barang yang sudah dibeli tidak dapat ditukar atau dikembalikan kecuali ada perjanjian sebelumnya.\nTerimakasih Telah Berbelanja";
 
-    /** The widths of the thermal roll a receipt can be printed on, in millimetres. */
-    public const PAPER_WIDTHS = [58, 80];
+    /** The widths of the roll a receipt can be printed on, in millimetres (58 and 80 thermal, 76 for a dot matrix receipt printer such as the Epson TM-U220B). */
+    public const PAPER_WIDTHS = [58, 76, 80];
 
     public const DEFAULT_PAPER_WIDTH = 80;
 
-    private const KEYS = ['receipt_name', 'receipt_address', 'receipt_phone', 'receipt_footer', 'paper_width', 'large_variance_threshold', 'lock_sales_during_opname', 'auto_print_receipt'];
+    /** The continuous form a delivery note is printed on (9.5 x 5.5 inch), in millimetres. */
+    private const DELIVERY_NOTE_PAGE_MM = ['width' => 241.3, 'height' => 139.7];
+
+    private const KEYS = ['receipt_name', 'receipt_address', 'receipt_phone', 'receipt_footer', 'paper_width', 'receipt_printer', 'delivery_note_printer', 'is_qz_tray_enabled', 'large_variance_threshold', 'lock_sales_during_opname', 'auto_print_receipt'];
 
     /** @var array<string, string|null>|null what the database held when it was first asked, until the next update */
     private ?array $storedSettings = null;
@@ -69,6 +73,40 @@ class StoreSettingService
     }
 
     /**
+     * Where the receipt (and the other roll prints: return, order, shift report) is printed: the printer named for it and
+     * the roll it is loaded with. Null while no printer is named.
+     *
+     * @return PrintTarget|null
+     */
+    public function receiptPrintTarget(): ?array
+    {
+        $name = $this->printerNamed('receipt_printer');
+
+        return $name === null ? null : ['name' => $name, 'width_mm' => (float) $this->paperWidth(), 'height_mm' => null];
+    }
+
+    /**
+     * Where the delivery note is printed: the printer named for it, loaded with continuous form. Null while no printer is named.
+     *
+     * @return PrintTarget|null
+     */
+    public function deliveryNotePrintTarget(): ?array
+    {
+        $name = $this->printerNamed('delivery_note_printer');
+
+        return $name === null ? null : ['name' => $name, 'width_mm' => self::DELIVERY_NOTE_PAGE_MM['width'], 'height_mm' => self::DELIVERY_NOTE_PAGE_MM['height']];
+    }
+
+    /**
+     * Whether prints go straight to the named printers through QZ Tray, a small program on the cashier's computer, instead
+     * of opening the browser's print dialog.
+     */
+    public function isQzTrayEnabled(): bool
+    {
+        return ($this->stored()['is_qz_tray_enabled'] ?? '0') === '1';
+    }
+
+    /**
      * What an opname variance is worth (in rupiah, at the last cost price) before it needs a reason; null when
      * there is no such limit.
      */
@@ -107,6 +145,9 @@ class StoreSettingService
             'receipt_phone' => (string) ($stored['receipt_phone'] ?? ''),
             'receipt_footer' => $this->receiptFooter(),
             'paper_width' => $this->paperWidth(),
+            'receipt_printer' => (string) ($stored['receipt_printer'] ?? ''),
+            'delivery_note_printer' => (string) ($stored['delivery_note_printer'] ?? ''),
+            'is_qz_tray_enabled' => $this->isQzTrayEnabled(),
             'large_variance_threshold' => (string) ($this->largeVarianceThreshold()?->toScale(0, RoundingMode::HalfUp) ?? ''),
             'lock_sales_during_opname' => $this->isSalesLockedDuringOpname(),
             'auto_print_receipt' => $this->isReceiptPrintedAutomatically(),
@@ -120,7 +161,7 @@ class StoreSettingService
      * otherwise both try to create the same key and one of them would fail on the unique key. The values are then
      * written as updates, so the audit trail keeps recording each change.
      *
-     * @param  array{receipt_name?: string|null, receipt_address?: string|null, receipt_phone?: string|null, receipt_footer?: string|null, paper_width: int|string, large_variance_threshold?: string|int|float|null, lock_sales_during_opname: bool, auto_print_receipt: bool}  $settings
+     * @param  array{receipt_name?: string|null, receipt_address?: string|null, receipt_phone?: string|null, receipt_footer?: string|null, paper_width: int|string, receipt_printer?: string|null, delivery_note_printer?: string|null, is_qz_tray_enabled?: bool, large_variance_threshold?: string|int|float|null, lock_sales_during_opname: bool, auto_print_receipt: bool}  $settings
      */
     public function update(array $settings): void
     {
@@ -139,6 +180,13 @@ class StoreSettingService
         });
 
         $this->storedSettings = null;
+    }
+
+    private function printerNamed(string $key): ?string
+    {
+        $name = $this->stored()[$key] ?? null;
+
+        return filled($name) ? $name : null;
     }
 
     /**

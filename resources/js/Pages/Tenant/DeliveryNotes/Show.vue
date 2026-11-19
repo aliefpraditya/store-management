@@ -5,6 +5,7 @@ import { useQuasar } from 'quasar';
 import { postJson } from '../../../Composables/postJson';
 import { printSheet } from '../../../Composables/printSheet';
 import { deliveryNoteStatusChipClass } from '../../../Composables/useDeliveryNoteStatus';
+import { usePrintTargets } from '../../../Composables/usePrintTargets';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
@@ -16,6 +17,8 @@ const props = defineProps({
 });
 
 const $q = useQuasar();
+
+const { printHintOf } = usePrintTargets();
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' });
@@ -112,7 +115,9 @@ async function print() {
 
         <template #actions>
             <q-btn v-if="note.can_cancel" flat no-caps dense color="negative" label="Batalkan" class="q-mr-sm" @click="cancel" />
-            <q-btn outline no-caps dense color="primary" icon="print" :label="note.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="isPrinting" class="q-mr-sm" @click="print" />
+            <q-btn outline no-caps dense color="primary" icon="print" :label="note.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="isPrinting" class="q-mr-sm" @click="print">
+                <q-tooltip v-if="printHintOf('delivery_note')">{{ printHintOf('delivery_note') }}</q-tooltip>
+            </q-btn>
             <q-btn v-if="note.can_ship" color="primary" unelevated no-caps dense label="Tandai Dikirim" @click="openShip" />
             <q-btn v-if="note.can_complete" color="positive" unelevated no-caps dense label="Selesaikan Pengiriman" @click="openComplete" />
             <q-btn

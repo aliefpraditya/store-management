@@ -1,6 +1,6 @@
 # Pengaturan Toko dan Pengaturan Pusat — Dokumentasi Teknis
 
-> **Modul:** Halaman Pengaturan toko (kop dan kertas cetak, cetak nota otomatis, aturan stok opname, alasan selisih opname, daftar sopir, satuan) dan halaman Pengaturan pusat milik Super Admin (panjang minimal password)
+> **Modul:** Halaman Pengaturan toko (kop dan kertas cetak, nama printer struk dan surat jalan dengan cetak langsung lewat QZ Tray, cetak nota otomatis, aturan stok opname, alasan selisih opname, daftar sopir, satuan) dan halaman Pengaturan pusat milik Super Admin (panjang minimal password)
 > **Stack:** Laravel 13 (PHP 8.3), Inertia 3, Vue 3, Quasar 2, stancl/tenancy
 > **Audiens:** Engineer yang memelihara atau memperluas fitur ini
 > **Database:** per toko untuk `settings`, `opname_reasons`, `drivers`; pusat untuk `app_settings`
@@ -10,7 +10,7 @@ Dokumen ini berpasangan dengan [multi-toko-pengguna-docs.md](multi-toko-pengguna
 
 ## 1. Ringkasan
 
-Admin Toko (atau Super Admin yang sedang masuk ke toko) membuka **Pengaturan Toko** untuk mengatur hal-hal yang memengaruhi seluruh kertas dan beberapa aturan stok di toko itu: nama, alamat, dan telepon di kop nota, teks penutup nota, lebar kertas thermal (58 atau 80 mm), cetak nota otomatis setelah bayar, ambang selisih opname yang wajib diberi catatan, dan kunci penjualan barang yang sedang dihitung opname. Halaman yang sama memuat dua daftar yang tidak pernah dihapus, hanya dinonaktifkan: **alasan selisih opname** dan **sopir**. Semuanya disimpan dengan **satu tombol Simpan** dan ditulis semua-atau-tidak sama sekali. Super Admin punya halaman lain, **Pengaturan pusat**, yang saat ini hanya berisi satu angka: panjang minimal password untuk semua toko.
+Admin Toko (atau Super Admin yang sedang masuk ke toko) membuka **Pengaturan Toko** untuk mengatur hal-hal yang memengaruhi seluruh kertas dan beberapa aturan stok di toko itu: nama, alamat, dan telepon di kop nota, teks penutup nota, lebar kertas nota (58, 76, atau 80 mm), **nama printer struk dan printer surat jalan** beserta pilihan **cetak langsung lewat QZ Tray** (tanpa dialog cetak), cetak nota otomatis setelah bayar, ambang selisih opname yang wajib diberi catatan, dan kunci penjualan barang yang sedang dihitung opname. Halaman yang sama memuat dua daftar yang tidak pernah dihapus, hanya dinonaktifkan: **alasan selisih opname** dan **sopir**. Semuanya disimpan dengan **satu tombol Simpan** dan ditulis semua-atau-tidak sama sekali. Super Admin punya halaman lain, **Pengaturan pusat**, yang saat ini hanya berisi satu angka: panjang minimal password untuk semua toko.
 
 Setiap pengaturan punya **nilai bawaan yang berlaku sampai diubah**, dan teks yang dikosongkan kembali ke bawaannya. Karena itu tabel `settings` boleh kosong dan tetap benar: pembaca (`StoreSettingService`) selalu menyediakan bawaan.
 
@@ -21,7 +21,7 @@ flowchart LR
     C --> D["Satu tombol Simpan<br/>PUT /t/code/settings"]
     D --> E["SaveStoreSettingsRequest<br/>rules + after()"]
     E --> F["SettingsPageService::save<br/>satu transaksi"]
-    F --> G["StoreSettingService::update<br/>tabel settings, 8 kunci"]
+    F --> G["StoreSettingService::update<br/>tabel settings, 11 kunci"]
     F --> H["OpnameReasonService::sync<br/>tabel opname_reasons"]
     F --> I["DriverService::sync<br/>tabel drivers"]
     G --> J["Dibaca pemakainya:<br/>nota, retur, laporan shift,<br/>pesanan, kasir, SaleService,<br/>StockOpnameService"]
@@ -43,12 +43,12 @@ flowchart TD
     subgraph REQ["Sistem: middleware dan Form Request"]
         R1{"store.access dan store.admin<br/>peran Admin Toko atau Super Admin?"}
         R2["403"]
-        R3{"rules() lolos?<br/>paper_width 58 atau 80, ambang bilangan bulat lebih dari 0,<br/>dua toggle wajib, id baris ada di tabel"}
+        R3{"rules() lolos?<br/>paper_width 58, 76, atau 80, ambang bilangan bulat lebih dari 0,<br/>dua toggle wajib, id baris ada di tabel"}
         R4{"after(): nama alasan atau sopir unik<br/>tanpa beda huruf besar kecil,<br/>alasan bawaan tetap aktif?"}
         R5["Kembali ke halaman dengan errors<br/>per field, tidak ada yang ditulis"]
     end
     subgraph SVC["Sistem: SettingsPageService dalam satu transaksi"]
-        S1["StoreSettingService::update<br/>insertOrIgnore 8 baris kosong,<br/>lalu updateOrCreate per kunci"]
+        S1["StoreSettingService::update<br/>insertOrIgnore 11 baris kosong,<br/>lalu updateOrCreate per kunci"]
         S2{"Daftar opname_reasons<br/>dikirim?"}
         S3["OpnameReasonService::sync<br/>id ada: ubah nama dan status,<br/>tanpa id: buat baru"]
         S4{"Daftar drivers<br/>dikirim?"}
@@ -82,13 +82,13 @@ Migrasi: `2026_10_27_152515_create_settings_and_document_sequences_tables` (bent
 | Kolom | Tipe | Null | Catatan |
 |---|---|---|---|
 | `id` | bigint, PK | tidak | |
-| `key` | string(64) | tidak | **Unique.** Delapan kunci yang dikenal `StoreSettingService::KEYS` (lihat §5) |
+| `key` | string(64) | tidak | **Unique.** Sebelas kunci yang dikenal `StoreSettingService::KEYS` (lihat §5) |
 | `value` | text | ya | Null berarti "pakai bawaan". Boolean disimpan `'1'`/`'0'`, angka sebagai teks |
 | `created_at`, `updated_at` | timestamp | ya | |
 
 Mengapa tabel dibuat ulang dengan `id`: bentuk pertama memakai `key` sebagai PK string, sedangkan audit trail mencatat `auditable_id` berupa angka dan tidak bisa menunjuk baris itu. Tabel lama memang belum pernah berisi data; migrasi yang baru sengaja **berhenti dengan galat** bila tabelnya ternyata berisi baris, karena `DROP TABLE` tidak bisa dibatalkan bila pembuatan tabel baru gagal sesudahnya, dan tidak melakukan apa-apa bila kolom `id` sudah ada. `down()` mengembalikan bentuk lama.
 
-Kolom `value` boleh `NULL` karena `insertOrIgnore` membuat kedelapan baris dalam keadaan kosong lebih dulu (§7.1), dan karena teks yang dikosongkan disimpan sebagai `NULL`, bukan string kosong.
+Kolom `value` boleh `NULL` karena `insertOrIgnore` membuat kesebelas baris dalam keadaan kosong lebih dulu (§7.1), dan karena teks yang dikosongkan disimpan sebagai `NULL`, bukan string kosong.
 
 ### `opname_reasons` (DB toko)
 
@@ -143,7 +143,7 @@ erDiagram
 
     settings {
         bigint id PK
-        string key UK "maks 64, delapan kunci dikenal"
+        string key UK "maks 64, sebelas kunci dikenal"
         text value "nullable, null berarti bawaan"
     }
     opname_reasons {
@@ -199,7 +199,7 @@ Enum terkait: `OpnameReasonBehavior` (`plain`, `damaged`; method `needsDamageDec
 
 Tidak ada kunci `config/` atau env untuk modul ini; pengaturannya hidup di database dan konstanta kode.
 
-### Delapan kunci tabel `settings`
+### Sebelas kunci tabel `settings`
 
 | Kunci | Bawaan | Disimpan sebagai | Dibaca lewat | Pemakai |
 |---|---|---|---|---|
@@ -207,12 +207,15 @@ Tidak ada kunci `config/` atau env untuk modul ini; pengaturannya hidup di datab
 | `receipt_address` | `stores.address` | teks atau `NULL` | `letterhead()['address']` | idem |
 | `receipt_phone` | `stores.phone` | teks atau `NULL` | `letterhead()['phone']` | idem |
 | `receipt_footer` | `StoreSettingService::DEFAULT_RECEIPT_FOOTER` (dua baris: syarat tukar barang dan terima kasih) | teks atau `NULL` | `receiptFooter()` | Nota penjualan (`ShiftReceiptController`) dan lembar pesanan (`CashierOrderController`) |
-| `paper_width` | `80` (`DEFAULT_PAPER_WIDTH`) | `'58'` atau `'80'` | `paperWidth()` (nilai di luar `PAPER_WIDTHS` kembali ke 80) | Nota, bukti retur, lembar pesanan, laporan shift (`ShiftReceiptController`, `SaleReturnController`, `CashierSaleReturnController`, `CashierOrderController`, `ShiftController`, `ShiftRecapController`). **Tidak** dipakai surat jalan, tutup hari, dan laporan penjualan |
+| `paper_width` | `80` (`DEFAULT_PAPER_WIDTH`) | `'58'`, `'76'`, atau `'80'` | `paperWidth()` (nilai di luar `PAPER_WIDTHS` kembali ke 80; 76 mm untuk printer struk dot matrix seperti Epson TM-U220B) | Nota, bukti retur, lembar pesanan, laporan shift (`ShiftReceiptController`, `SaleReturnController`, `CashierSaleReturnController`, `CashierOrderController`, `ShiftController`, `ShiftRecapController`). **Tidak** dipakai surat jalan, tutup hari, dan laporan penjualan |
+| `receipt_printer` | tanpa printer (`null`) | nama printer atau `NULL` | `receiptPrintTarget()` (`name`, `width_mm` = `paperWidth()`, tanpa tinggi) | Prop bersama `print_targets.receipt`: tujuan cetak langsung nota, bukti retur, lembar pesanan, dan laporan shift |
+| `delivery_note_printer` | tanpa printer (`null`) | nama printer atau `NULL` | `deliveryNotePrintTarget()` (kertas tetap 241,3 x 139,7 mm = 9,5 x 5,5 inci, `DELIVERY_NOTE_PAGE_MM`) | Prop bersama `print_targets.delivery_note`: tujuan cetak langsung surat jalan |
+| `is_qz_tray_enabled` | `false` | `'1'`/`'0'` | `isQzTrayEnabled()` | Prop bersama `print_targets.is_qz_tray_enabled`: bila `true`, `PrintPage` mengirim cetakan langsung ke printer lewat QZ Tray tanpa dialog cetak; bila `false`, dialog cetak browser dipakai dan nama printer hanya mengingatkan |
 | `auto_print_receipt` | `false` | `'1'`/`'0'` | `isReceiptPrintedAutomatically()` | `CashierController` (prop `is_receipt_printed_automatically` untuk layar kasir) |
 | `large_variance_threshold` | tanpa batas (`null`) | rupiah bulat sebagai teks, atau `NULL` | `largeVarianceThreshold()` (`BigDecimal`, hanya bila lebih dari 0) | `StockOpnameService::requireNotesForLargeVariances` saat posting |
 | `lock_sales_during_opname` | `false` | `'1'`/`'0'` | `isSalesLockedDuringOpname()` | `SaleService::requireNoOpnameLock` (menolak penjualan), `CashierCatalogService` (penanda `is_being_counted` pada hasil pencarian; daftar terlaris tidak menampilkan barang yang sedang dihitung) |
 
-Konstanta lain: `StoreSettingService::PAPER_WIDTHS = [58, 80]`; `SaveStoreSettingsRequest::MAX_AMOUNT = 999999999999` (batas ambang); `AppSettingService`: `DEFAULT_PASSWORD_MIN_LENGTH = 5`, `LOWEST_PASSWORD_MIN_LENGTH = 5`, `HIGHEST_PASSWORD_MIN_LENGTH = 64`; kunci `password_min_length`.
+Konstanta lain: `StoreSettingService::PAPER_WIDTHS = [58, 76, 80]`; `SaveStoreSettingsRequest::MAX_AMOUNT = 999999999999` (batas ambang); `AppSettingService`: `DEFAULT_PASSWORD_MIN_LENGTH = 5`, `LOWEST_PASSWORD_MIN_LENGTH = 5`, `HIGHEST_PASSWORD_MIN_LENGTH = 64`; kunci `password_min_length`.
 
 Kunci yang disebut `analisis-sistem.md` 6.7 tetapi **tidak ada** di kode (Grep `app/`, `routes/`, `config/`, `database/`, `resources/js`, `tests/` kosong): `allow_negative_stock`, `receipt_header` (diganti tiga kunci `receipt_name/address/phone`), `paper_size` (diganti `paper_width`), `receiving_requires_approval`, `receiving_requires_purchase`.
 
@@ -232,7 +235,7 @@ Semua rute web (Inertia dan redirect); tidak ada JSON API.
 
 ### Prop halaman `Tenant/Settings/Index`
 
-`settings` (delapan nilai dalam bentuk yang siap diedit, lihat `StoreSettingService::all()`), `store_letterhead` (nama, alamat, telepon toko, dipakai sebagai placeholder), `paper_widths` (`[58, 80]`), `units` (satu halaman paginasi), `unit_filters`, `unit_per_page_options`, `drivers` (`id`, `name`, `is_active`), `opname_reasons` (`id`, `name`, `is_system`, `is_active`), dan `urls` (`update`, `unit_create`). Satuan dimuat ulang sebagian lewat `only: ['units', 'unit_filters']` (parameter query `unit_search`, `unit_sort`, `unit_direction`, `unit_per_page`, `unit_page`); bila halaman satuan yang diminta kosong dan lebih besar dari 1, controller mengalihkan ke halaman terakhir.
+`settings` (sebelas nilai dalam bentuk yang siap diedit, lihat `StoreSettingService::all()`), `store_letterhead` (nama, alamat, telepon toko, dipakai sebagai placeholder), `paper_widths` (`[58, 76, 80]`), `units` (satu halaman paginasi), `unit_filters`, `unit_per_page_options`, `drivers` (`id`, `name`, `is_active`), `opname_reasons` (`id`, `name`, `is_system`, `is_active`), dan `urls` (`update`, `unit_create`). Semua halaman toko juga mendapat prop bersama `print_targets` (`is_qz_tray_enabled`, serta `receipt` dan `delivery_note` berisi `name`, `width_mm`, `height_mm` atau `null` bila printernya belum dinamai; seluruhnya `null` di halaman pusat), diisi `HandleInertiaRequests::printTargets()`. Satuan dimuat ulang sebagian lewat `only: ['units', 'unit_filters']` (parameter query `unit_search`, `unit_sort`, `unit_direction`, `unit_per_page`, `unit_page`); bila halaman satuan yang diminta kosong dan lebih besar dari 1, controller mengalihkan ke halaman terakhir.
 
 ### Contoh permintaan dan respons
 
@@ -246,7 +249,10 @@ Contoh berikut **ilustratif** (disusun dari kode dan tes, bukan tangkapan lalu l
   "receipt_address": "Jl. Poros Kuprik",
   "receipt_phone": "",
   "receipt_footer": "Terima kasih\nDatang lagi",
-  "paper_width": 58,
+  "paper_width": 76,
+  "receipt_printer": "EPSON TM-U220 Receipt",
+  "delivery_note_printer": "EPSON LX-310",
+  "is_qz_tray_enabled": true,
   "large_variance_threshold": "50000",
   "lock_sales_during_opname": true,
   "auto_print_receipt": false,
@@ -268,7 +274,7 @@ Validasi gagal: redirect kembali dengan galat per field, dengan kunci bertitik u
 ```json
 {
   "errors": {
-    "paper_width": "Lebar kertas nota hanya 58 atau 80 mm.",
+    "paper_width": "Lebar kertas nota hanya 58, 76, atau 80 mm.",
     "large_variance_threshold": "Ambang selisih harus bilangan bulat rupiah.",
     "opname_reasons.1.name": "Alasan dengan nama itu sudah ada.",
     "drivers.0.name": "Nama sopir sudah ada."
@@ -284,13 +290,13 @@ Nama yang saling bertukar antar baris lolos validasi tetapi bentrok di indeks un
 
 ### 7.1 `StoreSettingService` (`app/Services/StoreSettingService.php`)
 
-Pembaca dan penulis delapan kunci toko. Harus berjalan saat tenancy toko aktif (memakai `tenant()` untuk cadangan kop).
+Pembaca dan penulis sebelas kunci toko. Harus berjalan saat tenancy toko aktif (memakai `tenant()` untuk cadangan kop).
 
-- **Pembacaan murah dan konsisten.** `stored()` membaca seluruh kedelapan baris sekali per instance service (`$storedSettings ??=`), karena satu nota atau satu pencarian kasir meminta beberapa pengaturan berurutan. Cache itu dibuang (`= null`) setiap kali `update()` selesai, sehingga service yang sama langsung melihat nilai barunya (diuji `test_the_service_reads_the_settings_once_and_sees_a_save_made_through_it`).
+- **Pembacaan murah dan konsisten.** `stored()` membaca seluruh kesebelas baris sekali per instance service (`$storedSettings ??=`), karena satu nota atau satu pencarian kasir meminta beberapa pengaturan berurutan. Cache itu dibuang (`= null`) setiap kali `update()` selesai, sehingga service yang sama langsung melihat nilai barunya (diuji `test_the_service_reads_the_settings_once_and_sees_a_save_made_through_it`).
 - **Bawaan tersembunyi di pembaca, bukan di data.** `letterhead()` memakai nilai tersimpan bila `filled`, kalau tidak data toko; `paperWidth()` menolak nilai di luar `PAPER_WIDTHS`; `largeVarianceThreshold()` mengembalikan `null` bila kosong atau tidak positif; dua boolean dibandingkan dengan `'1'`.
 - **`all()`** menyusun nilai untuk form: teks kosong tetap `''`, tetapi `receipt_footer` dikembalikan sebagai `receiptFooter()` yang berarti **teks bawaan ikut terisi di form**, dan ambang dibulatkan ke rupiah penuh dengan `RoundingMode::HalfUp` (data lama yang tersimpan dengan desimal tetap membuka halaman: `test_a_limit_that_was_stored_with_decimals_still_shows_the_page`).
 - **`update(array $settings)`** dalam `DB::transaction`:
-  1. `StoreSetting::insertOrIgnore` memasukkan kedelapan kunci dengan `value = NULL` bila belum ada. Ini ada karena dua simpan pertama yang bersamaan dengan `updateOrCreate` saja akan sama-sama mencoba membuat kunci yang sama dan salah satunya gagal di indeks unik `key`.
+  1. `StoreSetting::insertOrIgnore` memasukkan kesebelas kunci dengan `value = NULL` bila belum ada. Ini ada karena dua simpan pertama yang bersamaan dengan `updateOrCreate` saja akan sama-sama mencoba membuat kunci yang sama dan salah satunya gagal di indeks unik `key`.
   2. Lalu untuk **setiap** kunci `updateOrCreate(['key' => $key], ['value' => $value])`. Nilai ditulis sebagai **update** (bukan insert) dengan sengaja: `insertOrIgnore` memakai query builder dan tidak memicu event model, sedangkan `updateOrCreate` memicu `updated` sehingga audit trail mencatat tiap perubahan (`old_values` dan `new_values` berisi `value`). Konsekuensinya: baris yang dibuat oleh `insertOrIgnore` sendiri tidak punya audit `created`, dan simpan ulang tanpa perubahan nilai tidak menghasilkan audit.
   3. Konversi nilai: boolean ke `'1'`/`'0'`; nilai `filled` di-`trim` menjadi teks; selain itu `NULL`. Kunci yang **tidak ada** di array masukan diperlakukan sebagai `NULL` (§13 butir 1).
 
@@ -323,7 +329,7 @@ sequenceDiagram
             C->>P: save(validated)
             P->>DB: BEGIN
             P->>S: update(settings)
-            S->>DB: INSERT IGNORE 8 kunci (value NULL)
+            S->>DB: INSERT IGNORE 11 kunci (value NULL)
             S->>DB: updateOrCreate tiap kunci (audit updated)
             opt opname_reasons dikirim
                 P->>O: sync(rows)
@@ -361,8 +367,11 @@ Keduanya bentuknya kembar (§13 mencatat duplikasinya).
 
 ### 7.5 Frontend: `Tenant/Settings/Index.vue` dan `NamedListCard.vue`
 
-- `form = useForm(savedData())` memegang semua yang dikirim satu `PUT`: delapan nilai ditambah dua daftar. Tombol Simpan nonaktif selama `!form.isDirty`. Pada `onSuccess` form diset ulang ke data server (`form.defaults(savedData())` lalu `form.reset()`), sehingga baris baru langsung memakai `id` dari server.
+- `form = useForm(savedData())` memegang semua yang dikirim satu `PUT`: sebelas nilai ditambah dua daftar. Tombol Simpan nonaktif selama `!form.isDirty`. Pada `onSuccess` form diset ulang ke data server (`form.defaults(savedData())` lalu `form.reset()`), sehingga baris baru langsung memakai `id` dari server.
 - Satuan **bukan** bagian dari form itu: dialog `UnitFormDialog` menyimpan satu per satu. Teks petunjuk di halaman memberitahu pengguna pembedaan ini.
+- **Kartu Printer.** Toggle *Cetak langsung lewat QZ Tray*, tombol *Cek QZ Tray* (`listPrinters()` menyambung ke QZ Tray dan mengambil nama printer komputer itu), dan dua `PrinterNameField` (printer struk, printer surat jalan): kolom nama yang bisa diketik, menu untuk memilih nama dari daftar yang terdeteksi, dan tombol *Tes* (`printTestPage()`) yang mencetak halaman uji dengan kertas printer itu sebelum disimpan. Nama harus sama persis dengan nama printer di Windows.
+- **Petunjuk di tombol cetak.** `usePrintTargets()` membaca prop bersama `print_targets`; `printHintOf(kind)` memberi teks "Dicetak langsung ke printer X" (QZ Tray aktif) atau "Pilih printer X di dialog cetak" (tidak). Tampil di dialog "nota selesai" kasir dan sebagai tooltip tombol cetak surat jalan (`SaleDoneDialog`, `DeliveryNoteDialog`, `DeliveryNotes/Show`).
+- **Cetak langsung lewat QZ Tray.** `PrintPage` (dipakai semua halaman cetak) menerima `printerKind` (`receipt` untuk nota, bukti retur, lembar pesanan, laporan shift; `delivery_note` untuk surat jalan; kosong untuk laporan A4 dan label). Bila `is_qz_tray_enabled` dan printer untuk jenis itu sudah dinamai, `print()` memanggil `printSheetElement()` (`Composables/qzTray.js`): isi sheet beserta seluruh CSS-nya dijadikan HTML satu berkas, lalu `qz.print` dengan `type: 'pixel'`, `format: 'html'`, ukuran halaman printer (tinggi roll = tinggi isi), margin 0, hitam putih. Sesudahnya halaman menembakkan `afterprint` supaya `printSheet.js` melepas iframe seperti sehabis dialog cetak. Bila QZ Tray gagal (tidak berjalan, ditolak, nama printer salah), halaman memberi tahu halaman induknya lewat `postMessage` (`SHEET_QZ_FALLBACK_MESSAGE`, ditampilkan `printSheet.js` sebagai notifikasi) dan membuka dialog cetak browser, sehingga cetakan tidak hilang. Klien `qz-tray` dimuat dengan `import()` pada pemakaian pertama.
 - `NamedListCard` dipakai ulang untuk alasan opname dan sopir. Baris yang ada tidak punya tombol hapus; baris baru ditandai "baru" dan hanya ada di daftar lokal sampai disimpan; alasan bawaan ditandai "bawaan" dan toggle-nya dikunci. Galat per baris dicocokkan lewat kunci `{errorKey}.{index}.name` atau `.is_active`, jadi urutan array yang dikirim harus sama dengan urutan yang ditampilkan.
 
 ### 7.6 `AppSettingService` dan Pengaturan pusat
@@ -381,7 +390,10 @@ Gagal = tidak ada yang ditulis (validasi terjadi sebelum `SettingsPageService`).
 | `receipt_address` | `nullable`, `string`, `max:500` | `settings.receipt_address` | (bawaan) |
 | `receipt_phone` | `nullable`, `string`, `max:100` | `settings.receipt_phone` | (bawaan) |
 | `receipt_footer` | `nullable`, `string`, `max:1000` | `settings.receipt_footer` | (bawaan) |
-| `paper_width` | `required`, `integer`, `in:58,80` | `settings.paper_width` | `Lebar kertas nota hanya 58 atau 80 mm.` |
+| `paper_width` | `required`, `integer`, `in:58,76,80` | `settings.paper_width` | `Lebar kertas nota hanya 58, 76, atau 80 mm.` |
+| `receipt_printer` | `nullable`, `string`, `max:255` | `settings.receipt_printer` | (bawaan) |
+| `delivery_note_printer` | `nullable`, `string`, `max:255` | `settings.delivery_note_printer` | (bawaan) |
+| `is_qz_tray_enabled` | `required`, `boolean` | `settings.is_qz_tray_enabled` | (bawaan) |
 | `large_variance_threshold` | `nullable`, `numeric`, `gt:0`, `max:999999999999`, `decimal:0` | `settings.large_variance_threshold` | `Ambang selisih harus berupa angka.` / `Ambang selisih harus lebih dari 0. Kosongkan untuk tanpa batas.` / `Ambang selisih harus bilangan bulat rupiah.` |
 | `lock_sales_during_opname` | `required`, `boolean` | `settings.lock_sales_during_opname` | (bawaan) |
 | `auto_print_receipt` | `required`, `boolean` | `settings.auto_print_receipt` | (bawaan) |
@@ -435,9 +447,9 @@ Teks UI dan pesan galat berbahasa Indonesia dan tertanam di `messages()` request
 
 ## 13. Keterbatasan / Utang Teknis
 
-1. **`PUT /settings` adalah "ganti semua" untuk delapan nilai, tetapi "biarkan" untuk dua daftar.** Di `StoreSettingService::update` (baris 134) `$settings[$key] ?? null` memperlakukan kunci yang tidak dikirim sebagai kosong. Halaman Vue selalu mengirim semuanya sehingga aman, tetapi klien lain yang mengirim `PUT` sebagian tanpa `receipt_name`, `receipt_address`, `receipt_phone`, `receipt_footer`, atau `large_variance_threshold` akan menghapus nilai itu kembali ke bawaan tanpa galat (hanya `paper_width` dan dua boolean wajib oleh `rules()`). Daftar sopir dan alasan bersifat sebaliknya: yang tidak dikirim dibiarkan.
+1. **`PUT /settings` adalah "ganti semua" untuk sebelas nilai, tetapi "biarkan" untuk dua daftar.** Di `StoreSettingService::update` (baris 134) `$settings[$key] ?? null` memperlakukan kunci yang tidak dikirim sebagai kosong. Halaman Vue selalu mengirim semuanya sehingga aman, tetapi klien lain yang mengirim `PUT` sebagian tanpa `receipt_name`, `receipt_address`, `receipt_phone`, `receipt_footer`, atau `large_variance_threshold` akan menghapus nilai itu kembali ke bawaan tanpa galat (hanya `paper_width` dan dua boolean wajib oleh `rules()`). Daftar sopir dan alasan bersifat sebaliknya: yang tidak dikirim dibiarkan.
 2. **Teks penutup nota bawaan "terkunci" pada simpan pertama.** `StoreSettingService::all()` (baris 108) mengembalikan `receiptFooter()` sehingga form terisi teks bawaan; menyimpan form tanpa mengubahnya menulis teks itu sebagai nilai tersimpan, bukan `NULL`. Setelahnya mengganti `DEFAULT_RECEIPT_FOOTER` di kode tidak lagi memengaruhi toko itu, dan "kosongkan untuk kembali ke bawaan" tidak terlihat oleh pengguna karena field tidak pernah tampak kosong.
-3. **`paper_width` hanya memengaruhi sebagian cetakan** (nota, bukti retur, lembar pesanan, laporan shift). Surat jalan, tutup hari, dan laporan penjualan hanya memakai `letterhead()`; teks bantuan "Dipakai di nota, surat jalan, bukti retur, dan laporan" di halaman berlaku untuk kop, bukan untuk lebar kertas.
+3. **`paper_width` hanya memengaruhi sebagian cetakan** (nota, bukti retur, lembar pesanan, laporan shift). Surat jalan, tutup hari, dan laporan penjualan hanya memakai `letterhead()`; teks bantuan "Dipakai di nota, surat jalan, bukti retur, dan laporan" di halaman berlaku untuk kop, bukan untuk lebar kertas. Surat jalan selalu 9,5 x 5,5 inci.
 4. **Kunci dari `analisis-sistem.md` tidak ada di kode** (§5): `allow_negative_stock`, `receiving_requires_approval`, `receiving_requires_purchase`, dan nama lama `receipt_header`/`paper_size`. Dokumen kebutuhan 7.0 aturan 6 masih menyebutnya. Dokumen itu juga menyebut `settings` memakai `key` sebagai PK (6.7); kode kini memakai `id`.
 5. **`AppSettingService::setPasswordMinLength` memakai `updateOrCreate` saja**, tanpa `insertOrIgnore` seperti pola pengaturan toko. Dua simpan pertama yang bersamaan bisa menabrak indeks unik `key`; risikonya kecil karena hanya Super Admin yang menulis, tetapi polanya tidak konsisten dengan `StoreSettingService`. `passwordMinLength()` juga mengembalikan nilai tersimpan apa adanya tanpa menjepit ke `LOWEST_PASSWORD_MIN_LENGTH`, sehingga nilai yang ditulis di luar form (mis. langsung ke DB) bisa lebih rendah dari batas bawah, dan membacanya memerlukan satu query setiap kali `SaveUserRequest` divalidasi (tidak di-cache).
 6. **Dua sumber untuk alasan opname bawaan.** Nama dan perilaku keempat alasan ada di migrasi `2026_11_05_100000...` (angka literal) dan di `OpnameReason::DEFAULTS` (dipakai `StoreDatabaseSeeder`). Perubahan salah satunya tidak otomatis mengikuti yang lain; di toko baru migrasi menang karena berjalan lebih dulu.
@@ -447,6 +459,8 @@ Teks UI dan pesan galat berbahasa Indonesia dan tertanam di `messages()` request
 10. **Daftar tidak bisa dirampingkan.** Alasan dan sopir tidak pernah dihapus (keputusan sadar: opname dan surat jalan lama harus tetap bernama), sehingga daftar hanya bertambah; halaman tidak punya penyaring atau lipatan untuk baris nonaktif. Bertukar nama dua baris tidak dimungkinkan dalam satu simpan (§8).
 11. **Tombol Simpan tidak mencakup satuan.** `form.isDirty` mengabaikan perubahan di dialog satuan karena disimpan terpisah; pengguna yang mengubah satuan lalu menekan Simpan tidak akan melihat perubahan status tombol.
 12. **Pengaturan toko hanya valid saat tenancy aktif.** `StoreSetting`, `OpnameReason`, dan `Driver` tidak punya trait koneksi; memakainya dari konteks pusat (mis. perintah artisan tanpa `Store::run`) menembak tabel yang tidak ada di DB pusat.
+13. **Browser sendiri tidak bisa memilih printer; cetak langsung bergantung pada QZ Tray.** Tanpa QZ Tray (pengaturan mati, belum dipasang, atau gagal), aplikasi memanggil `window.print()` dari iframe tersembunyi sehingga printer ditentukan dialog cetak browser; nama printer hanya **mengingatkan** di tombol cetak, dan salah memilih printer di dialog tidak dicegah. Nama printer tidak diperiksa terhadap daftar printer komputer: salah ketik baru ketahuan saat mencetak (QZ Tray menolak, dan dialog cetak dibuka sebagai cadangan) atau lewat tombol *Tes*.
+14. **Cetak lewat QZ Tray belum diuji dengan QZ Tray dan printer sungguhan.** Kodenya ditulis menurut API `qz-tray` 2.3 (`qz.print` dengan data `pixel`/`html`/`plain` dan opsi `pageWidth`/`pageHeight` dalam mm); yang tidak bisa dipastikan tanpa perangkat: ketepatan ukuran halaman roll (tinggi diukur dari isi), perilaku driver Windows TM-U220B dan LX-310 pada mode grafis (lebih lambat daripada teks mentah ESC/P), dan font Courier New. Jalur cetak teks mentah (ESC/P, ESC/POS) belum ada; bila hasil HTML kurang baik atau lambat, itulah langkah berikutnya. Halaman tidak ditandatangani, jadi QZ Tray meminta izin sekali per komputer (Allow dan Remember), dan Chrome dapat menanyakan izin akses jaringan lokal.
 
 ## 14. Indeks File
 
@@ -458,10 +472,10 @@ Teks UI dan pesan galat berbahasa Indonesia dan tertanam di `messages()` request
 | Enum | `app/Enums/OpnameReasonBehavior.php` (terkait: `StockOpnameReason.php`) |
 | Service | `app/Services/StoreSettingService.php`, `SettingsPageService.php`, `OpnameReasonService.php`, `DriverService.php`, `AppSettingService.php` |
 | Seeder dan factory | `database/seeders/StoreDatabaseSeeder.php`; `database/factories/OpnameReasonFactory.php`, `DriverFactory.php` |
-| Controller | `app/Http/Controllers/Tenant/StoreSettingController.php`, `app/Http/Controllers/Central/SettingController.php` |
+| Controller dan middleware | `app/Http/Controllers/Tenant/StoreSettingController.php`, `app/Http/Controllers/Central/SettingController.php`, `app/Http/Middleware/HandleInertiaRequests.php` (prop `print_targets`) |
 | Request | `app/Http/Requests/Tenant/SaveStoreSettingsRequest.php`, `app/Http/Requests/Central/UpdateSettingsRequest.php`; pemakai terkait: `Tenant/ShipDeliveryNoteRequest.php`, `Tenant/SaveStockOpnameCountsRequest.php`, `Tenant/SaveStockOpnameReviewRequest.php`, `Central/SaveUserRequest.php` |
 | Rute | `routes/tenant.php` (grup `store.admin`), `routes/web.php` (`pusat/settings`) |
 | Halaman Vue | `resources/js/Pages/Tenant/Settings/Index.vue`, `resources/js/Pages/Central/Settings/Index.vue` |
-| Komponen Vue | `resources/js/Components/NamedListCard.vue`, `UnitFormDialog.vue` |
+| Komponen Vue | `resources/js/Components/NamedListCard.vue`, `PrinterNameField.vue`, `UnitFormDialog.vue`, `PrintPage.vue`; `resources/js/Composables/usePrintTargets.js`, `qzTray.js`, `printSheet.js`; pemakai petunjuk cetak: `Components/Cashier/SaleDoneDialog.vue`, `Components/Cashier/DeliveryNoteDialog.vue`, `Pages/Tenant/DeliveryNotes/Show.vue`; dependensi `qz-tray` (package.json) |
 | Pemakai nilai | `app/Services/SaleService.php` (`requireNoOpnameLock`), `CashierCatalogService.php`, `StockOpnameService.php` (`requireNotesForLargeVariances`), `app/Http/Controllers/Tenant/CashierController.php`, `ShiftReceiptController.php`, `CashierOrderController.php`, `ShiftController.php`, `ShiftRecapController.php`, `SaleReturnController.php`, `CashierSaleReturnController.php`, `DeliveryNoteController.php`, `CashierDeliveryNoteController.php`, `DailyClosingController.php`, `ReportController.php` |
 | Test | `tests/Feature/Tenancy/StoreSettingTest.php`, `OpnameReasonTest.php`, `DriverTest.php`, `tests/Feature/Central/SettingsTest.php` |

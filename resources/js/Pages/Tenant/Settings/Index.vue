@@ -2,8 +2,10 @@
 import { ref, watch } from 'vue';
 import { router, useForm, usePage } from '@inertiajs/vue3';
 import NamedListCard from '../../../Components/NamedListCard.vue';
+import PrinterNameField from '../../../Components/PrinterNameField.vue';
 import UnitFormDialog from '../../../Components/UnitFormDialog.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
+import { listPrinters } from '../../../Composables/qzTray';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -37,6 +39,29 @@ const deleteWithConfirmation = useConfirmDelete();
 
 const isUnitDialogOpen = ref(false);
 const editedUnit = ref(null);
+
+/** The printers of this computer as QZ Tray listed them, to pick a printer's name from; null before QZ Tray was asked. @type {import('vue').Ref<string[]|null>} */
+const detectedPrinters = ref(null);
+const isCheckingQzTray = ref(false);
+const qzTrayFailure = ref('');
+
+/** The page of a delivery note, which is always the same continuous form, for its test print. */
+const DELIVERY_NOTE_TEST_PAGE = { width_mm: 241.3, height_mm: 139.7, label: 'Form kontinu 9,5 x 5,5 inci' };
+
+/** Asks QZ Tray for the printers of this computer, so a printer can be named by picking it instead of typing its name. */
+async function checkQzTray() {
+    isCheckingQzTray.value = true;
+    qzTrayFailure.value = '';
+
+    try {
+        detectedPrinters.value = await listPrinters();
+    } catch (error) {
+        detectedPrinters.value = null;
+        qzTrayFailure.value = error?.message ?? String(error);
+    } finally {
+        isCheckingQzTray.value = false;
+    }
+}
 
 /** Saves the paper, the opname rules, the reasons and the drivers together; rows added on the page get their ids from the answer. */
 function save() {
@@ -124,6 +149,42 @@ function confirmDeleteUnit(unit) {
 
                 <q-toggle v-model="form.auto_print_receipt" label="Cetak nota otomatis setelah bayar" />
                 <p class="hint">Nota langsung terbuka untuk dicetak begitu transaksi selesai.</p>
+            </section>
+
+            <section class="card">
+                <h2>Printer</h2>
+                <p class="hint">Printer yang mencetak struk dan surat jalan. Dengan QZ Tray, keduanya langsung dicetak ke printer ini tanpa dialog cetak.</p>
+
+                <q-toggle v-model="form.is_qz_tray_enabled" label="Cetak langsung lewat QZ Tray" />
+                <p class="hint">
+                    Perlu QZ Tray terpasang dan berjalan di komputer kasir. Pertama kali, QZ Tray menanyakan izin untuk situs ini: pilih Allow dan centang Remember. Tanpa QZ Tray, atau bila
+                    gagal, dialog cetak browser dipakai dan nama printer di bawah hanya mengingatkan printer yang harus dipilih.
+                </p>
+
+                <div class="qz-bar">
+                    <q-btn outline no-caps color="primary" icon="power" label="Cek QZ Tray" :loading="isCheckingQzTray" @click="checkQzTray" />
+                    <span v-if="detectedPrinters !== null" class="qz-bar__ok">Tersambung. {{ detectedPrinters.length }} printer ditemukan.</span>
+                    <span v-else-if="qzTrayFailure" class="qz-bar__fail">Belum tersambung: {{ qzTrayFailure }}</span>
+                </div>
+
+                <PrinterNameField
+                    v-model="form.receipt_printer"
+                    label="Printer struk"
+                    hint="Nama persis seperti di Windows, mis. EPSON TM-U220 Receipt. Kertasnya mengikuti lebar kertas nota di atas."
+                    :detected-printers="detectedPrinters"
+                    :is-qz-enabled="form.is_qz_tray_enabled"
+                    :page="{ width_mm: form.paper_width, height_mm: null, label: `Roll ${form.paper_width} mm` }"
+                    :error="form.errors.receipt_printer"
+                />
+                <PrinterNameField
+                    v-model="form.delivery_note_printer"
+                    label="Printer surat jalan"
+                    hint="Nama persis seperti di Windows, mis. EPSON LX-310. Surat jalan dicetak di form kontinu 9,5 x 5,5 inci."
+                    :detected-printers="detectedPrinters"
+                    :is-qz-enabled="form.is_qz_tray_enabled"
+                    :page="DELIVERY_NOTE_TEST_PAGE"
+                    :error="form.errors.delivery_note_printer"
+                />
             </section>
 
             <section class="card">
@@ -280,6 +341,22 @@ function confirmDeleteUnit(unit) {
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+.qz-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.qz-bar__ok {
+    color: #2e7d32;
+    font-size: 13px;
+}
+
+.qz-bar__fail {
+    color: #c62828;
+    font-size: 13px;
 }
 
 .field > span {

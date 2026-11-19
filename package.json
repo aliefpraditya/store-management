@@ -21,6 +21,7 @@
         "@inertiajs/vue3": "^3.9.1",
         "@quasar/extras": "^2.1.0",
         "quasar": "^2.35.2",
+        "qz-tray": "^2.3.0",
         "vue": "^3.5.44"
     }
 }

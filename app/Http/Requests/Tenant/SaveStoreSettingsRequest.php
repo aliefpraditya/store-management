@@ -35,6 +35,9 @@ class SaveStoreSettingsRequest extends FormRequest
             'receipt_phone' => ['nullable', 'string', 'max:100'],
             'receipt_footer' => ['nullable', 'string', 'max:1000'],
             'paper_width' => ['required', 'integer', Rule::in(StoreSettingService::PAPER_WIDTHS)],
+            'receipt_printer' => ['nullable', 'string', 'max:255'],
+            'delivery_note_printer' => ['nullable', 'string', 'max:255'],
+            'is_qz_tray_enabled' => ['required', 'boolean'],
             'large_variance_threshold' => ['nullable', 'numeric', 'gt:0', 'max:'.self::MAX_AMOUNT, 'decimal:0'],
             'lock_sales_during_opname' => ['required', 'boolean'],
             'auto_print_receipt' => ['required', 'boolean'],
@@ -67,7 +70,7 @@ class SaveStoreSettingsRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'paper_width.in' => 'Lebar kertas nota hanya 58 atau 80 mm.',
+            'paper_width.in' => 'Lebar kertas nota hanya 58, 76, atau 80 mm.',
             'large_variance_threshold.numeric' => 'Ambang selisih harus berupa angka.',
             'large_variance_threshold.gt' => 'Ambang selisih harus lebih dari 0. Kosongkan untuk tanpa batas.',
             'large_variance_threshold.decimal' => 'Ambang selisih harus bilangan bulat rupiah.',

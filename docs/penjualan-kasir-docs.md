@@ -403,7 +403,7 @@ Tidak ada kunci `config/*.php` atau env khusus modul ini (Grep ke `config/` untu
 |---|---|---|---|
 | `receipt_name`, `receipt_address`, `receipt_phone` | kosong -> pakai `stores.name/address/phone` | `letterhead()` -> `ShiftReceiptController::sheet` | kepala nota |
 | `receipt_footer` | `StoreSettingService::DEFAULT_RECEIPT_FOOTER` (catatan tidak dapat ditukar dan "Terimakasih Telah Berbelanja") | `receiptFooter()` | kaki nota; teks kosong kembali ke default |
-| `paper_width` | `80`; hanya `58` atau `80` (`PAPER_WIDTHS`) | `paperWidth()` | lebar kertas thermal pada sheet |
+| `paper_width` | `80`; `58`, `76`, atau `80` (`PAPER_WIDTHS`) | `paperWidth()` | lebar kertas thermal pada sheet |
 | `auto_print_receipt` | `'0'` (mati) | `isReceiptPrintedAutomatically()` -> prop `is_receipt_printed_automatically` | `SaleDoneDialog` mencetak sendiri sekali per transaksi |
 | `lock_sales_during_opname` | `'0'` | `isSalesLockedDuringOpname()` | `SaleService::requireNoOpnameLock` dan `CashierCatalogService` (`is_being_counted`) |
 

@@ -58,6 +58,7 @@ class OpnameReasonTest extends TestCase
     {
         return $this->actingAs($by ?? $this->admin)->put(route('tenant.settings.update', ['tenant' => $this->store->code]), [
             'paper_width' => 80,
+            'is_qz_tray_enabled' => false,
             'lock_sales_during_opname' => false,
             'auto_print_receipt' => false,
             'opname_reasons' => $rows,

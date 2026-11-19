@@ -11,7 +11,7 @@ defineProps({
 <template>
     <Head :title="`Pesanan ${order.number}`" />
 
-    <PrintPage :paper-width="`${order.paper_width}mm`">
+    <PrintPage :paper-width="`${order.paper_width}mm`" printer-kind="receipt">
         <OrderSheet :order="order" />
     </PrintPage>
 </template>

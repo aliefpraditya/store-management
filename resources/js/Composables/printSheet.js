@@ -1,8 +1,27 @@
+import { Notify } from 'quasar';
+
 /** The hidden frame of the sheet being printed; the next print replaces it. */
 let printFrame = null;
 
 /** Fired on the window once a sheet has been printed (or its print dialog closed), for a screen that wants its focus back. */
 export const SHEET_PRINTED_EVENT = 'sheet-printed';
+
+/** What a sheet in the hidden frame posts to its page when QZ Tray could not print it and the print dialog opens instead. */
+export const SHEET_QZ_FALLBACK_MESSAGE = 'sheet-qz-fallback';
+
+/** The frame cannot show anything to the cashier, so its page tells them why the print dialog opened. */
+window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin || event.data?.type !== SHEET_QZ_FALLBACK_MESSAGE) {
+        return;
+    }
+
+    Notify.create({
+        type: 'warning',
+        position: 'top',
+        timeout: 8000,
+        message: `QZ Tray tidak bisa mencetak (${event.data.message}). Cetak lewat dialog browser.`,
+    });
+});
 
 /**
  * The print dialog leaves the keyboard focus in the hidden frame, so the frame goes and the page takes the focus back

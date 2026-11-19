@@ -276,7 +276,7 @@ Modul ini **tidak memiliki kunci di `config/` maupun env** (Grep `config/` untuk
 | `StockService::DEADLOCK_ATTEMPTS` | 3 | Percobaan ulang transaksi `approve()` dan `createApproved()` |
 | `throttle:30,1` pada `returns.lookup` | 30 per menit | Pencarian nomor nota dari kasir |
 | `BADGE_REFRESH_MS` (`Cashier/Index.vue:643`) | 60000 | Polling `pending_return_count` di bar kasir |
-| `StoreSettingService::letterhead()` / `paperWidth()` | pengaturan toko; lebar kertas 58 atau 80 mm | `PrintableSaleReturnResource` (bukti retur) |
+| `StoreSettingService::letterhead()` / `paperWidth()` | pengaturan toko; lebar kertas 58, 76, atau 80 mm | `PrintableSaleReturnResource` (bukti retur) |
 
 Tidak ada pengaturan "batas hari retur": sengaja dihapus (D18 di `docs/analisis-sistem.md`), dan memang tidak ada pengecekan tanggal di `SaleReturnService`.
 

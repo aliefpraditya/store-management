@@ -11,7 +11,7 @@ defineProps({
 <template>
     <Head :title="`Laporan Akhir ${report.label}`" />
 
-    <PrintPage :paper-width="`${report.paper_width}mm`">
+    <PrintPage :paper-width="`${report.paper_width}mm`" printer-kind="receipt">
         <ShiftReportSheet :report="report" />
     </PrintPage>
 </template>

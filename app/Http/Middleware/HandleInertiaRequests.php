@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Enums\SaleReturnStatus;
 use App\Models\SaleReturn;
 use App\Models\Store;
+use App\Services\StoreSettingService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -49,6 +50,7 @@ class HandleInertiaRequests extends Middleware
             ],
             'store' => fn () => $this->currentStore(),
             'menu_badges' => fn () => $this->menuBadges(),
+            'print_targets' => fn () => $this->printTargets(),
             'has_open_shift' => fn () => $request->session()->get(EnsureUserHasNoOpenShift::SESSION_KEY, []) !== [],
             // Not named `urls`: many pages pass a `urls` prop of their own, which would replace this one.
             'app_urls' => [
@@ -75,6 +77,28 @@ class HandleInertiaRequests extends Middleware
         }
 
         return ['returns' => SaleReturn::query()->where('status', SaleReturnStatus::Pending)->count()];
+    }
+
+    /**
+     * Where the receipt and the delivery note are printed: the printer named for each (its name and page), and whether a
+     * print goes straight to it through QZ Tray. Without QZ Tray the name only reminds whoever prints which printer to pick
+     * in the print dialog. Null on central pages.
+     *
+     * @return array{is_qz_tray_enabled: bool, receipt: array{name: string, width_mm: float, height_mm: float|null}|null, delivery_note: array{name: string, width_mm: float, height_mm: float|null}|null}|null
+     */
+    private function printTargets(): ?array
+    {
+        if (! tenancy()->initialized) {
+            return null;
+        }
+
+        $settings = app(StoreSettingService::class);
+
+        return [
+            'is_qz_tray_enabled' => $settings->isQzTrayEnabled(),
+            'receipt' => $settings->receiptPrintTarget(),
+            'delivery_note' => $settings->deliveryNotePrintTarget(),
+        ];
     }
 
     /**

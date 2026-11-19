@@ -66,7 +66,7 @@ class DriverTest extends TestCase
      */
     private function pageWith(array $drivers): array
     {
-        return ['paper_width' => 80, 'lock_sales_during_opname' => false, 'auto_print_receipt' => false, 'drivers' => $drivers];
+        return ['paper_width' => 80, 'is_qz_tray_enabled' => false, 'lock_sales_during_opname' => false, 'auto_print_receipt' => false, 'drivers' => $drivers];
     }
 
     private function save(array $drivers)

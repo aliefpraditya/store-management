@@ -299,7 +299,7 @@ Karena role dibaca saat keputusan (bukan saat shift dibuka), kasir yang dipromos
 
 ## 5. Konfigurasi
 
-Modul ini tidak membaca kunci `config/` atau variabel `.env` sendiri (hasil Grep `shift|closing` di `config/` kosong). Satu-satunya pengaturan toko yang tersentuh adalah **lebar kertas cetak** (`StoreSettingService::paperWidth()`, 58 atau 80 mm, bawaan 80) dan kop surat (`letterhead()`) pada laporan akhir shift. Konstanta kode: `ShiftRecapController::PER_PAGE = 25`; polling layar terkunci `REVIEW_REFRESH_MS = 15000` di `Pages/Tenant/Cashier/Index.vue`.
+Modul ini tidak membaca kunci `config/` atau variabel `.env` sendiri (hasil Grep `shift|closing` di `config/` kosong). Satu-satunya pengaturan toko yang tersentuh adalah **lebar kertas cetak** (`StoreSettingService::paperWidth()`, 58, 76, atau 80 mm, bawaan 80) dan kop surat (`letterhead()`) pada laporan akhir shift. Konstanta kode: `ShiftRecapController::PER_PAGE = 25`; polling layar terkunci `REVIEW_REFRESH_MS = 15000` di `Pages/Tenant/Cashier/Index.vue`.
 
 ---
 

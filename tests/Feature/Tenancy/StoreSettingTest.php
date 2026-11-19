@@ -68,6 +68,9 @@ class StoreSettingTest extends TestCase
             'receipt_phone' => '',
             'receipt_footer' => '',
             'paper_width' => 80,
+            'receipt_printer' => '',
+            'delivery_note_printer' => '',
+            'is_qz_tray_enabled' => false,
             'large_variance_threshold' => '',
             'lock_sales_during_opname' => false,
             'auto_print_receipt' => false,
@@ -130,7 +133,10 @@ class StoreSettingTest extends TestCase
             ->where('settings.large_variance_threshold', '')
             ->where('settings.lock_sales_during_opname', false)
             ->where('store_letterhead', ['name' => 'Toko Uji', 'address' => 'Jl. Uji 1', 'phone' => '021-111'])
-            ->where('paper_widths', [58, 80])
+            ->where('paper_widths', [58, 76, 80])
+            ->where('settings.receipt_printer', '')
+            ->where('settings.delivery_note_printer', '')
+            ->where('settings.is_qz_tray_enabled', false)
             ->has('units.data', 2)
             ->where('units.data.0.code', 'DUS')
             ->where('units.data.0.products_count', 1)
@@ -166,7 +172,10 @@ class StoreSettingTest extends TestCase
     {
         $put = fn (array $overrides) => $this->actingAs($this->admin)->put($this->url('update'), $this->body($overrides));
 
-        $put(['paper_width' => 70])->assertSessionHasErrors(['paper_width' => 'Lebar kertas nota hanya 58 atau 80 mm.']);
+        $put(['paper_width' => 70])->assertSessionHasErrors(['paper_width' => 'Lebar kertas nota hanya 58, 76, atau 80 mm.']);
+        $put(['receipt_printer' => str_repeat('a', 256)])->assertSessionHasErrors('receipt_printer');
+        $put(['delivery_note_printer' => str_repeat('a', 256)])->assertSessionHasErrors('delivery_note_printer');
+        $put(['is_qz_tray_enabled' => null])->assertSessionHasErrors('is_qz_tray_enabled');
         $put(['large_variance_threshold' => -1])->assertSessionHasErrors(['large_variance_threshold' => 'Ambang selisih harus lebih dari 0. Kosongkan untuk tanpa batas.']);
         $put(['large_variance_threshold' => 0])->assertSessionHasErrors(['large_variance_threshold' => 'Ambang selisih harus lebih dari 0. Kosongkan untuk tanpa batas.']);
         $put(['large_variance_threshold' => '1500.5'])->assertSessionHasErrors(['large_variance_threshold' => 'Ambang selisih harus bilangan bulat rupiah.']);
@@ -186,6 +195,49 @@ class StoreSettingTest extends TestCase
             ->where('receipt.store', ['name' => 'MITRA UTAMA', 'address' => 'Jl. Poros Kuprik', 'phone' => '0813-5411-1168'])
             ->where('receipt.footer', 'Terima kasih')
             ->where('receipt.paper_width', 58));
+    }
+
+    public function test_a_dot_matrix_receipt_roll_of_76_mm_can_be_chosen(): void
+    {
+        $this->save(['paper_width' => 76]);
+        $sale = $this->sellBrushes($this->openShiftFor($this->cashier));
+        $sheetUrl = $this->actingAs($this->cashier)->postJson(route('tenant.cashier.receipts.print', ['tenant' => $this->store->code, 'sale' => $sale->id]))->json('data.sheet_url');
+
+        $this->actingAs($this->cashier)->get($sheetUrl)->assertInertia(fn (Assert $page) => $page->where('receipt.paper_width', 76));
+    }
+
+    public function test_the_printers_are_saved_and_shown_again(): void
+    {
+        $this->save(['receipt_printer' => '  EPSON TM-U220 Receipt ', 'delivery_note_printer' => 'EPSON LX-310', 'is_qz_tray_enabled' => true]);
+
+        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
+            ->where('settings.receipt_printer', 'EPSON TM-U220 Receipt')
+            ->where('settings.delivery_note_printer', 'EPSON LX-310')
+            ->where('settings.is_qz_tray_enabled', true));
+    }
+
+    public function test_the_pages_are_told_where_the_receipt_and_the_delivery_note_are_printed(): void
+    {
+        $this->save(['paper_width' => 76, 'receipt_printer' => 'EPSON TM-U220 Receipt', 'delivery_note_printer' => 'EPSON LX-310', 'is_qz_tray_enabled' => true]);
+
+        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
+            ->where('print_targets', [
+                'is_qz_tray_enabled' => true,
+                'receipt' => ['name' => 'EPSON TM-U220 Receipt', 'width_mm' => 76, 'height_mm' => null],
+                'delivery_note' => ['name' => 'EPSON LX-310', 'width_mm' => 241.3, 'height_mm' => 139.7],
+            ]));
+    }
+
+    public function test_a_print_has_no_target_while_its_printer_is_not_named(): void
+    {
+        $this->save(['receipt_printer' => 'EPSON TM-U220 Receipt']);
+
+        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
+            ->where('print_targets', [
+                'is_qz_tray_enabled' => false,
+                'receipt' => ['name' => 'EPSON TM-U220 Receipt', 'width_mm' => 80, 'height_mm' => null],
+                'delivery_note' => null,
+            ]));
     }
 
     public function test_a_receipt_without_settings_prints_the_store_data_and_the_default_footer(): void
@@ -390,7 +442,7 @@ class StoreSettingTest extends TestCase
         $this->save(['receipt_name' => 'Toko Baru 2', 'paper_width' => 80]);
 
         $this->store->run(function (): void {
-            $this->assertSame(8, StoreSetting::query()->count());
+            $this->assertSame(11, StoreSetting::query()->count());
             $this->assertSame(1, StoreSetting::query()->where('key', 'paper_width')->count());
             $this->assertSame('80', StoreSetting::query()->where('key', 'paper_width')->value('value'));
             $this->assertSame('Toko Baru 2', StoreSetting::query()->where('key', 'receipt_name')->value('value'));
