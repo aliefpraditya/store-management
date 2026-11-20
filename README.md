@@ -76,6 +76,7 @@ HTTP request → Controller → Service → Model
 - Central routes live in `routes/web.php`; store routes in `routes/tenant.php` under `t/{tenant}/...` with the middleware `web` → `InitializeTenancyByPath` → `auth` → `store.access`.
 - Sessions, cache and the queue are forced onto the central connection, because the default connection switches to the store database while tenancy is initialized. A model that lives in the central database must use the `CentralConnection` trait.
 - Store database migrations are in `database/migrations/tenant`.
+- Every store route carries `permission:<name>` (enum `App\Enums\Permission`, rows in the central `permissions` table). **Every sidebar menu has a permission of its own**, not shared with another menu; a new menu comes with a new enum case, a migration for its row (granted to the roles that keep access), the route middleware and the `can` entry in `StoreLayout.vue`.
 
 ## Documentation
 

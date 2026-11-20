@@ -1678,6 +1678,7 @@ erDiagram
 2. Super Admin membuat peran baru dan mengatur izinnya di **Pusat → Peran & Izin**. Peran bawaan (`admin`, `cashier`, `warehouse`) izinnya boleh diubah tetapi namanya tetap dan tidak bisa dihapus; peran yang masih dipakai user tidak bisa dihapus. Perubahan izin peran dan izin tambahan user tercatat di audit.
 3. Setiap rute toko dijaga middleware `permission:...` (cukup salah satu izin yang disebut); menu dan tombol di layar mengikuti izin yang sama, tetapi yang menegakkan tetap server. Pengguna tanpa izin `dashboard.view` diarahkan ke halaman pertama yang izinnya dimiliki.
 4. Izin bawaan: Admin Toko = semua; Kasir = `cashier.use`; Petugas Gudang = `stock_opnames.count` + `delivery_notes.view`. Izin baru ditambahkan lewat migrasi yang memasukkan barisnya ke `permissions` (tes memeriksa enum dan tabel sama).
+5. **Setiap menu punya izinnya sendiri.** Menu di sidebar (beserta halamannya) dijaga izin yang khusus untuknya, tidak dipakai bersama menu lain, supaya satu peran bisa diberi satu menu tanpa ikut mendapat menu lain (contoh: Petugas Gudang boleh melihat stok tetapi tidak omzet dan laba). Menu baru berarti: satu case baru di enum `Permission`, migrasi yang memasukkan barisnya ke `permissions` dan memberikannya ke peran yang harus tetap punya akses (mis. Admin Toko), middleware `permission:` di rute-rutenya, dan syarat `can` pada item menunya. Sub-fitur di dalam satu menu (tombol, aksi) boleh punya izin tambahan.
 
 **Matriks persetujuan**
 | Tindakan | Siapa mengajukan | Siapa menyetujui |
