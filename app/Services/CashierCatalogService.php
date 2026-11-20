@@ -16,13 +16,13 @@ use Illuminate\Support\Collection;
  * The item lookup of the cashier screen: active products with the units they can be sold in, their price, and
  * how much is in the register's warehouse. Items in stock are listed before sold-out ones, so a broad term such as
  * "cat" does not open with empty shelves; a specific term whose matches are all sold out still shows them. A scanned
- * barcode is the item's SKU, so it is found like any typed SKU.
+ * barcode is the barcode of the item's packaging, or its SKU when it has none, so it is found like any typed term.
  *
  * A product with a sealed pack unit (a roll of wire) also tells how many whole packs are left (`intact_packs`, null for other
  * products), because the stock in the base unit alone does not say how many packs can still be sold whole.
  *
  * @phpstan-type CatalogUnit array{id: int, code: string, conversion_factor: string, price: string, is_sealed_pack: bool, is_default_sale: bool}
- * @phpstan-type CatalogItem array{id: int, sku: string, name: string, base_unit: string, stock: string, reserved: string, intact_packs: int|null, units: list<CatalogUnit>, is_being_counted: bool}
+ * @phpstan-type CatalogItem array{id: int, sku: string, barcode: string|null, name: string, base_unit: string, stock: string, reserved: string, intact_packs: int|null, units: list<CatalogUnit>, is_being_counted: bool}
  */
 class CashierCatalogService
 {
@@ -144,6 +144,7 @@ class CashierCatalogService
         return $products->map(fn (Product $product): array => [
             'id' => $product->id,
             'sku' => $product->sku,
+            'barcode' => $product->barcode,
             'name' => $product->name,
             'base_unit' => $product->base_unit_code,
             'stock' => (string) $this->sellableQuantity($stocks[$product->id] ?? null, $reserved[$product->id] ?? '0')->toScale(3),

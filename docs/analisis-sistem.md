@@ -999,6 +999,7 @@ erDiagram
     products {
         bigint id PK
         string sku UK
+        string barcode UK "opsional, kosong = sku"
         string name
         bigint category_id FK
         bigint brand_id FK "nullable"
@@ -1079,14 +1080,14 @@ erDiagram
 | `categories` | `name`, `parent_id` (kosong di Fase 1, kategori datar) | `name` unik |
 | `brands` | `name` | `name` unik |
 | `units` | `code` (**kunci**: label pendek huruf besar, mis. PCS, DUS, KG; tampil di layar dan nota), `name` (keterangan, mis. Pieces) | `code` kunci utama, `name` unik; mengganti `code` merambat ke `products` dan `product_units`; satuan yang sedang dipakai tidak bisa dihapus |
-| `products` | `sku`, `name`, `category_id` (wajib), `brand_id` (boleh kosong), `base_unit_code`, `cost_price` (salinan modal satuan dasar), `min_stock`, `is_active`, `legacy_sku` | `sku` unik per toko |
+| `products` | `sku`, `barcode` (opsional, unik), `name`, `category_id` (wajib), `brand_id` (boleh kosong), `base_unit_code`, `cost_price` (salinan modal satuan dasar), `min_stock`, `is_active`, `legacy_sku` | `sku` unik per toko |
 | `product_units` | `unit_code`, `conversion_factor`, `is_base`, `sort_order`, `is_purchasable`, `is_sellable`, `cost_price` (modal satuan ini), `price_mode`, `margin_percent`, `selling_price`, `is_default_sale`, `is_sealed_pack` (D35) | satu baris per barang × satuan |
 | `price_histories` **(R2)** | harga lama → baru, mode, sumber, user | append-only |
 
 **Kendala integritas**
 1. Tepat **satu satuan dasar** per barang, `conversion_factor = 1`; `unique(product_id, unit_code)`; satuan dasar sama dengan `products.base_unit_code`.
 2. `conversion_factor` > 0, maks **3 desimal**; semua satuan boleh berdesimal (kuantitas maks 3 desimal).
-3. **Barang tidak punya kolom barcode.** Barcode dibuat dari `sku` saat dicetak (Code 39); scan di kasir = mencocokkan `sku` persis, barang masuk dalam satuan default jual, satuan tidak ditentukan oleh scan.
+3. **`products.barcode` (opsional, unik)** diisi bila kemasan sudah punya barcode dari pabrik. Bila kosong, **`sku` yang berlaku sebagai barcode** (stiker yang dicetak toko memuat barcode kemasan sebagai Code 39, atau `sku` bila kosong; teks di stiker tetap `sku`). Scan di kasir mencocokkan `barcode` persis lebih dulu, bila tidak ada baru `sku` persis, barang masuk dalam satuan default jual, satuan tidak ditentukan oleh scan. Barcode satu barang tidak boleh sama dengan `sku` barang lain (dan sebaliknya) agar scan tidak ambigu. Barcode tidak disimpan per satuan.
 4. Tepat satu `is_default_sale` per barang, dan satuan itu harus `is_sellable`; minimal satu satuan `is_sellable` dan satu `is_purchasable`.
 5. `price_mode = nominal` → `margin_percent` kosong; `price_mode = margin` → 0 ≤ `margin_percent` < 100 dan `selling_price = modal_satuan / (1 − margin%/100)`; `selling_price` ≥ 0, 2 desimal, tanpa pembulatan.
 6. Barang tidak aktif tidak muncul di kasir/penerimaan, tetap muncul di laporan & histori stok.
@@ -1096,13 +1097,13 @@ erDiagram
 **Penyesuaian dari tinjauan ulang**
 | # | Perubahan | Alasan |
 |---|---|---|
-| a | Tidak ada kolom barcode (`product_units.barcode` dihapus); barcode dibuat dari `sku` saat dicetak | Satu identitas barang (`sku`), tidak perlu mengelola barcode terpisah |
+| a | `product_units.barcode` dihapus; barcode pindah ke `products.barcode` (opsional), kosong = `sku` dipakai sebagai barcode | Barcode pabrik ada di kemasan barang, bukan per satuan; barang tanpa barcode tetap bisa discan lewat `sku` |
 | b | **Tanpa katalog pusat (v0.6)**: tidak ada `uuid`, `is_catalog_active`, `version`, `product_store_units`, `product_store_assignments` | Master cukup per toko (D27); lebih sederhana |
 | c | `product_units.is_active` dihapus | Redundan dengan `is_purchasable`/`is_sellable` |
 | d | `conversion_factor` `decimal(15,3)` | Presisi sama dengan kuantitas stok |
 | e | `product_units.sort_order` | Urutan chip satuan di kasir konsisten |
 
-**Sengaja tidak ada di Fase 1:** katalog bersama antar-toko, harga bertingkat berdasarkan jumlah (grosir), barcode tersimpan per satuan, kategori bertingkat, varian (warna/ukuran) sebagai barang terpisah, foto barang.
+**Sengaja tidak ada di Fase 1:** katalog bersama antar-toko, harga bertingkat berdasarkan jumlah (grosir), barcode per satuan, kategori bertingkat, varian (warna/ukuran) sebagai barang terpisah, foto barang.
 
 ### 6.3 DB Toko — b. Gudang & stok
 
@@ -1726,7 +1727,7 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 5. `price_histories` append-only, otomatis tiap perubahan `cost_price`/`selling_price` (sumber: manual, penerimaan, hitung ulang, import); harga beli berubah → harga mode margin dihitung ulang (sumber `recalculation`).
 6. **Satuan boleh dibeli / boleh dijual:** hanya satuan `is_purchasable` muncul di Penerimaan; hanya `is_sellable` di Kasir. Admin Toko mengubahnya di Form Harga (diaudit). Batasan: minimal 1 satuan jual & 1 satuan beli; satuan default jual harus boleh dijual; satuan yang dipakai di dokumen draft tidak boleh dimatikan.
 7. Konversi terkunci setelah ada stok/transaksi; satuan yang pernah dipakai tidak bisa dihapus (hanya dimatikan lewat dua penanda di atas); barang yang punya stok atau pernah bertransaksi (termasuk masuk opname) tidak bisa dihapus, hanya dinonaktifkan. Barang yang belum punya stok maupun transaksi boleh dihapus permanen oleh Admin (SKU bisa dipakai lagi; kondisi terakhirnya tetap ada di `audits`).
-8. `sku` unik per toko. **Tidak ada barcode tersimpan**: barcode dibuat dari `sku` saat dicetak (butir 16), dan scan di kasir mencocokkan `sku` persis, barang masuk dalam satuan default jual; satuan lain dipilih kasir sesudahnya.
+8. `sku` unik per toko, dan form barang baru sudah mengisinya otomatis (prefiks nota toko + nomor berikutnya, mis. `MU3471`; boleh diubah). `barcode` opsional dan unik: diisi bila kemasan sudah punya barcode, bila kosong `sku` dipakai sebagai barcode. Scan di kasir mencocokkan `barcode` atau `sku` persis, barang masuk dalam satuan default jual; satuan lain dipilih kasir sesudahnya. Barcode barang tidak boleh sama dengan `sku` barang lain (dan sebaliknya). Stiker yang dicetak toko (butir 16) memuat barcode kemasan sebagai Code 39 (atau `sku` bila barcode kosong), dengan teks `sku` di bawahnya.
 9. Import Excel: template, validasi per baris, pratinjau sebelum simpan; histori sumber `import`. Dipakai juga untuk stok awal (`opening_balance`) dan migrasi.
 10. Lintas toko dicocokkan lewat `sku` (4.3); "salin barang dari toko lain" = ekspor/import Excel (R2).
 11. **Satuan** dikelola Admin Toko di **Pengaturan Toko** (kartu *Satuan*, sejak 3 Nov 2026 tidak lagi halaman sendiri; daftarnya punya kotak cari kode atau nama, urut dengan klik judul kolom kode, nama, atau dipakai, dan halaman 10, 25, 50, atau 100 satuan, diatur di server) (tambah, ubah nama atau kode, hapus) dan bisa ditambah lewat jendela "Tambah satuan baru" di Form Barang tanpa kehilangan isian form. Satuan di Form Barang hanya bisa dipilih dari yang sudah ada. Mengganti kode merambat ke semua barang dan dicatat di log aplikasi (kode lama, kode baru, pengguna), karena audit trail menyimpan id angka dan kode satuan adalah kunci teks; satuan yang dipakai barang tidak bisa dihapus.
@@ -1739,7 +1740,7 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 
 **Detail barang — Histori Harga:** tab *Harga Beli* / *Harga Jual*: Tanggal · Lama → Baru · Δ% · Mode · Sumber · Oleh · Catatan (+ tautan dokumen). Ringkasan: harga beli terakhir, harga jual & **untung (margin) per satuan**. Daftar layer FIFO menyusul di R2.
 
-**Daftar barang:** pencarian (nama/sku), filter kategori, merek, status, & kondisi (normal atau DG, butir 21 di 7.3), lencana DG, centang untuk ubah harga massal (butir 14) dan cetak barcode (butir 16), stok dalam satuan dasar dan dipecah satuan besar (mis. "7 DUS + 2 PAIL"), badge di bawah minimum.
+**Daftar barang:** pencarian (nama/sku/barcode), filter kategori, merek, status, & kondisi (normal atau DG, butir 21 di 7.3), lencana DG, centang untuk ubah harga massal (butir 14) dan cetak barcode (butir 16), stok dalam satuan dasar dan dipecah satuan besar (mis. "7 DUS + 2 PAIL"), badge di bawah minimum.
 
 **Edge case:** dua user edit harga bersamaan → optimistic locking; modal 0 + mode margin → harga 0 + peringatan; margin harga persen menghasilkan sen → ditampilkan apa adanya.
 
@@ -1867,7 +1868,7 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 
 
 **Kasir dasar (dibangun, online):** halaman `/t/{kode}/cashier` untuk semua pengguna toko (Kasir, Admin, Super Admin); Kasir yang membuka dashboard diarahkan ke sini.
-- **Cakupan:** buka/tutup shift, kasir (cari nama/SKU/scan barcode SKU, pilih satuan, ubah jumlah desimal, keranjang tersimpan per shift di browser), pembayaran campur (tunai, transfer, QRIS, EDC; kembalian hanya dari tunai), nota tersimpan beserta pengurangan stok (`stock_movements` tipe `sale`). Pintasan: F9 bayar, F8 kosongkan keranjang, F2 fokus pencarian.
+- **Cakupan:** buka/tutup shift, kasir (cari nama/SKU/barcode, scan barcode kemasan atau SKU, pilih satuan, ubah jumlah desimal, keranjang tersimpan per shift di browser), pembayaran campur (tunai, transfer, QRIS, EDC; kembalian hanya dari tunai), nota tersimpan beserta pengurangan stok (`stock_movements` tipe `sale`). Pintasan: F9 bayar, F8 kosongkan keranjang, F2 fokus pencarian.
 - **Aturan yang diterapkan server:** harga dan modal dibaca dari `product_units` (bukan dari layar kasir); stok kurang = **diblokir untuk nota penjualan** (jumlah semua baris satu barang dijumlahkan dalam satuan dasar; kekurangan dialihkan ke pesanan pelanggan, D36); satuan harus `is_sellable` dan barang aktif; `client_uuid` mencegah dobel simpan; nomor nota `INV/{prefix}/{register}/{yymm}/{urut}` per register per bulan; HPP = jumlah × modal satuan (R1).
 - **Shift:** satu shift terbuka per register dan per kasir; modal awal = `cash_shifts.drawer_left_cash` shift tertutup terakhir di register itu (isian kasir bila register belum pernah punya shift); `expected_cash` = modal awal + tunai diterima - kembalian - refund tunai - pengeluaran laci + DP pesanan tunai - DP void tunai yang dikembalikan; selisih tidak nol membuat shift `pending_review` (catatan kasir tidak wajib karena selisih tidak diberitahukan) dan `difference_status = pending_approval`; setoran = tunai dihitung − uang yang ditinggal di laci. Hanya pembuka shift atau Admin yang boleh menutup.
 - **Kunci selama shift terbuka:** pengguna yang punya shift terbuka tidak bisa **logout** dan tidak bisa membuka **halaman pusat** sampai shift ditutup. Halaman toko (dashboard, barang, opname, histori stok, satuan) tetap terbuka supaya Admin bisa mengecek stok di tengah shift; ada tombol *Kembali ke Kasir* di bagian atas, dan tombol Keluar disembunyikan. Server yang menegakkan: middleware \`shift.remember\` mencatat di sesi setiap halaman toko apakah pengguna punya shift terbuka (juga menangkap shift yang tertinggal setelah login ulang), dan \`shift.closed\` mengunci logout dan halaman pusat berdasarkan catatan itu setelah dicek ke DB toko. Menutup browser tidak ditangani.
@@ -2037,7 +2038,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 
 | Data lama | Tujuan | Aturan & temuan |
 |---|---|---|
-| `barangs` (3.837; **dimigrasi hanya 1.759 milik Mitra Utama**), `jenis` (227), `satuans` (39) | `products`, `categories`, `units` (di DB toko) | `legacy_sku`; normalisasi spasi (`MU 2409` vs `MU0922`) + cek bentrok; `status_aktif` → `is_active`; barcode lama **tidak diimpor** (barcode kini dibuat dari `sku` saat dicetak, 7.1 butir 16) |
+| `barangs` (3.837; **dimigrasi hanya 1.759 milik Mitra Utama**), `jenis` (227), `satuans` (39) | `products`, `categories`, `units` (di DB toko) | `legacy_sku`; normalisasi spasi (`MU 2409` vs `MU0922`) + cek bentrok; `status_aktif` → `is_active`; barcode lama **tidak diimpor** (kolom `products.barcode` dibiarkan kosong, sehingga `sku` yang dipakai sebagai barcode; isi nanti lewat form barang, 7.1 butir 8) |
 | `brands` (513; semua barang punya merek) | `brands`, `products.brand_id` | Dimigrasi semua |
 | `owners` (2: Mitra Utama, Cahaya Baru) | Mitra Utama → toko (`stores`); Cahaya Baru → diabaikan | Tidak ada tabel `owners`; kode toko Mitra Utama `mitra_utama` (DB `store_mitra_utama`) |
 | `raks` (2), `gudangs` (1: MU-Besar) | `warehouses`: `Main Warehouse` (+ `Dead Stock`) | Rak tidak dimigrasi (arsip) |

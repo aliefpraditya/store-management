@@ -299,7 +299,7 @@ function onSearchKeydown(event) {
 }
 
 /**
- * Enter: the highlighted result is added in its chosen unit; a scanned barcode (the item's SKU) or a single result adds
+ * Enter: the highlighted result is added in its chosen unit; a scanned barcode (the packaging's, or the item's SKU) or a single result adds
  * the item in its default unit. Anything else leaves the results for the cashier to pick.
  */
 async function submitSearch() {
@@ -327,11 +327,12 @@ async function submitSearch() {
 
     searchResults.value = foundItems;
 
-    // A typed or scanned SKU that is exactly one item's SKU is that item, even when other items' SKUs contain it.
-    const itemOfExactSku = foundItems.find((item) => item.sku.toLowerCase() === term.toLowerCase());
+    // A typed or scanned code that is exactly one item's barcode is that item, and failing that its SKU (what an item without a barcode is scanned by), even when other items' codes contain it.
+    const lowerTerm = term.toLowerCase();
+    const itemOfExactCode = foundItems.find((item) => item.barcode?.toLowerCase() === lowerTerm) ?? foundItems.find((item) => item.sku.toLowerCase() === lowerTerm);
 
-    if (itemOfExactSku && !isItemHeldBack(itemOfExactSku)) {
-        addAndShow(itemOfExactSku, defaultUnitOf(itemOfExactSku).id);
+    if (itemOfExactCode && !isItemHeldBack(itemOfExactCode)) {
+        addAndShow(itemOfExactCode, defaultUnitOf(itemOfExactCode).id);
     } else if (foundItems.length === 1) {
         addAndShow(foundItems[0], defaultUnitOf(foundItems[0]).id);
     }

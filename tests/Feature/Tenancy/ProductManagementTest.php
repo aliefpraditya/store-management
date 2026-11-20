@@ -375,6 +375,94 @@ class ProductManagementTest extends TestCase
         );
     }
 
+    public function test_a_packaging_barcode_is_saved_and_left_empty_when_there_is_none(): void
+    {
+        $this->create(['barcode' => ' 8993175530012 '])->assertSessionHasNoErrors();
+        $this->assertSame('8993175530012', $this->savedProduct()->barcode);
+
+        $this->create(['sku' => 'MU0002', 'barcode' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($this->savedProduct('MU0002')->barcode);
+    }
+
+    public function test_two_items_without_a_barcode_do_not_clash(): void
+    {
+        $this->create()->assertSessionHasNoErrors();
+        $this->create(['sku' => 'MU0002'])->assertSessionHasNoErrors();
+
+        $this->assertSame(2, $this->inStore(fn () => Product::query()->whereNull('barcode')->count()));
+    }
+
+    public function test_a_barcode_cannot_be_used_by_two_items_but_may_stay_on_its_own_item(): void
+    {
+        $this->create(['barcode' => '8993175530012'])->assertSessionHasNoErrors();
+
+        $this->create(['sku' => 'MU0002', 'barcode' => '8993175530012'])->assertSessionHasErrors('barcode');
+        $this->assertDatabaseMissing('products', ['sku' => 'MU0002']);
+
+        $product = $this->savedProduct();
+        $this->ensureUnitsExist($this->payload());
+        $this->actingAs($this->admin)
+            ->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, ['barcode' => '8993175530012', 'name' => 'Cat Putih']))
+            ->assertSessionHasNoErrors();
+    }
+
+    public function test_a_barcode_cannot_be_the_sku_of_another_item_and_the_other_way_round(): void
+    {
+        $this->create(['sku' => 'MU0001', 'barcode' => '8993175530012'])->assertSessionHasNoErrors();
+
+        $this->create(['sku' => 'MU0002', 'barcode' => 'MU0001'])->assertSessionHasErrors('barcode');
+        $this->create(['sku' => '8993175530012'])->assertSessionHasErrors('sku');
+        $this->assertSame(1, $this->inStore(fn () => Product::query()->count()));
+    }
+
+    public function test_the_edit_form_carries_the_barcode_and_the_list_finds_an_item_by_it(): void
+    {
+        $this->create(['barcode' => '8993175530012']);
+        $product = $this->savedProduct();
+
+        $this->actingAs($this->admin)->get($this->url('edit', ['product' => $product->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('product.barcode', '8993175530012')
+        );
+
+        $this->actingAs($this->admin)->get($this->url('index', ['search' => '899317553']))->assertInertia(fn (Assert $page) => $page
+            ->has('products.data', 1)
+            ->where('products.data.0.id', $product->id)
+        );
+    }
+
+    public function test_the_add_form_starts_with_the_first_sku_of_the_store_prefix(): void
+    {
+        $this->actingAs($this->admin)->get($this->url('create'))->assertInertia(fn (Assert $page) => $page
+            ->where('suggested_sku', $this->store->receipt_prefix.'0001')
+        );
+    }
+
+    public function test_the_suggested_sku_follows_the_highest_number_of_the_prefix_including_deleted_items(): void
+    {
+        $prefix = $this->store->receipt_prefix;
+
+        $this->inStore(function () use ($prefix): void {
+            Product::factory()->create(['sku' => "{$prefix}0007"]);
+            Product::factory()->create(['sku' => "{$prefix}3470"]);
+            Product::factory()->create(['sku' => "{$prefix}3500"])->delete();
+            Product::factory()->create(['sku' => 'OTHER9999']);
+            Product::factory()->create(['sku' => "{$prefix}-12"]);
+        });
+
+        $this->actingAs($this->admin)->get($this->url('create'))->assertInertia(fn (Assert $page) => $page
+            ->where('suggested_sku', "{$prefix}3501")
+        );
+    }
+
+    public function test_the_edit_form_does_not_suggest_a_sku(): void
+    {
+        $product = $this->inStore(fn () => Product::factory()->create());
+
+        $this->actingAs($this->admin)->get($this->url('edit', ['product' => $product->id]))->assertInertia(fn (Assert $page) => $page
+            ->missing('suggested_sku')
+        );
+    }
+
     public function test_every_unit_may_have_decimal_quantities_up_to_three_decimals(): void
     {
         $this->create(['min_stock' => '2.5', 'units' => [$this->unitRow('PCS', 1, '1000', isDefault: true)]])

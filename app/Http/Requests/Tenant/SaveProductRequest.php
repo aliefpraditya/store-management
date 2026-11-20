@@ -33,6 +33,7 @@ class SaveProductRequest extends FormRequest
         $rules = [
             'name' => ['required', 'string', 'max:255'],
             'sku' => ['required', 'string', 'max:64', Rule::unique('products', 'sku')->ignore($editedProduct)],
+            'barcode' => ['nullable', 'string', 'max:64', Rule::unique('products', 'barcode')->ignore($editedProduct)],
             'category' => ['required', 'array'],
             'category.id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
             'category.name' => ['nullable', 'string', 'max:255'],
@@ -68,6 +69,7 @@ class SaveProductRequest extends FormRequest
                     return;
                 }
 
+                $this->validateScanCodesDoNotClash($validator);
                 $this->validateCategoryIsChosen($validator);
                 $this->validateUnitsAreDistinct($validator);
                 $this->validateSellingSetup($validator);
@@ -113,6 +115,31 @@ class SaveProductRequest extends FormRequest
     private function unitRows(): array
     {
         return array_values((array) $this->input('units', []));
+    }
+
+    /**
+     * The till finds an item by its barcode or its SKU, so one item's barcode may not be another item's SKU: a scan of it
+     * could not tell which of the two was meant. The unique rules already keep SKUs apart and barcodes apart.
+     */
+    private function validateScanCodesDoNotClash(Validator $validator): void
+    {
+        $barcode = $this->input('barcode');
+
+        if (filled($barcode) && $this->isCodeOfAnotherProduct('sku', $barcode)) {
+            $validator->errors()->add('barcode', 'Barcode ini sudah dipakai sebagai SKU barang lain.');
+        }
+
+        if ($this->isCodeOfAnotherProduct('barcode', (string) $this->input('sku'))) {
+            $validator->errors()->add('sku', 'SKU ini sudah dipakai sebagai barcode barang lain.');
+        }
+    }
+
+    private function isCodeOfAnotherProduct(string $column, string $code): bool
+    {
+        return Product::withTrashed()
+            ->where($column, $code)
+            ->when($this->editedProduct(), fn ($query, Product $product) => $query->whereKeyNot($product->id))
+            ->exists();
     }
 
     private function validateCategoryIsChosen(Validator $validator): void

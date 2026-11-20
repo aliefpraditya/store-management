@@ -67,6 +67,33 @@ class BarcodeLabelTest extends TestCase
             ->assertJsonPath('data.1.is_printable', true);
     }
 
+    public function test_the_sticker_carries_the_packaging_barcode_or_the_sku_when_there_is_none_and_always_captions_the_sku(): void
+    {
+        $withBarcode = $this->sellableProduct('Kuas', '10', ['sku' => 'MU0001', 'barcode' => '8993175530012']);
+        $withoutBarcode = $this->item('Kursi Ekspana', 'MU0496');
+        $badBarcode = $this->sellableProduct('Aneh', '10', ['sku' => 'MU0002', 'barcode' => 'AB_12']);
+
+        $this->actingAs($this->admin)->postJson($this->url('products'), ['product_ids' => [$withBarcode->id, $withoutBarcode->id, $badBarcode->id]])
+            ->assertOk()
+            ->assertJsonPath('data.0.name', 'Aneh')
+            ->assertJsonPath('data.0.barcode', 'AB_12')
+            ->assertJsonPath('data.0.is_printable', false)
+            ->assertJsonPath('data.1.sku', 'MU0001')
+            ->assertJsonPath('data.1.barcode', '8993175530012')
+            ->assertJsonPath('data.1.is_printable', true)
+            ->assertJsonPath('data.2.sku', 'MU0496')
+            ->assertJsonPath('data.2.barcode', 'MU0496');
+
+        $this->sheet(['labels' => [$withBarcode->id => 1, $withoutBarcode->id => 1, $badBarcode->id => 1], 'width' => 99, 'height' => 15, 'columns' => 3])
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('sheet.labels', 2)
+                ->where('sheet.labels.0.name', 'Kuas')
+                ->where('sheet.labels.0.sku', 'MU0001')
+                ->where('sheet.labels.0.barcode', '8993175530012')
+                ->where('sheet.labels.1.sku', 'MU0496')
+                ->where('sheet.labels.1.barcode', 'MU0496'));
+    }
+
     public function test_a_sku_with_characters_code_39_cannot_carry_is_not_printable(): void
     {
         $this->assertTrue(BarcodeLabelService::isPrintable('MU0496'));

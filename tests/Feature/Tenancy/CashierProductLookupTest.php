@@ -73,6 +73,17 @@ class CashierProductLookupTest extends TestCase
             ->assertJsonPath('data.0.id', $brush->id);
     }
 
+    public function test_a_scanned_packaging_barcode_finds_that_item_and_tells_its_barcode(): void
+    {
+        $brush = $this->sellableProduct('Kuas', '100', ['sku' => 'MU0496', 'barcode' => '8993175530012']);
+        $this->sellableProduct('Kuas Besar', '100', ['sku' => 'MU0497']);
+
+        $this->lookup('8993175530012')->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $brush->id)
+            ->assertJsonPath('data.0.barcode', '8993175530012');
+    }
+
     public function test_inactive_items_and_units_not_for_sale_are_left_out(): void
     {
         $this->sellableProduct('Kuas Lama', '10', ['is_active' => false]);

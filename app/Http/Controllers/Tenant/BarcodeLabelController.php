@@ -11,7 +11,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Printing barcode stickers (the SKU as a barcode) for the items picked on the item list, for admins. It has no page of its
+ * Printing barcode stickers (the packaging's barcode, or the SKU when it has none) for the items picked on the item list, for admins. It has no page of its
  * own: the item list opens a window to set how many stickers each item gets, and the sheet prints from a window of its own.
  */
 class BarcodeLabelController extends Controller

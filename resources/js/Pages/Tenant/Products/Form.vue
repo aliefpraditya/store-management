@@ -12,6 +12,7 @@ import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
     product: { type: Object, default: null },
+    suggested_sku: { type: String, default: '' },
     categories: { type: Array, required: true },
     brands: { type: Array, required: true },
     units: { type: Array, required: true },
@@ -59,7 +60,8 @@ const toNumericRow = (row, index, rows) => ({
 const form = useForm({
     version: props.product?.version ?? null,
     name: props.product?.name ?? '',
-    sku: props.product?.sku ?? '',
+    sku: props.product?.sku ?? props.suggested_sku,
+    barcode: props.product?.barcode ?? '',
     category: props.product?.category ?? null,
     brand: props.product?.brand ?? null,
     min_stock: Number(props.product?.min_stock ?? 0),
@@ -276,8 +278,18 @@ function submit() {
                 <h2>Info barang</h2>
 
                 <div class="grid grid--info">
-                    <q-input v-model="form.sku" label="SKU" outlined :error="!!form.errors.sku" :error-message="form.errors.sku" autofocus />
-                    <q-input v-model="form.name" label="Nama" outlined :error="!!form.errors.name" :error-message="form.errors.name" />
+                    <q-input v-model="form.sku" label="SKU" outlined :error="!!form.errors.sku" :error-message="form.errors.sku" />
+                    <q-input
+                        v-model="form.barcode"
+                        label="Barcode kemasan (opsional)"
+                        outlined
+                        stack-label
+                        :placeholder="form.sku"
+                        hint="Isi bila kemasan sudah ber-barcode. Kosong: SKU dipakai sebagai barcode."
+                        :error="!!form.errors.barcode"
+                        :error-message="form.errors.barcode"
+                    />
+                    <q-input v-model="form.name" label="Nama" outlined :error="!!form.errors.name" :error-message="form.errors.name" autofocus />
                 </div>
 
                 <div class="grid grid--four">
@@ -520,7 +532,7 @@ function submit() {
 }
 
 .grid--info {
-    grid-template-columns: 1fr 3fr;
+    grid-template-columns: 1fr 1.3fr 2fr;
 }
 
 .grid--four {

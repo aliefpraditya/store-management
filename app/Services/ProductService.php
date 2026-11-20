@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\DB;
  *
  * @phpstan-type NamedOrExisting array{id?: int|string|null, name?: string|null}
  * @phpstan-type UnitRow array{id?: int|null, unit: array{code: string, name?: string|null}, conversion_factor: numeric-string|float|int, is_sellable: bool, cost_price: numeric-string|float|int, selling_price: numeric-string|float|int, is_default_sale: bool, is_sealed_pack?: bool}
- * @phpstan-type ProductInput array{name: string, sku: string, category: NamedOrExisting, brand?: NamedOrExisting|null, min_stock: numeric-string|float|int, is_active: bool, version?: int|null, units: list<UnitRow>}
+ * @phpstan-type ProductInput array{name: string, sku: string, barcode?: string|null, category: NamedOrExisting, brand?: NamedOrExisting|null, min_stock: numeric-string|float|int, is_active: bool, version?: int|null, units: list<UnitRow>}
  * @phpstan-type UnitProblem array{field: string, message: string}
  */
 class ProductService
@@ -95,6 +95,24 @@ class ProductService
             ->orderBy('name')
             ->limit(self::PICKER_LIMIT)
             ->get();
+    }
+
+    /**
+     * The SKU the add form starts with: the store's prefix followed by the next number after the highest one in use
+     * (MU3470 -> MU3471, padded to four digits). Deleted items count too, so a number is never handed out twice. It is
+     * only a suggestion: the person can type another, and the unique rule still decides when it is saved.
+     *
+     * @param  string  $prefix  letters and digits only, as the store's receipt prefix is
+     */
+    public function suggestSku(string $prefix): string
+    {
+        $numberStart = strlen($prefix) + 1;
+
+        $highestNumber = Product::withTrashed()
+            ->whereRaw('sku REGEXP ?', ['^'.$prefix.'[0-9]{1,9}$'])
+            ->max(DB::raw("CAST(SUBSTRING(sku, {$numberStart}) AS UNSIGNED)"));
+
+        return $prefix.sprintf('%04d', (int) $highestNumber + 1);
     }
 
     /**
@@ -259,6 +277,7 @@ class ProductService
 
         $product->fill([
             'sku' => trim($productInput['sku']),
+            'barcode' => filled($productInput['barcode'] ?? null) ? trim($productInput['barcode']) : null,
             'name' => trim($productInput['name']),
             'category_id' => $this->resolveCategory($productInput['category'])->id,
             'brand_id' => $this->resolveBrand($productInput['brand'] ?? null)?->id,

@@ -18,7 +18,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * Lives in the store database. Quantities and `cost_price` are per base unit. A damaged-goods (DG) product is made by an
  * opname from the product it was damaged from (`damaged_from_product_id`), with its own SKU and price.
  */
-#[Fillable(['sku', 'name', 'category_id', 'brand_id', 'base_unit_code', 'cost_price', 'min_stock', 'is_active', 'is_damaged_goods', 'damaged_from_product_id'])]
+#[Fillable(['sku', 'barcode', 'name', 'category_id', 'brand_id', 'base_unit_code', 'cost_price', 'min_stock', 'is_active', 'is_damaged_goods', 'damaged_from_product_id'])]
 class Product extends Model implements AuditableContract
 {
     /** @use HasFactory<ProductFactory> */
@@ -43,6 +43,14 @@ class Product extends Model implements AuditableContract
             'is_damaged_goods' => 'boolean',
             'version' => 'integer',
         ];
+    }
+
+    /**
+     * The code the item is scanned by: the barcode of its packaging, or the SKU when it has none.
+     */
+    public function scanCode(): string
+    {
+        return $this->barcode ?? $this->sku;
     }
 
     /**
@@ -179,7 +187,8 @@ class Product extends Model implements AuditableContract
 
         $query->where(function (Builder $query) use ($contains): void {
             $query->where('products.name', 'like', $contains)
-                ->orWhere('products.sku', 'like', $contains);
+                ->orWhere('products.sku', 'like', $contains)
+                ->orWhere('products.barcode', 'like', $contains);
         });
     }
 

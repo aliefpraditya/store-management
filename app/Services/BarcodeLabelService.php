@@ -5,12 +5,13 @@ namespace App\Services;
 use App\Models\Product;
 
 /**
- * Prepares barcode stickers for the items picked on the item list. An item has no barcode of its own: the sticker carries
- * its SKU as a Code 39 barcode, which is what the till finds the item by when it is scanned. Code 39 holds digits, letters
- * and a few signs, so an item whose SKU has any other character cannot be printed.
+ * Prepares barcode stickers for the items picked on the item list. The sticker carries the item's scan code (the barcode of
+ * its packaging, or the SKU when it has none) as a Code 39 barcode, which is what the till finds the item by when it is
+ * scanned, and the SKU as its caption. Code 39 holds digits, letters and a few signs, so an item whose scan code has any
+ * other character cannot be printed.
  *
- * @phpstan-type PickableProduct array{id: int, sku: string, name: string, is_printable: bool}
- * @phpstan-type Label array{name: string, sku: string, copies: int}
+ * @phpstan-type PickableProduct array{id: int, sku: string, barcode: string, name: string, is_printable: bool}
+ * @phpstan-type Label array{name: string, sku: string, barcode: string, copies: int}
  */
 class BarcodeLabelService
 {
@@ -23,9 +24,9 @@ class BarcodeLabelService
 
     private const CODE_39_PATTERN = '/^[0-9A-Za-z\-. $\/+%]+$/';
 
-    public static function isPrintable(string $sku): bool
+    public static function isPrintable(string $code): bool
     {
-        return preg_match(self::CODE_39_PATTERN, $sku) === 1;
+        return preg_match(self::CODE_39_PATTERN, $code) === 1;
     }
 
     /**
@@ -40,12 +41,13 @@ class BarcodeLabelService
             ->whereIn('id', $productIds)
             ->orderBy('name')
             ->orderBy('id')
-            ->get(['id', 'sku', 'name'])
+            ->get(['id', 'sku', 'barcode', 'name'])
             ->map(fn (Product $product): array => [
                 'id' => $product->id,
                 'sku' => $product->sku,
+                'barcode' => $product->scanCode(),
                 'name' => $product->name,
-                'is_printable' => self::isPrintable($product->sku),
+                'is_printable' => self::isPrintable($product->scanCode()),
             ])
             ->all();
     }
@@ -62,11 +64,12 @@ class BarcodeLabelService
             ->whereIn('id', array_keys($copiesByProductId))
             ->orderBy('name')
             ->orderBy('id')
-            ->get(['id', 'sku', 'name'])
-            ->filter(fn (Product $product): bool => self::isPrintable($product->sku))
+            ->get(['id', 'sku', 'barcode', 'name'])
+            ->filter(fn (Product $product): bool => self::isPrintable($product->scanCode()))
             ->map(fn (Product $product): array => [
                 'name' => $product->name,
                 'sku' => $product->sku,
+                'barcode' => $product->scanCode(),
                 'copies' => $copiesByProductId[$product->id],
             ])
             ->values()

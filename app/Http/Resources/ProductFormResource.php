@@ -21,6 +21,7 @@ class ProductFormResource extends JsonResource
         return [
             'id' => $this->id,
             'sku' => $this->sku,
+            'barcode' => $this->barcode,
             'name' => $this->name,
             'category' => ['id' => $this->category->id, 'name' => $this->category->name],
             'brand' => $this->brand === null ? null : ['id' => $this->brand->id, 'name' => $this->brand->name],

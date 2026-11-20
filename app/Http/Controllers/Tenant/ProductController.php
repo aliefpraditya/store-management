@@ -108,6 +108,7 @@ class ProductController extends Controller
     {
         return Inertia::render('Tenant/Products/Form', [
             'product' => null,
+            'suggested_sku' => $this->productService->suggestSku(tenant('receipt_prefix')),
             'form_action' => ['url' => route('tenant.products.store', ['tenant' => tenant('code')]), 'method' => 'post'],
             ...$this->formOptions(),
         ]);

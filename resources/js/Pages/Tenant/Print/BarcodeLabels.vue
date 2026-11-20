@@ -5,7 +5,7 @@ import Code39Barcode from '../../../Components/Code39Barcode.vue';
 import PrintPage from '../../../Components/PrintPage.vue';
 
 const props = defineProps({
-    /** The size is that of the whole stock (one row of stickers), which `columns` stickers share side by side. @type {{labels: {name: string, sku: string, copies: number}[], width_mm: number, height_mm: number, columns: number}} */
+    /** The size is that of the whole stock (one row of stickers), which `columns` stickers share side by side. @type {{labels: {name: string, sku: string, barcode: string, copies: number}[], width_mm: number, height_mm: number, columns: number}} */
     sheet: { type: Object, required: true },
 });
 
@@ -47,7 +47,7 @@ const rowStyle = computed(() => ({
         <div v-for="(row, rowIndex) in rows" :key="rowIndex" class="sticker-row" :style="rowStyle">
             <div v-for="(sticker, index) in row" :key="index" class="sticker">
                 <div class="sticker__name">{{ sticker.name }}</div>
-                <div class="sticker__bars"><Code39Barcode :value="sticker.sku" class="sticker__svg" /></div>
+                <div class="sticker__bars"><Code39Barcode :value="sticker.barcode" class="sticker__svg" /></div>
                 <div class="sticker__sku">{{ sticker.sku }}</div>
             </div>
         </div>

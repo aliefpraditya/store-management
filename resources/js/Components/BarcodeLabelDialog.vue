@@ -89,7 +89,7 @@ function print() {
         <q-card class="labels">
             <q-card-section>
                 <div class="labels__title">Cetak barcode {{ productIds.length }} barang</div>
-                <small class="labels__hint">Barcode dibuat dari SKU barang. Isi berapa label yang dicetak untuk tiap barang.</small>
+                <small class="labels__hint">Barcode memakai barcode kemasan barang, atau SKU bila kosong. Isi berapa label yang dicetak untuk tiap barang.</small>
             </q-card-section>
 
             <q-card-section class="labels__body">
@@ -100,15 +100,17 @@ function print() {
                         <tr>
                             <th>Barang</th>
                             <th>SKU</th>
+                            <th>Barcode</th>
                             <th class="labels__count">Jumlah cetak</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="product in products" :key="product.id" :class="{ 'labels__row--off': !product.is_printable }">
                             <td><b>{{ product.name }}</b></td>
+                            <td>{{ product.sku }}</td>
                             <td>
-                                {{ product.sku }}
-                                <small v-if="!product.is_printable" class="labels__note--bad">SKU berisi karakter yang tidak bisa dicetak sebagai barcode (hanya huruf, angka, spasi, dan - . $ / + %)</small>
+                                {{ product.barcode }}
+                                <small v-if="!product.is_printable" class="labels__note--bad">Barcode berisi karakter yang tidak bisa dicetak (hanya huruf, angka, spasi, dan - . $ / + %)</small>
                             </td>
                             <td class="labels__count">
                                 <q-input
