@@ -36,6 +36,7 @@ class SaleReturnResource extends JsonResource
             'refund_account' => $this->refund_account,
             'credit_amount' => $this->credit_amount,
             'refund_amount' => $this->refund_amount,
+            'cod_offset_amount' => $this->cod_offset_amount,
             'exchange' => $this->isExchange() ? $this->exchangeOf() : null,
             'reason' => $this->reason,
             'cashier_name' => $this->cashShift->cashier_name,

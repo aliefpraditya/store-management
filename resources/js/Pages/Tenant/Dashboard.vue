@@ -47,6 +47,7 @@ const title = `${greeting()}, ${page.props.auth.user.name}`;
  */
 const returnApprovals = computed(() => props.summary.approvals.filter((approval) => approval.kind === 'return'));
 const cashDifferenceApprovals = computed(() => props.summary.approvals.filter((approval) => approval.kind === 'cash_difference'));
+const codSettlementApprovals = computed(() => props.summary.approvals.filter((approval) => approval.kind === 'cod_settlement'));
 const pendingReturnsUrl = computed(() => `${store.value.returns_url}?status=pending`);
 const pendingCashDifferencesUrl = computed(() => `${store.value.shifts_url}?difference=pending_approval`);
 
@@ -111,6 +112,22 @@ const formatTime = (isoDate) =>
                                     <small>{{ formatRupiah(approval.amount) }}</small>
                                 </Link>
                                 <span class="chip chip--warn">Retur</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div v-if="codSettlementApprovals.length > 0" class="group">
+                        <h3 class="group__title">
+                            Uang COD menunggu persetujuan
+                            <span>{{ summary.pending.cod_approvals }}</span>
+                        </h3>
+                        <ul class="list">
+                            <li v-for="approval in codSettlementApprovals" :key="approval.reference">
+                                <Link :href="approval.show_url" class="list__text list__link">
+                                    {{ approval.reference }}
+                                    <small>{{ formatRupiah(approval.amount) }}</small>
+                                </Link>
+                                <span class="chip chip--warn">Selisih COD</span>
                             </li>
                         </ul>
                     </div>

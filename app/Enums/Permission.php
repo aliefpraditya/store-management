@@ -19,6 +19,8 @@ enum Permission: string
     case DeliveryNotesView = 'delivery_notes.view';
     case DeliveryNotesManage = 'delivery_notes.manage';
     case ReturnsManage = 'returns.manage';
+    case CodReceive = 'cod.receive';
+    case CodApprove = 'cod.approve';
     case ShiftsReview = 'shifts.review';
     case ExpensesManage = 'expenses.manage';
     case DailyClosingsManage = 'daily_closings.manage';
@@ -39,6 +41,8 @@ enum Permission: string
             self::DeliveryNotesView => 'Lihat dan cetak surat jalan',
             self::DeliveryNotesManage => 'Buat, kirim, selesaikan, dan batalkan surat jalan',
             self::ReturnsManage => 'Kelola retur (buat, setujui, tolak)',
+            self::CodReceive => 'Terima uang COD (konfirmasi pelunasan)',
+            self::CodApprove => 'Setujui selisih penerimaan uang COD',
             self::ShiftsReview => 'Rekap shift: putuskan selisih kas',
             self::ExpensesManage => 'Kelola pengeluaran',
             self::DailyClosingsManage => 'Tutup hari dan buka kembali',
@@ -52,7 +56,7 @@ enum Permission: string
         return match ($this) {
             self::DashboardView => 'Umum',
             self::ProductsManage, self::StockOpnamesCount, self::StockOpnamesPost, self::StockHistoryView => 'Barang & Stok',
-            self::CashierUse, self::SalesView, self::SalesVoid, self::DeliveryNotesView, self::DeliveryNotesManage, self::ReturnsManage => 'Penjualan',
+            self::CashierUse, self::SalesView, self::SalesVoid, self::DeliveryNotesView, self::DeliveryNotesManage, self::ReturnsManage, self::CodReceive, self::CodApprove => 'Penjualan',
             self::ShiftsReview, self::ExpensesManage, self::DailyClosingsManage => 'Kas & Harian',
             self::ReportsView, self::SettingsManage => 'Laporan & Pengaturan',
         };
@@ -65,7 +69,7 @@ enum Permission: string
     {
         return match ($this) {
             self::DashboardView => 'tenant.dashboard',
-            self::CashierUse => 'tenant.cashier.index',
+            self::CashierUse, self::CodReceive, self::CodApprove => 'tenant.cashier.index',
             self::ProductsManage => 'tenant.products.index',
             self::StockOpnamesCount, self::StockOpnamesPost => 'tenant.stock-opnames.index',
             self::StockHistoryView => 'tenant.stock-history.index',

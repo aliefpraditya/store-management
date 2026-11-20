@@ -95,8 +95,9 @@ async function print() {
 
             <dl class="ret__facts">
                 <div><dt>Penyelesaian</dt><dd>{{ saleReturn.resolution_label }}</dd></div>
-                <div v-if="!saleReturn.exchange"><dt>Dikembalikan</dt><dd>{{ formatRupiah(saleReturn.refund_amount) }} lewat {{ saleReturn.refund_method_label }}</dd></div>
-                <div v-else><dt>Nilai retur</dt><dd>{{ formatRupiah(saleReturn.credit_amount) }}</dd></div>
+                <div v-if="Number(saleReturn.cod_offset_amount) > 0"><dt>Dipotong dari tagihan COD</dt><dd>{{ formatRupiah(saleReturn.cod_offset_amount) }}</dd></div>
+                <div v-if="!saleReturn.exchange && (Number(saleReturn.refund_amount) > 0 || Number(saleReturn.cod_offset_amount) <= 0)"><dt>Dikembalikan</dt><dd>{{ formatRupiah(saleReturn.refund_amount) }} lewat {{ saleReturn.refund_method_label }}</dd></div>
+                <div v-else-if="saleReturn.exchange"><dt>Nilai retur</dt><dd>{{ formatRupiah(saleReturn.credit_amount) }}</dd></div>
                 <div v-if="saleReturn.refund_account"><dt>Rekening penerima</dt><dd>{{ saleReturn.refund_account }}</dd></div>
                 <div v-if="saleReturn.reason"><dt>Alasan</dt><dd>{{ saleReturn.reason }}</dd></div>
             </dl>

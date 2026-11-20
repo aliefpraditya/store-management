@@ -38,6 +38,10 @@ use Illuminate\Support\Str;
  * a receipt of their own, paid with the credit of the returned goods, and the customer pays what is more or gets the
  * rest back as a refund. That receipt is made when the return is approved, so nothing of it moves before then.
  *
+ * A refund of a COD receipt whose money was not received yet pays nothing out: its value is cut from what the customer
+ * still owes ({@see CodSettlementService::offsetFor()}), and only what is beyond that goes back as money. An exchange
+ * does not cut the bill; the replacement goes on a receipt of its own.
+ *
  * `client_uuid` makes a double submit return the first return instead of refunding twice.
  *
  * @phpstan-type ReturnLine array{sale_item_id: int, quantity: numeric-string|float|int}
@@ -60,6 +64,7 @@ class SaleReturnService
         private readonly DocumentNumberGenerator $documentNumbers,
         private readonly SaleService $saleService,
         private readonly StockOpnameService $opnames,
+        private readonly CodSettlementService $codSettlements,
     ) {}
 
     /**
@@ -152,12 +157,13 @@ class SaleReturnService
     }
 
     /**
-     * The way the customer paid most, so the refund goes back the same way unless the screen changes it.
+     * The way the customer paid most, so the refund goes back the same way unless the screen changes it. Only the ways
+     * money can go back by count: COD, an order deposit or return credit were never paid in, or cannot be paid out.
      */
     public function defaultRefundMethod(Sale $sale): PaymentMethod
     {
         $paidMost = $sale->payments
-            ->filter(fn ($payment): bool => $payment->method !== PaymentMethod::ReturnCredit)
+            ->filter(fn ($payment): bool => in_array($payment->method, PaymentMethod::forCashier(), true))
             ->sortByDesc('amount')
             ->first();
 
@@ -175,7 +181,7 @@ class SaleReturnService
     public function create(Sale $sale, CashShift $shift, User $requester, array $returnInput): SaleReturn
     {
         return DB::transaction(function () use ($sale, $shift, $requester, $returnInput): SaleReturn {
-            $sale = Sale::query()->with('items')->lockForUpdate()->findOrFail($sale->id);
+            $sale = Sale::query()->with(['items', 'payments'])->lockForUpdate()->findOrFail($sale->id);
             $shift = CashShift::query()->lockForUpdate()->findOrFail($shift->id);
 
             // Checked under the sale lock so two submits of the same return cannot both get past it.
@@ -199,8 +205,10 @@ class SaleReturnService
             $resolution = ReturnResolution::from($returnInput['resolution'] ?? ReturnResolution::Refund->value);
             $exchange = $resolution === ReturnResolution::Exchange ? $this->priceExchange($returnInput, $returnedGoodsCredit) : null;
             $refund = $exchange['refund'] ?? $returnedGoodsCredit;
+            $codOffset = $resolution === ReturnResolution::Refund ? $this->codSettlements->offsetFor($sale, $refund) : BigDecimal::zero();
+            $moneyRefund = $refund->minus($codOffset);
             $refundMethod = PaymentMethod::from($returnInput['refund_method']);
-            $refundAccount = $this->refundAccountOf($refundMethod, $refund, $returnInput['refund_account'] ?? null);
+            $refundAccount = $this->refundAccountOf($refundMethod, $moneyRefund, $returnInput['refund_account'] ?? null);
 
             $saleReturn = SaleReturn::query()->create([
                 'client_uuid' => $returnInput['client_uuid'],
@@ -213,7 +221,8 @@ class SaleReturnService
                 'refund_method' => $refundMethod,
                 'refund_account' => $refundAccount,
                 'credit_amount' => (string) $returnedGoodsCredit->toScale(2),
-                'refund_amount' => (string) $refund->toScale(2),
+                'refund_amount' => (string) $moneyRefund->toScale(2),
+                'cod_offset_amount' => (string) $codOffset->toScale(2),
                 'exchange_data' => $exchange['data'] ?? null,
                 'status' => SaleReturnStatus::Pending,
                 'reason' => filled($returnInput['reason'] ?? null) ? trim($returnInput['reason']) : null,

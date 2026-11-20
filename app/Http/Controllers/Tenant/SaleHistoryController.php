@@ -11,9 +11,11 @@ use App\Http\Resources\SaleDetailResource;
 use App\Http\Resources\SaleHistoryRowResource;
 use App\Models\Sale;
 use App\Models\Store;
+use App\Services\CodSettlementService;
 use App\Services\SaleHistoryService;
 use App\Services\SaleVoidService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -28,6 +30,7 @@ class SaleHistoryController extends Controller
     public function __construct(
         private readonly SaleHistoryService $saleHistoryService,
         private readonly SaleVoidService $saleVoids,
+        private readonly CodSettlementService $codSettlements,
     ) {}
 
     public function index(DateRangeRequest $request): Response
@@ -55,7 +58,7 @@ class SaleHistoryController extends Controller
         /** @var Store $store */
         $store = tenant();
 
-        $sale->load(['items', 'payments', 'register', 'deliveryNotes']);
+        $sale->load(['items', 'payments', 'register', 'deliveryNotes', 'codSettlement']);
 
         return Inertia::render('Tenant/Sales/Show', [
             'sale' => SaleDetailResource::make($sale)->resolve(),
@@ -81,5 +84,19 @@ class SaleHistoryController extends Controller
         }
 
         return back()->with('success', 'Nota di-void. Barangnya kembali ke stok.');
+    }
+
+    /**
+     * Approves the difference in the money that was received for a COD sale.
+     */
+    public function approveCodSettlement(Request $request, Sale $sale): RedirectResponse
+    {
+        try {
+            $this->codSettlements->approve($sale, $request->user());
+        } catch (CodSaleException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return back()->with('success', 'Penerimaan uang COD disetujui.');
     }
 }

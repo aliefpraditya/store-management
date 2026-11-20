@@ -19,6 +19,14 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
 const differenceChipClass = { none: 'chip--off', pending_approval: 'chip--warn', approved: 'chip--ok', rejected: 'chip--bad' };
 const returnChipClass = { pending: 'chip--warn', completed: 'chip--ok', rejected: 'chip--bad' };
 
+/** The ways COD money can come in, in the order the report lists them. */
+const COD_RECEIVED_METHODS = [
+    { key: 'cash', label: 'Tunai' },
+    { key: 'transfer', label: 'Transfer' },
+    { key: 'qris', label: 'QRIS' },
+    { key: 'edc', label: 'EDC' },
+];
+
 const note = ref('');
 const errorMessage = ref('');
 const isDeciding = ref(false);
@@ -125,6 +133,13 @@ function sendDecision(url) {
                         <div><dt>COD sudah diantar ({{ shift.cod.delivered.count }} nota)<small> (tidak masuk laci)</small></dt><dd>{{ formatRupiah(shift.cod.delivered.amount) }}</dd></div>
                         <div><dt>COD belum diantar ({{ shift.cod.undelivered.count }} nota)<small> (tidak masuk laci)</small></dt><dd>{{ formatRupiah(shift.cod.undelivered.amount) }}</dd></div>
                     </template>
+                    <template v-if="Number(shift.cod_received?.total) > 0">
+                        <div class="rows__strong"><dt>Pelunasan COD diterima<small> (uang COD yang diterima shift ini)</small></dt><dd>{{ formatRupiah(shift.cod_received.total) }}</dd></div>
+                        <div v-for="method in COD_RECEIVED_METHODS" v-show="Number(shift.cod_received[method.key]) > 0" :key="method.key">
+                            <dt><small>{{ method.label }}<template v-if="method.key === 'cash'"> (masuk laci)</template></small></dt>
+                            <dd>{{ formatRupiah(shift.cod_received[method.key]) }}</dd>
+                        </div>
+                    </template>
                 </template>
                 <template v-else-if="shift.cod.delivered.count + shift.cod.undelivered.count > 0">
                     <div><dt>Nota COD sudah diantar</dt><dd>{{ shift.cod.delivered.count }}</dd></div>
@@ -137,6 +152,7 @@ function sendDecision(url) {
             <dl v-if="!shift.is_cash_hidden" class="rows">
                 <div><dt>Modal kas awal</dt><dd>{{ formatRupiah(shift.opening_cash) }}</dd></div>
                 <div v-if="Number(shift.order_deposit_cash) !== 0"><dt>DP pesanan tunai<small> (setelah DP yang dikembalikan)</small></dt><dd>{{ formatRupiah(shift.order_deposit_cash) }}</dd></div>
+                <div v-if="Number(shift.cod_received?.cash) > 0"><dt>Pelunasan COD tunai</dt><dd>{{ formatRupiah(shift.cod_received.cash) }}</dd></div>
                 <div v-if="Number(shift.cash_refunds) > 0"><dt>Retur tunai</dt><dd class="rows__minus">{{ formatDeduction(shift.cash_refunds) }}</dd></div>
                 <div v-if="Number(shift.void_cash_refunds) > 0"><dt>DP void dikembalikan tunai</dt><dd class="rows__minus">{{ formatDeduction(shift.void_cash_refunds) }}</dd></div>
                 <div v-if="Number(shift.drawer_expenses) > 0"><dt>Pengeluaran dari laci</dt><dd class="rows__minus">{{ formatDeduction(shift.drawer_expenses) }}</dd></div>
@@ -159,7 +175,10 @@ function sendDecision(url) {
                     <li v-for="saleReturn in shift.returns" :key="saleReturn.number" @click="router.visit(saleReturn.show_url)">
                         <b>{{ saleReturn.number }}</b>
                         <span class="chip" :class="returnChipClass[saleReturn.status]">{{ saleReturn.status_label }}</span>
-                        <span class="returns__amount">{{ formatRupiah(saleReturn.refund_amount) }} <small>{{ saleReturn.refund_method_label }}</small></span>
+                        <span class="returns__amount">
+                            <template v-if="Number(saleReturn.cod_offset_amount) > 0"><small>dipotong dari COD {{ formatRupiah(saleReturn.cod_offset_amount) }} · </small></template>
+                            {{ formatRupiah(saleReturn.refund_amount) }} <small>{{ saleReturn.refund_method_label }}</small>
+                        </span>
                     </li>
                 </ul>
             </template>

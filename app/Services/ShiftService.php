@@ -10,6 +10,7 @@ use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Exceptions\ShiftException;
 use App\Models\CashShift;
+use App\Models\CodSettlement;
 use App\Models\CustomerOrderPayment;
 use App\Models\DailyClosing;
 use App\Models\Register;
@@ -33,7 +34,7 @@ use Illuminate\Support\Str;
  *
  * @phpstan-import-type CodTotals from CodSaleService
  *
- * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, void_cash_refunds: string, void_deposits: string, cod: CodTotals, drawer_expenses: string, order_deposit_cash: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
+ * @phpstan-type ShiftSummary array{sale_count: int, total_sales: string, returns_total: string, cash_refunds: string, void_cash_refunds: string, void_deposits: string, cod: CodTotals, cod_received: array{cash: string, transfer: string, qris: string, edc: string, total: string}, drawer_expenses: string, order_deposit_cash: string, payments: array<string, string>, opening_cash: string, expected_cash: string}
  */
 class ShiftService
 {
@@ -145,8 +146,9 @@ class ShiftService
      * waiting for approval has paid nothing yet.
      *
      * The money a voided receipt took in (a deposit) still came in, so it is counted here; the deposit goes back out
-     * as a void refund in the shift that voided it. COD is not money in the drawer: it is shown apart, split by whether
-     * the goods were delivered yet.
+     * as a void refund in the shift that voided it. COD is not money in the drawer when it is sold: it is shown apart,
+     * split by whether the goods were delivered yet. The money received for it later is shown apart too
+     * (`cod_received`), and its cash part is added to the expected cash of the shift that received it.
      *
      * @return ShiftSummary
      */
@@ -179,6 +181,7 @@ class ShiftService
 
         $drawerExpenses = BigDecimal::of($this->expenseService->drawerTotalOf($shift));
         $orderDepositCash = $this->orderDepositCashOf($shift);
+        $codReceived = $this->codReceivedOf($shift);
 
         return [
             'void_deposits' => (string) $this->voidedDepositsOf($shift)->toScale(2),
@@ -188,11 +191,12 @@ class ShiftService
             'cash_refunds' => (string) $cashRefunds->toScale(2),
             'void_cash_refunds' => (string) $voidCashRefunds->toScale(2),
             'cod' => $this->codSales->totalsOfShift($shift),
+            'cod_received' => $codReceived,
             'drawer_expenses' => (string) $drawerExpenses->toScale(2),
             'order_deposit_cash' => (string) $orderDepositCash->toScale(2),
             'payments' => $payments,
             'opening_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->toScale(2),
-            'expected_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->plus($cashFromSales)->plus($orderDepositCash)->minus($cashRefunds)->minus($voidCashRefunds)->minus($drawerExpenses)->toScale(2),
+            'expected_cash' => (string) BigDecimal::of((string) $shift->opening_cash)->plus($cashFromSales)->plus($orderDepositCash)->plus($codReceived[PaymentMethod::Cash->value])->minus($cashRefunds)->minus($voidCashRefunds)->minus($drawerExpenses)->toScale(2),
         ];
     }
 
@@ -235,6 +239,32 @@ class ShiftService
             ->sum('sale_payments.amount');
 
         return BigDecimal::of((string) $received)->minus((string) $voidedSalesQuery->sum('change_amount'));
+    }
+
+    /**
+     * The money received for COD sales in this shift, per method, with the total. Cash is the only part that is in the
+     * drawer. What waits for an approval counts too: the money is already in hand, only the difference is not decided.
+     *
+     * @return array{cash: string, transfer: string, qris: string, edc: string, total: string}
+     */
+    private function codReceivedOf(CashShift $shift): array
+    {
+        $receivedByMethod = CodSettlement::query()
+            ->where('cash_shift_id', $shift->id)
+            ->groupBy('method')
+            ->selectRaw('method, sum(amount) as amount')
+            ->pluck('amount', 'method');
+
+        $received = [];
+        $total = BigDecimal::zero();
+
+        foreach (PaymentMethod::forCashier() as $method) {
+            $amount = BigDecimal::of((string) ($receivedByMethod[$method->value] ?? 0));
+            $received[$method->value] = (string) $amount->toScale(2);
+            $total = $total->plus($amount);
+        }
+
+        return [...$received, 'total' => (string) $total->toScale(2)];
     }
 
     /**

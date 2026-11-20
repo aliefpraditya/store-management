@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Enums\ProductSortColumn;
 use App\Enums\UserRole;
 use App\Exceptions\ProductSaveException;
 use App\Models\Brand;
@@ -670,6 +671,54 @@ class ProductManagementTest extends TestCase
         $get(['category' => $categoryId, 'status' => 'active'])->assertInertia(fn (Assert $page) => $page->has('products.data', 1)->where('products.data.0.sku', 'A2'));
         $get(['status' => 'inactive'])->assertInertia(fn (Assert $page) => $page->has('products.data', 1)->where('products.data.0.sku', 'A3'));
         $get([])->assertInertia(fn (Assert $page) => $page->has('products.data', 3)->has('categories', 2));
+    }
+
+    public function test_the_list_can_be_ordered_by_a_column_in_either_direction(): void
+    {
+        $this->seedItems([
+            ['name' => 'Cat', 'sku' => 'A2', 'category' => 'Bangunan'],
+            ['name' => 'Paku', 'sku' => 'A3', 'category' => 'Cat', 'active' => false],
+            ['name' => 'Kuas', 'sku' => 'A1', 'category' => 'Alat'],
+        ]);
+
+        $skusOrderedBy = function (array $query): array {
+            $skus = [];
+
+            $this->actingAs($this->admin)->get($this->url('index', $query))->assertOk()
+                ->assertInertia(function (Assert $page) use (&$skus): void {
+                    $skus = collect($page->toArray()['props']['products']['data'])->pluck('sku')->all();
+                });
+
+            return $skus;
+        };
+
+        $this->assertSame(['A2', 'A1', 'A3'], $skusOrderedBy([]), 'Without a choice the list runs by name.');
+        $this->assertSame(['A1', 'A2', 'A3'], $skusOrderedBy(['sort' => 'sku']));
+        $this->assertSame(['A3', 'A2', 'A1'], $skusOrderedBy(['sort' => 'sku', 'direction' => 'desc']));
+        $this->assertSame(['A1', 'A2', 'A3'], $skusOrderedBy(['sort' => 'category']));
+        $this->assertSame(['A3', 'A2', 'A1'], $skusOrderedBy(['sort' => 'category', 'direction' => 'desc']));
+        $this->assertSame('A3', $skusOrderedBy(['sort' => 'status', 'direction' => 'asc'])[0], 'Inactive items come first when ascending.');
+        $this->assertSame(['A2', 'A1', 'A3'], $skusOrderedBy(['sort' => 'unknown', 'direction' => 'sideways']), 'An unknown column or direction falls back to the default.');
+    }
+
+    public function test_every_column_of_the_list_can_be_ordered_by(): void
+    {
+        $this->seedItems([
+            ['name' => 'Paku', 'sku' => 'A1'],
+            ['name' => 'Cat', 'sku' => 'A2'],
+        ]);
+
+        foreach (ProductSortColumn::cases() as $column) {
+            foreach (['asc', 'desc'] as $direction) {
+                $this->actingAs($this->admin)
+                    ->get($this->url('index', ['sort' => $column->value, 'direction' => $direction]))
+                    ->assertOk()
+                    ->assertInertia(fn (Assert $page) => $page
+                        ->has('products.data', 2)
+                        ->where('filters.sort', $column->value)
+                        ->where('filters.direction', $direction));
+            }
+        }
     }
 
     public function test_the_list_is_paginated(): void

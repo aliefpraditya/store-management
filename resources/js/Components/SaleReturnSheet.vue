@@ -4,7 +4,7 @@ import { formatQuantity } from '../Composables/useQuantityFormat';
 import ThermalPageSize from './ThermalPageSize.vue';
 
 defineProps({
-    /** @type {{number: string, returned_at: string, status: string, status_label: string, cashier_name: string, refund_method_label: string, credit_amount: string, refund_amount: string, exchange: {items: object[], total: string, payments: object[]}|null, reason: string|null, sale: {number: string, customer_name: string|null}, store: {name: string, address: string|null, phone: string|null}, paper_width: number, items: object[]}} */
+    /** @type {{number: string, returned_at: string, status: string, status_label: string, cashier_name: string, refund_method_label: string, credit_amount: string, refund_amount: string, cod_offset_amount: string, exchange: {items: object[], total: string, payments: object[]}|null, reason: string|null, sale: {number: string, customer_name: string|null}, store: {name: string, address: string|null, phone: string|null}, paper_width: number, items: object[]}} */
     saleReturn: { type: Object, required: true },
 });
 
@@ -58,11 +58,14 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
         </template>
 
         <dl v-else class="return-print__totals">
-            <div class="return-print__total"><dt>Dikembalikan</dt><dd>{{ formatRupiah(saleReturn.refund_amount) }}</dd></div>
-            <div><dt>Lewat</dt><dd>{{ saleReturn.refund_method_label }}</dd></div>
+            <div v-if="Number(saleReturn.cod_offset_amount) > 0"><dt>Dipotong dari tagihan COD</dt><dd>{{ formatRupiah(saleReturn.cod_offset_amount) }}</dd></div>
+            <template v-if="Number(saleReturn.refund_amount) > 0 || Number(saleReturn.cod_offset_amount) <= 0">
+                <div class="return-print__total"><dt>Dikembalikan</dt><dd>{{ formatRupiah(saleReturn.refund_amount) }}</dd></div>
+                <div><dt>Lewat</dt><dd>{{ saleReturn.refund_method_label }}</dd></div>
+            </template>
         </dl>
 
-        <div class="return-print__sign"><span>Penerima uang</span></div>
+        <div v-if="Number(saleReturn.refund_amount) > 0 || Number(saleReturn.cod_offset_amount) <= 0" class="return-print__sign"><span>Penerima uang</span></div>
 
         <footer>Terima kasih</footer>
     </div>

@@ -42,6 +42,18 @@ const asLocalDate = (isoDay) => new Date(`${isoDay}T00:00:00`);
         </table>
         <p class="daily-print__note">Baris metode bayar memuat uang yang sempat masuk, termasuk DP nota yang kemudian di-void, jadi jumlahnya bisa lebih besar dari total penjualan.</p>
 
+        <template v-if="[report.figures.cod_received_cash, report.figures.cod_received_transfer, report.figures.cod_received_qris, report.figures.cod_received_edc].some((amount) => Number(amount) > 0)">
+            <h2>Pelunasan COD diterima</h2>
+            <table class="daily-print__rows">
+                <tbody>
+                    <tr><td>Tunai (masuk laci)</td><td>{{ formatRupiah(report.figures.cod_received_cash) }}</td></tr>
+                    <tr><td>Transfer</td><td>{{ formatRupiah(report.figures.cod_received_transfer) }}</td></tr>
+                    <tr><td>QRIS</td><td>{{ formatRupiah(report.figures.cod_received_qris) }}</td></tr>
+                    <tr><td>EDC</td><td>{{ formatRupiah(report.figures.cod_received_edc) }}</td></tr>
+                </tbody>
+            </table>
+        </template>
+
         <h2>Retur dan pengeluaran</h2>
         <table class="daily-print__rows">
             <tbody>

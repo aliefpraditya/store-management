@@ -875,7 +875,7 @@ onBeforeUnmount(() => {
         <DeliveryNoteDialog v-model="isDeliveryOpen" :receipt="deliveryReceipt" />
         <ReturnLookupDialog v-if="shift" v-model="isReturnLookupOpen" :lookup-url="urls.return_lookup" @found="openReturn" />
         <ReturnDialog v-model="isReturnOpen" :receipt="returnReceipt" :products-url="urls.products" @saved="refreshShiftSummary" />
-        <CodDialog v-if="shift" v-model="isCodOpen" :list-url="urls.cod" @changed="refreshShiftSummary" />
+        <CodDialog v-if="shift" v-model="isCodOpen" :list-url="urls.cod" :settlements-url="urls.cod_settlements" @changed="refreshShiftSummary" />
         <OrderListDialog v-if="shift" v-model="isOrdersOpen" :list-url="urls.orders" @changed="refreshShiftSummary" @collect="startCollecting" @collect-paid="collectPaidOrder" />
         <ExpenseDialog v-if="shift" v-model="isExpenseOpen" :list-url="urls.expenses" :store-url="urls.expenses_store" @saved="refreshShiftSummary" />
     </q-layout>

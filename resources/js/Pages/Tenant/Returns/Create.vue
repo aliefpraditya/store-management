@@ -2,13 +2,13 @@
 import { computed, ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import ExchangeEditor from '../../../Components/ExchangeEditor.vue';
-import { newUuid } from '../../../Composables/useCart';
+import { newUuid, roundMoney } from '../../../Composables/useCart';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
-    /** The receipt chosen on the way in, or null. @type {{id: number, number: string, customer_name: string|null, default_refund_method: string, lines: object[]}|null} */
+    /** The receipt chosen on the way in, or null. `cod_outstanding` is the COD still owed on it. @type {{id: number, number: string, customer_name: string|null, default_refund_method: string, cod_outstanding: string, lines: object[]}|null} */
     sale: { type: Object, default: null },
     refund_methods: { type: Array, required: true },
     resolutions: { type: Array, required: true },
@@ -41,8 +41,17 @@ function onExchangeChange(payload) {
     form.refund_account = payload.refund_account;
 }
 
-/** Money paid back by transfer, QRIS or EDC needs the account it goes to; an exchange says so itself. */
-const isAccountMissing = computed(() => !isExchange.value && form.refund_method !== 'cash' && form.refund_account.trim() === '');
+/**
+ * The part of a refund that cuts the COD still owed on the receipt instead of paying money out: the customer has not
+ * paid that part yet. An exchange is settled by the replacement receipt, so nothing is cut there.
+ */
+const codOffset = computed(() => (isExchange.value ? 0 : roundMoney(Math.min(refundTotal.value, Number(chosenSale.value?.cod_outstanding) || 0))));
+
+/** What is really paid back after the COD cut. */
+const moneyOut = computed(() => roundMoney(refundTotal.value - codOffset.value));
+
+/** Money paid back by transfer, QRIS or EDC needs the account it goes to (an exchange says so itself); nothing is needed when no money goes out. */
+const isAccountMissing = computed(() => !isExchange.value && moneyOut.value > 0 && form.refund_method !== 'cash' && form.refund_account.trim() === '');
 
 /** Back to a plain refund: the money goes back the way the customer paid and no replacement is sent. */
 watch(
@@ -193,21 +202,26 @@ function submit() {
                     <q-btn-toggle v-model="form.resolution" :options="props.resolutions" no-caps unelevated toggle-color="primary" color="grey-3" text-color="grey-8" class="return-form__toggle" />
 
                     <div v-if="!isExchange" class="refund">
-                        <q-select
-                            v-model="form.refund_method"
-                            :options="refund_methods"
-                            option-value="value"
-                            option-label="label"
-                            emit-value
-                            map-options
-                            behavior="menu"
-                            label="Dikembalikan lewat"
-                            outlined
-                            :error="!!form.errors.refund_method"
-                            :error-message="form.errors.refund_method"
-                        />
-                        <q-input v-if="form.refund_method !== 'cash'" v-model="form.refund_account" label="Rekening penerima" placeholder="Bank, nomor rekening, atas nama" outlined :error="!!form.errors.refund_account" :error-message="form.errors.refund_account" />
-                        <div class="refund__total"><span>Total dikembalikan</span><b>{{ formatRupiah(refundTotal) }}</b></div>
+                        <template v-if="codOffset === 0 || moneyOut > 0">
+                            <q-select
+                                v-model="form.refund_method"
+                                :options="refund_methods"
+                                option-value="value"
+                                option-label="label"
+                                emit-value
+                                map-options
+                                behavior="menu"
+                                label="Dikembalikan lewat"
+                                outlined
+                                :error="!!form.errors.refund_method"
+                                :error-message="form.errors.refund_method"
+                            />
+                            <q-input v-if="form.refund_method !== 'cash'" v-model="form.refund_account" label="Rekening penerima" placeholder="Bank, nomor rekening, atas nama" outlined :error="!!form.errors.refund_account" :error-message="form.errors.refund_account" />
+                        </template>
+                        <p v-else class="hint refund__note">Tidak ada uang yang dikembalikan.</p>
+                        <p v-if="codOffset > 0" class="hint refund__note">Nota ini COD yang belum lunas: {{ formatRupiah(codOffset) }} dipotong dari tagihan COD, jadi pelanggan membayar lebih sedikit saat uangnya diterima.</p>
+                        <div v-if="codOffset > 0" class="refund__total"><span>Nilai retur</span><b>{{ formatRupiah(refundTotal) }}</b></div>
+                        <div class="refund__total"><span>{{ codOffset > 0 ? 'Uang dikembalikan' : 'Total dikembalikan' }}</span><b>{{ formatRupiah(moneyOut) }}</b></div>
                     </div>
 
                     <template v-else>
@@ -300,6 +314,11 @@ function submit() {
     grid-template-columns: 1fr 1fr;
     align-items: center;
     gap: 14px;
+}
+
+.refund__note {
+    grid-column: 1 / -1;
+    margin: 0;
 }
 
 .refund__total {

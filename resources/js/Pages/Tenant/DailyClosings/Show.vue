@@ -61,6 +61,16 @@ const otherRows = computed(() => [
     { label: 'Pengeluaran sumber lain', value: formatRupiah(props.figures.expenses_other) },
 ]);
 
+/** The COD money received on the day, by method; it is money in, apart from the sales above, which count COD when it is made. */
+const codReceivedRows = computed(() => [
+    { label: 'Tunai (masuk laci)', value: formatRupiah(props.figures.cod_received_cash) },
+    { label: 'Transfer', value: formatRupiah(props.figures.cod_received_transfer) },
+    { label: 'QRIS', value: formatRupiah(props.figures.cod_received_qris) },
+    { label: 'EDC', value: formatRupiah(props.figures.cod_received_edc) },
+]);
+
+const isCodReceivedShown = computed(() => [props.figures.cod_received_cash, props.figures.cod_received_transfer, props.figures.cod_received_qris, props.figures.cod_received_edc].some((amount) => Number(amount) > 0));
+
 /** Information, not a deduction: a voided receipt is already left out of the sales above. */
 const voidRow = computed(() => ({ label: `Nota void hari ini (${props.figures.voids_count} nota)`, value: formatRupiah(props.figures.total_voids) }));
 
@@ -144,6 +154,22 @@ const printReport = () => printSheet(() => props.closing.sheet_url);
                         </div>
                     </div>
 
+                    <div class="check">
+                        <q-icon :name="checklist.pending_cod_approvals.length === 0 ? 'check_circle' : 'error'" :color="checklist.pending_cod_approvals.length === 0 ? 'positive' : 'warning'" size="22px" />
+                        <div>
+                            <b>{{ checklist.pending_cod_approvals.length === 0 ? 'Tidak ada penerimaan COD menunggu persetujuan' : 'Penerimaan COD menunggu persetujuan' }}</b>
+                            <a v-for="approval in checklist.pending_cod_approvals" :key="approval.show_url" :href="approval.show_url" class="check__link" @click.prevent="router.visit(approval.show_url)">{{ approval.label }} · {{ formatRupiah(approval.amount) }} · Tinjau</a>
+                        </div>
+                    </div>
+
+                    <div v-if="checklist.unsettled_cod_count > 0" class="check">
+                        <q-icon name="info" color="info" size="22px" />
+                        <div>
+                            <b>{{ checklist.unsettled_cod_count }} nota COD sudah diantar tapi uangnya belum diterima</b>
+                            <small>Hanya pengingat, tidak menghalangi tutup hari. Uangnya dicatat dari layar kasir (tombol COD, tab Uang belum diterima).</small>
+                        </div>
+                    </div>
+
                     <div v-if="checklist.unfinished_delivery_note_count > 0" class="check">
                         <q-icon name="info" color="info" size="22px" />
                         <div>
@@ -186,6 +212,10 @@ const printReport = () => printSheet(() => props.closing.sheet_url);
                     <small class="closed__hint">Baris metode bayar memuat uang yang sempat masuk, termasuk DP nota yang kemudian di-void, jadi jumlahnya bisa lebih besar dari total penjualan.</small>
                     <dl class="rows rows--gap">
                         <div v-for="row in otherRows" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
+                    </dl>
+                    <dl v-if="isCodReceivedShown" class="rows rows--gap">
+                        <div class="rows__subtitle"><dt>Pelunasan COD diterima</dt></div>
+                        <div v-for="row in codReceivedRows" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
                     </dl>
                     <dl class="rows rows--gap rows--info">
                         <div><dt>{{ voidRow.label }}</dt><dd>{{ voidRow.value }}</dd></div>
@@ -366,7 +396,8 @@ const printReport = () => printSheet(() => props.closing.sheet_url);
     font-weight: 600;
 }
 
-.rows .rows__total {
+.rows .rows__total,
+.rows .rows__subtitle {
     color: var(--app-ink);
     font-weight: 700;
 }

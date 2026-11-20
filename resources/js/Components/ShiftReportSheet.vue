@@ -7,7 +7,7 @@ const props = defineProps({
     /**
      * The blind report (`is_blind`) holds what the cashier counted and the number of receipts only; the full one adds
      * the sales, payments, cash movements, expected cash and difference.
-     * @type {{is_blind: boolean, label: string, register_name: string, cashier_name: string, business_date: string, opened_at: string, counted_at: string|null, closed_at: string|null, status: string, status_label: string, opening_cash: string, sale_count: number, cod: object, counted_cash: string|null, deposit_amount: string|null, drawer_left_cash: string|null, closing_note: string|null, store: {name: string, address: string|null, phone: string|null}, paper_width: number}}
+     * @type {{is_blind: boolean, label: string, register_name: string, cashier_name: string, business_date: string, opened_at: string, counted_at: string|null, closed_at: string|null, status: string, status_label: string, opening_cash: string, sale_count: number, cod: object, cod_received?: {cash: string, transfer: string, qris: string, edc: string, total: string}, counted_cash: string|null, deposit_amount: string|null, drawer_left_cash: string|null, closing_note: string|null, store: {name: string, address: string|null, phone: string|null}, paper_width: number}}
      */
     report: { type: Object, required: true },
 });
@@ -34,6 +34,30 @@ const codRows = computed(() => {
             { label: `COD sudah diantar (${delivered} nota)`, value: formatRupiah(cod.delivered.amount) },
             { label: `COD belum diantar (${undelivered} nota)`, value: formatRupiah(cod.undelivered.amount) },
         ];
+});
+
+const CASH_RECEIVED_METHODS = [
+    { key: 'cash', label: 'Tunai' },
+    { key: 'transfer', label: 'Transfer' },
+    { key: 'qris', label: 'QRIS' },
+    { key: 'edc', label: 'EDC' },
+];
+
+/**
+ * The COD money this shift received (the full report only; the blind one has no amounts), by method, none when nothing
+ * was received. Received cash is in the drawer, the rest went to an account.
+ */
+const codReceivedRows = computed(() => {
+    const received = props.report.cod_received;
+
+    if (props.report.is_blind || !(Number(received?.total) > 0)) {
+        return [];
+    }
+
+    return [
+        { label: 'Pelunasan COD diterima', value: formatRupiah(received.total) },
+        ...CASH_RECEIVED_METHODS.filter((method) => Number(received[method.key]) > 0).map((method) => ({ label: `· ${method.label}`, value: formatRupiah(received[method.key]) })),
+    ];
 });
 </script>
 
@@ -72,8 +96,8 @@ const codRows = computed(() => {
             <div><dt>Jumlah nota</dt><dd>{{ report.sale_count }}</dd></div>
         </dl>
 
-        <dl v-if="codRows.length > 0">
-            <div v-for="row in codRows" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
+        <dl v-if="codRows.length > 0 || codReceivedRows.length > 0">
+            <div v-for="row in [...codRows, ...codReceivedRows]" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
         </dl>
 
         <template v-if="!report.is_blind">
@@ -81,6 +105,7 @@ const codRows = computed(() => {
             <dl>
                 <div><dt>Modal kas awal</dt><dd>{{ formatRupiah(report.opening_cash) }}</dd></div>
                 <div v-if="Number(report.order_deposit_cash) !== 0"><dt>DP pesanan tunai</dt><dd>{{ formatRupiah(report.order_deposit_cash) }}</dd></div>
+                <div v-if="Number(report.cod_received?.cash) > 0"><dt>Pelunasan COD tunai</dt><dd>{{ formatRupiah(report.cod_received.cash) }}</dd></div>
                 <div v-if="Number(report.cash_refunds) > 0"><dt>Retur tunai</dt><dd>{{ formatDeduction(report.cash_refunds) }}</dd></div>
                 <div v-if="Number(report.void_cash_refunds) > 0"><dt>DP void dikembalikan tunai</dt><dd>{{ formatDeduction(report.void_cash_refunds) }}</dd></div>
                 <div v-if="Number(report.drawer_expenses) > 0"><dt>Pengeluaran dari laci</dt><dd>{{ formatDeduction(report.drawer_expenses) }}</dd></div>

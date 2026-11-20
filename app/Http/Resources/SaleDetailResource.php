@@ -38,6 +38,12 @@ class SaleDetailResource extends JsonResource
             'cod_amount' => $this->codAmount(),
             'has_cash_deposit' => $this->cashDeposit()->isPositive(),
             'has_non_cash_deposit' => $this->nonCashDeposit()->isPositive(),
+            'cod_settlement' => $this->relationLoaded('codSettlement') && $this->codSettlement !== null
+                ? [
+                    ...CodSettlementResource::make($this->codSettlement)->resolve(),
+                    'approve_url' => route('tenant.sales.cod-settlement.approve', ['tenant' => tenant('code'), 'sale' => $this->id]),
+                ]
+                : null,
             'delivery_notes' => $this->relationLoaded('deliveryNotes')
                 ? $this->deliveryNotes->map(fn ($note): array => [
                     'number' => $note->number,

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\CashShiftStatus;
+use App\Enums\CodSettlementStatus;
 use App\Enums\DailyClosingStatus;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\ExpenseSource;
@@ -14,6 +15,7 @@ use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Exceptions\DailyClosingException;
 use App\Models\CashShift;
+use App\Models\CodSettlement;
 use App\Models\CustomerOrderPayment;
 use App\Models\DailyClosing;
 use App\Models\DeliveryNote;
@@ -38,8 +40,8 @@ use Illuminate\Support\Facades\DB;
  * What a day holds follows the shifts opened on it: the receipts and expenses carry the shift's business date, and a
  * return belongs to the day of the shift it was made in (a return of an old receipt is booked on the day it is made).
  *
- * @phpstan-type Figures array{shifts_count: int, sales_count: int, total_sales: string, sales_cash: string, sales_transfer: string, sales_qris: string, sales_edc: string, sales_cod: string, total_returns: string, refunds_cash: string, voids_count: int, total_voids: string, order_deposits_received: string, order_deposits_refunded: string, expenses_drawer: string, expenses_other: string, total_expected_cash: string, total_counted_cash: string, total_cash_difference: string, total_deposit: string}
- * @phpstan-type Checklist array{can_close: bool, open_shifts: list<array{label: string, cashier_name: string, show_url: string}>, pending_differences: list<array{label: string, amount: string, show_url: string}>, pending_return_count: int, unfinished_delivery_note_count: int}
+ * @phpstan-type Figures array{shifts_count: int, sales_count: int, total_sales: string, sales_cash: string, sales_transfer: string, sales_qris: string, sales_edc: string, sales_cod: string, cod_received_cash: string, cod_received_transfer: string, cod_received_qris: string, cod_received_edc: string, total_returns: string, refunds_cash: string, voids_count: int, total_voids: string, order_deposits_received: string, order_deposits_refunded: string, expenses_drawer: string, expenses_other: string, total_expected_cash: string, total_counted_cash: string, total_cash_difference: string, total_deposit: string}
+ * @phpstan-type Checklist array{can_close: bool, open_shifts: list<array{label: string, cashier_name: string, show_url: string}>, pending_differences: list<array{label: string, amount: string, show_url: string}>, pending_return_count: int, pending_cod_approvals: list<array{label: string, amount: string, show_url: string}>, unsettled_cod_count: int, unfinished_delivery_note_count: int}
  */
 class DailyClosingService
 {
@@ -47,6 +49,8 @@ class DailyClosingService
 
     /** Closing runs again this many times when the database picks it as the victim of a deadlock. */
     private const TRANSACTION_ATTEMPTS = 3;
+
+    public function __construct(private readonly CodSettlementService $codSettlements) {}
 
     public function find(CarbonInterface $date): ?DailyClosing
     {
@@ -64,8 +68,9 @@ class DailyClosingService
     }
 
     /**
-     * What stands in the way of closing the day. Only the first three block it; unfinished delivery notes are a
-     * reminder, since a delivery can take days.
+     * What stands in the way of closing the day. Open shifts, undecided differences, waiting returns and money received
+     * for COD with a difference nobody approved yet block it; unfinished delivery notes and COD whose money is not
+     * received yet are a reminder, since a delivery can take days.
      *
      * @return Checklist
      */
@@ -79,9 +84,15 @@ class DailyClosingService
             ->whereIn('cash_shift_id', $this->shiftIdsOf($date))
             ->where('status', SaleReturnStatus::Pending)
             ->count();
+        $pendingCodApprovals = CodSettlement::query()
+            ->with('sale')
+            ->where('business_date', $date->toDateString())
+            ->where('status', CodSettlementStatus::AwaitingApproval)
+            ->orderBy('id')
+            ->get();
 
         return [
-            'can_close' => $openShifts->isEmpty() && $pendingDifferences->isEmpty() && $pendingReturnCount === 0,
+            'can_close' => $openShifts->isEmpty() && $pendingDifferences->isEmpty() && $pendingReturnCount === 0 && $pendingCodApprovals->isEmpty(),
             'open_shifts' => $openShifts->map(fn (CashShift $shift): array => [
                 'label' => $shift->label(),
                 'cashier_name' => $shift->cashier_name,
@@ -93,6 +104,12 @@ class DailyClosingService
                 'show_url' => route('tenant.shifts.show', ['tenant' => tenant('code'), 'shift' => $shift->id]),
             ])->all(),
             'pending_return_count' => $pendingReturnCount,
+            'pending_cod_approvals' => $pendingCodApprovals->map(fn (CodSettlement $settlement): array => [
+                'label' => $settlement->sale->number,
+                'amount' => $settlement->amount,
+                'show_url' => route('tenant.sales.show', ['tenant' => tenant('code'), 'sale' => $settlement->sale_id]),
+            ])->all(),
+            'unsettled_cod_count' => $this->codSettlements->settlementQueueCount() - $this->codSettlements->awaitingApprovalCount(),
             'unfinished_delivery_note_count' => DeliveryNote::query()
                 ->whereIn('status', DeliveryNoteStatus::unfinished())
                 ->where('business_date', '<=', $date->toDateString())
@@ -113,6 +130,7 @@ class DailyClosingService
         return [
             'shifts_count' => CashShift::query()->where('business_date', $dateText)->count(),
             ...$this->salesFigures($dateText),
+            ...$this->codReceivedFigures($dateText),
             ...$this->returnFigures($date),
             ...$this->voidFigures($dateText),
             ...$this->orderDepositFigures($date),
@@ -238,6 +256,28 @@ class DailyClosingService
             'sales_qris' => $this->money($receivedAmountOf(PaymentMethod::Qris)),
             'sales_edc' => $this->money($receivedAmountOf(PaymentMethod::Edc)),
             'sales_cod' => $this->money($codOfCompletedSales),
+        ];
+    }
+
+    /**
+     * The money received on the day for COD sales sold on any day, per method. The cash part is already in the shifts'
+     * expected cash; the rest went to the accounts.
+     *
+     * @return array{cod_received_cash: string, cod_received_transfer: string, cod_received_qris: string, cod_received_edc: string}
+     */
+    private function codReceivedFigures(string $dateText): array
+    {
+        $receivedByMethod = CodSettlement::query()
+            ->where('business_date', $dateText)
+            ->groupBy('method')
+            ->selectRaw('method, sum(amount) as amount')
+            ->pluck('amount', 'method');
+
+        return [
+            'cod_received_cash' => $this->money($receivedByMethod[PaymentMethod::Cash->value] ?? 0),
+            'cod_received_transfer' => $this->money($receivedByMethod[PaymentMethod::Transfer->value] ?? 0),
+            'cod_received_qris' => $this->money($receivedByMethod[PaymentMethod::Qris->value] ?? 0),
+            'cod_received_edc' => $this->money($receivedByMethod[PaymentMethod::Edc->value] ?? 0),
         ];
     }
 

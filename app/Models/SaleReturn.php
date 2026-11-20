@@ -17,8 +17,10 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 /**
  * Lives in the store database. A return of goods from one receipt; it stays `pending` until an admin approves it,
  * and only a `completed` return moves stock and cash. `cash_shift_id` is the shift whose drawer the refund comes from.
+ * `refund_amount` is the money that goes out; `cod_offset_amount` is the part of the value cut from a COD receipt that was
+ * not paid yet, which pays nothing out.
  */
-#[Fillable(['client_uuid', 'number', 'sale_id', 'register_id', 'cash_shift_id', 'returned_at', 'resolution', 'refund_method', 'refund_account', 'credit_amount', 'refund_amount', 'exchange_sale_id', 'exchange_data', 'status', 'reason', 'requested_by', 'approved_by'])]
+#[Fillable(['client_uuid', 'number', 'sale_id', 'register_id', 'cash_shift_id', 'returned_at', 'resolution', 'refund_method', 'refund_account', 'credit_amount', 'refund_amount', 'cod_offset_amount', 'exchange_sale_id', 'exchange_data', 'status', 'reason', 'requested_by', 'approved_by'])]
 class SaleReturn extends Model implements AuditableContract
 {
     /** @use HasFactory<SaleReturnFactory> */
@@ -33,6 +35,7 @@ class SaleReturn extends Model implements AuditableContract
             'returned_at' => 'datetime',
             'credit_amount' => 'decimal:2',
             'refund_amount' => 'decimal:2',
+            'cod_offset_amount' => 'decimal:2',
             'status' => SaleReturnStatus::class,
             'resolution' => ReturnResolution::class,
             'refund_method' => PaymentMethod::class,

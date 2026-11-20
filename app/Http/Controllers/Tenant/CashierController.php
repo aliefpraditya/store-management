@@ -62,6 +62,7 @@ class CashierController extends Controller
                 'receipts' => route('tenant.cashier.receipts', ['tenant' => $code]),
                 'return_lookup' => route('tenant.cashier.returns.lookup', ['tenant' => $code]),
                 'cod' => route('tenant.cashier.cod.index', ['tenant' => $code]),
+                'cod_settlements' => route('tenant.cashier.cod.settlements', ['tenant' => $code]),
                 'orders' => route('tenant.cashier.orders.index', ['tenant' => $code]),
                 'expenses' => route('tenant.cashier.expenses.index', ['tenant' => $code]),
                 'expenses_store' => route('tenant.cashier.expenses.store', ['tenant' => $code]),

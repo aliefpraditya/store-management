@@ -16,6 +16,7 @@ use App\Http\Resources\SaleReturnResource;
 use App\Models\Sale;
 use App\Models\SaleReturn;
 use App\Models\Store;
+use App\Services\CodSettlementService;
 use App\Services\SaleReturnService;
 use App\Services\ShiftService;
 use App\Services\StoreSettingService;
@@ -41,6 +42,7 @@ class CashierSaleReturnController extends Controller
     public function __construct(
         private readonly SaleReturnService $returnService,
         private readonly ShiftService $shiftService,
+        private readonly CodSettlementService $codSettlements,
     ) {}
 
     /**
@@ -84,6 +86,7 @@ class CashierSaleReturnController extends Controller
             'number' => $sale->number,
             'customer_name' => $sale->customer_name,
             'default_refund_method' => $this->returnService->defaultRefundMethod($sale)->value,
+            'cod_outstanding' => (string) $this->codSettlements->outstandingOf($sale)->toScale(2),
             'is_approved_at_once' => $this->isAdmin($request),
             'refund_methods' => PaymentMethod::cashierOptions(),
             'resolutions' => ReturnResolution::options(),

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\ProductConditionFilter;
+use App\Enums\ProductSortColumn;
 use App\Enums\ProductStatusFilter;
 use App\Exceptions\ProductHasTransactionsException;
 use App\Exceptions\ProductSaveException;
@@ -39,18 +40,21 @@ class ProductService
 
     /**
      * The item list: stock totals and flags per row, narrowed by a search, a category, a brand, an active/inactive choice
-     * and whether the item is damaged goods (DG).
+     * and whether the item is damaged goods (DG), in the order of the column asked for.
      *
+     * @param  'asc'|'desc'  $direction
      * @return LengthAwarePaginator<int, Product>
      */
-    public function paginateProducts(string $search, ?int $categoryId, ?int $brandId, ?ProductStatusFilter $status, ?ProductConditionFilter $condition, int $perPage): LengthAwarePaginator
+    public function paginateProducts(string $search, ?int $categoryId, ?int $brandId, ?ProductStatusFilter $status, ?ProductConditionFilter $condition, ProductSortColumn $sort, string $direction, int $perPage): LengthAwarePaginator
     {
-        return $this->filteredProducts($search, $categoryId, $brandId, $status, $condition)
+        $products = $this->filteredProducts($search, $categoryId, $brandId, $status, $condition)
             ->withStockTotals()
             ->withTransactionFlag()
-            ->with(['category', 'brand', 'productUnits'])
-            ->paginate($perPage)
-            ->withQueryString();
+            ->with(['category', 'brand', 'productUnits']);
+
+        $sort->applyTo($products, $direction);
+
+        return $products->paginate($perPage)->withQueryString();
     }
 
     /**
@@ -61,6 +65,8 @@ class ProductService
     public function matchingIds(string $search, ?int $categoryId, ?int $brandId, ?ProductStatusFilter $status, ?ProductConditionFilter $condition): array
     {
         return $this->filteredProducts($search, $categoryId, $brandId, $status, $condition)
+            ->orderBy('products.name')
+            ->orderBy('products.id')
             ->limit(BulkPriceService::MAX_PRODUCTS)
             ->pluck('products.id')
             ->map(fn ($id): int => (int) $id)
@@ -77,9 +83,7 @@ class ProductService
             ->when($categoryId, fn (Builder $query, int $categoryId) => $query->where('products.category_id', $categoryId))
             ->when($brandId, fn (Builder $query, int $brandId) => $query->where('products.brand_id', $brandId))
             ->when($status, fn (Builder $query, ProductStatusFilter $status) => $query->where('products.is_active', $status->isActive()))
-            ->when($condition, fn (Builder $query, ProductConditionFilter $condition) => $query->where('products.is_damaged_goods', $condition->isDamagedGoods()))
-            ->orderBy('products.name')
-            ->orderBy('products.id');
+            ->when($condition, fn (Builder $query, ProductConditionFilter $condition) => $query->where('products.is_damaged_goods', $condition->isDamagedGoods()));
     }
 
     /**

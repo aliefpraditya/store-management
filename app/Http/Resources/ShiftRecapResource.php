@@ -111,6 +111,7 @@ class ShiftRecapResource extends JsonResource
             'void_cash_refunds' => $this->summary['void_cash_refunds'],
             'void_deposits' => $this->summary['void_deposits'],
             'cod' => $this->summary['cod'],
+            'cod_received' => $this->summary['cod_received'],
             'order_deposit_cash' => $this->summary['order_deposit_cash'],
             'drawer_expenses' => $this->summary['drawer_expenses'],
             'payments' => collect($this->summary['payments'])
@@ -122,6 +123,7 @@ class ShiftRecapResource extends JsonResource
                 'status_label' => $saleReturn->status->label(),
                 'status' => $saleReturn->status->value,
                 'refund_amount' => $saleReturn->refund_amount,
+                'cod_offset_amount' => $saleReturn->cod_offset_amount,
                 'refund_method_label' => $saleReturn->refund_method->label(),
                 'show_url' => route('tenant.returns.show', ['tenant' => tenant('code'), 'sale_return' => $saleReturn->id]),
             ])->values()->all(),

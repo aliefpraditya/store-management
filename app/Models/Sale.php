@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use OwenIt\Auditing\Auditable;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
@@ -76,6 +77,16 @@ class Sale extends Model implements AuditableContract
     public function deliveryNotes(): BelongsToMany
     {
         return $this->belongsToMany(DeliveryNote::class, 'delivery_note_sales');
+    }
+
+    /**
+     * The money received for the COD part once the goods were delivered; none until then.
+     *
+     * @return HasOne<CodSettlement, $this>
+     */
+    public function codSettlement(): HasOne
+    {
+        return $this->hasOne(CodSettlement::class);
     }
 
     /**

@@ -71,6 +71,9 @@ Route::prefix('t/{tenant}')
             Route::get('cod', [CashierCodController::class, 'index'])->name('cod.index');
             Route::post('cod/{sale}/deliveries', [CashierCodController::class, 'delivered'])->name('cod.delivered');
             Route::post('cod/{sale}/voids', [CashierCodController::class, 'void'])->name('cod.void');
+            Route::get('cod/settlements', [CashierCodController::class, 'settlements'])->middleware('permission:cod.receive,cod.approve')->name('cod.settlements');
+            Route::post('cod/{sale}/settlements', [CashierCodController::class, 'settle'])->middleware('permission:cod.receive')->name('cod.settle');
+            Route::post('cod/{sale}/settlements/approval', [CashierCodController::class, 'approve'])->middleware('permission:cod.approve')->name('cod.approve');
             Route::get('orders', [CashierOrderController::class, 'index'])->name('orders.index');
             Route::post('orders/{order}/arrivals', [CashierOrderController::class, 'ready'])->name('orders.ready');
             Route::post('orders/{order}/cancellations', [CashierOrderController::class, 'cancel'])->name('orders.cancel');
@@ -143,6 +146,7 @@ Route::prefix('t/{tenant}')
         Route::get('sales', [SaleHistoryController::class, 'index'])->middleware('permission:sales.view')->name('tenant.sales.index');
         Route::get('sales/{sale}', [SaleHistoryController::class, 'show'])->middleware('permission:sales.view')->name('tenant.sales.show');
         Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->middleware('permission:sales.void')->name('tenant.sales.void');
+        Route::post('sales/{sale}/cod-settlement/approval', [SaleHistoryController::class, 'approveCodSettlement'])->middleware('permission:cod.approve')->name('tenant.sales.cod-settlement.approve');
 
         Route::get('products/search', ProductSearchController::class)->middleware('permission:stock_opnames.count,stock_opnames.post,stock_history.view')->name('tenant.products.search');
 

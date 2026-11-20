@@ -145,11 +145,15 @@ const confirmLabel = computed(() => {
 /** The COD method can be chosen on one line only, only when there is a receipt to pay, and not while the order takes a deposit. */
 const isMethodDisabled = (line, method) => method === COD && (props.total <= 0 || depositAmount.value > 0 || lines.value.some((other) => other !== line && other.method === COD));
 
-/** Choosing COD fills in what is left to pay, the way the COD line is meant to be used. */
+/**
+ * Choosing COD, transfer, QRIS or EDC fills in what is left to pay while the line is still empty: none of them gives
+ * change, so the rest of the bill is almost always the amount. Cash is left empty because the cashier types what the
+ * customer handed over.
+ */
 function chooseMethod(line, method) {
     line.method = method;
 
-    if (method !== COD || amountOf(line) > 0) {
+    if (method === 'cash' || amountOf(line) > 0) {
         return;
     }
 

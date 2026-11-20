@@ -29,6 +29,7 @@ class SaleReturnListResource extends JsonResource
             'resolution_label' => $this->isExchange() ? $this->resolution->label() : $this->resolution->label().' '.$this->refund_method->label(),
             'credit_amount' => $this->credit_amount,
             'refund_amount' => $this->refund_amount,
+            'cod_offset_amount' => $this->cod_offset_amount,
             'show_url' => route('tenant.returns.show', ['tenant' => tenant('code'), 'sale_return' => $this->id]),
         ];
     }

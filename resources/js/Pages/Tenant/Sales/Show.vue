@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -27,6 +27,21 @@ function openVoid() {
     voidReason.value = '';
     refundAccount.value = '';
     isVoidOpen.value = true;
+}
+
+const permissions = computed(() => usePage().props.auth.permissions);
+
+/** Whether an admin can accept the COD money that was received with a difference, which is the only thing waiting on this page. */
+const canApproveSettlement = computed(() => props.sale.cod_settlement?.status === 'awaiting_approval' && permissions.value.includes('cod.approve'));
+
+const isApproving = ref(false);
+
+function approveSettlement() {
+    router.post(props.sale.cod_settlement.approve_url, {}, {
+        preserveScroll: true,
+        onStart: () => (isApproving.value = true),
+        onFinish: () => (isApproving.value = false),
+    });
 }
 
 function submitVoid() {
@@ -71,6 +86,18 @@ function submitVoid() {
                 <b>COD: {{ formatRupiah(sale.cod_amount) }} ditagih saat diantar</b>
                 <a v-for="note in sale.delivery_notes" :key="note.number" :href="note.show_url" @click.prevent="router.visit(note.show_url)">{{ note.number }} · {{ note.status_label }}</a>
                 <small v-if="sale.status === 'completed' && void_blocker" class="receipt__cod-blocked">Tidak bisa di-void: {{ void_blocker }}</small>
+            </section>
+
+            <section v-if="sale.cod_settlement" class="receipt__settlement" :class="{ 'receipt__settlement--waiting': sale.cod_settlement.status === 'awaiting_approval' }">
+                <b>Pelunasan COD: {{ sale.cod_settlement.status_label }}</b>
+                <small>
+                    Diterima {{ formatRupiah(sale.cod_settlement.amount) }} lewat {{ sale.cod_settlement.method_label }}<template v-if="sale.cod_settlement.reference"> ({{ sale.cod_settlement.reference }})</template>
+                    oleh {{ sale.cod_settlement.received_by_name }}, {{ dateTimeFormat.format(new Date(sale.cod_settlement.received_at)) }}
+                </small>
+                <small v-if="sale.cod_settlement.notes">Catatan: {{ sale.cod_settlement.notes }}</small>
+                <small v-if="sale.cod_settlement.difference_reason">Seharusnya {{ formatRupiah(sale.cod_settlement.expected_amount) }}. Alasan selisih: {{ sale.cod_settlement.difference_reason }}</small>
+                <small v-if="sale.cod_settlement.approved_by_name">Disetujui {{ sale.cod_settlement.approved_by_name }}<template v-if="sale.cod_settlement.approved_at">, {{ dateTimeFormat.format(new Date(sale.cod_settlement.approved_at)) }}</template></small>
+                <q-btn v-if="canApproveSettlement" unelevated dense no-caps color="primary" label="Setujui penerimaan" :loading="isApproving" class="receipt__settlement-approve" @click="approveSettlement" />
             </section>
 
             <table class="receipt__items">
@@ -182,6 +209,30 @@ function submitVoid() {
 .receipt__cod a {
     color: var(--q-primary);
     cursor: pointer;
+}
+
+.receipt__settlement {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #e8f5ec;
+    font-size: 13px;
+}
+
+.receipt__settlement--waiting {
+    background: #fff4e0;
+}
+
+.receipt__settlement small {
+    color: var(--app-ink-soft);
+}
+
+.receipt__settlement-approve {
+    align-self: flex-start;
+    margin-top: 6px;
 }
 
 .receipt__cod-blocked {

@@ -71,7 +71,7 @@ class StoreDashboardTest extends TestCase
                 ->where('store.dashboard_url', route('tenant.dashboard', ['tenant' => 'test_dashboard']))
                 ->where('summary.sales', ['gross_total' => '0.00', 'returns_total' => '0.00', 'net_total' => '0.00', 'receipt_count' => 0])
                 ->where('summary.low_stock_count', 0)
-                ->where('summary.pending', ['returns' => 0, 'cash_differences' => 0, 'delivery_notes' => 0, 'total' => 0])
+                ->where('summary.pending', ['returns' => 0, 'cash_differences' => 0, 'cod_approvals' => 0, 'delivery_notes' => 0, 'total' => 0])
                 ->has('summary.approvals', 0)
                 ->has('summary.unfinished_delivery_notes', 0)
                 ->has('summary.open_shifts', 0)
@@ -175,7 +175,7 @@ class StoreDashboardTest extends TestCase
         });
 
         $this->adminDashboard()->assertInertia(fn (Assert $page) => $page
-            ->where('summary.pending', ['returns' => 2, 'cash_differences' => 1, 'delivery_notes' => 2, 'total' => 5])
+            ->where('summary.pending', ['returns' => 2, 'cash_differences' => 1, 'cod_approvals' => 0, 'delivery_notes' => 2, 'total' => 5])
             ->missing('summary.cash_difference_follow_ups')
             ->has('summary.approvals', 3)
             ->where('summary.approvals.0', ['kind' => 'return', 'reference' => 'RET/0002', 'amount' => '50000.00'])

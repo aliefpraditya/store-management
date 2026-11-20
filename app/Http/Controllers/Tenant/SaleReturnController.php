@@ -14,6 +14,7 @@ use App\Http\Resources\SaleReturnListResource;
 use App\Http\Resources\SaleReturnResource;
 use App\Models\Sale;
 use App\Models\SaleReturn;
+use App\Services\CodSettlementService;
 use App\Services\SaleReturnService;
 use App\Services\ShiftService;
 use App\Services\StoreSettingService;
@@ -37,6 +38,7 @@ class SaleReturnController extends Controller
     public function __construct(
         private readonly SaleReturnService $returnService,
         private readonly ShiftService $shiftService,
+        private readonly CodSettlementService $codSettlements,
     ) {}
 
     public function index(DateRangeRequest $request): Response
@@ -161,7 +163,7 @@ class SaleReturnController extends Controller
     }
 
     /**
-     * @return array{id: int, number: string, sold_at: string, customer_name: string|null, default_refund_method: string, lines: list<array<string, mixed>>}
+     * @return array{id: int, number: string, sold_at: string, customer_name: string|null, default_refund_method: string, cod_outstanding: string, lines: list<array<string, mixed>>}
      */
     private function saleOption(Sale $sale): array
     {
@@ -171,6 +173,7 @@ class SaleReturnController extends Controller
             'sold_at' => $sale->sold_at->toIso8601String(),
             'customer_name' => $sale->customer_name,
             'default_refund_method' => $this->returnService->defaultRefundMethod($sale)->value,
+            'cod_outstanding' => (string) $this->codSettlements->outstandingOf($sale)->toScale(2),
             'lines' => $this->returnService->returnableLines($sale),
         ];
     }

@@ -4,11 +4,13 @@ namespace App\Services;
 
 use App\Enums\ApprovalKind;
 use App\Enums\CashShiftStatus;
+use App\Enums\CodSettlementStatus;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\SaleReturnStatus;
 use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Models\CashShift;
+use App\Models\CodSettlement;
 use App\Models\DeliveryNote;
 use App\Models\Product;
 use App\Models\Sale;
@@ -23,8 +25,8 @@ use Carbon\CarbonInterface;
  * @phpstan-type Summary array{
  *     sales: array{gross_total: string, returns_total: string, net_total: string, receipt_count: int},
  *     low_stock_count: int,
- *     pending: array{returns: int, cash_differences: int, delivery_notes: int, total: int},
- *     approvals: list<array{kind: string, reference: string, amount: string}>,
+ *     pending: array{returns: int, cash_differences: int, cod_approvals: int, delivery_notes: int, total: int},
+ *     approvals: list<array{kind: string, reference: string, amount: string, show_url?: string}>,
  *     unfinished_delivery_notes: list<array{reference: string, recipient_name: string, status_label: string, show_url: string}>,
  *     open_shifts: list<array{id: int, cashier_name: string, register_name: string, opened_at: string}>
  * }
@@ -45,6 +47,7 @@ class StoreDashboardService
         $pending = [
             'returns' => $pendingReturns->count(),
             'cash_differences' => $pendingDifferences->count(),
+            'cod_approvals' => CodSettlement::query()->where('status', CodSettlementStatus::AwaitingApproval)->count(),
             'delivery_notes' => $unfinishedDeliveryNotes->count(),
         ];
 
@@ -55,6 +58,7 @@ class StoreDashboardService
             'approvals' => [
                 ...$this->pendingReturnApprovals(),
                 ...$this->pendingCashDifferenceApprovals(),
+                ...$this->pendingCodSettlementApprovals(),
             ],
             'unfinished_delivery_notes' => $this->unfinishedDeliveryNotes(),
             'open_shifts' => $this->openShifts(),
@@ -119,6 +123,28 @@ class StoreDashboardService
                 'kind' => ApprovalKind::CashDifference->value,
                 'reference' => $shift->label(),
                 'amount' => $shift->cash_difference,
+            ])
+            ->all();
+    }
+
+    /**
+     * COD money received with a difference nobody approved yet. Each links to its receipt, where it is approved.
+     *
+     * @return list<array{kind: string, reference: string, amount: string, show_url: string}>
+     */
+    private function pendingCodSettlementApprovals(): array
+    {
+        return CodSettlement::query()
+            ->with('sale')
+            ->where('status', CodSettlementStatus::AwaitingApproval)
+            ->latest('id')
+            ->limit(self::APPROVAL_LIMIT)
+            ->get()
+            ->map(fn (CodSettlement $settlement): array => [
+                'kind' => ApprovalKind::CodSettlement->value,
+                'reference' => $settlement->sale->number,
+                'amount' => $settlement->amount,
+                'show_url' => route('tenant.sales.show', ['tenant' => tenant('code'), 'sale' => $settlement->sale_id]),
             ])
             ->all();
     }

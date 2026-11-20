@@ -118,10 +118,46 @@ function confirmDelete(product) {
     });
 }
 
+/** Every column of the list, in order. `isRight` columns hold figures. */
+const columns = [
+    { key: 'sku', label: 'SKU' },
+    { key: 'name', label: 'Nama' },
+    { key: 'category', label: 'Kategori' },
+    { key: 'brand', label: 'Merek' },
+    { key: 'sellable_stock', label: 'Stok jual', isRight: true },
+    { key: 'dead_stock', label: 'Dead stock', isRight: true },
+    { key: 'cost_price', label: 'Modal', isRight: true },
+    { key: 'selling_price', label: 'Harga jual', isRight: true },
+    { key: 'status', label: 'Status' },
+];
+
+/** Ordering by the column the list is already in turns its direction; a new column starts in the order the server picks for it (text A to Z, figures biggest first). */
+function sortBy(column) {
+    if (props.filters.sort === column) {
+        applyFilters({ direction: props.filters.direction === 'asc' ? 'desc' : 'asc' });
+
+        return;
+    }
+
+    applyFilters({ sort: column, direction: undefined });
+}
+
+const sortIcon = (column) => (props.filters.sort === column ? (props.filters.direction === 'desc' ? 'arrow_downward' : 'arrow_upward') : 'unfold_more');
+const sortState = (column) => (props.filters.sort === column ? (props.filters.direction === 'desc' ? 'descending' : 'ascending') : 'none');
+
 function applyFilters(extraParams = {}) {
     router.get(
         page.url.split('?')[0],
-        { search: search.value || undefined, category: category.value || undefined, brand: brand.value || undefined, status: status.value || undefined, condition: condition.value || undefined, ...extraParams },
+        {
+            search: search.value || undefined,
+            category: category.value || undefined,
+            brand: brand.value || undefined,
+            status: status.value || undefined,
+            condition: condition.value || undefined,
+            sort: props.filters.sort,
+            direction: props.filters.direction,
+            ...extraParams,
+        },
         { preserveState: true, replace: true, preserveScroll: true },
     );
 }
@@ -177,26 +213,28 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                         <th class="items__check">
                             <q-checkbox :model-value="isPageAllSelected ? true : isPageSomeSelected ? null : false" dense aria-label="Pilih semua barang di halaman ini" @update:model-value="togglePage" />
                         </th>
-                        <th>Barang</th>
-                        <th class="items__right">Stok jual</th>
-                        <th class="items__right">Dead stock</th>
-                        <th class="items__right">Modal</th>
-                        <th class="items__right">Harga jual</th>
-                        <th>Status</th>
+                        <th v-for="column in columns" :key="column.key" :class="{ items__right: column.isRight }" :aria-sort="sortState(column.key)">
+                            <button type="button" class="items__sort" @click="sortBy(column.key)">{{ column.label }}<q-icon :name="sortIcon(column.key)" size="14px" /></button>
+                        </th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-if="products.data.length === 0">
-                        <td colspan="8" class="items__empty">Belum ada barang yang cocok.</td>
+                        <td colspan="11" class="items__empty">Belum ada barang yang cocok.</td>
                     </tr>
                     <tr v-for="product in products.data" :key="product.id" :class="{ 'items__row--on': selectedSet.has(product.id) }">
                         <td class="items__check">
                             <q-checkbox :model-value="selectedSet.has(product.id)" dense :aria-label="`Pilih ${product.name}`" @update:model-value="toggleProduct(product.id)" />
                         </td>
+                        <td class="items__nowrap">{{ product.sku }}</td>
                         <td>
                             <b>{{ product.name }}<span v-if="product.is_damaged_goods" class="chip chip--warn items__dg">DG</span></b>
-                            <small>{{ [product.sku, product.category, product.brand].filter(Boolean).join(' · ') }}</small>
+                        </td>
+                        <td>{{ product.category }}</td>
+                        <td>
+                            <template v-if="product.brand">{{ product.brand }}</template>
+                            <span v-else class="items__muted">—</span>
                         </td>
                         <td class="items__right">
                             <span :class="{ 'chip chip--bad': product.is_below_minimum }">
@@ -326,6 +364,26 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
     font-size: 12px;
     font-weight: 600;
     text-align: left;
+    white-space: nowrap;
+}
+
+.items__sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+}
+
+.items__sort:hover {
+    color: var(--app-ink);
+}
+
+.items__table .items__nowrap {
     white-space: nowrap;
 }
 

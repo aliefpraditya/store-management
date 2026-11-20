@@ -10,4 +10,5 @@ enum ApprovalKind: string
 {
     case SaleReturn = 'return';
     case CashDifference = 'cash_difference';
+    case CodSettlement = 'cod_settlement';
 }

@@ -16,13 +16,13 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * user ids (no foreign key across databases). A day that is reopened keeps its row, with the reason, until it is closed
  * again.
  */
-#[Fillable(['business_date', 'status', 'shifts_count', 'sales_count', 'total_sales', 'sales_cash', 'sales_transfer', 'sales_qris', 'sales_edc', 'sales_cod', 'total_returns', 'refunds_cash', 'voids_count', 'total_voids', 'order_deposits_received', 'order_deposits_refunded', 'expenses_drawer', 'expenses_other', 'total_expected_cash', 'total_counted_cash', 'total_cash_difference', 'total_deposit', 'notes', 'closed_by', 'closed_at', 'reopened_by', 'reopened_at', 'reopen_reason'])]
+#[Fillable(['business_date', 'status', 'shifts_count', 'sales_count', 'total_sales', 'sales_cash', 'sales_transfer', 'sales_qris', 'sales_edc', 'sales_cod', 'cod_received_cash', 'cod_received_transfer', 'cod_received_qris', 'cod_received_edc', 'total_returns', 'refunds_cash', 'voids_count', 'total_voids', 'order_deposits_received', 'order_deposits_refunded', 'expenses_drawer', 'expenses_other', 'total_expected_cash', 'total_counted_cash', 'total_cash_difference', 'total_deposit', 'notes', 'closed_by', 'closed_at', 'reopened_by', 'reopened_at', 'reopen_reason'])]
 class DailyClosing extends Model implements AuditableContract
 {
     use Auditable;
 
     /** The money columns of the snapshot, in the order the report shows them. */
-    public const MONEY_FIELDS = ['total_sales', 'sales_cash', 'sales_transfer', 'sales_qris', 'sales_edc', 'sales_cod', 'total_returns', 'refunds_cash', 'total_voids', 'order_deposits_received', 'order_deposits_refunded', 'expenses_drawer', 'expenses_other', 'total_expected_cash', 'total_counted_cash', 'total_cash_difference', 'total_deposit'];
+    public const MONEY_FIELDS = ['total_sales', 'sales_cash', 'sales_transfer', 'sales_qris', 'sales_edc', 'sales_cod', 'cod_received_cash', 'cod_received_transfer', 'cod_received_qris', 'cod_received_edc', 'total_returns', 'refunds_cash', 'total_voids', 'order_deposits_received', 'order_deposits_refunded', 'expenses_drawer', 'expenses_other', 'total_expected_cash', 'total_counted_cash', 'total_cash_difference', 'total_deposit'];
 
     /**
      * @return array<string, mixed>

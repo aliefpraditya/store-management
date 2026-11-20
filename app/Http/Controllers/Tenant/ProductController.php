@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\CostChangeMethod;
 use App\Enums\ProductConditionFilter;
+use App\Enums\ProductSortColumn;
 use App\Enums\ProductStatusFilter;
 use App\Enums\SellingChangeMethod;
 use App\Exceptions\ProductHasTransactionsException;
@@ -39,15 +40,17 @@ class ProductController extends Controller
         $brandId = $request->integer('brand') ?: null;
         $status = ProductStatusFilter::tryFrom($request->string('status')->toString());
         $condition = ProductConditionFilter::tryFrom($request->string('condition')->toString());
+        $sort = ProductSortColumn::tryFrom($request->string('sort')->toString()) ?? ProductSortColumn::Name;
+        $direction = $sort->directionOrDefault($request->string('direction')->toString());
 
         $products = $this->productService
-            ->paginateProducts($search, $categoryId, $brandId, $status, $condition, self::PER_PAGE)
+            ->paginateProducts($search, $categoryId, $brandId, $status, $condition, $sort, $direction, self::PER_PAGE)
             ->through(fn (Product $product): array => ProductListResource::make($product)->resolve());
 
         return Inertia::render('Tenant/Products/Index', [
             'products' => $products,
             'matching_ids' => Inertia::optional(fn (): array => $this->productService->matchingIds($search, $categoryId, $brandId, $status, $condition)),
-            'filters' => ['search' => $search, 'category' => $categoryId, 'brand' => $brandId, 'status' => $status?->value ?? '', 'condition' => $condition?->value ?? ''],
+            'filters' => ['search' => $search, 'category' => $categoryId, 'brand' => $brandId, 'status' => $status?->value ?? '', 'condition' => $condition?->value ?? '', 'sort' => $sort->value, 'direction' => $direction],
             'statuses' => ProductStatusFilter::options(),
             'conditions' => ProductConditionFilter::options(),
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),

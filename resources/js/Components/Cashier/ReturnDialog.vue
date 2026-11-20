@@ -4,7 +4,7 @@ import { useQuasar } from 'quasar';
 import ExchangeEditor from '../ExchangeEditor.vue';
 import { postJson } from '../../Composables/postJson';
 import { printSheet } from '../../Composables/printSheet';
-import { newUuid } from '../../Composables/useCart';
+import { newUuid, roundMoney } from '../../Composables/useCart';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
 import { returnStatusChipClass } from '../../Composables/useReturnStatus';
@@ -25,10 +25,13 @@ const isLoading = ref(false);
 const isSaving = ref(false);
 const printingId = ref(null);
 
-/** What the server says about the receipt: its lines, the returns already asked for and the choices to offer. */
-const emptyContext = () => ({ lines: [], returns: [], refund_methods: [], resolutions: [], is_approved_at_once: false });
+/**
+ * What the server says about the receipt: its lines, the returns already asked for, the choices to offer, and
+ * `cod_outstanding`, the COD still owed on the receipt (a refund cuts that before it pays money out).
+ */
+const emptyContext = () => ({ lines: [], returns: [], refund_methods: [], resolutions: [], is_approved_at_once: false, cod_outstanding: '0.00' });
 
-/** @type {import('vue').Ref<{lines: object[], returns: object[], refund_methods: object[], resolutions: object[], is_approved_at_once: boolean}>} */
+/** @type {import('vue').Ref<{lines: object[], returns: object[], refund_methods: object[], resolutions: object[], is_approved_at_once: boolean, cod_outstanding: string}>} */
 const receiptReturnContext = ref(emptyContext());
 
 /**
@@ -55,8 +58,17 @@ const hasAnythingToReturn = computed(() => receiptReturnContext.value.lines.some
 
 const refundTotal = computed(() => receiptReturnContext.value.lines.reduce((sum, line) => sum + (Number(quantities.value[line.id]) || 0) * Number(line.unit_price), 0));
 
-/** Money paid back by transfer, QRIS or EDC needs the account it goes to. */
-const isAccountMissing = computed(() => !isExchange.value && refundMethod.value !== 'cash' && refundAccount.value.trim() === '');
+/**
+ * The part of a refund that cuts the COD still owed on the receipt instead of paying money out: the customer has not
+ * paid that part yet. An exchange is settled by the replacement receipt, so nothing is cut there.
+ */
+const codOffset = computed(() => (isExchange.value ? 0 : roundMoney(Math.min(refundTotal.value, Number(receiptReturnContext.value.cod_outstanding) || 0))));
+
+/** What is really paid back after the COD cut. */
+const moneyOut = computed(() => roundMoney(refundTotal.value - codOffset.value));
+
+/** Money paid back by transfer, QRIS or EDC needs the account it goes to; nothing is needed when no money goes out. */
+const isAccountMissing = computed(() => !isExchange.value && moneyOut.value > 0 && refundMethod.value !== 'cash' && refundAccount.value.trim() === '');
 
 const canSave = computed(() => hasAnythingToReturn.value && !isAccountMissing.value && (!isExchange.value || exchangeDraft.value?.is_ready === true) && !isSaving.value);
 
@@ -211,7 +223,10 @@ async function printReplacement(saleReturn) {
                             <template v-if="Number(saleReturn.refund_amount) > 0"> · kembali {{ formatRupiah(saleReturn.refund_amount) }}</template>
                             <template v-if="saleReturn.exchange.payments.length > 0"> · tambah {{ formatRupiah(saleReturn.exchange.payments.reduce((sum, payment) => sum + Number(payment.amount), 0)) }}</template>
                         </small>
-                        <small v-else class="return__sum">{{ formatRupiah(saleReturn.refund_amount) }} lewat {{ saleReturn.refund_method_label }}</small>
+                        <template v-else>
+                            <small v-if="Number(saleReturn.cod_offset_amount) > 0" class="return__sum">Dipotong dari tagihan COD: {{ formatRupiah(saleReturn.cod_offset_amount) }}</small>
+                            <small v-if="Number(saleReturn.refund_amount) > 0 || Number(saleReturn.cod_offset_amount) <= 0" class="return__sum">{{ formatRupiah(saleReturn.refund_amount) }} lewat {{ saleReturn.refund_method_label }}</small>
+                        </template>
                     </div>
                 </template>
 
@@ -244,9 +259,14 @@ async function printReplacement(saleReturn) {
                     <q-btn-toggle v-model="resolution" :options="receiptReturnContext.resolutions" no-caps unelevated toggle-color="primary" color="grey-3" text-color="grey-8" />
 
                     <template v-if="!isExchange">
-                        <q-select v-model="refundMethod" :options="receiptReturnContext.refund_methods" option-value="value" option-label="label" emit-value map-options behavior="menu" outlined dense label="Uang dikembalikan lewat" />
-                        <q-input v-if="refundMethod !== 'cash'" v-model="refundAccount" outlined dense label="Rekening penerima" placeholder="Bank, nomor rekening, atas nama" />
-                        <div class="return__total"><span>Total dikembalikan</span><b>{{ formatRupiah(refundTotal) }}</b></div>
+                        <template v-if="codOffset === 0 || moneyOut > 0">
+                            <q-select v-model="refundMethod" :options="receiptReturnContext.refund_methods" option-value="value" option-label="label" emit-value map-options behavior="menu" outlined dense label="Uang dikembalikan lewat" />
+                            <q-input v-if="refundMethod !== 'cash'" v-model="refundAccount" outlined dense label="Rekening penerima" placeholder="Bank, nomor rekening, atas nama" />
+                        </template>
+                        <p v-else class="return__hint">Tidak ada uang yang dikembalikan.</p>
+                        <p v-if="codOffset > 0" class="return__hint">Nota ini COD yang belum lunas: {{ formatRupiah(codOffset) }} dipotong dari tagihan COD, jadi pelanggan membayar lebih sedikit saat uangnya diterima.</p>
+                        <div v-if="codOffset > 0" class="return__total"><span>Nilai retur</span><b>{{ formatRupiah(refundTotal) }}</b></div>
+                        <div class="return__total"><span>{{ codOffset > 0 ? 'Uang dikembalikan' : 'Total dikembalikan' }}</span><b>{{ formatRupiah(moneyOut) }}</b></div>
                     </template>
                     <ExchangeEditor v-else :products-url="productsUrl" :credit="refundTotal" :payment-methods="receiptReturnContext.refund_methods" :default-method="receiptReturnContext.default_refund_method" @change="exchangeDraft = $event" />
 
