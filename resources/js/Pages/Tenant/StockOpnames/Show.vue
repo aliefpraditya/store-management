@@ -221,6 +221,44 @@ function changeReason(item) {
     row.is_reviewed = isReviewable(item);
 }
 
+const bulkReasonId = ref(null);
+
+const bulkReasonOptions = computed(() => props.reasons.filter((reason) => reason.is_active).map((reason) => ({ label: reason.name, value: reason.id })));
+
+/** Whether the "one reason for all" tool is shown: only where each variance is explained one by one. */
+const isBulkReasonAvailable = computed(() => isReviewing.value && !props.opname.is_returns_check);
+
+/**
+ * Gives the chosen reason to every variance of the whole opname (not just this page) that has none yet. What was typed on the
+ * page is saved first, so a reason picked by hand is kept and not overwritten. A damaged reason only goes to the shortages and
+ * leaves them to be decided per item, so it does not mark them reviewed.
+ */
+function applyReasonToAll() {
+    const reason = reasonOf(bulkReasonId.value);
+
+    confirmDialog(
+        {
+            title: 'Pakai satu alasan untuk semua selisih?',
+            message: reason.needs_damage_decision
+                ? `Semua selisih kurang yang belum punya alasan diberi alasan "${reason.name}". Selisih lebih dan yang sudah punya alasan tidak diubah. Keputusan ke mana barang rusaknya tetap diisi di tiap baris.`
+                : `Semua selisih yang belum punya alasan diberi alasan "${reason.name}" dan ditandai sudah direview. Yang sudah punya alasan tidak diubah.`,
+            okLabel: 'Pakai untuk semua',
+        },
+        () =>
+            afterSavingCounts(() =>
+                router.post(
+                    props.opname.urls.apply_reason,
+                    { reason_id: reason.id },
+                    {
+                        preserveScroll: true,
+                        onSuccess: () => (bulkReasonId.value = null),
+                        onError: (errors) => $q.notify({ type: 'negative', position: 'top', message: Object.values(errors)[0] ?? 'Alasan gagal dipakai.' }),
+                    },
+                ),
+            ),
+    );
+}
+
 function markAllReviewed() {
     props.items.data.filter(isReviewable).forEach((item) => {
         reviews.value[item.id].is_reviewed = true;
@@ -752,6 +790,25 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
             />
         </div>
 
+        <div v-if="isBulkReasonAvailable" class="bulk-reason">
+            <b>Satu alasan untuk semua selisih</b>
+            <q-select
+                v-model="bulkReasonId"
+                :options="bulkReasonOptions"
+                emit-value
+                map-options
+                clearable
+                outlined
+                dense
+                hide-bottom-space
+                placeholder="Pilih alasan"
+                class="bulk-reason__select"
+                aria-label="Alasan untuk semua selisih"
+            />
+            <q-btn color="primary" unelevated no-caps label="Pakai untuk semua" :disable="bulkReasonId === null" @click="applyReasonToAll" />
+            <small>Hanya selisih yang belum punya alasan. Alasan Rusak hanya untuk selisih kurang, keputusan barangnya tetap diisi per baris.</small>
+        </div>
+
         <div class="lines">
             <table class="lines__table">
                 <thead>
@@ -1192,6 +1249,27 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 
 .filters__select {
     flex: 1 1 170px;
+}
+
+.bulk-reason {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 12px 18px;
+    border: 1px solid var(--app-line);
+    border-radius: var(--app-radius);
+    background: var(--app-surface);
+}
+
+.bulk-reason__select {
+    flex: 0 1 240px;
+}
+
+.bulk-reason small {
+    color: var(--app-mute);
+    font-size: 12.5px;
 }
 
 .lines {

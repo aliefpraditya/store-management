@@ -254,6 +254,60 @@ class StockOpnameService
     }
 
     /**
+     * Gives one reason to every variance that has none yet, so a long review does not need the same reason picked row by row.
+     * A plain reason also marks each item reviewed, exactly as when its reason is picked by hand. A damaged reason only goes to
+     * the shortages (it makes no sense for an extra) and leaves them unreviewed, since where the damaged units go still has to be
+     * decided per item. Items that already have a reason are left alone, and the variance is judged against the live stock, the
+     * same way saving the review does.
+     *
+     * @return array{explainedCount: int, isReviewed: bool} how many items were given the reason, and whether they were marked reviewed
+     *
+     * @throws StockOpnameException
+     */
+    public function applyReasonToUnexplainedVariances(StockOpname $opname, int $userId, int $reasonId): array
+    {
+        return DB::transaction(function () use ($opname, $userId, $reasonId): array {
+            $opname = $this->lockedInStatus($opname, 'diberi alasan', StockOpnameStatus::Review);
+
+            if ($opname->reason_code?->requiresVarianceReview() !== true || $opname->reason_code->isReturnsCheck()) {
+                throw StockOpnameException::reasonNotAskedPerItem();
+            }
+
+            $reason = OpnameReason::query()->findOrFail($reasonId);
+
+            $this->requireSellableWarehouseForDamage($opname, $reason);
+            $isDamaged = $reason->behavior->needsDamageDecision();
+
+            $unexplainedItems = $opname->items()->with(['product.productUnits'])->whereNotNull('counted_quantity')->whereNull('reason_id')->get();
+            $productIds = $unexplainedItems->pluck('product_id')->all();
+            $systemQuantities = $this->currentQuantities($opname, $productIds);
+            $systemPacks = $this->currentIntactPacks($opname, $productIds);
+            $explainedCount = 0;
+
+            foreach ($unexplainedItems as $item) {
+                $systemQuantity = $systemQuantities[$item->product_id] ?? '0';
+
+                $variance = $opname->varianceOf((string) $item->counted_quantity, $systemQuantity);
+
+                if ($variance->isZero() || ($isDamaged && $variance->isPositive())) {
+                    continue;
+                }
+
+                $item->forceFill(['reason_id' => $reason->id])->setRelation('reason', $reason);
+
+                if (! $isDamaged) {
+                    $this->markReviewed($opname, $item, true, $userId, $systemQuantity, $systemPacks[$item->product_id] ?? 0);
+                }
+
+                $item->save();
+                $explainedCount++;
+            }
+
+            return ['explainedCount' => $explainedCount, 'isReviewed' => ! $isDamaged];
+        });
+    }
+
+    /**
      * The explicit "not counted means zero" action: blank is never treated as zero by itself.
      *
      * @throws StockOpnameException

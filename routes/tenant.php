@@ -186,6 +186,7 @@ Route::prefix('t/{tenant}')
 
             Route::middleware('permission:stock_opnames.post')->group(function () {
                 Route::put('{stock_opname}/review', [StockOpnameController::class, 'saveReview'])->name('review');
+                Route::post('{stock_opname}/apply-reason', [StockOpnameController::class, 'applyReason'])->name('apply-reason');
                 Route::post('{stock_opname}/post', [StockOpnameController::class, 'post'])->name('post');
             });
         });

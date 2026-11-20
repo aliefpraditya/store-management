@@ -74,6 +74,11 @@ class StockOpnameException extends Exception
         return new self("{$productName}: {$problem}");
     }
 
+    public static function reasonNotAskedPerItem(): self
+    {
+        return new self('Opname ini tidak meminta alasan per barang.');
+    }
+
     public static function nothingCounted(): self
     {
         return new self('Belum ada barang yang dihitung.');

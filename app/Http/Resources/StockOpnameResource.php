@@ -59,6 +59,7 @@ class StockOpnameResource extends JsonResource
                 'show' => $actionUrl('show'),
                 'counts' => $actionUrl('counts'),
                 'review' => $actionUrl('review'),
+                'apply_reason' => $actionUrl('apply-reason'),
                 'add_item' => $actionUrl('items.store'),
                 'zero_uncounted' => $actionUrl('zero-uncounted'),
                 'finish' => $actionUrl('finish'),

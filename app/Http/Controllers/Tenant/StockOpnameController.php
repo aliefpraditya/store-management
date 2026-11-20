@@ -10,6 +10,7 @@ use App\Exceptions\StockOpnameException;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\EnsureUserCanAccessStore;
 use App\Http\Requests\Tenant\AddStockOpnameProductRequest;
+use App\Http\Requests\Tenant\ApplyStockOpnameReasonRequest;
 use App\Http\Requests\Tenant\SaveStockOpnameCountsRequest;
 use App\Http\Requests\Tenant\SaveStockOpnameRequest;
 use App\Http\Requests\Tenant\SaveStockOpnameReviewRequest;
@@ -135,6 +136,19 @@ class StockOpnameController extends Controller
             $this->opnameService->saveReview($stockOpname, $request->user()->id, $request->validated('rows'));
 
             return 'Review disimpan.';
+        });
+    }
+
+    public function applyReason(ApplyStockOpnameReasonRequest $request, StockOpname $stockOpname): RedirectResponse
+    {
+        return $this->redirectBackWithOutcome(function () use ($request, $stockOpname): string {
+            ['explainedCount' => $explainedCount, 'isReviewed' => $isReviewed] = $this->opnameService->applyReasonToUnexplainedVariances($stockOpname, $request->user()->id, $request->validated('reason_id'));
+
+            return match (true) {
+                $explainedCount === 0 => 'Tidak ada selisih yang belum diberi alasan.',
+                $isReviewed => "{$explainedCount} selisih diberi alasan dan ditandai sudah direview.",
+                default => "{$explainedCount} selisih kurang diberi alasan. Tentukan ke mana barang rusaknya di tiap baris.",
+            };
         });
     }
 
