@@ -2,6 +2,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { Deferred, router, usePage } from '@inertiajs/vue3';
 import SearchableSelect from '../../../Components/SearchableSelect.vue';
+import StockReportTabs from '../../../Components/StockReportTabs.vue';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -55,6 +56,8 @@ function currentQuery(change = {}) {
         status: status.value || undefined,
         positions_page: props.positions?.current_page,
         positions_per_page: props.positions?.per_page,
+        positions_sort: props.positions?.sort,
+        positions_direction: props.positions?.direction,
         groups_by: props.groups?.grouping,
         groups_page: props.groups?.current_page,
         groups_per_page: props.groups?.per_page,
@@ -96,6 +99,21 @@ function toggleStatus(condition) {
     positionsCard.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+/**
+ * Ordering by the column the table is already in turns its direction; a new column starts with names A to Z and figures
+ * biggest first. The order is the server's, so it holds across pages, and the table starts from its first page.
+ * @param {string} column
+ */
+function sortPositionsBy(column) {
+    const isSameColumn = props.positions?.sort === column;
+    const direction = isSameColumn ? (props.positions.direction === 'desc' ? 'asc' : 'desc') : column === 'name' ? 'asc' : 'desc';
+
+    reloadParts(['positions'], { positions_page: 1, positions_sort: column, positions_direction: direction });
+}
+
+const sortIcon = (column) => (props.positions?.sort === column ? (props.positions.direction === 'desc' ? 'arrow_downward' : 'arrow_upward') : 'unfold_more');
+const sortState = (column) => (props.positions?.sort === column ? (props.positions.direction === 'desc' ? 'descending' : 'ascending') : 'none');
+
 const showPositionsPage = (positionsPage) => reloadParts(['positions'], { positions_page: positionsPage });
 const changePositionsPerPage = (perPage) => reloadParts(['positions'], { positions_page: 1, positions_per_page: perPage });
 
@@ -112,6 +130,8 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0 && (Number(p
 
 <template>
     <StoreLayout title="Laporan Stok">
+        <StockReportTabs current="positions" />
+
         <Deferred data="summary">
             <template #fallback>
                 <div class="kpis">
@@ -249,12 +269,24 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0 && (Number(p
                             <table class="table">
                                 <thead>
                                     <tr>
-                                        <th>Barang</th>
-                                        <th class="table__right">Stok jual</th>
-                                        <th class="table__right">Dead stock</th>
-                                        <th class="table__right">Retur menunggu</th>
-                                        <th class="table__right">Harga beli</th>
-                                        <th class="table__right">Nilai stok jual</th>
+                                        <th :aria-sort="sortState('name')">
+                                            <button type="button" class="table__sort" @click="sortPositionsBy('name')">Barang<q-icon :name="sortIcon('name')" size="14px" /></button>
+                                        </th>
+                                        <th class="table__right" :aria-sort="sortState('sellable_stock')">
+                                            <button type="button" class="table__sort" @click="sortPositionsBy('sellable_stock')">Stok jual<q-icon :name="sortIcon('sellable_stock')" size="14px" /></button>
+                                        </th>
+                                        <th class="table__right" :aria-sort="sortState('dead_stock')">
+                                            <button type="button" class="table__sort" @click="sortPositionsBy('dead_stock')">Dead stock<q-icon :name="sortIcon('dead_stock')" size="14px" /></button>
+                                        </th>
+                                        <th class="table__right" :aria-sort="sortState('returns_stock')">
+                                            <button type="button" class="table__sort" @click="sortPositionsBy('returns_stock')">Retur menunggu<q-icon :name="sortIcon('returns_stock')" size="14px" /></button>
+                                        </th>
+                                        <th class="table__right" :aria-sort="sortState('cost_price')">
+                                            <button type="button" class="table__sort" @click="sortPositionsBy('cost_price')">Harga beli<q-icon :name="sortIcon('cost_price')" size="14px" /></button>
+                                        </th>
+                                        <th class="table__right" :aria-sort="sortState('sellable_value')">
+                                            <button type="button" class="table__sort" @click="sortPositionsBy('sellable_value')">Nilai stok jual<q-icon :name="sortIcon('sellable_value')" size="14px" /></button>
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -456,6 +488,23 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0 && (Number(p
     font-weight: 600;
     text-align: left;
     white-space: nowrap;
+}
+
+.table__sort {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    white-space: nowrap;
+}
+
+.table__sort:hover {
+    color: var(--app-ink);
 }
 
 .table td {

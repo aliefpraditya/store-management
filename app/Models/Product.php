@@ -170,7 +170,7 @@ class Product extends Model implements AuditableContract
     }
 
     /**
-     * Matches the name or the SKU.
+     * Matches the name, the SKU, the barcode or the brand name (a name does not always carry its brand).
      *
      * @param  Builder<Product>  $query
      */
@@ -188,7 +188,8 @@ class Product extends Model implements AuditableContract
         $query->where(function (Builder $query) use ($contains): void {
             $query->where('products.name', 'like', $contains)
                 ->orWhere('products.sku', 'like', $contains)
-                ->orWhere('products.barcode', 'like', $contains);
+                ->orWhere('products.barcode', 'like', $contains)
+                ->orWhereIn('products.brand_id', Brand::query()->where('name', 'like', $contains)->select('id'));
         });
     }
 

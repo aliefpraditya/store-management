@@ -163,6 +163,74 @@ class StockHistoryTest extends TestCase
                 ->has('movements.data', 1));
     }
 
+    private function recordOn(Product $product, string $quantity, string $movedAt, string $warehouseCode = 'MAIN'): void
+    {
+        $movement = $this->record($product, $quantity, $this->warehouse($warehouseCode));
+        $this->inStore(fn () => StockMovement::query()->whereKey($movement->id)->update(['moved_at' => $movedAt]));
+    }
+
+    public function test_the_stock_of_a_product_on_a_day_is_everything_recorded_up_to_then_per_kind_of_warehouse(): void
+    {
+        $paint = $this->makeProduct('Cat');
+        $this->recordOn($paint, '20', '2024-03-01 09:00:00');
+        $this->recordOn($paint, '-8', '2024-06-01 10:00:00');
+        $this->recordOn($paint, '3', '2024-07-01 10:00:00', 'DEAD');
+        $this->recordOn($paint, '2', '2024-08-01 10:00:00', 'RETUR');
+        $this->recordOn($paint, '5', '2026-10-01 10:00:00');
+
+        $this->actingAs($this->admin)->get($this->url(['product' => $paint->id, 'to' => '2024-12-31']))->assertInertia(fn (Assert $page) => $page
+            ->where('stock_on', [
+                'date' => '2024-12-31',
+                'sellable' => '12.000',
+                'dead_stock' => '3.000',
+                'returns' => '2.000',
+                'has_records' => true,
+                'first_recorded_on' => '2024-03-01',
+            ]));
+    }
+
+    public function test_the_whole_of_the_chosen_day_counts_but_not_the_day_after(): void
+    {
+        $paint = $this->makeProduct('Cat');
+        $this->recordOn($paint, '10', '2024-06-01 23:30:00');
+        $this->recordOn($paint, '4', '2024-06-02 00:00:00');
+
+        $this->actingAs($this->admin)->get($this->url(['product' => $paint->id, 'to' => '2024-06-01']))
+            ->assertInertia(fn (Assert $page) => $page->where('stock_on.sellable', '10.000'));
+    }
+
+    public function test_a_day_before_the_first_record_has_no_answer_instead_of_zero(): void
+    {
+        $paint = $this->makeProduct('Cat');
+        $this->recordOn($paint, '5', '2026-10-01 10:00:00');
+
+        $this->actingAs($this->admin)->get($this->url(['product' => $paint->id, 'to' => '2024-12-31']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('stock_on.has_records', false)
+                ->where('stock_on.first_recorded_on', '2026-10-01'));
+    }
+
+    public function test_a_product_without_any_record_has_no_answer_and_no_first_day(): void
+    {
+        $paint = $this->makeProduct('Cat');
+
+        $this->actingAs($this->admin)->get($this->url(['product' => $paint->id, 'to' => '2026-11-01']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('stock_on.has_records', false)
+                ->where('stock_on.first_recorded_on', null));
+    }
+
+    public function test_the_stock_on_a_day_needs_both_a_product_and_a_day(): void
+    {
+        $paint = $this->makeProduct('Cat');
+        $this->record($paint, '5');
+
+        $this->actingAs($this->admin);
+
+        $this->get($this->url(['product' => $paint->id]))->assertInertia(fn (Assert $page) => $page->where('stock_on', null));
+        $this->get($this->url(['to' => '2026-12-31']))->assertInertia(fn (Assert $page) => $page->where('stock_on', null));
+    }
+
     public function test_the_history_can_be_narrowed_to_a_warehouse_without_a_product(): void
     {
         $paint = $this->makeProduct('Cat');

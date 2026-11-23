@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\OpnameReasonBehavior;
+use App\Models\Brand;
 use App\Models\StockOpname;
 use App\Models\StockOpnameItem;
 use Brick\Math\BigDecimal;
@@ -66,14 +67,15 @@ class StockOpnameReport
         $term = trim((string) $search);
 
         $items = $this->itemsQuery($opname)
-            ->with(['product.baseUnit', 'product.productUnits', 'reason', 'stockOpname' => fn ($opnames) => $opnames->withTrashed()])
+            ->with(['product.baseUnit', 'product.productUnits', 'product.brand', 'reason', 'stockOpname' => fn ($opnames) => $opnames->withTrashed()])
             ->selectRaw('stock_opname_items.*, '.self::COST_PRICE_SQL.' as product_cost_price')
             ->selectRaw(self::SYSTEM_QUANTITY_SQL.' as system_quantity')
             ->selectRaw(self::SYSTEM_PACKS_SQL.' as system_intact_packs')
             ->selectRaw("{$variance} as variance_quantity")
             ->when($term !== '', fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->where('products.name', 'like', "%{$term}%")
-                ->orWhere('products.sku', 'like', "%{$term}%")))
+                ->orWhere('products.sku', 'like', "%{$term}%")
+                ->orWhereIn('products.brand_id', Brand::query()->where('name', 'like', "%{$term}%")->select('id'))))
             ->when($filter === self::ITEM_FILTER_UNCOUNTED, fn (Builder $query) => $query->whereNull('stock_opname_items.counted_quantity'))
             ->when($filter === self::ITEM_FILTER_VARIANCE, fn (Builder $query) => $query
                 ->whereNotNull('stock_opname_items.counted_quantity')

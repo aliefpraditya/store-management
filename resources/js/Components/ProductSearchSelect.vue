@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { useQuasar } from 'quasar';
 
 const props = defineProps({
-    /** The chosen product ({ id, sku, name, base_unit, units }) or null. */
+    /** The chosen product ({ id, sku, name, brand, base_unit, units }) or null. */
     modelValue: { type: Object, default: null },
     /** Endpoint that answers `?q=` with `{ data: product[] }`. */
     searchUrl: { type: String, required: true },
@@ -99,7 +99,7 @@ function searchProducts(typed, update, abort) {
             <q-item v-bind="itemProps">
                 <q-item-section>
                     <q-item-label>{{ opt.name }}</q-item-label>
-                    <q-item-label caption>{{ opt.sku }} · {{ opt.base_unit }}</q-item-label>
+                    <q-item-label caption>{{ [opt.brand, opt.sku, opt.base_unit].filter(Boolean).join(' · ') }}</q-item-label>
                 </q-item-section>
             </q-item>
         </template>

@@ -10,6 +10,8 @@ const props = defineProps({
     movements: { type: Object, required: true },
     filters: { type: Object, required: true },
     product: { type: Object, default: null },
+    /** The stock of the chosen product at the end of the "Sampai" day, per kind of warehouse; null until both are chosen. */
+    stock_on: { type: Object, default: null },
     warehouses: { type: Array, required: true },
     product_search_url: { type: String, required: true },
 });
@@ -30,6 +32,10 @@ const typeChipClass = {
 };
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+const dayFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' });
+
+/** The day of a record as people read it, from the `Y-m-d` the server sends. */
+const formatDay = (isoDay) => dayFormat.format(new Date(`${isoDay}T00:00:00`));
 
 function applyFilters(extra = {}) {
     router.get(
@@ -66,6 +72,29 @@ watch([selectedProduct, warehouseId, from, to], () => applyFilters());
             <DateInput v-model="from" label="Dari" outlined dense clearable class="filters__date" />
             <DateInput v-model="to" label="Sampai" outlined dense clearable class="filters__date" />
         </div>
+
+        <section v-if="stock_on && product" class="stock-on">
+            <h2>{{ product.name }} per {{ formatDay(stock_on.date) }} <small>(akhir hari)</small></h2>
+            <div v-if="stock_on.has_records" class="stock-on__figures">
+                <div>
+                    <small>Gudang jual</small>
+                    <b :class="{ 'chip chip--bad': Number(stock_on.sellable) < 0 }">{{ formatQuantity(stock_on.sellable) }} {{ product.base_unit }}</b>
+                </div>
+                <div>
+                    <small>Dead stock</small>
+                    <b>{{ formatQuantity(stock_on.dead_stock) }} {{ product.base_unit }}</b>
+                </div>
+                <div>
+                    <small>Retur menunggu diperiksa</small>
+                    <b>{{ formatQuantity(stock_on.returns) }} {{ product.base_unit }}</b>
+                </div>
+            </div>
+            <p v-else class="stock-on__none">
+                Belum ada catatan stok barang ini sampai tanggal tersebut, jadi stoknya tidak diketahui.
+                <template v-if="stock_on.first_recorded_on">Catatan pertamanya tanggal {{ formatDay(stock_on.first_recorded_on) }}.</template>
+                <template v-else>Barang ini belum punya catatan stok sama sekali.</template>
+            </p>
+        </section>
 
         <div class="history">
             <table class="history__table">
@@ -148,6 +177,51 @@ watch([selectedProduct, warehouseId, from, to], () => applyFilters());
 
 .filters__date {
     flex: 1 1 150px;
+}
+
+.stock-on {
+    margin-bottom: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--app-line);
+    border-radius: var(--app-radius);
+    background: var(--app-surface);
+}
+
+.stock-on h2 {
+    margin: 0 0 10px;
+    font-size: 15px;
+}
+
+.stock-on h2 small,
+.stock-on__figures small {
+    color: var(--app-mute);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.stock-on__figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 32px;
+}
+
+.stock-on__figures small,
+.stock-on__figures b {
+    display: block;
+}
+
+.stock-on__figures b {
+    font-size: 20px;
+}
+
+.stock-on__figures b.chip {
+    display: inline-block;
+}
+
+.stock-on__none {
+    margin: 0;
+    color: #b45309;
+    font-size: 13px;
 }
 
 .history {

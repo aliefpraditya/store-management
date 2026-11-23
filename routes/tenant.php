@@ -128,6 +128,9 @@ Route::prefix('t/{tenant}')
             Route::get('reports/sales', [ReportController::class, 'sales'])->name('tenant.reports.sales');
             Route::get('reports/sales/sheet', [ReportController::class, 'salesSheet'])->name('tenant.reports.sales.sheet');
             Route::get('reports/stock', [ReportController::class, 'stock'])->name('tenant.reports.stock');
+            Route::get('reports/stock/restock', [ReportController::class, 'restock'])->name('tenant.reports.stock.restock');
+            Route::get('reports/stock/idle', [ReportController::class, 'idle'])->name('tenant.reports.stock.idle');
+            Route::get('reports/stock/movements', [ReportController::class, 'movements'])->name('tenant.reports.stock.movements');
         });
 
         Route::prefix('daily-closings')->name('tenant.daily-closings.')->middleware('permission:daily_closings.manage')->group(function () {

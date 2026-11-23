@@ -3,7 +3,10 @@
 namespace App\Services;
 
 use App\Enums\StockReferenceType;
+use App\Enums\WarehouseType;
 use App\Models\StockMovement;
+use Brick\Math\BigDecimal;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -41,6 +44,38 @@ class StockHistoryService
         ));
 
         return $movements;
+    }
+
+    /**
+     * What the product's stock was at the end of a day, per kind of warehouse: the sum of everything the ledger recorded
+     * for it up to then, so a product that did not move that day (or that year) still has its answer. A product with
+     * nothing recorded yet has no answer (`has_records` is false and the stock is 0 only on paper): the ledger starts
+     * when the store began to use the system, so "0" there would be a claim about a time it knows nothing of.
+     * `first_recorded_on` is the day of the product's first record, whenever it was, for telling the reader from when
+     * the history goes.
+     *
+     * @return array{sellable: string, dead_stock: string, returns: string, has_records: bool, first_recorded_on: string|null}
+     */
+    public function stockOn(int $productId, CarbonImmutable $day): array
+    {
+        $totals = StockMovement::query()->toBase()
+            ->join('warehouses', 'warehouses.id', '=', 'stock_movements.warehouse_id')
+            ->where('stock_movements.product_id', $productId)
+            ->where('stock_movements.moved_at', '<=', $day->endOfDay())
+            ->groupBy('warehouses.type')
+            ->selectRaw('warehouses.type as type, sum(stock_movements.quantity) as quantity')
+            ->pluck('quantity', 'type');
+
+        $firstMovedAt = StockMovement::query()->where('product_id', $productId)->min('moved_at');
+        $quantityIn = fn (WarehouseType $type): string => (string) BigDecimal::of((string) ($totals[$type->value] ?? 0))->toScale(3);
+
+        return [
+            'sellable' => $quantityIn(WarehouseType::Sellable),
+            'dead_stock' => $quantityIn(WarehouseType::DeadStock),
+            'returns' => $quantityIn(WarehouseType::Returns),
+            'has_records' => $totals->isNotEmpty(),
+            'first_recorded_on' => $firstMovedAt === null ? null : CarbonImmutable::parse($firstMovedAt)->toDateString(),
+        ];
     }
 
     /**

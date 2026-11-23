@@ -94,7 +94,7 @@ class ProductService
     public function searchForPicker(string $term): Collection
     {
         return Product::query()
-            ->with(['baseUnit', 'productUnits'])
+            ->with(['baseUnit', 'productUnits', 'brand'])
             ->search($term)
             ->orderBy('name')
             ->limit(self::PICKER_LIMIT)

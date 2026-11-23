@@ -5,11 +5,11 @@ namespace App\Services;
 use App\Enums\SalesGrouping;
 use App\Enums\StockStatusFilter;
 use App\Models\Product;
+use App\Services\Concerns\PaginatesReportRows;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
  * The stock the store holds now, in the three kinds of warehouse (sellable, dead stock, and the returns warehouse where
@@ -22,15 +22,30 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
  * apart as `negative_count`), not a debt that takes value off the rest. The units of different products cannot be added
  * up, so only values are totalled.
  *
- * @phpstan-type ReportPage array{current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int}
+ * @phpstan-import-type ReportPage from PaginatesReportRows
  */
 class StockReportService
 {
+    use PaginatesReportRows;
+
     /** How many products the table may show per page, the first being the one it starts with. */
     public const PER_PAGE_OPTIONS = [15, 30, 50];
 
     /** The page sizes of the table per category or brand, which is a shorter list. */
     public const GROUP_PER_PAGE_OPTIONS = [5, 10];
+
+    /**
+     * What the table of products can be ordered by, named as the columns of its rows, and the SQL that orders by it. The
+     * first is the order the table starts in. A negative balance is worth nothing in the value, as in the totals.
+     */
+    private const POSITION_SORT_SQL = [
+        'name' => 'products.name',
+        'sellable_stock' => 'sellable_stock',
+        'dead_stock' => 'dead_stock',
+        'returns_stock' => 'returns_stock',
+        'cost_price' => 'cost_price',
+        'sellable_value' => 'greatest(sellable_stock, 0) * cost_price',
+    ];
 
     private const HAS_STOCK_SQL = 'exists (select 1 from stocks where stocks.product_id = products.id and stocks.quantity != 0)';
 
@@ -115,14 +130,26 @@ class StockReportService
     }
 
     /**
-     * One page of the products with their stock per kind of warehouse, by name, narrowed by a search on the name or
+     * What the table of products can be ordered by.
+     *
+     * @return list<string>
+     */
+    public static function positionSorts(): array
+    {
+        return array_keys(self::POSITION_SORT_SQL);
+    }
+
+    /**
+     * One page of the products with their stock per kind of warehouse, in the order asked (`$sort` is one of
+     * {@see self::positionSorts()}, `$direction` `asc` or `desc`; products that tie keep a stable order by name, so a page
+     * does not shuffle between requests), narrowed by a search on the name or
      * SKU, a category, a brand and a stock condition. A page past the last one gives the last. Every product carries
      * `sellable_stock`, `dead_stock`, `returns_stock`, `is_below_minimum` and `has_negative_stock`
      * (see {@see Product::scopeWithStockTotals()}), with its category, brand and units loaded.
      *
      * @return LengthAwarePaginator<int, Product>
      */
-    public function positionsPage(string $search, ?int $categoryId, ?int $brandId, ?StockStatusFilter $status, int $page, int $perPage): LengthAwarePaginator
+    public function positionsPage(string $search, ?int $categoryId, ?int $brandId, ?StockStatusFilter $status, string $sort, string $direction, int $page, int $perPage): LengthAwarePaginator
     {
         $products = $this->stockedProducts()
             ->search($search)
@@ -130,6 +157,7 @@ class StockReportService
             ->when($brandId, fn (Builder $query, int $brandId) => $query->where('products.brand_id', $brandId))
             ->when($status, fn (Builder $query, StockStatusFilter $status) => $status->narrow($query))
             ->with(['category', 'brand', 'productUnits'])
+            ->orderByRaw(self::POSITION_SORT_SQL[$sort].' '.($direction === 'desc' ? 'desc' : 'asc'))
             ->orderBy('products.name')
             ->orderBy('products.id');
 
@@ -151,28 +179,6 @@ class StockReportService
             ->where(fn (Builder $products) => $products->where('products.is_active', true)->orWhereRaw(self::HAS_STOCK_SQL));
 
         return Product::query()->fromSub($withStock, 'products');
-    }
-
-    private function clampedPage(Builder|QueryBuilder $query, int $page, int $perPage): LengthAwarePaginator
-    {
-        $paginator = $query->paginate($perPage, page: $page);
-
-        return $page > $paginator->lastPage() ? $query->paginate($perPage, page: $paginator->lastPage()) : $paginator;
-    }
-
-    /**
-     * @return ReportPage
-     */
-    private function pageOf(LengthAwarePaginator $paginator): array
-    {
-        return [
-            'current_page' => $paginator->currentPage(),
-            'last_page' => $paginator->lastPage(),
-            'per_page' => $paginator->perPage(),
-            'from' => $paginator->firstItem(),
-            'to' => $paginator->lastItem(),
-            'total' => $paginator->total(),
-        ];
     }
 
     private function money(BigDecimal|string|int|float|null $amount): string

@@ -775,7 +775,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 
         <div class="filters">
             <q-btn v-if="opname.can_manage_products" color="primary" outline no-caps icon="add" label="Tambah Barang" @click="isAddDialogOpen = true" />
-            <q-input v-model="search" outlined dense clearable placeholder="Cari di daftar ini (nama atau SKU)" class="filters__search">
+            <q-input v-model="search" outlined dense clearable placeholder="Cari di daftar ini (nama, merek, atau SKU)" class="filters__search">
                 <template #prepend><q-icon name="search" /></template>
             </q-input>
             <q-select v-model="filter" :options="filterOptions" option-value="value" option-label="label" emit-value map-options outlined dense class="filters__select" />
@@ -834,7 +834,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                     <tr v-for="item in items.data" :key="item.id">
                         <td>
                             <b>{{ item.product.name }}</b>
-                            <small>{{ item.product.sku }}</small>
+                            <small>{{ [item.product.brand, item.product.sku].filter(Boolean).join(' · ') }}</small>
                         </td>
                         <td class="lines__right">{{ formatStock(item.system_quantity, item.units, item.base_unit, item.system_intact_packs) }}</td>
                         <td>
@@ -985,11 +985,12 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                         ref="productSearchField"
                         v-model="productToAdd"
                         :search-url="opname.urls.product_search"
-                        label="Cari nama atau SKU"
+                        label="Cari nama, merek, atau SKU"
                         autofocus
                         @update:model-value="pickProductToAdd"
                     />
                     <div v-if="productToAdd" class="add-dialog__count">
+                        <small v-if="productToAdd.brand" class="add-dialog__brand">Merek {{ productToAdd.brand }}</small>
                         <div v-for="(part, partIndex) in addedParts" :key="partIndex" class="parts__row">
                             <q-input
                                 :ref="(field) => trackFirstAddedQuantityField(field, partIndex)"
@@ -1229,6 +1230,10 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
     flex-direction: column;
     gap: 8px;
     margin-top: 12px;
+}
+
+.add-dialog__brand {
+    color: #64748b;
 }
 
 .add-dialog__more-units {

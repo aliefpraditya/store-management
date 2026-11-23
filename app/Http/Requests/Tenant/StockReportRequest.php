@@ -6,7 +6,6 @@ use App\Enums\SalesGrouping;
 use App\Enums\StockStatusFilter;
 use App\Services\StockReportService;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Str;
 
 /**
  * The stock report screen: what the table of products is narrowed to, and the page, size and grouping of its tables.
@@ -16,8 +15,6 @@ use Illuminate\Support\Str;
 class StockReportRequest extends FormRequest
 {
     use ReadsTableQuery;
-
-    private const SEARCH_MAX_LENGTH = 100;
 
     public function authorize(): bool
     {
@@ -30,13 +27,6 @@ class StockReportRequest extends FormRequest
     public function rules(): array
     {
         return [];
-    }
-
-    public function search(): string
-    {
-        $term = $this->query('search');
-
-        return is_string($term) ? Str::limit(trim($term), self::SEARCH_MAX_LENGTH, '') : '';
     }
 
     public function categoryId(): ?int
@@ -66,6 +56,27 @@ class StockReportRequest extends FormRequest
         return $this->optionOrFirst('positions_per_page', StockReportService::PER_PAGE_OPTIONS);
     }
 
+    public function positionsSort(): string
+    {
+        return $this->optionOrFirst('positions_sort', StockReportService::positionSorts());
+    }
+
+    /**
+     * The order the table of products is in: names run A to Z and the figures biggest first, unless the address says so.
+     *
+     * @return 'asc'|'desc'
+     */
+    public function positionsDirection(): string
+    {
+        $direction = $this->query('positions_direction');
+
+        if (in_array($direction, ['asc', 'desc'], true)) {
+            return $direction;
+        }
+
+        return $this->positionsSort() === 'name' ? 'asc' : 'desc';
+    }
+
     public function groupsGrouping(): SalesGrouping
     {
         $grouping = $this->query('groups_by');
@@ -81,10 +92,5 @@ class StockReportRequest extends FormRequest
     public function groupsPerPage(): int
     {
         return $this->optionOrFirst('groups_per_page', StockReportService::GROUP_PER_PAGE_OPTIONS);
-    }
-
-    private function positiveIntegerOrNull(string $key): ?int
-    {
-        return filter_var($this->query($key), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
     }
 }

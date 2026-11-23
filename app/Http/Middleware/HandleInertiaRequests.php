@@ -121,7 +121,7 @@ class HandleInertiaRequests extends Middleware
     /**
      * The store of the current page, for every page under /t/{code}; null on central pages.
      *
-     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, unit_create_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string, expenses_url: string, daily_closings_url: string, settings_url: string, reports_url: string, stock_report_url: string}|null
+     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, unit_create_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string, expenses_url: string, daily_closings_url: string, settings_url: string, reports_url: string, stock_report_url: string, restock_url: string, idle_stock_url: string, stock_movements_url: string}|null
      */
     private function currentStore(): ?array
     {
@@ -151,6 +151,9 @@ class HandleInertiaRequests extends Middleware
             'settings_url' => route('tenant.settings.index', ['tenant' => $store->code]),
             'reports_url' => route('tenant.reports.sales', ['tenant' => $store->code]),
             'stock_report_url' => route('tenant.reports.stock', ['tenant' => $store->code]),
+            'restock_url' => route('tenant.reports.stock.restock', ['tenant' => $store->code]),
+            'idle_stock_url' => route('tenant.reports.stock.idle', ['tenant' => $store->code]),
+            'stock_movements_url' => route('tenant.reports.stock.movements', ['tenant' => $store->code]),
         ];
     }
 }

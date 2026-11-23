@@ -31,11 +31,13 @@ class StockHistoryController extends Controller
             ->through(fn (StockMovement $movement): array => StockMovementResource::make($movement)->resolve());
 
         $product = $filters['product_id'] === null ? null : Product::withTrashed()->with('baseUnit')->find($filters['product_id']);
+        $day = $request->toDate();
 
         return Inertia::render('Tenant/StockHistory/Index', [
             'movements' => $movements,
             'filters' => $filters,
             'product' => $product === null ? null : ['id' => $product->id, 'sku' => $product->sku, 'name' => $product->name, 'base_unit' => $product->baseUnit->code],
+            'stock_on' => $product === null || $day === null ? null : ['date' => $day->toDateString(), ...$this->historyService->stockOn($product->id, $day)],
             'warehouses' => Warehouse::query()->orderByDesc('is_default')->orderBy('name')->get(['id', 'name']),
             'product_search_url' => route('tenant.products.search', ['tenant' => tenant('code')]),
         ]);

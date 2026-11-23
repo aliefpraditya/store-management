@@ -192,6 +192,71 @@ class StockReportTest extends TestCase
         }
     }
 
+    public function test_the_table_can_be_ordered_by_each_of_its_columns_in_either_direction(): void
+    {
+        $this->stockTheShelves();
+
+        // Products that tie keep their order by name; Ember's negative balance is worth nothing, so it ties with Cat and Tali at 0.
+        $expected = [
+            ['sort' => 'name', 'direction' => 'desc', 'names' => ['Tali', 'Paku', 'Kuas', 'Ember', 'Cat Lama', 'Cat']],
+            ['sort' => 'sellable_stock', 'direction' => 'desc', 'names' => ['Kuas', 'Cat Lama', 'Paku', 'Tali', 'Cat', 'Ember']],
+            ['sort' => 'sellable_stock', 'direction' => 'asc', 'names' => ['Ember', 'Cat', 'Tali', 'Paku', 'Cat Lama', 'Kuas']],
+            ['sort' => 'dead_stock', 'direction' => 'desc', 'names' => ['Paku', 'Cat', 'Cat Lama', 'Ember', 'Kuas', 'Tali']],
+            ['sort' => 'returns_stock', 'direction' => 'desc', 'names' => ['Paku', 'Cat', 'Cat Lama', 'Ember', 'Kuas', 'Tali']],
+            ['sort' => 'cost_price', 'direction' => 'desc', 'names' => ['Kuas', 'Cat', 'Ember', 'Paku', 'Cat Lama', 'Tali']],
+            ['sort' => 'cost_price', 'direction' => 'asc', 'names' => ['Tali', 'Cat Lama', 'Paku', 'Cat', 'Ember', 'Kuas']],
+            ['sort' => 'sellable_value', 'direction' => 'desc', 'names' => ['Kuas', 'Paku', 'Cat Lama', 'Cat', 'Ember', 'Tali']],
+            ['sort' => 'sellable_value', 'direction' => 'asc', 'names' => ['Cat', 'Ember', 'Tali', 'Cat Lama', 'Paku', 'Kuas']],
+        ];
+
+        foreach ($expected as $order) {
+            $this->assertReport(fn (Assert $report) => $report
+                ->where('positions.sort', $order['sort'])
+                ->where('positions.direction', $order['direction'])
+                ->where('positions.data', $this->namesAre($order['names'])), ['positions_sort' => $order['sort'], 'positions_direction' => $order['direction']]);
+        }
+    }
+
+    public function test_a_column_starts_with_names_a_to_z_and_figures_biggest_first(): void
+    {
+        $this->stockTheShelves();
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('positions.sort', 'name')
+            ->where('positions.direction', 'asc')
+            ->where('positions.data', $this->namesAre(['Cat', 'Cat Lama', 'Ember', 'Kuas', 'Paku', 'Tali'])));
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('positions.direction', 'desc')
+            ->where('positions.data.0.name', 'Kuas'), ['positions_sort' => 'sellable_value']);
+    }
+
+    public function test_an_order_that_is_not_an_option_is_the_default_one(): void
+    {
+        $this->stockTheShelves();
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('positions.sort', 'name')
+            ->where('positions.direction', 'asc')
+            ->where('positions.data', $this->namesAre(['Cat', 'Cat Lama', 'Ember', 'Kuas', 'Paku', 'Tali'])), ['positions_sort' => 'nonsense', 'positions_direction' => 'sideways']);
+    }
+
+    public function test_the_order_holds_across_pages_and_with_the_filters(): void
+    {
+        $this->stockTheShelves();
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('positions.total', 1)
+            ->where('positions.data', $this->namesAre(['Kuas'])), ['positions_sort' => 'sellable_stock', 'status' => 'below_minimum']);
+
+        foreach (range(1, 16) as $number) {
+            $this->putInStock($this->product("Barang {$number}", '10'), (string) $number);
+        }
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('positions.current_page', 2)
+            ->where('positions.data.0.sellable_stock', fn ($quantity) => (float) $quantity === 4.0), ['positions_sort' => 'sellable_stock', 'positions_direction' => 'desc', 'positions_page' => 2]);
+    }
+
     public function test_an_inactive_product_is_neither_low_nor_out_of_stock(): void
     {
         $this->putInStock($this->product('Cat Lama', '100', ['is_active' => false, 'min_stock' => 50]), '0');

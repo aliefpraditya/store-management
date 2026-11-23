@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * One counted product. Expects `product.baseUnit`, `product.productUnits`, `reason` and the `system_quantity`,
+ * One counted product. Expects `product.baseUnit`, `product.productUnits`, `product.brand`, `reason` and the `system_quantity`,
  * `system_intact_packs`, `variance_quantity` and `product_cost_price` columns from {@see StockOpnameReport::paginateItems()}.
  *
  * @mixin StockOpnameItem
@@ -32,7 +32,7 @@ class StockOpnameItemResource extends JsonResource
 
         return [
             'id' => $this->id,
-            'product' => ['id' => $this->product->id, 'sku' => $this->product->sku, 'name' => $this->product->name],
+            'product' => ['id' => $this->product->id, 'sku' => $this->product->sku, 'name' => $this->product->name, 'brand' => $this->product->brand?->name],
             'base_unit' => $this->product->baseUnit->code,
             'units' => $this->product->productUnits->map(fn ($productUnit): array => [
                 'code' => $productUnit->unit_code,
