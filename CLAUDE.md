@@ -100,7 +100,7 @@ Pages are resolved with `import.meta.glob('./Pages/**/*.vue')`; follow the patte
 ## Key domain concepts
 
 -   **Store (toko)** — a tenant with its own DB; `receipt_prefix` (e.g. `MU`) is the receipt-number prefix, separate from the DB name `store_{snake_case_name}`. "Owner" = the store name; there is no owners table.
--   **Item prices** — per unit with unit conversion; **no rounding**, **no VAT**. Margin only: `price = cost / (1 − margin%)`, never markup. R1 uses the last purchase price (no FIFO yet; FIFO per layer arrives in R2).
+-   **Item prices** — per unit with unit conversion; **no rounding by default** (a store may set `selling_price_step` in its settings: a price worked out from a margin or percent is then rounded up to that multiple), **no VAT**. Margin only: `price = cost / (1 − margin%)`, never markup. R1 uses the last purchase price (no FIFO yet; FIFO per layer arrives in R2).
 -   **Stock opname** — the only stock input in R1 (no cost column). Purchases/container receiving are R2.
 -   **Sales** — cashier flow: open/close cash, payment, receipt, return (exchange allowed; admin approval, no day limit), delivery note (does not change stock), day close (locks transactions), expenses (cash drawer or other source).
 -   **Void** — before payment: direct, but logged; after payment: needs Admin approval.

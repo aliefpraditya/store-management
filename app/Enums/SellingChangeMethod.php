@@ -34,10 +34,27 @@ enum SellingChangeMethod: string
     }
 
     /**
-     * @return list<array{value: string, label: string, takes_value: bool}>
+     * Whether the price comes from a rule (a percent, a margin) and so may be rounded up to the store's selling price
+     * step. A Rupiah amount the admin typed (nominal, set) is saved as typed.
+     */
+    public function isDerivedFromRule(): bool
+    {
+        return match ($this) {
+            self::Percent, self::Margin, self::KeepMargin => true,
+            self::Nominal, self::Set => false,
+        };
+    }
+
+    /**
+     * @return list<array{value: string, label: string, takes_value: bool, is_derived_from_rule: bool}>
      */
     public static function options(): array
     {
-        return array_map(fn (self $method): array => ['value' => $method->value, 'label' => $method->label(), 'takes_value' => $method->takesValue()], self::cases());
+        return array_map(fn (self $method): array => [
+            'value' => $method->value,
+            'label' => $method->label(),
+            'takes_value' => $method->takesValue(),
+            'is_derived_from_rule' => $method->isDerivedFromRule(),
+        ], self::cases());
     }
 }

@@ -10,12 +10,12 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * The settings an admin keeps for one store: how its paper (receipt, delivery note, reports) reads, which printers print
- * the receipt and the delivery note, and two rules of the stock opname. Each has a default that holds until it is
- * changed, and a blank text goes back to the default. Must run while the store's tenancy is initialized.
+ * the receipt and the delivery note, two rules of the stock opname, and the step selling prices worked out from a margin
+ * or a percent are rounded up to. Each has a default that holds until it is changed, and a blank text goes back to the default. Must run while the store's tenancy is initialized.
  *
  * @phpstan-type Letterhead array{name: string, address: string|null, phone: string|null}
  * @phpstan-type PrintTarget array{name: string, width_mm: float, height_mm: float|null}
- * @phpstan-type StoreSettings array{receipt_name: string, receipt_address: string, receipt_phone: string, receipt_footer: string, paper_width: int, receipt_printer: string, delivery_note_printer: string, is_qz_tray_enabled: bool, large_variance_threshold: string, lock_sales_during_opname: bool, auto_print_receipt: bool}
+ * @phpstan-type StoreSettings array{receipt_name: string, receipt_address: string, receipt_phone: string, receipt_footer: string, paper_width: int, receipt_printer: string, delivery_note_printer: string, is_qz_tray_enabled: bool, large_variance_threshold: string, lock_sales_during_opname: bool, auto_print_receipt: bool, selling_price_step: int}
  */
 class StoreSettingService
 {
@@ -29,7 +29,12 @@ class StoreSettingService
     /** The continuous form a delivery note is printed on (9.5 x 5.5 inch), in millimetres. */
     private const DELIVERY_NOTE_PAGE_MM = ['width' => 241.3, 'height' => 139.7];
 
-    private const KEYS = ['receipt_name', 'receipt_address', 'receipt_phone', 'receipt_footer', 'paper_width', 'receipt_printer', 'delivery_note_printer', 'is_qz_tray_enabled', 'large_variance_threshold', 'lock_sales_during_opname', 'auto_print_receipt'];
+    /** Rupiah. 0 is no rounding: a store rounds selling prices only once it sets a step of its own. */
+    public const DEFAULT_SELLING_PRICE_STEP = 0;
+
+    public const MAX_SELLING_PRICE_STEP = 1000000;
+
+    private const KEYS = ['receipt_name', 'receipt_address', 'receipt_phone', 'receipt_footer', 'paper_width', 'receipt_printer', 'delivery_note_printer', 'is_qz_tray_enabled', 'large_variance_threshold', 'lock_sales_during_opname', 'auto_print_receipt', 'selling_price_step'];
 
     /** @var array<string, string|null>|null what the database held when it was first asked, until the next update */
     private ?array $storedSettings = null;
@@ -131,6 +136,18 @@ class StoreSettingService
     }
 
     /**
+     * The multiple, in rupiah, that a selling price worked out from a rule is rounded up to: a margin typed on the item
+     * form, and a percent or margin rule of a bulk price change. 0 means no rounding, which is also what a blank
+     * setting gives.
+     */
+    public function sellingPriceStep(): int
+    {
+        $step = $this->stored()['selling_price_step'] ?? null;
+
+        return filled($step) ? (int) $step : self::DEFAULT_SELLING_PRICE_STEP;
+    }
+
+    /**
      * Every setting as the settings page shows it.
      *
      * @return StoreSettings
@@ -151,6 +168,7 @@ class StoreSettingService
             'large_variance_threshold' => (string) ($this->largeVarianceThreshold()?->toScale(0, RoundingMode::HalfUp) ?? ''),
             'lock_sales_during_opname' => $this->isSalesLockedDuringOpname(),
             'auto_print_receipt' => $this->isReceiptPrintedAutomatically(),
+            'selling_price_step' => $this->sellingPriceStep(),
         ];
     }
 
@@ -161,7 +179,7 @@ class StoreSettingService
      * otherwise both try to create the same key and one of them would fail on the unique key. The values are then
      * written as updates, so the audit trail keeps recording each change.
      *
-     * @param  array{receipt_name?: string|null, receipt_address?: string|null, receipt_phone?: string|null, receipt_footer?: string|null, paper_width: int|string, receipt_printer?: string|null, delivery_note_printer?: string|null, is_qz_tray_enabled?: bool, large_variance_threshold?: string|int|float|null, lock_sales_during_opname: bool, auto_print_receipt: bool}  $settings
+     * @param  array{receipt_name?: string|null, receipt_address?: string|null, receipt_phone?: string|null, receipt_footer?: string|null, paper_width: int|string, receipt_printer?: string|null, delivery_note_printer?: string|null, is_qz_tray_enabled?: bool, large_variance_threshold?: string|int|float|null, lock_sales_during_opname: bool, auto_print_receipt: bool, selling_price_step?: string|int|null}  $settings
      */
     public function update(array $settings): void
     {

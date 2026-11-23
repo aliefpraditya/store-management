@@ -188,6 +188,24 @@ function confirmDeleteUnit(unit) {
             </section>
 
             <section class="card">
+                <h2>Harga jual</h2>
+
+                <q-input
+                    v-model.number="form.selling_price_step"
+                    type="number"
+                    min="0"
+                    step="1"
+                    outlined
+                    dense
+                    prefix="Rp"
+                    label="Kelipatan pembulatan harga jual"
+                    hint="Harga jual hasil hitungan dibulatkan ke atas ke kelipatan ini: margin yang diketik di form barang, serta persen, atur margin, dan pertahankan margin di Ubah Harga Massal. Margin atau persen ikut menyesuaikan. Isi 0 (bawaan) untuk tanpa pembulatan. Harga yang diketik sendiri tidak dibulatkan."
+                    :error="!!form.errors.selling_price_step"
+                    :error-message="form.errors.selling_price_step"
+                />
+            </section>
+
+            <section class="card">
                 <h2>Stok opname</h2>
 
                 <q-input

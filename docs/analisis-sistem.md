@@ -26,7 +26,7 @@
 | 7 | Offline: 1 kasir per toko, PC, bisa seharian; worst case butuh backup lokal | Backup file lokal otomatis (4.4); server localhost **tidak** dipilih (alasan di 4.4) |
 | 8 | ~~Buat tabel `customers` + hutang~~ → **kredit & hutang dihapus dulu** (revisi 3); **merek** tetap ada | Pelanggan & piutang **ditunda ke Fase 2**; `brands` dipertahankan |
 | 9 | Hostinger Cloud, plan disesuaikan nanti → **dipastikan Hostinger hPanel, bukan VPS** | DB toko dibuat manual di hPanel; kredensial per toko di `stores` (A3, D13) |
-| 10 | **Tanpa pembulatan harga** | Pengaturan pembulatan dihapus; harga persen disimpan apa adanya (2 desimal) |
+| 10 | **Tanpa pembulatan harga** (kecuali margin yang diketik di form barang) | Pengaturan pembulatan dihapus; harga persen disimpan apa adanya (2 desimal). Pengecualian sejak 23 Nov 2026: margin yang diketik di form barang menghasilkan harga yang dibulatkan ke atas ke kelipatan yang diatur di Pengaturan Toko (`selling_price_step`; bawaan 0 = tanpa pembulatan, mis. isi 1.000 untuk kelipatan Rp 1.000) dan kolom margin ikut berubah (mis. 37% → Rp 25.320 → Rp 26.000 → margin 37,5%); harga yang diketik sendiri tidak dibulatkan. Berlaku juga di Ubah Harga Massal untuk harga hasil persen, atur margin, dan pertahankan margin (bukan nominal/setarakan): pratinjau memberi keterangan "dibulatkan ke atas" beserta persen dan margin sebenarnya, harga yang tidak berubah menurut aturan tidak dibulatkan, dan pembulatan tidak pernah mengubah penurunan harga menjadi kenaikan |
 | 11 | Void: sebelum dibayar langsung (dicatat); setelah dibayar tetap approval | Dua jalur: `sale_cancellations` (log) dan void-dengan-approval |
 | 12 | Role Accounting nanti | Tetap Fase 2 |
 | 13 | **Master harus bisa cek stok suatu barang ada di mana saja** | **Cek Stok Barang** di Dashboard Pusat (Fase 1): hasil per toko × gudang, query langsung ke DB tiap toko (4.8, 7.4b, BPMN-13); sebelumnya "cek stok toko lain" ada di backlog |
@@ -137,7 +137,7 @@ Toko
 | D14 | Audit | `owen-it/laravel-auditing` di semua DB | ✔ |
 | D15 | Penamaan DB | Inggris, snake_case, jamak | ✔ |
 | D23 | Nama DB toko | `store_{nama_toko}` dalam snake_case, mis. `store_mitra_utama`. Prefiks nomor nota terpisah (`receipt_prefix`, mis. `MU`) | ✔ Anda; prefiks = usul |
-| D16 | Pembulatan harga | **Tidak ada** | ✔ Anda |
+| D16 | Pembulatan harga | **Tidak ada secara bawaan**; toko boleh mengisi kelipatan pembulatan ke atas di Pengaturan Toko (`selling_price_step`, bawaan 0) untuk harga hasil margin/persen (keputusan 10) | ✔ Anda |
 | D17 | Void | **Sebelum dibayar:** batal langsung + dicatat (`sale_cancellations`). **Sesudah dibayar:** ajukan, Admin menyetujui, hanya di shift berjalan; sesudahnya lewat Retur. **Pengecualian nota COD yang belum diantar:** Kasir atau Admin langsung mem-void dengan alasan, kapan pun nota dibuat, tanpa persetujuan (7.5); DP tunai ikut mengurangi tunai seharusnya shift pembatal, dan nota menyimpan siapa, kapan, dan alasannya | ✔ Anda + usul |
 | D18 | Retur | Tanpa batas hari; approval Admin wajib; selisih boleh dikembalikan tunai; **barang retur masuk Gudang Retur (bukan stok jual), diperiksa lewat opname gudang retur, lalu otomatis dibagi ke stok jual gudang asal / dead stock / barang DG** (7.7); kasir dan admin tidak memilih nasib barang saat retur | ✔ Anda |
 | D19 | Pelanggan, kredit & hutang | **Dihapus dari Fase 1** (wireframe 16 & 23): tidak ada `customers`, penjualan hutang, pembayaran hutang. Tukar barang pada retur tetap ada (nilai retur dipotong otomatis di layar Retur, bukan metode bayar yang dipilih kasir) | ✔ Anda |
@@ -1089,7 +1089,7 @@ erDiagram
 2. `conversion_factor` > 0, maks **3 desimal**; semua satuan boleh berdesimal (kuantitas maks 3 desimal).
 3. **`products.barcode` (opsional, unik)** diisi bila kemasan sudah punya barcode dari pabrik. Bila kosong, **`sku` yang berlaku sebagai barcode** (stiker yang dicetak toko memuat barcode kemasan sebagai Code 39, atau `sku` bila kosong; teks di stiker tetap `sku`). Scan di kasir mencocokkan `barcode` persis lebih dulu, bila tidak ada baru `sku` persis, barang masuk dalam satuan default jual, satuan tidak ditentukan oleh scan. Barcode satu barang tidak boleh sama dengan `sku` barang lain (dan sebaliknya) agar scan tidak ambigu. Barcode tidak disimpan per satuan.
 4. Tepat satu `is_default_sale` per barang, dan satuan itu harus `is_sellable`; minimal satu satuan `is_sellable` dan satu `is_purchasable`.
-5. `price_mode = nominal` → `margin_percent` kosong; `price_mode = margin` → 0 ≤ `margin_percent` < 100 dan `selling_price = modal_satuan / (1 − margin%/100)`; `selling_price` ≥ 0, 2 desimal, tanpa pembulatan.
+5. `price_mode = nominal` → `margin_percent` kosong; `price_mode = margin` → 0 ≤ `margin_percent` < 100 dan `selling_price = modal_satuan / (1 − margin%/100)`; `selling_price` ≥ 0, 2 desimal, tanpa pembulatan (kecuali toko mengisi kelipatan pembulatan, keputusan 10).
 6. Barang tidak aktif tidak muncul di kasir/penerimaan, tetap muncul di laporan & histori stok.
 7. Konversi dan satuan terkunci setelah ada stok/transaksi; barang bertransaksi tidak dapat dihapus; setiap perubahan harga menulis `price_histories`.
 8. Paling banyak **satu** satuan per barang yang `is_sealed_pack` (kemasan utuh, mis. rol kawat); bukan satuan dasar dan harus `is_sellable` (D35).
@@ -1697,7 +1697,7 @@ erDiagram
 3. **Penamaan toko:** `stores.code` = **snake_case dari nama toko** (huruf kecil, angka, underscore; 3–40 karakter; unik; tidak bisa diubah). Nama DB = `store_{code}` (di Hostinger otomatis diberi **prefiks akun**, mis. `u123456789_store_mitra_utama`, dan disimpan penuh di `stores.db_name`), URL = `/t/{code}/`. Contoh: "Mitra Utama" → `mitra_utama` → DB `store_mitra_utama`. Sistem mengusulkan kode dari nama (spasi → `_`, tanpa tanda baca) dan Super Admin boleh mengedit sebelum disimpan. Karena kode panjang, **nomor dokumen** memakai `stores.receipt_prefix` (singkat, mis. `MU`, bisa diubah) agar nota thermal tetap ringkas.
 4. Perubahan skema lewat `tenants:migrate` dengan laporan per toko; `stores.schema_version` terlihat di Master Toko.
 5. Otorisasi di **backend** (izin per peran + izin tambahan per user, lihat **Peran & izin**); uji otomatis isolasi toko A vs B dan akses per peran.
-6. Pengaturan toko: nama/alamat/footer nota, ukuran kertas, izinkan stok minus, wajib approval penerimaan, ambang selisih besar opname, kunci penjualan saat opname. (Tidak ada pengaturan pembulatan harga dan batas hari retur.)
+6. Pengaturan toko: nama/alamat/footer nota, ukuran kertas, izinkan stok minus, wajib approval penerimaan, ambang selisih besar opname, kunci penjualan saat opname, kelipatan pembulatan harga jual (`selling_price_step`, bawaan 0 = tanpa pembulatan). (Tidak ada batas hari retur.)
 7. **Register**: kode, nama, gudang jual; perangkat terdaftar bisa dicabut Admin.
 
 **Edge case:** provisioning gagal → status `failed` + "Coba lagi" idempoten; akses dicabut saat login → request berikutnya 403 (offline: ditolak saat sinkron berikutnya).
@@ -1722,7 +1722,7 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 
 **Aturan bisnis**
 1. Tepat **1 satuan dasar** (`conversion_factor = 1`); konversi > 0, **maks 3 desimal**; semua satuan boleh berdesimal (kuantitas maks 3 desimal).
-2. **Mode margin:** `selling_price = modal_satuan / (1 − margin_percent/100)`, `modal_satuan = product_units.cost_price`; `margin_percent` ≥ 0 dan < 100. Contoh: modal 72.875 dan margin 37,5 % → 116.600. **Tanpa pembulatan** (D16), disimpan 2 desimal. Basis = **harga beli terakhir** (`cost_price`).
+2. **Mode margin:** `selling_price = modal_satuan / (1 − margin_percent/100)`, `modal_satuan = product_units.cost_price`; `margin_percent` ≥ 0 dan < 100. Contoh: modal 72.875 dan margin 37,5 % → 116.600. **Tanpa pembulatan** (D16; kecuali toko mengisi kelipatan pembulatan), disimpan 2 desimal. Basis = **harga beli terakhir** (`cost_price`).
 3. **Persen untung = margin** (dari harga jual) = `(harga jual − modal) / harga jual`, ditampilkan per satuan bersama nominal untung (A7). Untuk mode nominal, margin dihitung dari harga yang diketik.
 4. Harga jual < modal → peringatan + konfirmasi.
 5. `price_histories` append-only, otomatis tiap perubahan `cost_price`/`selling_price` (sumber: manual, penerimaan, hitung ulang, import); harga beli berubah → harga mode margin dihitung ulang (sumber `recalculation`).
@@ -2125,7 +2125,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 | Approval selisih kas bila Admin tidak hadir | Shift menunggu review (kasir terkunci, register tertahan); diputuskan Admin Toko untuk shift kasir dan Super Admin untuk shift Admin Toko, Super Admin bisa memutuskan shiftnya sendiri |
 | Persen untung | **Margin saja** (tanpa markup) |
 | Hostinger | **hPanel (Cloud/Business), bukan VPS**; DB toko dibuat manual, antrean via cron |
-| Pembulatan | Tidak ada |
+| Pembulatan | Tidak ada (bawaan); kelipatan pembulatan harga jual bisa diisi di Pengaturan Toko |
 | Void | Sebelum bayar langsung (dicatat); sesudah bayar approval |
 | Role Accounting | Setuju, nanti (Fase 2) |
 | Cek stok lintas toko | **Hanya Super Admin** untuk sekarang (Admin Toko hanya melihat stok tokonya sendiri) |

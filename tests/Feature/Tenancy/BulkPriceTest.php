@@ -2,13 +2,17 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Enums\SellingChangeMethod;
 use App\Enums\UserRole;
+use App\Exceptions\BulkPriceException;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\BulkPriceService;
+use App\Services\StoreSettingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Testing\TestResponse;
@@ -35,6 +39,15 @@ class BulkPriceTest extends TestCase
 
         $this->store = $this->prepareStoreDatabase(['code' => 'test_bulk_prices', 'receipt_prefix' => 'TBP']);
         $this->admin = $this->storeUser(UserRole::StoreAdmin);
+    }
+
+    /**
+     * A store starts with no rounding. A test that wants one sets it before its first request: the controller keeps the
+     * settings it read first.
+     */
+    private function setSellingPriceStep(int $step): void
+    {
+        $this->store->run(fn () => app(StoreSettingService::class)->update(['selling_price_step' => $step]));
     }
 
     private function url(string $route): string
@@ -130,9 +143,11 @@ class BulkPriceTest extends TestCase
             ->reloadOnly('matching_ids', fn (Assert $reload) => $reload->has('matching_ids', 3))
             ->has('brands', 1)
             ->where('bulk_price.max_products', 500)
+            ->where('bulk_price.selling_price_step', 0)
             ->where('bulk_price.cost_methods.0', ['value' => 'percent', 'label' => 'Persen (naik atau turun)'])
-            ->where('bulk_price.selling_methods.2', ['value' => 'set', 'label' => 'Setarakan ke harga tertentu', 'takes_value' => true])
-            ->where('bulk_price.selling_methods.4', ['value' => 'keep_margin', 'label' => 'Pertahankan margin sekarang', 'takes_value' => false])
+            ->where('bulk_price.selling_methods.2', ['value' => 'set', 'label' => 'Setarakan ke harga tertentu', 'takes_value' => true, 'is_derived_from_rule' => false])
+            ->where('bulk_price.selling_methods.0.is_derived_from_rule', true)
+            ->where('bulk_price.selling_methods.4', ['value' => 'keep_margin', 'label' => 'Pertahankan margin sekarang', 'takes_value' => false, 'is_derived_from_rule' => true])
             ->where('bulk_price.cost_methods.2', ['value' => 'set', 'label' => 'Setarakan ke harga tertentu'])
             ->where('bulk_price.urls.units', $this->url('units'))
             ->where('bulk_price.urls.preview', $this->url('preview'))
@@ -281,6 +296,71 @@ class BulkPriceTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.products.0.units.0.new_cost', '8000.00')
             ->assertJsonPath('data.products.0.units.0.new_price', '10666.67');
+    }
+
+    public function test_a_price_from_a_percent_is_rounded_up_to_the_store_step_and_the_preview_tells_the_real_percent(): void
+    {
+        $this->setSellingPriceStep(1000);
+        $product = $this->item();
+
+        $this->preview($this->payload($product, ['selling_method' => 'percent', 'selling_value' => 2]))
+            ->assertOk()
+            ->assertJsonPath('data.products.0.units.0.new_price', '11000.00')
+            ->assertJsonPath('data.products.0.units.0.is_price_rounded', true)
+            ->assertJsonPath('data.products.0.units.0.price_change_percent', '10.00')
+            ->assertJsonPath('data.products.0.units.1.new_price', '113000.00')
+            ->assertJsonPath('data.products.0.units.1.price_change_percent', '2.73');
+
+        $this->apply($this->payload($product, ['selling_method' => 'percent', 'selling_value' => 2]))->assertSessionHas('success');
+
+        $this->assertSame(['6000.00', '11000.00'], $this->pricesOf($product, 'PCS'));
+    }
+
+    public function test_a_price_from_a_margin_or_a_kept_margin_is_rounded_up_to_the_store_step(): void
+    {
+        $this->setSellingPriceStep(1000);
+        $product = $this->item();
+
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'selling_method' => 'margin', 'selling_value' => 20]))
+            ->assertJsonPath('data.products.0.units.0.new_price', '8000.00')
+            ->assertJsonPath('data.products.0.units.0.price_change_percent', '-20.00');
+
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'cost_method' => 'percent', 'cost_value' => 5, 'selling_method' => 'keep_margin']))
+            ->assertJsonPath('data.products.0.units.0.new_price', '11000.00')
+            ->assertJsonPath('data.products.0.units.0.is_price_rounded', true);
+    }
+
+    public function test_a_typed_rupiah_amount_and_a_price_the_rule_leaves_alone_are_not_rounded(): void
+    {
+        $this->setSellingPriceStep(3000);
+        $product = $this->item();
+
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'selling_method' => 'nominal', 'selling_value' => 250]))
+            ->assertJsonPath('data.products.0.units.0.new_price', '10250.00')
+            ->assertJsonPath('data.products.0.units.0.is_price_rounded', false)
+            ->assertJsonPath('data.products.0.units.0.price_change_percent', null);
+
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'selling_method' => 'set', 'selling_value' => 10250]))
+            ->assertJsonPath('data.products.0.units.0.new_price', '10250.00');
+
+        $this->preview($this->payload($product, ['unit_code' => 'PCS', 'selling_method' => 'percent', 'selling_value' => 0]))
+            ->assertOk()
+            ->assertJsonPath('data.totals.units_changed', 0);
+    }
+
+    public function test_a_preview_is_refused_once_the_store_changes_its_selling_price_step(): void
+    {
+        $product = $this->item();
+        $change = ['unit_code' => null, 'cost_method' => null, 'cost_value' => null, 'selling_method' => SellingChangeMethod::Percent, 'selling_value' => '2'];
+
+        $this->store->run(function () use ($product, $change): void {
+            $fingerprint = app(BulkPriceService::class)->preview([$product->id], $change)['fingerprint'];
+            app(StoreSettingService::class)->update(['selling_price_step' => 1000]);
+
+            $this->expectException(BulkPriceException::class);
+
+            app(BulkPriceService::class)->apply([$product->id], $change, $fingerprint);
+        });
     }
 
     public function test_keeping_the_margin_moves_the_price_with_the_new_modal(): void

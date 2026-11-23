@@ -126,6 +126,42 @@ class PriceChangeCalculatorTest extends TestCase
         $this->assertSame('Modal atau harga jual sekarang 0, margin lama tidak bisa dihitung. Modal satuan ini juga tidak diubah.', $plan['skip_reason']);
     }
 
+    public function test_a_percent_price_rounds_up_to_the_step_never_down_and_leaves_the_modal_alone(): void
+    {
+        $calculator = new PriceChangeCalculator;
+        $twoPercentRise = $this->change(['selling_method' => SellingChangeMethod::Percent, 'selling_value' => '2']);
+        $percentChange = fn (string $percent): array => $this->change(['selling_method' => SellingChangeMethod::Percent, 'selling_value' => $percent]);
+
+        $this->assertSame('11000.00', $calculator->calculate($this->unit(), $twoPercentRise, 1000)['new_price']);
+        $this->assertSame('10200.00', $calculator->calculate($this->unit(), $twoPercentRise, 0)['new_price']);
+        $this->assertSame('10000.00', $calculator->calculate($this->unit(price: '9800.00'), $twoPercentRise, 1000)['new_price']);
+        $this->assertSame('10000.00', $calculator->calculate($this->unit(price: '10400.00'), $percentChange('-10'), 1000)['new_price']);
+        $this->assertSame('10400.00', $calculator->calculate($this->unit(price: '10400.00'), $percentChange('-2'), 1000)['new_price']);
+        $this->assertSame('6000.00', $calculator->calculate($this->unit(), $twoPercentRise, 1000)['new_cost']);
+    }
+
+    public function test_a_rounded_price_reports_the_real_percent_and_an_exact_one_does_not(): void
+    {
+        $calculator = new PriceChangeCalculator;
+
+        $rounded = $calculator->calculate($this->unit(), $this->change(['selling_method' => SellingChangeMethod::Percent, 'selling_value' => '2']), 1000);
+        $exact = $calculator->calculate($this->unit(), $this->change(['selling_method' => SellingChangeMethod::Percent, 'selling_value' => '10']), 1000);
+
+        $this->assertTrue($rounded['is_price_rounded']);
+        $this->assertSame('10.00', $rounded['price_change_percent']);
+        $this->assertFalse($exact['is_price_rounded']);
+        $this->assertNull($exact['price_change_percent']);
+    }
+
+    public function test_rounding_does_not_hide_a_negative_price_and_a_typed_amount_is_not_rounded(): void
+    {
+        $calculator = new PriceChangeCalculator;
+
+        $this->assertSame('Harga jual akan jadi negatif.', $calculator->calculate($this->unit(price: '100.00'), $this->change(['selling_method' => SellingChangeMethod::Percent, 'selling_value' => '-150']), 1000)['skip_reason']);
+        $this->assertSame('10250.00', $calculator->calculate($this->unit(), $this->change(['selling_method' => SellingChangeMethod::Nominal, 'selling_value' => '250']), 1000)['new_price']);
+        $this->assertSame('10250.00', $calculator->calculate($this->unit(), $this->change(['selling_method' => SellingChangeMethod::Set, 'selling_value' => '10250']), 1000)['new_price']);
+    }
+
     public function test_results_below_zero_or_past_the_column_are_skipped_with_a_reason(): void
     {
         $calculator = new PriceChangeCalculator;

@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\DB;
  * locks and refuses to save when they are not the numbers of the preview (its fingerprint), so what is saved is always
  * what the admin saw. Every unit is saved through its model, which is what keeps the price history in the audit trail,
  * and every changed product moves its save counter so an item form that was open before is refused instead of
- * silently overwriting the new prices.
+ * silently overwriting the new prices. A price worked out from a percent or a margin is rounded up to the store's selling
+ * price step, which is part of the fingerprint like every other number of the plan.
  *
  * @phpstan-import-type PriceChange from PriceChangeCalculator
  * @phpstan-import-type UnitPricePlan from PriceChangeCalculator
@@ -30,7 +31,10 @@ class BulkPriceService
 
     private const PREVIEW_PRODUCT_LIMIT = 100;
 
-    public function __construct(private readonly PriceChangeCalculator $calculator) {}
+    public function __construct(
+        private readonly PriceChangeCalculator $calculator,
+        private readonly StoreSettingService $storeSettings,
+    ) {}
 
     /**
      * The units the picked items come in, with how many of the items have each, for choosing which unit a change is
@@ -148,8 +152,10 @@ class BulkPriceService
      */
     private function plansFor(Collection $products, array $change): Collection
     {
-        return $products->map(function (Product $product) use ($change): array {
-            $unitPlans = $product->productUnits->map(fn (ProductUnit $unit): array => $this->calculator->calculate($unit, $change))->values()->all();
+        $sellingPriceStep = $this->storeSettings->sellingPriceStep();
+
+        return $products->map(function (Product $product) use ($change, $sellingPriceStep): array {
+            $unitPlans = $product->productUnits->map(fn (ProductUnit $unit): array => $this->calculator->calculate($unit, $change, $sellingPriceStep))->values()->all();
 
             return [
                 'id' => $product->id,

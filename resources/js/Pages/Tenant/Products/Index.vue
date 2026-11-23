@@ -284,6 +284,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
             :product-ids="selectedIds"
             :cost-methods="bulk_price.cost_methods"
             :selling-methods="bulk_price.selling_methods"
+            :selling-price-step="bulk_price.selling_price_step"
             :urls="bulk_price.urls"
             @applied="selectedIds = []"
         />

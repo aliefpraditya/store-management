@@ -17,6 +17,7 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\ProductService;
+use App\Services\StoreSettingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
@@ -436,6 +437,16 @@ class ProductManagementTest extends TestCase
         $this->actingAs($this->admin)->get($this->url('create'))->assertInertia(fn (Assert $page) => $page
             ->where('suggested_sku', $this->store->receipt_prefix.'0001')
         );
+    }
+
+    public function test_the_forms_carry_the_selling_price_step_of_the_store_settings(): void
+    {
+        $this->inStore(fn () => app(StoreSettingService::class)->update(['selling_price_step' => 500]));
+        $this->create()->assertSessionHasNoErrors();
+        $product = $this->savedProduct();
+
+        $this->actingAs($this->admin)->get($this->url('create'))->assertInertia(fn (Assert $page) => $page->where('selling_price_step', 500));
+        $this->actingAs($this->admin)->get($this->url('edit', ['product' => $product->id]))->assertInertia(fn (Assert $page) => $page->where('selling_price_step', 500));
     }
 
     public function test_the_suggested_sku_follows_the_highest_number_of_the_prefix_including_deleted_items(): void

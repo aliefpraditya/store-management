@@ -22,6 +22,7 @@ use App\Services\BarcodeLabelService;
 use App\Services\BulkPriceService;
 use App\Services\PriceLabelService;
 use App\Services\ProductService;
+use App\Services\StoreSettingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -31,7 +32,10 @@ class ProductController extends Controller
 {
     private const PER_PAGE = 25;
 
-    public function __construct(private readonly ProductService $productService) {}
+    public function __construct(
+        private readonly ProductService $productService,
+        private readonly StoreSettingService $storeSettings,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -82,6 +86,7 @@ class ProductController extends Controller
                 'cost_methods' => CostChangeMethod::options(),
                 'selling_methods' => SellingChangeMethod::options(),
                 'max_products' => BulkPriceService::MAX_PRODUCTS,
+                'selling_price_step' => $this->storeSettings->sellingPriceStep(),
                 'urls' => [
                     'units' => route('tenant.bulk-prices.units', ['tenant' => tenant('code')]),
                     'preview' => route('tenant.bulk-prices.preview', ['tenant' => tenant('code')]),
@@ -164,6 +169,7 @@ class ProductController extends Controller
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
             'brands' => Brand::query()->orderBy('name')->get(['id', 'name']),
             'units' => Unit::query()->orderBy('code')->get(['code', 'name']),
+            'selling_price_step' => $this->storeSettings->sellingPriceStep(),
         ];
     }
 }

@@ -59,6 +59,30 @@ export function priceFromMargin(cost, marginPercent) {
 }
 
 /**
+ * The selling price a typed margin asks for, rounded up to the next multiple of the store's step so the shelf price is
+ * a clean number. The margin the shop ends up with is then a little higher than the typed one: read it back with
+ * marginFromPrice().
+ *
+ * @param {string|number} cost purchase price of the unit
+ * @param {string|number} marginPercent
+ * @param {number} stepInRupiah the store's rounding step; 0 leaves the price as it is
+ * @returns {number|null} null when the margin is not a number or is 100 or more, as priceFromMargin()
+ */
+export function roundedPriceFromMargin(cost, marginPercent, stepInRupiah) {
+    const price = priceFromMargin(cost, marginPercent);
+    const wholeStep = Math.round(stepInRupiah);
+
+    if (price === null || !(wholeStep > 0)) {
+        return price;
+    }
+
+    const stepInSen = BigInt(wholeStep) * 100n;
+    const priceInSen = toScaled(price, MONEY_DECIMALS);
+
+    return Number(((priceInSen + stepInSen - 1n) / stepInSen) * stepInSen) / 100;
+}
+
+/**
  * @param {string|number} cost purchase price of the unit
  * @param {string|number} price selling price of the unit
  * @returns {number|null} the margin in percent, or null when there is no price to take it from or no cost to measure

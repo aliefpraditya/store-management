@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import { postJson } from '../Composables/postJson';
+import { marginFromPrice } from '../Composables/usePriceMargin';
 import SearchableSelect from './SearchableSelect.vue';
 
 const props = defineProps({
@@ -11,8 +12,10 @@ const props = defineProps({
     productIds: { type: Array, required: true },
     /** @type {{value: string, label: string}[]} */
     costMethods: { type: Array, required: true },
-    /** @type {{value: string, label: string, takes_value: boolean}[]} */
+    /** @type {{value: string, label: string, takes_value: boolean, is_derived_from_rule: boolean}[]} */
     sellingMethods: { type: Array, required: true },
+    /** Rupiah; a price worked out from a percent or a margin is rounded up to a multiple of it. 0 means no rounding. */
+    sellingPriceStep: { type: Number, required: true },
     /** @type {{units: string, preview: string, apply: string}} */
     urls: { type: Object, required: true },
 });
@@ -224,10 +227,39 @@ function confirmApply() {
     }).onOk(apply);
 }
 
-/** Units worth showing in the preview: the ones that change or cannot be changed. */
-const affectedUnits = (product) => product.units.filter((unit) => unit.is_changed || unit.skip_reason !== null);
+/**
+ * Units worth showing in the preview: the ones that change or cannot be changed, each with the margin it had and the
+ * margin it gets, worked out once here instead of on every cell.
+ */
+const affectedUnits = (product) =>
+    product.units
+        .filter((unit) => unit.is_changed || unit.skip_reason !== null)
+        .map((unit) => ({ ...unit, old_margin: marginText(unit.old_cost, unit.old_price), new_margin: marginText(unit.new_cost, unit.new_price) }));
 
 const isDifferent = (oldValue, newValue) => oldValue !== newValue;
+
+/** Only a price that comes from a rule is rounded; a typed Rupiah amount is saved as typed. */
+const isSellingRuleRounded = computed(() => props.sellingPriceStep > 0 && sellingMethodOption.value?.is_derived_from_rule === true);
+
+const roundingNote = computed(
+    () => `Harga jual dibulatkan ke atas ke kelipatan Rp ${priceFormat.format(props.sellingPriceStep)} (Pengaturan Toko), jadi persen atau margin sebenarnya bisa sedikit berbeda. Lihat angkanya di pratinjau.`,
+);
+
+/** @param {string|null} percent a percent with up to 2 decimals, as the server sends it */
+const signedPercent = (percent) => (percent === null ? '' : `${Number(percent) > 0 ? '+' : ''}${priceFormat.format(percent)}%`);
+
+/**
+ * The margin of the price as the preview shows it, worked out the same way as on the item form.
+ *
+ * @param {string} cost
+ * @param {string} price
+ * @returns {string|null} null when there is no margin to speak of (no modal, no price)
+ */
+function marginText(cost, price) {
+    const margin = marginFromPrice(cost, price);
+
+    return margin === null ? null : `${priceFormat.format(margin)}%`;
+}
 </script>
 
 <template>
@@ -280,6 +312,9 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
                     <p v-else-if="isSetChosen" class="bulk__note">Setarakan membuat tiap satuan yang diubah memakai harga yang sama. Batasi ke satu satuan lewat <i>Satuan yang diubah</i> bila harganya beda per satuan.</p>
                     <p v-else-if="sellingMethod === 'margin'" class="bulk__note">Harga jual = modal ÷ (1 − margin). Bila modal ikut diubah, dipakai modal yang baru.</p>
                     <p v-else-if="sellingMethod === 'keep_margin'" class="bulk__note">Margin tiap satuan sekarang dijaga: harga jual naik atau turun mengikuti modal yang baru.</p>
+                    <p v-if="isSellingRuleRounded && !changeHint" class="bulk__note bulk__note--rounding">
+                        <q-icon name="arrow_upward" size="14px" /> {{ roundingNote }}
+                    </p>
                 </div>
 
                 <div class="bulk__preview" aria-live="polite">
@@ -302,6 +337,7 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
                                         <th>Satuan</th>
                                         <th class="bulk__right">Modal</th>
                                         <th class="bulk__right">Harga jual</th>
+                                        <th class="bulk__right">Margin</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -311,7 +347,7 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
                                                 <template v-if="unitIndex === 0"><b>{{ product.name }}</b><small>{{ product.sku }}</small></template>
                                             </td>
                                             <td>{{ unit.code }}</td>
-                                            <td v-if="unit.skip_reason" colspan="2" class="bulk__skipped">Dilewati: {{ unit.skip_reason }}</td>
+                                            <td v-if="unit.skip_reason" colspan="3" class="bulk__skipped">Dilewati: {{ unit.skip_reason }}</td>
                                             <template v-else>
                                                 <td class="bulk__right">
                                                     <template v-if="isDifferent(unit.old_cost, unit.new_cost)">{{ priceFormat.format(unit.old_cost) }} → <b>{{ priceFormat.format(unit.new_cost) }}</b></template>
@@ -321,6 +357,11 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
                                                     <q-icon v-if="unit.is_below_cost" name="warning" color="negative" size="16px" class="q-mr-xs" aria-label="Di bawah modal"><q-tooltip>Harga jual di bawah modal</q-tooltip></q-icon>
                                                     <template v-if="isDifferent(unit.old_price, unit.new_price)">{{ priceFormat.format(unit.old_price) }} → <b>{{ priceFormat.format(unit.new_price) }}</b></template>
                                                     <template v-else>{{ priceFormat.format(unit.old_price) }}</template>
+                                                    <small v-if="unit.is_price_rounded" class="bulk__rounded">{{ signedPercent(unit.price_change_percent) }}</small>
+                                                </td>
+                                                <td class="bulk__right" :class="{ 'bulk__rounded': unit.is_price_rounded }">
+                                                    <template v-if="isDifferent(unit.old_margin, unit.new_margin)">{{ unit.old_margin ?? '-' }} → <b>{{ unit.new_margin ?? '-' }}</b></template>
+                                                    <template v-else>{{ unit.new_margin ?? '-' }}</template>
                                                 </td>
                                             </template>
                                         </tr>
@@ -352,7 +393,7 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
 
 <style scoped>
 .bulk {
-    width: 1040px;
+    width: 1180px;
     max-width: 96vw;
 }
 
@@ -431,6 +472,13 @@ const isDifferent = (oldValue, newValue) => oldValue !== newValue;
     color: #be123c;
 }
 
+.bulk__note--rounding {
+    color: #92400e;
+}
+
+.bulk__table .bulk__rounded {
+    color: #92400e;
+}
 .bulk__row--below td {
     background: #fff1f2;
 }

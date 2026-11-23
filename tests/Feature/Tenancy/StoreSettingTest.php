@@ -74,6 +74,7 @@ class StoreSettingTest extends TestCase
             'large_variance_threshold' => '',
             'lock_sales_during_opname' => false,
             'auto_print_receipt' => false,
+            'selling_price_step' => '',
             ...$overrides,
         ];
     }
@@ -132,6 +133,7 @@ class StoreSettingTest extends TestCase
             ->where('settings.paper_width', 80)
             ->where('settings.large_variance_threshold', '')
             ->where('settings.lock_sales_during_opname', false)
+            ->where('settings.selling_price_step', StoreSettingService::DEFAULT_SELLING_PRICE_STEP)
             ->where('store_letterhead', ['name' => 'Toko Uji', 'address' => 'Jl. Uji 1', 'phone' => '021-111'])
             ->where('paper_widths', [58, 76, 80])
             ->where('settings.receipt_printer', '')
@@ -158,6 +160,23 @@ class StoreSettingTest extends TestCase
             ->where('settings.lock_sales_during_opname', true));
     }
 
+    public function test_the_selling_price_step_can_be_set_turned_off_and_reset_to_its_default(): void
+    {
+        $storedStep = fn (): int => $this->store->run(fn (): int => app(StoreSettingService::class)->sellingPriceStep());
+
+        $this->assertSame(0, StoreSettingService::DEFAULT_SELLING_PRICE_STEP);
+
+        $this->save(['selling_price_step' => '500']);
+        $this->assertSame(500, $storedStep());
+
+        $this->save(['selling_price_step' => '']);
+        $this->assertSame(StoreSettingService::DEFAULT_SELLING_PRICE_STEP, $storedStep());
+
+        $this->save(['selling_price_step' => '1000']);
+        $this->save(['selling_price_step' => '0']);
+        $this->assertSame(0, $storedStep());
+    }
+
     public function test_a_blank_text_goes_back_to_its_default(): void
     {
         $this->save(['receipt_name' => 'MITRA UTAMA', 'receipt_footer' => 'Sampai jumpa']);
@@ -180,6 +199,9 @@ class StoreSettingTest extends TestCase
         $put(['large_variance_threshold' => 0])->assertSessionHasErrors(['large_variance_threshold' => 'Ambang selisih harus lebih dari 0. Kosongkan untuk tanpa batas.']);
         $put(['large_variance_threshold' => '1500.5'])->assertSessionHasErrors(['large_variance_threshold' => 'Ambang selisih harus bilangan bulat rupiah.']);
         $put(['large_variance_threshold' => 'banyak'])->assertSessionHasErrors('large_variance_threshold');
+        $put(['selling_price_step' => -1])->assertSessionHasErrors(['selling_price_step' => 'Kelipatan pembulatan tidak boleh negatif. Isi 0 untuk tanpa pembulatan.']);
+        $put(['selling_price_step' => '250.5'])->assertSessionHasErrors(['selling_price_step' => 'Kelipatan pembulatan harus bilangan bulat rupiah.']);
+        $put(['selling_price_step' => StoreSettingService::MAX_SELLING_PRICE_STEP + 1])->assertSessionHasErrors('selling_price_step');
         $put(['auto_print_receipt' => null])->assertSessionHasErrors('auto_print_receipt');
         $put(['receipt_footer' => str_repeat('a', 1001)])->assertSessionHasErrors('receipt_footer');
     }

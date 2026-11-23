@@ -7,7 +7,7 @@ import PickOrCreateSelect from '../../../Components/PickOrCreateSelect.vue';
 import UnitFormDialog from '../../../Components/UnitFormDialog.vue';
 import UnitSelect from '../../../Components/UnitSelect.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
-import { costFromBase, marginFromPrice, priceFromMargin } from '../../../Composables/usePriceMargin';
+import { costFromBase, marginFromPrice, roundedPriceFromMargin } from '../../../Composables/usePriceMargin';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -16,6 +16,8 @@ const props = defineProps({
     categories: { type: Array, required: true },
     brands: { type: Array, required: true },
     units: { type: Array, required: true },
+    /** Rupiah; a price from a typed margin is rounded up to a multiple of it. 0 means no rounding. */
+    selling_price_step: { type: Number, required: true },
     form_action: { type: Object, required: true },
 });
 
@@ -131,20 +133,41 @@ function changeSellingPrice(row, typedPrice) {
 }
 
 /**
- * A typed margin decides the selling price (margin of the price, never markup on the cost). The margin box keeps what
- * was typed, so the number does not jump under the cursor.
+ * A typed margin decides the selling price (margin of the price, never markup on the cost), rounded up to a multiple
+ * of the store's rounding step. The margin box keeps what was typed while typing, so the number does not jump under the cursor; it is
+ * corrected to the margin the rounded price really gives once the box is left (see showMarginOfPrice).
  * @param {object} row
  * @param {string|number} typedMargin
  */
 function changeMargin(row, typedMargin) {
-    const price = priceFromMargin(row.cost_price, typedMargin);
+    const price = roundedPriceFromMargin(row.cost_price, typedMargin, props.selling_price_step);
 
     if (price !== null) {
         row.selling_price = price;
     }
 }
 
-const isMarginOutOfRange = (row) => row.margin_percent !== '' && Number(row.margin_percent) >= 100;
+/**
+ * Leaving the margin box shows the margin the (rounded up) selling price gives, e.g. a typed 37% that became
+ * Rp 26.000 reads 37,5%. A margin that was refused (100 or more) stays on screen with its error: the price never
+ * followed it, so there is nothing to correct it to.
+ * @param {object} row
+ */
+function showMarginOfPrice(row) {
+    if (isMarginOutOfRange(row)) {
+        return;
+    }
+
+    row.margin_percent = marginFromPrice(row.cost_price, row.selling_price) ?? row.margin_percent;
+}
+
+const marginRoundingHint = computed(() =>
+    props.selling_price_step > 0
+        ? `Harga dari margin dibulatkan ke atas ke kelipatan Rp ${props.selling_price_step.toLocaleString('id-ID')} (margin ikut menyesuaikan); harga yang Anda ketik tidak dibulatkan.`
+        : 'Harga dari margin tidak dibulatkan (diatur di Pengaturan Toko).',
+);
+
+const isMarginOutOfRange =(row) => row.margin_percent !== '' && Number(row.margin_percent) >= 100;
 
 /** The unit being worked out in the conversion calculator. */
 const calculator = ref({ isOpen: false, rowIndex: 0 });
@@ -336,8 +359,8 @@ function submit() {
                     />
                     <p class="hint">
                         Modal adalah harga beli per satuan, jadi tiap satuan bisa berbeda. Satuan lain otomatis mengikuti modal satuan dasar × konversi sampai
-                        modalnya Anda isi sendiri. Margin dan harga jual saling menghitung: isi salah satunya, yang lain mengikuti. Mengubah modal menjaga harga
-                        jual dan menggeser margin.
+                        modalnya Anda isi sendiri. Margin dan harga jual saling menghitung: isi salah satunya, yang lain mengikuti. {{ marginRoundingHint }} Mengubah modal menjaga harga jual dan
+                        menggeser margin.
                     </p>
                 </div>
 
@@ -428,6 +451,7 @@ function submit() {
                                             :error="isMarginOutOfRange(row)"
                                             :aria-label="`Margin ${row.unit?.code ?? ''}`"
                                             @update:model-value="changeMargin(row, $event)"
+                                            @blur="showMarginOfPrice(row)"
                                         >
                                             <q-tooltip v-if="isMarginOutOfRange(row)">Margin harus kurang dari 100%</q-tooltip>
                                         </q-input>
