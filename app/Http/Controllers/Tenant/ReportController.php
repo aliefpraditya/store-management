@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\PaymentMethod;
 use App\Enums\StockStatusFilter;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\DateRangeRequest;
 use App\Http\Requests\Tenant\IdleStockRequest;
 use App\Http\Requests\Tenant\RestockRequest;
+use App\Http\Requests\Tenant\SalesDetailReportRequest;
 use App\Http\Requests\Tenant\SalesReportRequest;
 use App\Http\Requests\Tenant\StockMovementRequest;
 use App\Http\Requests\Tenant\StockReportRequest;
@@ -18,14 +20,19 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Services\IdleStockService;
 use App\Services\RestockReportService;
+use App\Services\SalesDetailReportService;
+use App\Services\SalesDetailSheetRows;
+use App\Services\SalesDetailWorkbook;
 use App\Services\SalesReportService;
 use App\Services\StockMovementReportService;
 use App\Services\StockReportService;
 use App\Services\StoreSettingService;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * The store's reports for admins. The sales report shows a period on screen and prints it from a window of its own;
@@ -35,6 +42,9 @@ class ReportController extends Controller
 {
     public function __construct(
         private readonly SalesReportService $salesReport,
+        private readonly SalesDetailReportService $salesDetailReport,
+        private readonly SalesDetailSheetRows $salesDetailSheets,
+        private readonly SalesDetailWorkbook $salesDetailWorkbook,
         private readonly StockReportService $stockReport,
         private readonly IdleStockService $idleStock,
         private readonly RestockReportService $restockReport,
@@ -62,8 +72,11 @@ class ReportController extends Controller
             'group_per_page_options' => SalesReportService::GROUP_PER_PAGE_OPTIONS,
             'is_period_cut_back' => $period['is_cut_back'],
             'max_days' => SalesReportService::MAX_DAYS,
+            'payment_method_options' => PaymentMethod::saleOptions(),
             'urls' => [
                 'sheet' => route('tenant.reports.sales.sheet', ['tenant' => tenant('code'), 'from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()]),
+                'detail_sheet' => route('tenant.reports.sales.detail-sheet', ['tenant' => tenant('code'), 'from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()]),
+                'detail_export' => route('tenant.reports.sales.detail-export', ['tenant' => tenant('code'), 'from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()]),
             ],
         ]);
     }
@@ -172,6 +185,44 @@ class ReportController extends Controller
         return Inertia::render('Tenant/Print/SalesReport', [
             'report' => [...$this->salesReport->report($period['from'], $period['to']), 'store' => $this->settings->letterhead()],
         ]);
+    }
+
+    /**
+     * The same period as the summary sheet, but down to each receipt with its goods and payments.
+     */
+    public function salesDetailSheet(SalesDetailReportRequest $request): Response
+    {
+        $period = $this->salesReport->period($request->fromDate(), $request->toDate());
+
+        return Inertia::render('Tenant/Print/SalesDetailReport', [
+            'report' => [...$this->salesDetailReport->report($period['from'], $period['to'], $request->paymentMethod()), 'store' => $this->settings->letterhead()],
+            'printed_at' => now()->format('Y-m-d H:i'),
+        ]);
+    }
+
+    /**
+     * The detailed report of the period as an xlsx file: the receipts, their goods, the returns and the voids, each a sheet.
+     */
+    public function salesDetailExport(SalesDetailReportRequest $request): StreamedResponse
+    {
+        $period = $this->salesReport->period($request->fromDate(), $request->toDate());
+        $sheets = $this->salesDetailSheets->sheets($this->salesDetailReport->report($period['from'], $period['to'], $request->paymentMethod()));
+        $fileName = $this->exportFileName($this->settings->letterhead()['name'], $period['from'], $period['to']);
+
+        return response()->streamDownload(fn () => $this->salesDetailWorkbook->write($sheets, 'php://output'), $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /**
+     * `Laporan Penjualan <store> <from> - <to>.xlsx`. Characters a file name cannot hold (a store may well be named with a
+     * slash) are dropped, and the dash stands in for "s/d", which could not be written with its slash.
+     */
+    private function exportFileName(string $storeName, CarbonImmutable $from, CarbonImmutable $to): string
+    {
+        $safeStoreName = trim(preg_replace('/\s+/', ' ', preg_replace('/[\\\\\/:*?"<>|\x00-\x1f]+/', ' ', $storeName)));
+
+        return "Laporan Penjualan {$safeStoreName} {$from->toDateString()} - {$to->toDateString()}.xlsx";
     }
 
     /**

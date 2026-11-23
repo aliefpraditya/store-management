@@ -1,0 +1,79 @@
+/* The receipts, returns and day totals of the printed sales sheets (the detailed sales report and the day closing report). Black on white, as the sheets are printed. */
+.receipt-table {
+    width: 100%;
+    margin-bottom: 6px;
+    border: 1px solid #000;
+    border-collapse: collapse;
+    break-inside: avoid;
+}
+
+.receipt-table th {
+    padding: 2px 6px;
+    background: #f1f1f1;
+    border-bottom: 1px solid #000;
+    text-align: left;
+}
+
+.receipt-table th:last-child,
+.receipt-table td:nth-child(n + 2) {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.receipt-table td {
+    padding: 1px 6px;
+}
+
+.receipt-table td:first-child {
+    width: 50%;
+}
+
+.receipt-table .receipt-table__paid td {
+    border-top: 1px dotted #666;
+    text-align: left;
+    white-space: normal;
+}
+
+.receipt-table--void th {
+    text-decoration: line-through;
+}
+
+.receipt-table__void-mark {
+    display: inline-block;
+    margin-right: 4px;
+    padding: 0 4px;
+    border: 1px solid #000;
+    text-decoration: none;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+}
+
+.receipt-sum {
+    width: 100%;
+    margin-top: 6px;
+    border-collapse: collapse;
+    break-inside: avoid;
+}
+
+.receipt-sum td {
+    padding: 2px 6px;
+    border-bottom: 1px solid #bbb;
+}
+
+.receipt-sum td:last-child {
+    text-align: right;
+}
+
+.receipt-sum .receipt-sum__method td:first-child {
+    padding-left: 18px;
+}
+
+.receipt-sum .receipt-sum__note td {
+    color: #444;
+    font-style: italic;
+}
+
+.receipt-sum .receipt-sum__total td {
+    border-bottom: 2px solid #000;
+    font-weight: 700;
+}

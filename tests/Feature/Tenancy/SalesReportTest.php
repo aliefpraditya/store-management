@@ -32,6 +32,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
+use OpenSpout\Reader\XLSX\Reader as XlsxReader;
 use Tests\Concerns\BuildsCashierFixtures;
 use Tests\Concerns\PreparesStoreDatabase;
 use Tests\TestCase;
@@ -1029,5 +1030,181 @@ class SalesReportTest extends TestCase
                 ->where('payments.methods.2.amount', $closing['sales_qris'])
                 ->where('payments.methods.3.amount', $closing['sales_edc'])
                 ->where('payments.methods', fn ($methods): bool => bcadd($methods[4]['amount'], $methods[5]['amount'], 2) === $closing['sales_cod'])));
+    }
+
+    public function test_the_detail_sheet_lists_every_receipt_with_its_goods_and_payments_day_by_day(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.detail-sheet'))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Tenant/Print/SalesDetailReport')
+            ->where('report.store.name', 'Toko Uji')
+            ->where('report.totals.net_total', '80000.00')
+            ->has('report.days', 2)
+            ->where('report.days.0.date', today()->subDay()->toDateString())
+            ->where('report.days.0.receipt_count', 1)
+            ->where('report.days.0.receipts.0.payments.0.method', 'transfer')
+            ->where('report.days.0.receipts.0.payments.0.amount', '30000.00')
+            ->where('report.days.0.receipts.0.items.0.name', 'Kuas')
+            ->where('report.days.0.receipts.0.items.0.subtotal', '30000.00')
+            ->where('report.days.0.net_total', '30000.00')
+            ->where('report.days.1.receipt_count', 2)
+            ->where('report.days.1.net_total', '50000.00')
+            ->where('report.days.1.methods.0.method', 'cash')
+            ->where('report.days.1.methods.0.amount', '50000.00')
+            ->where('report.days.1.methods.1.method', 'cod')
+            ->where('report.days.1.methods.1.amount', '20000.00'));
+    }
+
+    public function test_the_detail_sheet_lists_the_returns_of_the_period_with_their_goods(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.detail-sheet'))->assertInertia(fn (Assert $page) => $page
+            ->has('report.returns', 1)
+            ->where('report.returns.0.credit_amount', '20000.00')
+            ->where('report.returns.0.refund_method', 'Tunai')
+            ->where('report.returns.0.items.0.name', 'Kuas')
+            ->where('report.returns.0.items.0.refund_subtotal', '20000.00'));
+    }
+
+    public function test_the_detail_sheet_lists_voided_receipts_apart_and_not_among_the_days(): void
+    {
+        $this->sell(2, [['method' => 'cash', 'amount' => 20000]]);
+        $voided = $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+        $this->store->run(fn () => Sale::query()->whereKey($voided->id)->update(['status' => 'voided', 'void_reason' => 'Salah input', 'void_business_date' => today()]));
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.detail-sheet'))->assertInertia(fn (Assert $page) => $page
+            ->has('report.days', 1)
+            ->where('report.days.0.receipt_count', 1)
+            ->has('report.voids', 1)
+            ->where('report.voids.0.number', $voided->number)
+            ->where('report.voids.0.reason', 'Salah input')
+            ->where('report.voids.0.total', '10000.00'));
+    }
+
+    public function test_the_detail_sheet_is_for_admins_only_and_leaves_out_who_rang_the_receipts_up(): void
+    {
+        $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+
+        $this->actingAs($this->cashier)->get($this->url(name: 'sales.detail-sheet'))->assertForbidden();
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.detail-sheet'))->assertInertia(fn (Assert $page) => $page
+            ->missing('report.days.0.receipts.0.cashier_name'));
+    }
+
+    public function test_the_screen_gives_the_addresses_of_the_detail_sheet_and_export_for_its_period(): void
+    {
+        $period = ['from' => today()->subDays(6)->toDateString(), 'to' => today()->toDateString()];
+
+        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+            ->where('urls.detail_sheet', $this->url($period, 'sales.detail-sheet'))
+            ->where('urls.detail_export', $this->url($period, 'sales.detail-export'))
+            ->where('payment_method_options.1.value', 'transfer'));
+    }
+
+    public function test_the_detail_sheet_adds_up_what_was_sold_per_product_and_says_when_it_was_made(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.detail-sheet'))->assertInertia(fn (Assert $page) => $page
+            ->has('printed_at')
+            ->where('report.filter', null)
+            ->has('report.goods', 1)
+            ->where('report.goods.0.name', 'Kuas')
+            ->where('report.goods.0.unit', 'PCS')
+            ->where('report.goods.0.quantity', '10.000')
+            ->where('report.goods.0.subtotal', '100000.00'));
+    }
+
+    public function test_the_detail_sheet_can_be_narrowed_to_the_receipts_paid_by_one_method(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->admin)->get($this->url(['method' => 'transfer'], 'sales.detail-sheet'))->assertInertia(fn (Assert $page) => $page
+            ->where('report.filter', 'Transfer')
+            ->where('report.totals.receipt_count', 1)
+            ->where('report.totals.gross_total', '30000.00')
+            ->has('report.methods', 1)
+            ->has('report.days', 1)
+            ->where('report.days.0.gross_total', '30000.00')
+            ->where('report.days.0.net_total', null)
+            ->where('report.days.0.returns_total', null)
+            ->where('report.goods.0.quantity', '3.000')
+            ->has('report.returns', 0)
+            ->has('report.voids', 0));
+    }
+
+    public function test_a_method_that_is_not_one_a_sale_is_paid_by_is_left_out(): void
+    {
+        $this->sellInAWeek();
+
+        foreach (['nonsense', 'return_credit', 'order_deposit', ['transfer']] as $method) {
+            $this->actingAs($this->admin)->get($this->url(['method' => $method], 'sales.detail-sheet'))->assertInertia(fn (Assert $page) => $page
+                ->where('report.filter', null)
+                ->where('report.totals.net_total', '80000.00'));
+        }
+    }
+
+    public function test_the_export_is_an_xlsx_with_a_sheet_each_for_receipts_goods_returns_and_voids(): void
+    {
+        $this->sellInAWeek();
+
+        $response = $this->actingAs($this->admin)->get($this->url(name: 'sales.detail-export'));
+
+        $response->assertOk()->assertDownload('Laporan Penjualan Toko Uji '.today()->subDays(6)->toDateString().' - '.today()->toDateString().'.xlsx');
+
+        $path = tempnam(sys_get_temp_dir(), 'sales-export').'.xlsx';
+        file_put_contents($path, $response->streamedContent());
+        $reader = new XlsxReader;
+        $reader->open($path);
+
+        $sheets = [];
+
+        foreach ($reader->getSheetIterator() as $sheet) {
+            $sheets[$sheet->getName()] = array_map(fn ($row): array => $row->toArray(), iterator_to_array($sheet->getRowIterator(), false));
+        }
+
+        $reader->close();
+        unlink($path);
+
+        $this->assertSame(['Nota', 'Barang', 'Retur', 'Void'], array_keys($sheets));
+        $this->assertCount(5, $sheets['Nota']);
+        $this->assertCount(5, $sheets['Barang']);
+        $this->assertCount(3, $sheets['Retur']);
+        $this->assertCount(1, $sheets['Void']);
+        $this->assertSame(30000.0, (float) $sheets['Nota'][1][array_search('Transfer', $sheets['Nota'][0], true)]);
+        $this->assertSame('JUMLAH (3 nota)', $sheets['Nota'][4][0]);
+        $this->assertSame(100000.0, (float) $sheets['Nota'][4][array_search('Total', $sheets['Nota'][0], true)]);
+        $this->assertSame(100000.0, (float) $sheets['Barang'][4][array_search('Subtotal', $sheets['Barang'][0], true)]);
+    }
+
+    public function test_the_export_file_name_drops_characters_a_file_name_cannot_hold(): void
+    {
+        $this->store->update(['name' => 'Toko A/B: Pusat']);
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.detail-export'))
+            ->assertDownload('Laporan Penjualan Toko A B Pusat '.today()->subDays(6)->toDateString().' - '.today()->toDateString().'.xlsx');
+    }
+
+    public function test_the_export_can_be_narrowed_to_one_method_and_is_for_admins_only(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->cashier)->get($this->url(name: 'sales.detail-export'))->assertForbidden();
+
+        $response = $this->actingAs($this->admin)->get($this->url(['method' => 'transfer'], 'sales.detail-export'));
+        $path = tempnam(sys_get_temp_dir(), 'sales-export').'.xlsx';
+        file_put_contents($path, $response->streamedContent());
+        $reader = new XlsxReader;
+        $reader->open($path);
+
+        foreach ($reader->getSheetIterator() as $sheet) {
+            if ($sheet->getName() === 'Nota') {
+                $this->assertCount(3, iterator_to_array($sheet->getRowIterator(), false));
+            }
+        }
+
+        $reader->close();
+        unlink($path);
     }
 }

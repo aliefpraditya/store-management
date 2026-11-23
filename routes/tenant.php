@@ -127,6 +127,8 @@ Route::prefix('t/{tenant}')
         Route::middleware('permission:reports.view')->group(function () {
             Route::get('reports/sales', [ReportController::class, 'sales'])->name('tenant.reports.sales');
             Route::get('reports/sales/sheet', [ReportController::class, 'salesSheet'])->name('tenant.reports.sales.sheet');
+            Route::get('reports/sales/detail-sheet', [ReportController::class, 'salesDetailSheet'])->name('tenant.reports.sales.detail-sheet');
+            Route::get('reports/sales/detail-export', [ReportController::class, 'salesDetailExport'])->name('tenant.reports.sales.detail-export');
             Route::get('reports/stock', [ReportController::class, 'stock'])->name('tenant.reports.stock');
             Route::get('reports/stock/restock', [ReportController::class, 'restock'])->name('tenant.reports.stock.restock');
             Route::get('reports/stock/idle', [ReportController::class, 'idle'])->name('tenant.reports.stock.idle');

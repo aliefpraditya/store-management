@@ -11,6 +11,7 @@ use App\Http\Resources\DailyClosingResource;
 use App\Models\CashShift;
 use App\Models\DailyClosing;
 use App\Services\DailyClosingService;
+use App\Services\SalesDetailReportService;
 use App\Services\StoreSettingService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -28,6 +29,7 @@ class DailyClosingController extends Controller
 
     public function __construct(
         private readonly DailyClosingService $closingService,
+        private readonly SalesDetailReportService $salesDetail,
         private readonly StoreSettingService $settings,
     ) {}
 
@@ -84,11 +86,13 @@ class DailyClosingController extends Controller
     }
 
     /**
-     * The daily report, printed from the saved figures in a window of its own. Only a closed day has one.
+     * The daily report, printed from the saved figures in a window of its own. Only a closed day has one. The receipts of
+     * the day are read as they stand: a closed day is locked, so they match the saved figures until it is reopened.
      */
     public function sheet(string $date): Response
     {
-        $closing = $this->closingService->find($this->dayOf($date));
+        $day = $this->dayOf($date);
+        $closing = $this->closingService->find($day);
 
         abort_unless($closing?->status === DailyClosingStatus::Closed, 404);
 
@@ -98,6 +102,7 @@ class DailyClosingController extends Controller
                 'store' => $this->settings->letterhead(),
                 'shifts' => $this->shiftRowsOf($closing),
                 'voids' => $this->closingService->voidsOf($closing->business_date),
+                'receipts_of_day' => $this->salesDetail->forDay($day),
             ],
         ]);
     }

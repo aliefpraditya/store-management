@@ -1,8 +1,10 @@
 <script setup>
 import { formatDeduction, formatRupiah } from '../Composables/useMoneyFormat';
+import SalesReceiptDay from './SalesReceiptDay.vue';
+import SalesReturnList from './SalesReturnList.vue';
 
 defineProps({
-    /** `voids` are the receipts voided on the day, whatever day they were sold. @type {{business_date: string, closed_by_name: string|null, closed_at: string, notes: string|null, figures: Record<string, string|number>, store: {name: string, address: string|null, phone: string|null}, shifts: {label: string, register_name: string, cashier_name: string, expected_cash: string|null, counted_cash: string|null, cash_difference: string|null, deposit_amount: string|null}[], voids: {number: string, sold_on: string, reason: string|null, total: string}[]}} */
+    /** `voids` are the receipts voided on the day, whatever day they were sold; `receipts_of_day` are the receipts sold on it, the voided ones too, and the returns made on it. @type {{business_date: string, closed_by_name: string|null, closed_at: string, notes: string|null, figures: Record<string, string|number>, store: {name: string, address: string|null, phone: string|null}, shifts: {label: string, register_name: string, cashier_name: string, expected_cash: string|null, counted_cash: string|null, cash_difference: string|null, deposit_amount: string|null}[], voids: {number: string, sold_on: string, reason: string|null, total: string}[], receipts_of_day: {receipt_count: number, voided_count: number, gross_total: string, methods: object[], receipts: object[], returns: object[]}}} */
     report: { type: Object, required: true },
 });
 
@@ -102,6 +104,22 @@ const asLocalDate = (isoDay) => new Date(`${isoDay}T00:00:00`);
                     </tr>
                 </tbody>
             </table>
+        </template>
+
+        <h2 class="daily-print__section">Rincian nota hari ini</h2>
+        <p v-if="report.receipts_of_day.receipts.length === 0" class="daily-print__empty">Tidak ada nota pada hari ini.</p>
+        <SalesReceiptDay
+            v-else
+            :receipts="report.receipts_of_day.receipts"
+            :methods="report.receipts_of_day.methods"
+            :summary-title="`${report.receipts_of_day.receipt_count} nota, penjualan`"
+            :gross-total="report.receipts_of_day.gross_total"
+            :voided-count="report.receipts_of_day.voided_count"
+        />
+
+        <template v-if="report.receipts_of_day.returns.length > 0">
+            <h2 class="daily-print__section">Retur disetujui hari ini</h2>
+            <SalesReturnList :returns="report.receipts_of_day.returns" />
         </template>
 
         <p v-if="report.notes" class="daily-print__notes">Catatan penutupan: {{ report.notes }}</p>
@@ -212,6 +230,13 @@ const asLocalDate = (isoDay) => new Date(`${isoDay}T00:00:00`);
     margin: 4px 0 0;
     color: #444;
     font-size: 11px;
+}
+
+.daily-print .daily-print__section {
+    margin-top: 20px;
+    padding-bottom: 2px;
+    border-bottom: 2px solid #000;
+    break-after: avoid;
 }
 
 .daily-print__notes {

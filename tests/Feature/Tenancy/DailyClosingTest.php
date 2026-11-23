@@ -18,9 +18,11 @@ use App\Models\User;
 use App\Services\DailyClosingService;
 use App\Services\ExpenseService;
 use App\Services\SaleReturnService;
+use App\Services\SalesDetailReportService;
 use App\Services\SaleService;
 use App\Services\ShiftRecapService;
 use App\Services\ShiftService;
+use Carbon\CarbonImmutable;
 use Exception;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -383,6 +385,66 @@ class DailyClosingTest extends TestCase
             ->where('report.voids.0.sold_on', $this->today())
             ->where('report.voids.0.reason', 'Salah catat')
             ->where('report.figures.voids_count', 1));
+    }
+
+    public function test_the_daily_report_lists_every_receipt_of_the_day_with_its_goods_and_how_it_was_paid(): void
+    {
+        $this->settledDay();
+        $this->closeToday();
+
+        $this->actingAs($this->admin)->get($this->url('sheet', $this->today()))->assertInertia(fn (Assert $page) => $page
+            ->where('report.receipts_of_day.receipt_count', 1)
+            ->where('report.receipts_of_day.voided_count', 0)
+            ->where('report.receipts_of_day.gross_total', '50000.00')
+            ->has('report.receipts_of_day.receipts', 1)
+            ->where('report.receipts_of_day.receipts.0.is_voided', false)
+            ->where('report.receipts_of_day.receipts.0.items.0.name', 'Kuas')
+            ->where('report.receipts_of_day.receipts.0.payments.0.method', 'cash')
+            ->where('report.receipts_of_day.methods.0.amount', '50000.00')
+            ->where('report.figures.sales_cash', '50000.00')
+            ->has('report.receipts_of_day.returns', 1)
+            ->where('report.receipts_of_day.returns.0.credit_amount', '20000.00'));
+    }
+
+    public function test_a_receipt_voided_since_is_listed_marked_and_its_money_stays_in_the_methods_as_in_the_closing(): void
+    {
+        $this->settledDay();
+        $sale = $this->store->run(function (): Sale {
+            $sale = Sale::query()->firstOrFail();
+            $sale->forceFill(['status' => SaleStatus::Voided, 'voided_at' => now(), 'void_business_date' => today(), 'void_reason' => 'Salah catat', 'voided_by_name' => $this->admin->name])->save();
+
+            return $sale;
+        });
+        $this->closeToday();
+
+        $this->actingAs($this->admin)->get($this->url('sheet', $this->today()))->assertInertia(fn (Assert $page) => $page
+            ->where('report.receipts_of_day.receipt_count', 0)
+            ->where('report.receipts_of_day.voided_count', 1)
+            ->where('report.receipts_of_day.gross_total', '0.00')
+            ->where('report.receipts_of_day.receipts.0.number', $sale->number)
+            ->where('report.receipts_of_day.receipts.0.is_voided', true)
+            ->where('report.receipts_of_day.receipts.0.void_reason', 'Salah catat')
+            ->where('report.receipts_of_day.methods.0.amount', '50000.00')
+            ->where('report.figures.sales_cash', '50000.00'));
+    }
+
+    public function test_the_cod_of_a_voided_receipt_is_not_money_in_for_the_day_as_in_the_closing(): void
+    {
+        $shift = $this->openShiftFor($this->cashier);
+        $sale = $this->store->run(fn (): Sale => app(SaleService::class)->create($shift, $this->cashier, [
+            'client_uuid' => (string) Str::uuid(),
+            'items' => [['product_unit_id' => $this->unitOf($this->brush, 'PCS')->id, 'quantity' => 2]],
+            'payments' => [['method' => 'cod', 'amount' => 20000]],
+            'delivery_note' => ['recipient_name' => 'Pak Budi', 'recipient_address' => 'Jl. Mawar 5'],
+        ]));
+        $this->store->run(fn () => $sale->forceFill(['status' => SaleStatus::Voided, 'voided_at' => now(), 'void_business_date' => today()])->save());
+
+        $detail = $this->store->run(fn (): array => app(SalesDetailReportService::class)->forDay(CarbonImmutable::today()));
+        $closing = $this->store->run(fn (): array => app(DailyClosingService::class)->summarize(today()));
+
+        $this->assertSame(1, $detail['voided_count']);
+        $this->assertSame([], $detail['methods']);
+        $this->assertSame('0.00', $closing['sales_cod']);
     }
 
     public function test_only_a_closed_day_has_a_report(): void

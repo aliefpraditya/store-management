@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { Deferred, router, usePage } from '@inertiajs/vue3';
+import { Notify } from 'quasar';
 import DateInput from '../../../Components/DateInput.vue';
 import { printSheet } from '../../../Composables/printSheet';
 import { formatDeduction, formatRupiah } from '../../../Composables/useMoneyFormat';
@@ -23,6 +24,8 @@ const props = defineProps({
     /** Whether the period asked for was longer than the report allows and was cut back from its start. */
     is_period_cut_back: { type: Boolean, required: true },
     max_days: { type: Number, required: true },
+    /** The methods a sale can be paid by, `{value, label}`, for narrowing the detailed report. */
+    payment_method_options: { type: Array, required: true },
     /** The page sizes the products table offers. */
     per_page_options: { type: Array, required: true },
     /** The page sizes the table per category or brand offers. */
@@ -148,12 +151,95 @@ const sortState = (column) => (props.groups?.sort === column ? (props.groups.dir
 
 /** The report prints from a hidden frame, for the period on screen. */
 const printReport = () => printSheet(() => props.urls.sheet);
+
+/** The payment method the detailed report is narrowed to; empty for every receipt. */
+const detailMethod = ref('');
+
+const detailMethodChoices = computed(() => [{ label: 'Semua metode bayar', value: '' }, ...props.payment_method_options.map((option) => ({ label: option.label, value: option.value }))]);
+
+/** The address of a detailed report for the period on screen, narrowed to the method chosen. */
+function detailUrl(baseUrl) {
+    const url = new URL(baseUrl, window.location.origin);
+
+    if (detailMethod.value !== '') {
+        url.searchParams.set('method', detailMethod.value);
+    }
+
+    return url.toString();
+}
+
+const printDetailReport = () => printSheet(() => detailUrl(props.urls.detail_sheet));
+
+/**
+ * The file name the server gave: the UTF-8 one when the name has characters outside ASCII (the other is then a degraded
+ * copy), else the plain one.
+ * @param {string} contentDisposition
+ * @returns {string}
+ */
+function fileNameOf(contentDisposition) {
+    const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition)?.[1];
+
+    return encodedName ? decodeURIComponent(encodedName) : (/filename="?([^";]+)"?/.exec(contentDisposition)?.[1] ?? 'Laporan Penjualan.xlsx');
+}
+
+/** Whether the Excel file is being made, for the button to show it is busy. */
+const isDownloadingExcel = ref(false);
+
+/**
+ * Fetches the Excel file and saves it. The server works the whole report out before it sends the first byte, which can take
+ * a while for a long period, and a plain link would show nothing meanwhile; fetching it here lets the page say it is working.
+ * The size is not known ahead, so the indicator does not count up.
+ */
+async function downloadDetailExcel() {
+    if (isDownloadingExcel.value) {
+        return;
+    }
+
+    isDownloadingExcel.value = true;
+    const dismissNotice = Notify.create({ spinner: true, position: 'top', timeout: 0, message: 'Menyiapkan file Excel, mohon tunggu...' });
+
+    try {
+        const response = await fetch(detailUrl(props.urls.detail_export), { credentials: 'same-origin' });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const fileName = fileNameOf(response.headers.get('Content-Disposition') ?? '');
+        const fileUrl = URL.createObjectURL(await response.blob());
+        const link = Object.assign(document.createElement('a'), { href: fileUrl, download: fileName });
+
+        link.click();
+        URL.revokeObjectURL(fileUrl);
+        Notify.create({ type: 'positive', position: 'top', message: 'File Excel selesai diunduh.' });
+    } catch (error) {
+        Notify.create({ type: 'negative', position: 'top', message: `File Excel gagal dibuat (${error.message}). Coba lagi.` });
+    } finally {
+        dismissNotice();
+        isDownloadingExcel.value = false;
+    }
+}
 </script>
 
 <template>
     <StoreLayout title="Laporan Penjualan">
         <template #actions>
             <q-btn outline no-caps icon="print" label="Cetak" @click="printReport" />
+            <q-btn-dropdown outline no-caps icon="receipt_long" label="Laporan rinci (per nota)" class="q-ml-sm" :loading="isDownloadingExcel">
+                <div class="detail-menu">
+                    <q-select v-model="detailMethod" :options="detailMethodChoices" emit-value map-options outlined dense label="Metode bayar" />
+                </div>
+                <q-list>
+                    <q-item v-close-popup clickable @click="printDetailReport">
+                        <q-item-section avatar><q-icon name="picture_as_pdf" /></q-item-section>
+                        <q-item-section>Cetak / simpan PDF</q-item-section>
+                    </q-item>
+                    <q-item v-close-popup clickable @click="downloadDetailExcel">
+                        <q-item-section avatar><q-icon name="table_view" /></q-item-section>
+                        <q-item-section>Unduh Excel</q-item-section>
+                    </q-item>
+                </q-list>
+            </q-btn-dropdown>
         </template>
 
         <div class="period">
@@ -467,6 +553,11 @@ const printReport = () => printSheet(() => props.urls.sheet);
 </template>
 
 <style scoped>
+.detail-menu {
+    min-width: 220px;
+    padding: 12px 12px 4px;
+}
+
 .period {
     display: flex;
     flex-wrap: wrap;
