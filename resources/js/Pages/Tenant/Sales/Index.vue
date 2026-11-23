@@ -20,6 +20,12 @@ const to = ref(props.filters.to ?? '');
 const search = ref(props.filters.search ?? '');
 const cashier = ref(props.filters.cashier_id);
 const status = ref(props.filters.status ?? '');
+const delivery = ref(props.filters.delivery ?? '');
+
+const DELIVERY_OPTIONS = [
+    { value: '', label: 'Semua pengantaran' },
+    { value: 'pending', label: 'Belum diantar' },
+];
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -29,9 +35,21 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
 function applyFilters(extra = {}) {
     router.get(
         page.url.split('?')[0],
-        { from: from.value ?? '', to: to.value ?? '', search: search.value || undefined, cashier: cashier.value || undefined, status: status.value || undefined, ...extra },
+        { from: from.value ?? '', to: to.value ?? '', search: search.value || undefined, cashier: cashier.value || undefined, status: status.value || undefined, delivery: delivery.value || undefined, ...extra },
         { preserveState: true, replace: true, preserveScroll: true },
     );
+}
+
+/**
+ * A receipt not delivered yet may be from any day, so asking for them lifts the date range instead of keeping today's.
+ */
+function chooseDelivery(value) {
+    delivery.value = value;
+
+    if (value === 'pending') {
+        from.value = '';
+        to.value = '';
+    }
 }
 
 let searchTimer;
@@ -41,7 +59,7 @@ watch(search, () => {
     searchTimer = setTimeout(() => applyFilters(), 300);
 });
 
-watch([from, to, cashier, status], () => applyFilters());
+watch([from, to, cashier, status, delivery], () => applyFilters());
 </script>
 
 <template>
@@ -64,6 +82,7 @@ watch([from, to, cashier, status], () => applyFilters());
                 class="filters__select"
             />
             <q-select v-model="status" :options="[{ value: '', label: 'Semua status' }, ...statuses]" option-value="value" option-label="label" emit-value map-options outlined dense class="filters__select" />
+            <q-select :model-value="delivery" :options="DELIVERY_OPTIONS" option-value="value" option-label="label" emit-value map-options outlined dense class="filters__select" @update:model-value="chooseDelivery" />
         </div>
 
         <div class="totals">
@@ -89,7 +108,7 @@ watch([from, to, cashier, status], () => applyFilters());
                     <tr v-if="sales.data.length === 0">
                         <td colspan="8" class="receipts__empty">Tidak ada nota pada pilihan ini.</td>
                     </tr>
-                    <tr v-for="sale in sales.data" :key="sale.id" class="receipts__row" @click="router.visit(sale.show_url)">
+                    <tr v-for="sale in sales.data" :key="sale.id" class="receipts__row" :class="{ 'receipts__row--pending': sale.is_delivery_pending }" @click="router.visit(sale.show_url)">
                         <td><b>{{ sale.number }}</b></td>
                         <td>{{ dateTimeFormat.format(new Date(sale.sold_at)) }}</td>
                         <td>{{ sale.cashier_name }}</td>
@@ -97,7 +116,10 @@ watch([from, to, cashier, status], () => applyFilters());
                         <td class="receipts__right">{{ sale.items_count }}</td>
                         <td>{{ sale.payment_methods.join(', ') }}</td>
                         <td class="receipts__right"><b>{{ formatRupiah(sale.total) }}</b></td>
-                        <td><span class="chip" :class="sale.status === 'completed' ? 'chip--ok' : 'chip--bad'">{{ sale.status_label }}</span></td>
+                        <td>
+                            <span class="chip" :class="sale.status === 'completed' ? 'chip--ok' : 'chip--bad'">{{ sale.status_label }}</span>
+                            <span v-if="sale.is_delivery_pending" class="chip chip--warn receipts__pending">Belum diantar</span>
+                        </td>
                     </tr>
                 </tbody>
             </table>
@@ -120,6 +142,10 @@ watch([from, to, cashier, status], () => applyFilters());
 </template>
 
 <style scoped>
+.receipts__pending {
+    margin-left: 6px;
+}
+
 .filters {
     display: flex;
     flex-wrap: wrap;
@@ -195,6 +221,10 @@ watch([from, to, cashier, status], () => applyFilters());
 
 .receipts__row:hover {
     background: #fafafb;
+}
+
+.receipts__row--pending td:first-child {
+    box-shadow: inset 4px 0 0 #c2710c;
 }
 
 .receipts__muted {

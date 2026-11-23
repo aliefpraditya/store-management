@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\DeliveryNoteStatus;
+use App\Models\DeliveryNote;
 use App\Models\Sale;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -35,6 +37,11 @@ class SaleDetailResource extends JsonResource
             'void_cash_refund' => $this->void_cash_refund,
             'void_refund_account' => $this->void_refund_account,
             'is_cod' => $this->isCod(),
+            'fulfillment' => $this->fulfillment->value,
+            'fulfillment_label' => $this->fulfillment->label(),
+            'is_delivery_pending' => $this->loadMissing('deliveryNotes')->isDeliveryPending(),
+            'has_open_delivery_note' => $this->openDeliveryNote() !== null,
+            'delivery_note' => $this->latestDeliveryNoteSummary($request),
             'cod_amount' => $this->codAmount(),
             'has_cash_deposit' => $this->cashDeposit()->isPositive(),
             'has_non_cash_deposit' => $this->nonCashDeposit()->isPositive(),
@@ -59,6 +66,30 @@ class SaleDetailResource extends JsonResource
             'change_amount' => $this->change_amount,
             'items' => self::itemsOf($this->resource),
             'payments' => self::paymentsOf($this->resource),
+        ];
+    }
+
+    /**
+     * The latest delivery note that was not cancelled, shown with the receipt as its number and status (a link to its page
+     * for those who may view delivery notes) and the address to count a print from the till; null without one. Needs
+     * `deliveryNotes` loaded.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function latestDeliveryNoteSummary(Request $request): ?array
+    {
+        $note = $this->deliveryNotes
+            ->reject(fn (DeliveryNote $note): bool => $note->status === DeliveryNoteStatus::Cancelled)
+            ->sortByDesc('id')
+            ->first();
+
+        if ($note === null) {
+            return null;
+        }
+
+        return [
+            ...DeliveryNoteLinkResource::make($note)->resolve($request),
+            'print_url' => route('tenant.cashier.delivery-notes.print', ['tenant' => tenant('code'), 'delivery_note' => $note->id]),
         ];
     }
 

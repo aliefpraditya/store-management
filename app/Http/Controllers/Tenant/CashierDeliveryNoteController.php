@@ -48,6 +48,22 @@ class CashierDeliveryNoteController extends Controller
         ]]);
     }
 
+    /**
+     * The customer asks for goods taken at the store to be brought after all; the dialog then offers the delivery note.
+     */
+    public function changeToDelivery(Request $request, Sale $sale): JsonResponse
+    {
+        $this->authorizeFor($request, $sale);
+
+        try {
+            $this->noteService->changeToDelivery($sale);
+        } catch (DeliveryNoteException $exception) {
+            return response()->json(['message' => $exception->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        return response()->json(['data' => ['number' => $sale->number]]);
+    }
+
     public function store(SaveCashierDeliveryNoteRequest $request, Sale $sale): JsonResponse
     {
         try {

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Tenant;
 
 use App\Enums\PaymentMethod;
+use App\Enums\SaleFulfillment;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -39,6 +40,7 @@ class StoreSaleRequest extends FormRequest
             'payments.*.method' => ['required', Rule::in(array_map(fn (PaymentMethod $method): string => $method->value, PaymentMethod::forSale()))],
             'payments.*.amount' => ['required', 'numeric', 'gt:0', 'max:'.self::MAX_AMOUNT, 'decimal:0,2'],
             'payments.*.reference' => ['nullable', 'string', 'max:255'],
+            'fulfillment' => ['nullable', Rule::enum(SaleFulfillment::class)],
             'hold_delivery' => ['nullable', 'boolean', Rule::prohibitedIf(fn (): bool => ! $this->filled('order'))],
             'delivery_note' => ['nullable', 'array'],
             'delivery_note.recipient_name' => [Rule::requiredIf($this->isDeliveryNoteNeeded(...)), 'nullable', 'string', 'max:255'],
@@ -69,12 +71,14 @@ class StoreSaleRequest extends FormRequest
     }
 
     /**
-     * A COD sale goes out with a delivery note, so who and where to deliver are asked at the same time, unless the delivery
-     * waits for the order made with it.
+     * A delivered sale goes out with a delivery note, so who and where to deliver are asked at the same time, unless the
+     * delivery waits for the order made with it. Without a choice, COD means delivered, as the service reads it too.
      */
     private function isDeliveryNoteNeeded(): bool
     {
-        return $this->isCod() && ! $this->boolean('hold_delivery');
+        $isDelivered = $this->input('fulfillment') === SaleFulfillment::Delivery->value || (! $this->filled('fulfillment') && $this->isCod());
+
+        return $isDelivered && ! $this->boolean('hold_delivery');
     }
 
     private function isCod(): bool
@@ -95,8 +99,8 @@ class StoreSaleRequest extends FormRequest
             'payments.*.method.in' => 'Metode pembayaran tidak valid.',
             'payments.*.amount.gt' => 'Jumlah pembayaran harus lebih dari 0.',
             'payments.*.amount.decimal' => 'Jumlah pembayaran maksimal 2 angka desimal.',
-            'delivery_note.recipient_name.required' => 'Nama penerima wajib diisi untuk nota COD.',
-            'delivery_note.recipient_address.required' => 'Alamat pengantaran wajib diisi untuk nota COD.',
+            'delivery_note.recipient_name.required' => 'Nama penerima wajib diisi untuk nota yang diantar.',
+            'delivery_note.recipient_address.required' => 'Alamat pengantaran wajib diisi untuk nota yang diantar.',
             'order.customer_name.required_with' => 'Nama pelanggan wajib diisi untuk pesanan.',
             'order.customer_phone.required_with' => 'Nomor telepon pelanggan wajib diisi untuk pesanan.',
             'order.items.required_with' => 'Pesanan belum berisi barang.',

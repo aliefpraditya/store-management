@@ -15,7 +15,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * A delivered COD sale as the till's "money not received yet" list shows it. The resource is one row of
  * {@see CodSettlementService::settlementQueue()}, with `payments`, `codSettlement` already loaded on its sale.
  *
- * @property array{sale: Sale, offset_amount: BigDecimal, amount_due: BigDecimal, has_unreturned_goods: bool} $resource
+ * @property array{sale: Sale, offset_amount: BigDecimal, amount_due: BigDecimal, has_unreturned_goods: bool, is_goods_delivered: bool} $resource
  */
 class CodSettlementQueueResource extends JsonResource
 {
@@ -27,6 +27,7 @@ class CodSettlementQueueResource extends JsonResource
         /** @var Sale $sale */
         $sale = $this->resource['sale'];
         $settlement = $sale->codSettlement;
+        $latestNote = $this->latestActiveNoteOf($sale);
         $tenant = tenant('code');
 
         return [
@@ -34,7 +35,8 @@ class CodSettlementQueueResource extends JsonResource
             'number' => $sale->number,
             'sold_at' => $sale->sold_at->toIso8601String(),
             'customer_name' => $sale->customer_name,
-            'recipient_name' => $this->recipientName($sale),
+            'recipient_name' => $latestNote?->recipient_name,
+            'delivery_note' => $latestNote === null ? null : DeliveryNoteLinkResource::make($latestNote)->resolve($request),
             'cod_amount' => $sale->codAmount(),
             'offset_amount' => (string) $this->resource['offset_amount']->toScale(2),
             'amount_due' => (string) $this->resource['amount_due']->toScale(2),
@@ -47,9 +49,9 @@ class CodSettlementQueueResource extends JsonResource
     }
 
     /**
-     * The name on the delivery note that carried the goods, the latest one that was not cancelled.
+     * The delivery note that carried the goods, the latest one that was not cancelled: its recipient is who paid.
      */
-    private function recipientName(Sale $sale): ?string
+    private function latestActiveNoteOf(Sale $sale): ?DeliveryNote
     {
         if (! $sale->relationLoaded('deliveryNotes')) {
             return null;
@@ -58,6 +60,6 @@ class CodSettlementQueueResource extends JsonResource
         return $sale->deliveryNotes
             ->reject(fn (DeliveryNote $note): bool => $note->status === DeliveryNoteStatus::Cancelled)
             ->sortByDesc('id')
-            ->first()?->recipient_name;
+            ->first();
     }
 }

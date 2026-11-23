@@ -4,6 +4,7 @@ namespace Tests\Feature\Tenancy;
 
 use App\Enums\CodSettlementStatus;
 use App\Enums\DeliveryNoteStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\Permission;
 use App\Enums\UserRole;
 use App\Models\CashShift;
@@ -23,6 +24,7 @@ use App\Services\ShiftService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsCashierFixtures;
 use Tests\Concerns\PreparesStoreDatabase;
 use Tests\TestCase;
@@ -296,6 +298,157 @@ class CodSettlementTest extends TestCase
 
         $this->assertStringEndsWith('/cashier/cod/'.$unreceived->id.'/settlements', $response->json('data.1.settle_url'));
         $this->assertStringEndsWith('/cashier/cod/'.$unreceived->id.'/settlements/approval', $response->json('data.1.approve_url'));
+    }
+
+    private function noteUrl(string $name, Sale $sale): string
+    {
+        $note = $this->store->run(fn (): DeliveryNote => DeliveryNote::query()->where('sale_id', $sale->id)->firstOrFail());
+
+        return route("tenant.delivery-notes.{$name}", ['tenant' => $this->store->code, 'delivery_note' => $note->id]);
+    }
+
+    public function test_the_money_is_received_from_the_delivery_note_page(): void
+    {
+        $sale = $this->sellDeliveredCod();
+
+        $this->actingAs($this->admin)->get($this->noteUrl('show', $sale))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('cod.state', 'unsettled')
+            ->where('cod.is_goods_delivered', true)
+            ->where('cod.cod_amount', '100000.00')
+            ->where('cod.amount_due', '100000.00')
+            ->where('cod.can_receive', true)
+            ->where('cod.can_approve', true));
+
+        $this->actingAs($this->admin)->post($this->noteUrl('cod-settlement', $sale), $this->receiveBody(['method' => 'transfer']))
+            ->assertSessionHas('success', 'Uang COD diterima.');
+
+        $settlement = $this->settlementOf($sale);
+        $this->assertSame([PaymentMethod::Transfer, CodSettlementStatus::Confirmed], [$settlement->method, $settlement->status]);
+
+        $this->actingAs($this->admin)->get($this->noteUrl('show', $sale))->assertInertia(fn (Assert $page) => $page
+            ->where('cod.state', 'settled')
+            ->where('cod.settlement.method_label', 'Transfer'));
+    }
+
+    public function test_the_note_page_holds_the_money_back_until_the_goods_are_delivered(): void
+    {
+        $sale = $this->sellCod();
+
+        $this->actingAs($this->admin)->get($this->noteUrl('show', $sale))->assertInertia(fn (Assert $page) => $page
+            ->where('cod.state', 'unsettled')
+            ->where('cod.is_goods_delivered', false));
+
+        $this->actingAs($this->admin)->post($this->noteUrl('cod-settlement', $sale), $this->receiveBody())->assertSessionHas('error');
+        $this->assertNull($this->settlementOf($sale));
+    }
+
+    public function test_the_amount_due_on_the_note_page_follows_the_returns(): void
+    {
+        $sale = $this->sellDeliveredCod();
+        $this->returnBrushes($sale, 1);
+
+        $this->actingAs($this->admin)->get($this->noteUrl('show', $sale))->assertInertia(fn (Assert $page) => $page
+            ->where('cod.offset_amount', '10000.00')
+            ->where('cod.amount_due', '90000.00'));
+    }
+
+    public function test_someone_who_may_view_notes_but_not_handle_the_money_gets_no_money_panel_and_cannot_receive(): void
+    {
+        $sale = $this->sellDeliveredCod();
+        $this->grant($this->cashier, Permission::DeliveryNotesView);
+
+        $this->actingAs($this->cashier)->get($this->noteUrl('show', $sale))->assertOk()->assertInertia(fn (Assert $page) => $page->where('cod', null));
+        $this->actingAs($this->cashier)->post($this->noteUrl('cod-settlement', $sale), $this->receiveBody())->assertForbidden();
+        $this->actingAs($this->cashier)->post($this->noteUrl('cod-settlement.approve', $sale))->assertForbidden();
+        $this->assertNull($this->settlementOf($sale));
+    }
+
+    public function test_a_difference_received_from_the_note_page_waits_for_an_admin_who_approves_it_there(): void
+    {
+        $sale = $this->sellDeliveredCod();
+        $this->grant($this->cashier, Permission::DeliveryNotesView, Permission::CodReceive);
+
+        $this->actingAs($this->cashier)->post($this->noteUrl('cod-settlement', $sale), $this->receiveBody(['amount' => 95000, 'difference_reason' => 'Kurang']))
+            ->assertSessionHas('success', 'Uang COD tercatat. Selisihnya menunggu persetujuan.');
+
+        $this->actingAs($this->cashier)->get($this->noteUrl('show', $sale))->assertInertia(fn (Assert $page) => $page
+            ->where('cod.state', 'awaiting_approval')
+            ->where('cod.can_receive', true)
+            ->where('cod.can_approve', false));
+
+        $this->actingAs($this->admin)->post($this->noteUrl('cod-settlement.approve', $sale))->assertSessionHas('success', 'Penerimaan uang COD disetujui.');
+
+        $this->actingAs($this->admin)->get($this->noteUrl('show', $sale))->assertInertia(fn (Assert $page) => $page->where('cod.state', 'settled'));
+    }
+
+    public function test_both_cod_lists_name_the_delivery_note_with_its_status_and_a_link_for_those_who_may_view_it(): void
+    {
+        $waiting = $this->sellCod();
+        $delivered = $this->sellDeliveredCod();
+        $notes = $this->store->run(fn () => DeliveryNote::query()->pluck('number', 'sale_id')->all());
+
+        $delivery = $this->actingAs($this->admin)->getJson($this->url('cod.index'))->assertOk();
+        $settlements = $this->actingAs($this->admin)->getJson($this->url('cod.settlements'))->assertOk();
+
+        $this->assertSame(
+            [$notes[$waiting->id], 'Draft'],
+            [$delivery->json('data.0.delivery_note.number'), $delivery->json('data.0.delivery_note.status_label')],
+        );
+        $this->assertSame(
+            [$notes[$delivered->id], 'Terkirim'],
+            [$settlements->json('data.0.delivery_note.number'), $settlements->json('data.0.delivery_note.status_label')],
+        );
+        $this->assertStringContainsString('/delivery-notes/', $settlements->json('data.0.delivery_note.show_url'));
+    }
+
+    public function test_the_delivery_notes_menu_counts_the_cod_money_that_waits_but_only_for_those_who_may_handle_it(): void
+    {
+        $this->sellDeliveredCod();
+        $received = $this->sellDeliveredCod();
+        $this->sellCod();
+        $this->actingAs($this->admin)->post($this->noteUrl('cod-settlement', $received), $this->receiveBody(['method' => 'transfer']));
+
+        $this->actingAs($this->admin)->get(route('tenant.dashboard', ['tenant' => $this->store->code]))
+            ->assertInertia(fn (Assert $page) => $page->where('menu_badges.delivery_notes', 1));
+        $this->actingAs($this->cashier)->get($this->url('index'))
+            ->assertInertia(fn (Assert $page) => $page->where('menu_badges.delivery_notes', 0));
+    }
+
+    public function test_the_cashier_screen_counts_the_cod_that_waits_and_counts_money_only_for_who_may_handle_it(): void
+    {
+        $this->sellCod();
+        $this->sellDeliveredCod();
+
+        $this->actingAs($this->admin)->get($this->url('index'))
+            ->assertInertia(fn (Assert $page) => $page->where('cod_counts', ['undelivered' => 1, 'unreceived' => 1]));
+        $this->actingAs($this->cashier)->get($this->url('index'))
+            ->assertInertia(fn (Assert $page) => $page->where('cod_counts', ['undelivered' => 1, 'unreceived' => 0]));
+    }
+
+    public function test_the_delivery_note_list_tells_where_the_money_stands(): void
+    {
+        $unreceived = $this->sellDeliveredCod();
+        $undelivered = $this->sellCod();
+        $received = $this->sellDeliveredCod();
+        $awaiting = $this->sellDeliveredCod();
+        $plain = $this->store->run(function (): Sale {
+            $sale = Sale::factory()->create();
+            DeliveryNote::factory()->create(['sale_id' => $sale->id]);
+
+            return $sale;
+        });
+        $this->actingAs($this->admin)->post($this->noteUrl('cod-settlement', $received), $this->receiveBody(['method' => 'transfer']));
+        $this->grant($this->cashier, Permission::CodReceive);
+        $this->actingAs($this->cashier)->postJson($this->url('cod.settle', ['sale' => $awaiting->id]), $this->receiveBody(['amount' => 95000, 'difference_reason' => 'Kurang']))->assertOk();
+
+        $this->actingAs($this->admin)->get(route('tenant.delivery-notes.index', ['tenant' => $this->store->code]))->assertInertia(fn (Assert $page) => $page
+            ->where('notes.data', fn ($rows) => $rows->pluck('cod_state', 'sale_number')->all() === [
+                $plain->number => null,
+                $awaiting->number => 'awaiting_approval',
+                $received->number => 'received',
+                $undelivered->number => 'not_delivered',
+                $unreceived->number => 'unreceived',
+            ]));
     }
 
     public function test_a_refund_return_of_an_unpaid_cod_sale_cuts_the_bill_and_pays_nothing_out(): void

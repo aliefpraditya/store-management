@@ -199,7 +199,8 @@ async function print(note) {
                     <div class="delivery__label">Sudah dibuat</div>
                     <div v-for="note in receiptDeliveryContext.notes" :key="note.id" class="delivery__note-card">
                         <div class="delivery__note">
-                            <b>{{ note.number }}</b>
+                            <a v-if="note.show_url" :href="note.show_url" target="_blank" rel="noopener" class="delivery__note-link" :aria-label="`Buka surat jalan ${note.number} di tab baru`"><b>{{ note.number }}</b><q-icon name="open_in_new" size="14px" /></a>
+                            <b v-else>{{ note.number }}</b>
                             <span class="chip" :class="deliveryNoteStatusChipClass[note.status]">{{ note.status_label }}</span>
                             <q-btn outline no-caps dense color="primary" icon="print" :label="note.print_count > 0 ? 'Cetak ulang' : 'Cetak'" :loading="printingId === note.id" class="delivery__print" @click="print(note)">
                                 <q-tooltip v-if="printHintOf('delivery_note')">{{ printHintOf('delivery_note') }}</q-tooltip>
@@ -298,6 +299,18 @@ async function print(note) {
 
 .delivery__print {
     margin-left: auto;
+}
+
+.delivery__note-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--app-brand);
+    text-decoration: none;
+}
+
+.delivery__note-link:hover {
+    text-decoration: underline;
 }
 
 .delivery__progress {

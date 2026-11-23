@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\SaleFulfillment;
 use App\Enums\SaleStatus;
 use App\Models\CashShift;
 use App\Models\Register;
@@ -33,7 +34,13 @@ class SaleFactory extends Factory
             'total' => 100000,
             'paid_total' => 100000,
             'status' => SaleStatus::Completed,
+            'fulfillment' => SaleFulfillment::InStore,
         ];
+    }
+
+    public function forDelivery(): static
+    {
+        return $this->state(fn (): array => ['fulfillment' => SaleFulfillment::Delivery]);
     }
 
     public function voided(): static

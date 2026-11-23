@@ -62,6 +62,7 @@ Route::prefix('t/{tenant}')
             Route::get('receipts/{sale}/sheet', [ShiftReceiptController::class, 'sheet'])->middleware('signed')->name('receipts.sheet');
             Route::get('receipts/{sale}/delivery', [CashierDeliveryNoteController::class, 'show'])->name('receipts.delivery');
             Route::post('receipts/{sale}/delivery-notes', [CashierDeliveryNoteController::class, 'store'])->name('receipts.delivery-notes.store');
+            Route::post('receipts/{sale}/delivery-mode', [CashierDeliveryNoteController::class, 'changeToDelivery'])->name('receipts.delivery-mode');
             Route::post('delivery-notes/{delivery_note}/print', [CashierDeliveryNoteController::class, 'print'])->name('delivery-notes.print');
             Route::get('delivery-notes/{delivery_note}/sheet', [CashierDeliveryNoteController::class, 'sheet'])->middleware('signed')->name('delivery-notes.sheet');
             Route::get('returns/lookup', [CashierSaleReturnController::class, 'lookup'])->middleware('throttle:30,1')->name('returns.lookup');
@@ -98,6 +99,8 @@ Route::prefix('t/{tenant}')
                 Route::get('{delivery_note}', [DeliveryNoteController::class, 'show'])->name('show');
                 Route::post('{delivery_note}/print', [DeliveryNoteController::class, 'print'])->name('print');
                 Route::get('{delivery_note}/sheet', [DeliveryNoteController::class, 'sheet'])->middleware('signed')->name('sheet');
+                Route::post('{delivery_note}/cod-settlement', [DeliveryNoteController::class, 'receiveCod'])->middleware('permission:cod.receive')->name('cod-settlement');
+                Route::post('{delivery_note}/cod-settlement/approval', [DeliveryNoteController::class, 'approveCod'])->middleware('permission:cod.approve')->name('cod-settlement.approve');
             });
         });
 
@@ -146,6 +149,7 @@ Route::prefix('t/{tenant}')
         Route::get('sales', [SaleHistoryController::class, 'index'])->middleware('permission:sales.view')->name('tenant.sales.index');
         Route::get('sales/{sale}', [SaleHistoryController::class, 'show'])->middleware('permission:sales.view')->name('tenant.sales.show');
         Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->middleware('permission:sales.void')->name('tenant.sales.void');
+        Route::post('sales/{sale}/delivery-mode', [SaleHistoryController::class, 'changeToDelivery'])->middleware('permission:delivery_notes.manage')->name('tenant.sales.delivery-mode');
         Route::post('sales/{sale}/cod-settlement/approval', [SaleHistoryController::class, 'approveCodSettlement'])->middleware('permission:cod.approve')->name('tenant.sales.cod-settlement.approve');
 
         Route::get('products/search', ProductSearchController::class)->middleware('permission:stock_opnames.count,stock_opnames.post,stock_history.view')->name('tenant.products.search');

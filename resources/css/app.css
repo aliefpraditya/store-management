@@ -19,6 +19,14 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Quasar's dense button keeps only 0.285em around its label, which looks cramped once the button has a border or a fill.
+ * Flat buttons have no visible box, so they keep the tight spacing the toolbars are laid out for.
+ */
+.q-btn--dense.q-btn--rectangle:not(.q-btn--flat) {
+    padding: 0.285em 0.9em;
+}
+
 .chip {
     display: inline-block;
     padding: 2px 10px;

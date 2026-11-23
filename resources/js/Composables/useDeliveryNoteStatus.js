@@ -10,3 +10,14 @@ export const deliveryNoteStatusChipClass = {
     returned: 'chip--bad',
     cancelled: 'chip--bad',
 };
+
+/**
+ * The chip colour for where the money of a delivery note's COD receipt stands.
+ * @type {Record<string, string>}
+ */
+export const deliveryNoteCodStateChipClass = {
+    not_delivered: 'chip--off',
+    unreceived: 'chip--warn',
+    awaiting_approval: 'chip--bad',
+    received: 'chip--ok',
+};

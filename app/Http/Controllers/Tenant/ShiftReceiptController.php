@@ -132,6 +132,7 @@ class ShiftReceiptController extends Controller
             'show_url' => $isAdmin ? route('tenant.sales.show', ['tenant' => tenant('code'), 'sale' => $sale->id]) : null,
             'delivery_url' => route('tenant.cashier.receipts.delivery', ['tenant' => tenant('code'), 'sale' => $sale->id]),
             'delivery_note_store_url' => route('tenant.cashier.receipts.delivery-notes.store', ['tenant' => tenant('code'), 'sale' => $sale->id]),
+            'delivery_mode_url' => route('tenant.cashier.receipts.delivery-mode', ['tenant' => tenant('code'), 'sale' => $sale->id]),
             'print_url' => route('tenant.cashier.receipts.print', ['tenant' => tenant('code'), 'sale' => $sale->id]),
             ...$this->returnService->signedLinksFor($sale),
         ];

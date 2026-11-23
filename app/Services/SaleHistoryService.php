@@ -13,11 +13,14 @@ use Illuminate\Pagination\LengthAwarePaginator;
 /**
  * Looks receipts up: the store-wide history for admins, and the receipts of one shift for the till's dialog.
  *
- * @phpstan-type HistoryFilters array{from: string|null, to: string|null, search: string|null, cashier_id: int|null, status: string|null}
+ * @phpstan-type HistoryFilters array{from: string|null, to: string|null, search: string|null, cashier_id: int|null, status: string|null, delivery?: string|null}
  * @phpstan-type HistoryTotals array{receipt_count: int, total: string}
  */
 class SaleHistoryService
 {
+    /** The `delivery` filter value that narrows the history to receipts not delivered yet. */
+    public const PENDING_DELIVERY_FILTER = 'pending';
+
     /**
      * @param  HistoryFilters  $filters
      * @return LengthAwarePaginator<int, Sale>
@@ -25,7 +28,7 @@ class SaleHistoryService
     public function paginate(array $filters, int $perPage): LengthAwarePaginator
     {
         return $this->query($filters)
-            ->with('payments')
+            ->with(['payments', 'deliveryNotes'])
             ->withCount('items')
             ->orderByDesc('sold_at')
             ->orderByDesc('id')
@@ -63,11 +66,22 @@ class SaleHistoryService
             ->when($term !== '', fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->where('number', 'like', "%{$term}%")
                 ->orWhere('customer_name', 'like', "%{$term}%")))
-            ->with(['items', 'payments', 'register'])
+            ->with(['items', 'payments', 'register', 'deliveryNotes'])
             ->orderByDesc('sold_at')
             ->orderByDesc('id')
             ->limit($limit)
             ->get();
+    }
+
+    /**
+     * How many completed receipts to be delivered have not reached the customer yet, of the whole store or of one shift.
+     */
+    public function pendingDeliveryCount(?CashShift $shift = null): int
+    {
+        return Sale::query()
+            ->pendingDelivery()
+            ->when($shift, fn (Builder $query, CashShift $shift) => $query->where('cash_shift_id', $shift->id))
+            ->count();
     }
 
     /**
@@ -97,6 +111,7 @@ class SaleHistoryService
             ->when($filters['from'], fn (Builder $query, string $from) => $query->where('business_date', '>=', $from))
             ->when($filters['to'], fn (Builder $query, string $to) => $query->where('business_date', '<=', $to))
             ->when(SaleStatus::tryFrom((string) $filters['status']), fn (Builder $query, SaleStatus $status) => $query->where('status', $status))
+            ->when(($filters['delivery'] ?? null) === self::PENDING_DELIVERY_FILTER, fn (Builder $query) => $query->pendingDelivery())
             ->when(filled($filters['search']), fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->where('number', 'like', "%{$filters['search']}%")
                 ->orWhere('customer_name', 'like', "%{$filters['search']}%")));

@@ -127,15 +127,15 @@ class CodSaleTest extends TestCase
         $post = fn (array $overrides) => $this->actingAs($this->cashier)->post($this->url('sales.store'), $this->body($overrides));
 
         $post(['delivery_note' => null])->assertSessionHasErrors(['delivery_note.recipient_name', 'delivery_note.recipient_address']);
-        $post(['delivery_note' => ['recipient_name' => 'Pak Budi']])->assertSessionHasErrors(['delivery_note.recipient_address' => 'Alamat pengantaran wajib diisi untuk nota COD.']);
-        $post(['delivery_note' => ['recipient_address' => 'Jl. Mawar 5']])->assertSessionHasErrors(['delivery_note.recipient_name' => 'Nama penerima wajib diisi untuk nota COD.']);
+        $post(['delivery_note' => ['recipient_name' => 'Pak Budi']])->assertSessionHasErrors(['delivery_note.recipient_address' => 'Alamat pengantaran wajib diisi untuk nota yang diantar.']);
+        $post(['delivery_note' => ['recipient_address' => 'Jl. Mawar 5']])->assertSessionHasErrors(['delivery_note.recipient_name' => 'Nama penerima wajib diisi untuk nota yang diantar.']);
 
         $this->assertSame(0, $this->saleCount());
     }
 
     public function test_the_service_itself_refuses_a_cod_sale_without_a_note(): void
     {
-        $this->expectExceptionMessage('Nota COD harus punya surat jalan. Isi penerima dan alamat pengantaran.');
+        $this->expectExceptionMessage('Nota yang diantar harus punya surat jalan. Isi penerima dan alamat pengantaran.');
 
         $this->sellCod(['delivery_note' => []]);
     }
@@ -238,12 +238,12 @@ class CodSaleTest extends TestCase
             ->assertJsonPath('message', 'Nota ini tidak punya surat jalan yang masih berjalan.');
     }
 
-    public function test_marking_delivered_only_works_on_cod_sales(): void
+    public function test_marking_delivered_only_works_on_delivered_sales(): void
     {
         $cashSale = $this->store->run(fn (): Sale => app(SaleService::class)->create($this->shift, $this->cashier, $this->body(['payments' => [['method' => 'cash', 'amount' => 100000]]])));
 
         $this->actingAs($this->cashier)->postJson($this->url('cod.delivered', ['sale' => $cashSale->id]))->assertUnprocessable()
-            ->assertJsonPath('message', 'Hanya nota COD yang bisa diproses di sini. Nota lain memakai Retur.');
+            ->assertJsonPath('message', 'Nota ini diambil di toko, tidak ada yang diantar.');
     }
 
     public function test_a_refused_till_action_answers_with_the_standard_error_body(): void
@@ -293,7 +293,11 @@ class CodSaleTest extends TestCase
             ->assertJsonPath('data.0.cod_amount', '100000.00')
             ->assertJsonPath('data.0.recipient_name', 'Pak Budi')
             ->assertJsonPath('data.0.delivery_status_label', 'Draft')
-            ->assertJsonPath('data.0.can_mark_delivered', true)
+            ->assertJsonPath('data.0.has_open_delivery_note', true)
+            ->assertJsonPath('data.0.open_delivery_note_url', null)
+            ->assertJsonPath('data.0.delivery_note.status', 'draft')
+            ->assertJsonPath('data.0.delivery_note.status_label', 'Draft')
+            ->assertJsonPath('data.0.delivery_note.show_url', null)
             ->assertJsonPath('data.0.has_cash_deposit', false);
 
         $this->assertStringEndsWith('/cashier/cod/'.$waiting->id.'/voids', $response->json('data.0.void_url'));
@@ -312,7 +316,7 @@ class CodSaleTest extends TestCase
         $this->actingAs($this->cashier)->getJson($this->url('cod.index'))->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.number', $sale->number)
             ->assertJsonPath('data.0.delivery_status_label', 'Kembali')
-            ->assertJsonPath('data.0.can_mark_delivered', false);
+            ->assertJsonPath('data.0.has_open_delivery_note', false);
         $this->assertSame(['count' => 1, 'amount' => '100000.00'], $this->summary()['cod']['undelivered']);
     }
 }

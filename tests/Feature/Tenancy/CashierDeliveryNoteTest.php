@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Enums\DeliveryNoteStatus;
+use App\Enums\Permission;
 use App\Enums\UserRole;
 use App\Models\DeliveryNote;
 use App\Models\Sale;
@@ -10,6 +11,7 @@ use App\Models\SaleItem;
 use App\Models\Store;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsCashierFixtures;
@@ -83,6 +85,22 @@ class CashierDeliveryNoteTest extends TestCase
             ->assertJsonPath('data.notes.0.items.0.name', 'Cat Tembok')
             ->assertJsonPath('data.notes.0.items.0.quantity', '6.000')
             ->assertJsonPath('data.notes.0.items.0.quantity_delivered', '0.000');
+    }
+
+    public function test_a_note_links_to_its_page_only_for_those_who_may_view_delivery_notes(): void
+    {
+        [$sale, $item] = $this->makeSale($this->cashier);
+        $this->actingAs($this->cashier)->postJson($this->url('receipts.delivery-notes.store', ['sale' => $sale->id]), $this->body($item, 6))->assertCreated()->assertJsonPath('data.show_url', null);
+        $note = $this->store->run(fn () => DeliveryNote::query()->sole());
+        $delivery = $this->url('receipts.delivery', ['sale' => $sale->id]);
+
+        $this->actingAs($this->cashier)->getJson($delivery)->assertJsonPath('data.notes.0.show_url', null);
+
+        $central = DB::connection('mysql');
+        $central->table('permission_user')->insert(['user_id' => $this->cashier->id, 'permission_id' => $central->table('permissions')->where('name', Permission::DeliveryNotesView->value)->value('id')]);
+
+        $response = $this->actingAs($this->cashier)->getJson($delivery)->assertOk();
+        $this->assertStringEndsWith('/delivery-notes/'.$note->id, $response->json('data.notes.0.show_url'));
     }
 
     public function test_a_cashier_makes_a_note_for_their_own_receipt(): void

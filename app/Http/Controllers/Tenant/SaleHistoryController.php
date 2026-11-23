@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Enums\SaleStatus;
 use App\Exceptions\CodSaleException;
+use App\Exceptions\DeliveryNoteException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\DateRangeRequest;
 use App\Http\Requests\Tenant\VoidSaleRequest;
@@ -12,6 +13,7 @@ use App\Http\Resources\SaleHistoryRowResource;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Services\CodSettlementService;
+use App\Services\DeliveryNoteService;
 use App\Services\SaleHistoryService;
 use App\Services\SaleVoidService;
 use Illuminate\Http\RedirectResponse;
@@ -31,6 +33,7 @@ class SaleHistoryController extends Controller
         private readonly SaleHistoryService $saleHistoryService,
         private readonly SaleVoidService $saleVoids,
         private readonly CodSettlementService $codSettlements,
+        private readonly DeliveryNoteService $deliveryNotes,
     ) {}
 
     public function index(DateRangeRequest $request): Response
@@ -41,6 +44,7 @@ class SaleHistoryController extends Controller
             'search' => $request->string('search')->trim()->toString() ?: null,
             'cashier_id' => $request->integer('cashier') ?: null,
             'status' => $request->string('status')->toString() ?: null,
+            'delivery' => $request->string('delivery')->toString() ?: null,
         ];
 
         return Inertia::render('Tenant/Sales/Index', [
@@ -66,6 +70,7 @@ class SaleHistoryController extends Controller
             'urls' => [
                 'index' => route('tenant.sales.index', ['tenant' => $store->code]),
                 'new_delivery_note' => route('tenant.delivery-notes.create', ['tenant' => $store->code, 'sale' => $sale->id]),
+                'delivery_mode' => route('tenant.sales.delivery-mode', ['tenant' => $store->code, 'sale' => $sale->id]),
                 'new_return' => route('tenant.returns.create', ['tenant' => $store->code, 'sale' => $sale->id]),
                 'void' => route('tenant.sales.void', ['tenant' => $store->code, 'sale' => $sale->id]),
             ],
@@ -84,6 +89,20 @@ class SaleHistoryController extends Controller
         }
 
         return back()->with('success', 'Nota di-void. Barangnya kembali ke stok.');
+    }
+
+    /**
+     * Marks a receipt taken at the store as delivered after all, so its delivery note can be made.
+     */
+    public function changeToDelivery(Sale $sale): RedirectResponse
+    {
+        try {
+            $this->deliveryNotes->changeToDelivery($sale);
+        } catch (DeliveryNoteException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return back()->with('success', 'Nota diubah menjadi diantar. Buat surat jalannya.');
     }
 
     /**

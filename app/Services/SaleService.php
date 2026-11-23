@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\CashShiftStatus;
 use App\Enums\PaymentMethod;
+use App\Enums\SaleFulfillment;
 use App\Enums\SaleStatus;
 use App\Enums\StockMovementType;
 use App\Exceptions\CustomerOrderException;
@@ -32,7 +33,7 @@ use Illuminate\Support\Str;
  *
  * @phpstan-type SalePaymentInput array{method: string, amount: numeric-string|float|int, reference?: string|null}
  * @phpstan-type DeliveryNoteInput array{recipient_name?: string|null, recipient_address?: string|null, recipient_phone?: string|null, notes?: string|null, include_linked_sale_items?: bool|null}
- * @phpstan-type SaleData array{client_uuid: string, customer_name?: string|null, items?: list<CartLine>, payments?: list<SalePaymentInput>, delivery_note?: DeliveryNoteInput|null, hold_delivery?: bool|null, customer_order_id?: int|null}
+ * @phpstan-type SaleData array{client_uuid: string, customer_name?: string|null, items?: list<CartLine>, payments?: list<SalePaymentInput>, delivery_note?: DeliveryNoteInput|null, fulfillment?: string|null, hold_delivery?: bool|null, customer_order_id?: int|null}
  */
 class SaleService
 {
@@ -83,7 +84,7 @@ class SaleService
             $depositOfOrder = $collectedOrder?->depositBalance() ?? BigDecimal::zero();
             [$paidTotal, $changeAmount] = $this->settle($total, $payments, $depositOfOrder);
 
-            $sale = $this->recordReceipt($shift, $cashier, $saleInput, $total, $paidTotal, $changeAmount);
+            $sale = $this->recordReceipt($shift, $cashier, $saleInput, $total, $paidTotal, $changeAmount, $this->fulfillmentOf($saleInput));
             $this->recordLines($sale, $lines, $cashier, $packChanges);
             $this->recordPayments($sale, $payments, $depositOfOrder);
 
@@ -91,7 +92,7 @@ class SaleService
                 $this->customerOrders->completeWith($collectedOrder, $sale);
             }
 
-            $this->recordDeliveryNoteOfCod($sale->load('items'), $cashier, $saleInput);
+            $this->recordDeliveryNote($sale->load('items'), $cashier, $saleInput);
 
             return $sale->load(['items', 'payments', 'deliveryNotes']);
         }, StockService::DEADLOCK_ATTEMPTS);
@@ -125,20 +126,43 @@ class SaleService
     }
 
     /**
-     * A COD sale cannot leave without its delivery note: it is made in the same transaction as the receipt, for
-     * everything on it, so a note cannot be forgotten and a note cannot exist without its receipt. The one exception is a
-     * COD receipt made together with a customer order (`hold_delivery`): its goods wait in the store and go out on the
-     * delivery note of the order when it arrives, so everything is delivered and paid once.
+     * How the goods reach the customer. When the cashier does not say, a receipt paid on delivery (COD) is delivered and
+     * any other is taken at the store. COD only exists for a delivered receipt, so asking for COD with the goods taken at
+     * the store is refused.
      *
      * @param  SaleData  $saleInput
      *
      * @throws SaleException
      */
-    private function recordDeliveryNoteOfCod(Sale $sale, User $cashier, array $saleInput): void
+    private function fulfillmentOf(array $saleInput): SaleFulfillment
     {
         $isCod = collect($saleInput['payments'] ?? [])->contains(fn (array $payment): bool => $payment['method'] === PaymentMethod::Cod->value);
+        $chosen = SaleFulfillment::tryFrom((string) ($saleInput['fulfillment'] ?? ''));
 
-        if (! $isCod || ($saleInput['hold_delivery'] ?? false)) {
+        if ($chosen === null) {
+            return $isCod ? SaleFulfillment::Delivery : SaleFulfillment::InStore;
+        }
+
+        if ($isCod && $chosen === SaleFulfillment::InStore) {
+            throw SaleException::codNeedsDelivery();
+        }
+
+        return $chosen;
+    }
+
+    /**
+     * A delivered receipt cannot leave without its delivery note: it is made in the same transaction as the receipt, for
+     * everything on it, so a note cannot be forgotten and a note cannot exist without its receipt. A receipt taken at the
+     * store has none. The one exception is a delivered receipt made together with a customer order (`hold_delivery`): its
+     * goods wait in the store and go out on the delivery note of the order when it arrives, so everything is delivered once.
+     *
+     * @param  SaleData  $saleInput
+     *
+     * @throws SaleException
+     */
+    private function recordDeliveryNote(Sale $sale, User $cashier, array $saleInput): void
+    {
+        if ($sale->fulfillment !== SaleFulfillment::Delivery || ($saleInput['hold_delivery'] ?? false)) {
             return;
         }
 
@@ -219,7 +243,7 @@ class SaleService
     /**
      * @param  SaleData  $saleInput
      */
-    private function recordReceipt(CashShift $shift, User $cashier, array $saleInput, BigDecimal $total, BigDecimal $paidTotal, BigDecimal $changeAmount): Sale
+    private function recordReceipt(CashShift $shift, User $cashier, array $saleInput, BigDecimal $total, BigDecimal $paidTotal, BigDecimal $changeAmount, SaleFulfillment $fulfillment): Sale
     {
         $register = $shift->register;
 
@@ -239,6 +263,7 @@ class SaleService
             'paid_total' => (string) $paidTotal,
             'change_amount' => (string) $changeAmount,
             'status' => SaleStatus::Completed,
+            'fulfillment' => $fulfillment,
         ]);
     }
 

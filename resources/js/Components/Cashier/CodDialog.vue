@@ -4,6 +4,7 @@ import { usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import { postJson } from '../../Composables/postJson';
 import { newUuid, roundMoney } from '../../Composables/useCart';
+import { deliveryNoteStatusChipClass } from '../../Composables/useDeliveryNoteStatus';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 
 const props = defineProps({
@@ -135,17 +136,6 @@ watch(
     },
 );
 
-/** The customer took the goods: the delivery note is finished as delivered, after the cashier confirms. */
-function confirmDelivered(sale) {
-    $q.dialog({
-        title: 'Barang sudah diantar?',
-        message: `Nota ${sale.number} ditandai sudah diantar dan diterima pelanggan. Setelah itu nota tidak bisa di-void. Uangnya dicatat terpisah di tab Uang belum diterima.`,
-        cancel: { label: 'Kembali', flat: true, noCaps: true },
-        ok: { label: 'Sudah Diantar', color: 'primary', unelevated: true, noCaps: true },
-        persistent: true,
-    }).onOk(() => act(sale.delivered_url, {}, `Nota ${sale.number} ditandai sudah diantar.`));
-}
-
 function openVoid(sale) {
     voidTarget.value = sale;
     voidReason.value = '';
@@ -243,8 +233,8 @@ async function act(url, body, successMessage) {
     <q-dialog :model-value="modelValue" @update:model-value="emit('update:modelValue', $event)">
         <q-card class="cod">
             <q-card-section class="cod__head">
-                <div class="cod__title">COD: pengantaran dan penerimaan uang</div>
-                <small>Dari semua hari. Tandai sudah diantar, lalu catat uangnya saat diterima. Void bila pelanggan tidak mau menerima atau membayar.</small>
+                <div class="cod__title">Surat jalan dan uang COD</div>
+                <small>Dari semua hari. Selesaikan pengiriman di halaman surat jalan, lalu catat uang COD saat diterima. Void hanya untuk nota COD yang tidak diterima atau dibayar pelanggan.</small>
             </q-card-section>
 
             <q-tabs v-if="isSettlementTabShown" v-model="tab" dense align="left" active-color="primary" indicator-color="primary" class="cod__tabs">
@@ -261,21 +251,33 @@ async function act(url, body, successMessage) {
                 <q-inner-loading :showing="isLoading" />
 
                 <template v-if="tab === DELIVERY_TAB">
-                    <p v-if="!isLoading && sales.length === 0" class="cod__empty">Tidak ada nota COD yang menunggu.</p>
+                    <p v-if="!isLoading && sales.length === 0" class="cod__empty">Tidak ada nota yang menunggu diantar.</p>
                     <p v-if="totalWaiting > sales.length" class="cod__more">Menampilkan {{ sales.length }} nota terbaru dari {{ totalWaiting }}. Yang lebih lama muncul setelah yang di atas selesai atau di-void.</p>
 
                     <div v-for="sale in sales" :key="sale.id" class="sale">
                         <div class="sale__main">
                             <b>{{ sale.number }}</b>
                             <small>
-                                {{ dateFormat.format(new Date(sale.sold_at)) }} · {{ sale.recipient_name || sale.customer_name || 'tanpa nama' }} · {{ sale.delivery_status_label }}
+                                {{ dateFormat.format(new Date(sale.sold_at)) }} · {{ sale.recipient_name || sale.customer_name || 'tanpa nama' }}
+                                <span v-if="!sale.is_cod" class="chip chip--ok sale__badge">Lunas</span>
+                            </small>
+                            <small class="sale__note">
+                                Surat jalan
+                                <template v-if="sale.delivery_note">
+                                    <a v-if="sale.delivery_note.show_url" :href="sale.delivery_note.show_url" target="_blank" rel="noopener" class="sale__note-link">{{ sale.delivery_note.number }}</a>
+                                    <b v-else>{{ sale.delivery_note.number }}</b>
+                                    <span class="chip" :class="deliveryNoteStatusChipClass[sale.delivery_note.status]">{{ sale.delivery_note.status_label }}</span>
+                                </template>
+                                <template v-else>belum ada</template>
                             </small>
                             <small v-if="Number(sale.deposit_amount) > 0">DP sudah diterima {{ formatRupiah(sale.deposit_amount) }}</small>
                         </div>
-                        <b class="sale__amount">{{ formatRupiah(sale.cod_amount) }}</b>
+                        <b class="sale__amount">{{ formatRupiah(sale.is_cod ? sale.cod_amount : sale.total) }}</b>
                         <div class="sale__actions">
-                            <q-btn v-if="sale.can_mark_delivered" outline dense no-caps color="primary" label="Sudah diantar" :disable="isWorking" @click="confirmDelivered(sale)" />
-                            <q-btn outline dense no-caps color="negative" label="Void" :disable="isWorking" @click="openVoid(sale)" />
+                            <q-btn v-if="sale.open_delivery_note_url" tag="a" :href="sale.open_delivery_note_url" target="_blank" rel="noopener" outline dense no-caps color="primary" icon="open_in_new" label="Buka surat jalan">
+                                <q-tooltip>Selesaikan pengiriman di halaman surat jalan: isi barang yang kembali{{ sale.is_cod ? ', lalu catat uang COD' : '' }}.</q-tooltip>
+                            </q-btn>
+                            <q-btn v-if="sale.is_cod" outline dense no-caps color="negative" label="Void" :disable="isWorking" @click="openVoid(sale)" />
                         </div>
                     </div>
                 </template>
@@ -290,6 +292,12 @@ async function act(url, body, successMessage) {
                             <small>
                                 {{ dateFormat.format(new Date(settlement.sold_at)) }} · {{ settlement.recipient_name || settlement.customer_name || 'tanpa nama' }}
                                 <q-badge v-if="settlement.state === 'awaiting_approval'" color="orange" label="Menunggu persetujuan" class="sale__badge" />
+                            </small>
+                            <small v-if="settlement.delivery_note" class="sale__note">
+                                Surat jalan
+                                <a v-if="settlement.delivery_note.show_url" :href="settlement.delivery_note.show_url" target="_blank" rel="noopener" class="sale__note-link">{{ settlement.delivery_note.number }}</a>
+                                <b v-else>{{ settlement.delivery_note.number }}</b>
+                                <span class="chip" :class="deliveryNoteStatusChipClass[settlement.delivery_note.status]">{{ settlement.delivery_note.status_label }}</span>
                             </small>
                             <small v-if="Number(settlement.offset_amount) > 0">Tagihan COD {{ formatRupiah(settlement.cod_amount) }}, dipotong retur {{ formatRupiah(settlement.offset_amount) }}</small>
                             <small v-if="settlement.has_unreturned_goods" class="sale__warning">Ada barang kembali di surat jalan yang belum diretur. Buat retur dulu agar jumlah yang ditagih tepat.</small>
@@ -444,6 +452,23 @@ async function act(url, body, successMessage) {
 
 .sale__badge {
     margin-left: 6px;
+}
+
+.sale__main .sale__note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.sale__note-link {
+    color: var(--app-brand);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.sale__note-link:hover {
+    text-decoration: underline;
 }
 
 .sale__amount {

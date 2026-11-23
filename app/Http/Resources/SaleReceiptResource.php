@@ -33,6 +33,7 @@ class SaleReceiptResource extends JsonResource
             'items' => SaleDetailResource::itemsOf($this->resource),
             'payments' => SaleDetailResource::paymentsOf($this->resource),
             'is_cod' => $this->isCod(),
+            'fulfillment' => $this->fulfillment->value,
             'cod_amount' => $this->codAmount(),
             'delivery_notes' => $this->relationLoaded('deliveryNotes')
                 ? $this->deliveryNotes->map(fn ($note): array => [

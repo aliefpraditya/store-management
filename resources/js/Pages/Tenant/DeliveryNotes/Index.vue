@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
-import { deliveryNoteStatusChipClass } from '../../../Composables/useDeliveryNoteStatus';
+import { deliveryNoteCodStateChipClass, deliveryNoteStatusChipClass } from '../../../Composables/useDeliveryNoteStatus';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -65,11 +65,12 @@ watch([status, from, to], () => applyFilters());
                         <th>Nota</th>
                         <th class="notes__right">Barang</th>
                         <th>Status</th>
+                        <th>Uang COD</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr v-if="notes.data.length === 0">
-                        <td colspan="6" class="notes__empty">Belum ada surat jalan. Buat dari nota yang barangnya diantar ke pelanggan.</td>
+                        <td colspan="7" class="notes__empty">Belum ada surat jalan. Buat dari nota yang barangnya diantar ke pelanggan.</td>
                     </tr>
                     <tr v-for="note in notes.data" :key="note.id" class="notes__row" @click="router.visit(note.show_url)">
                         <td><b>{{ note.number }}</b></td>
@@ -78,6 +79,9 @@ watch([status, from, to], () => applyFilters());
                         <td>{{ [note.sale_number, ...note.other_sale_numbers].join(', ') }}</td>
                         <td class="notes__right">{{ note.items_count }}</td>
                         <td><span class="chip" :class="deliveryNoteStatusChipClass[note.status]">{{ note.status_label }}</span></td>
+                        <td>
+                            <span v-if="note.cod_state" class="chip" :class="deliveryNoteCodStateChipClass[note.cod_state]">{{ note.cod_state_label }}</span>
+                        </td>
                     </tr>
                 </tbody>
             </table>

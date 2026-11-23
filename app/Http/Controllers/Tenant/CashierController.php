@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tenant;
 use App\Enums\CashShiftStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\Permission;
+use App\Enums\SaleFulfillment;
 use App\Enums\SaleReturnStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CashShiftResource;
@@ -12,8 +13,12 @@ use App\Models\CashShift;
 use App\Models\Register;
 use App\Models\SaleReturn;
 use App\Models\Store;
+use App\Models\User;
 use App\Services\CashierCatalogService;
+use App\Services\CodSaleService;
+use App\Services\CodSettlementService;
 use App\Services\CustomerOrderService;
+use App\Services\SaleHistoryService;
 use App\Services\ShiftService;
 use App\Services\StoreSettingService;
 use Illuminate\Http\Request;
@@ -30,7 +35,27 @@ class CashierController extends Controller
         private readonly CustomerOrderService $customerOrders,
         private readonly CashierCatalogService $catalog,
         private readonly StoreSettingService $settings,
+        private readonly CodSaleService $codSales,
+        private readonly CodSettlementService $codSettlements,
+        private readonly SaleHistoryService $saleHistory,
     ) {}
+
+    /**
+     * What waits on COD sales, for the badge of the COD button: sales whose goods are not delivered yet, and delivered
+     * ones whose money is not received (or approved) yet. The money count is only for those who may receive or approve it,
+     * since they are the ones who can act on it.
+     *
+     * @return array{undelivered: int, unreceived: int}
+     */
+    private function codCounts(User $user, Store $store): array
+    {
+        $mayHandleMoney = $user->hasPermissionIn($store, Permission::CodReceive) || $user->hasPermissionIn($store, Permission::CodApprove);
+
+        return [
+            'undelivered' => $this->codSales->undeliveredCount(),
+            'unreceived' => $mayHandleMoney ? $this->codSettlements->settlementQueueCount() : 0,
+        ];
+    }
 
     public function index(Request $request): Response
     {
@@ -44,12 +69,15 @@ class CashierController extends Controller
             'summary' => fn () => $shift === null || $shift->status === CashShiftStatus::PendingReview ? null : $this->shiftService->summarizeForCashier($shift),
             'registers' => fn () => $shift === null ? $this->registersToOpen() : [],
             'payment_methods' => PaymentMethod::saleOptions(),
+            'fulfillment_options' => SaleFulfillment::options(),
             'last_sale' => fn () => $request->session()->pull('last_sale'),
             'last_order' => fn () => $request->session()->pull('last_order'),
             'best_sellers' => fn () => $shift === null ? [] : $this->catalog->bestSellers($shift->register->warehouse_id),
             'is_receipt_printed_automatically' => $this->settings->isReceiptPrintedAutomatically(),
             'order_counts' => fn () => $this->customerOrders->badgeCounts(),
             'pending_return_count' => fn () => $shift === null ? 0 : SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Pending)->count(),
+            'cod_counts' => fn () => $this->codCounts($request->user(), $store),
+            'pending_delivery_count' => fn () => $shift === null ? 0 : $this->saleHistory->pendingDeliveryCount($shift),
             'closed_shift' => fn () => $request->session()->pull('closed_shift'),
             'can_leave_to_dashboard' => $request->user()->hasPermissionIn($store, Permission::DashboardView),
             'urls' => [

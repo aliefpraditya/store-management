@@ -2,21 +2,26 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\CodSettlementStatus;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\Permission;
+use App\Exceptions\CodSaleException;
 use App\Exceptions\DeliveryNoteException;
 use App\Http\Controllers\Concerns\PrintsDeliveryNotes;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\EnsureUserCanAccessStore;
 use App\Http\Requests\Tenant\CompleteDeliveryNoteRequest;
 use App\Http\Requests\Tenant\DateRangeRequest;
+use App\Http\Requests\Tenant\ReceiveCodSettlementRequest;
 use App\Http\Requests\Tenant\SaveDeliveryNoteRequest;
 use App\Http\Requests\Tenant\ShipDeliveryNoteRequest;
+use App\Http\Resources\DeliveryNoteCodResource;
 use App\Http\Resources\DeliveryNoteListResource;
 use App\Http\Resources\DeliveryNoteResource;
 use App\Models\DeliveryNote;
 use App\Models\Driver;
 use App\Models\Sale;
+use App\Services\CodSettlementService;
 use App\Services\DeliveryNoteService;
 use App\Services\DriverService;
 use App\Services\PrintCounter;
@@ -43,6 +48,7 @@ class DeliveryNoteController extends Controller
         private readonly DeliveryNoteService $noteService,
         private readonly PrintCounter $printCounter,
         private readonly DriverService $drivers,
+        private readonly CodSettlementService $codSettlements,
     ) {}
 
     public function index(DateRangeRequest $request): Response
@@ -108,10 +114,11 @@ class DeliveryNoteController extends Controller
         return redirect()->route('tenant.delivery-notes.show', ['tenant' => tenant('code'), 'delivery_note' => $note->id])->with('success', 'Surat jalan dibuat.');
     }
 
-    public function show(DeliveryNote $deliveryNote): Response
+    public function show(Request $request, DeliveryNote $deliveryNote): Response
     {
         return Inertia::render('Tenant/DeliveryNotes/Show', [
             'note' => DeliveryNoteResource::make($deliveryNote->load(['items', 'sale']))->resolve(),
+            'cod' => $this->codMoneyOf($request, $deliveryNote),
             'drivers' => $this->drivers->active()->map(fn (Driver $driver): array => ['id' => $driver->id, 'name' => $driver->name])->all(),
             'settings_url' => route('tenant.settings.index', ['tenant' => tenant('code')]),
         ]);
@@ -134,6 +141,29 @@ class DeliveryNoteController extends Controller
             $this->noteService->complete($deliveryNote, $request->validated('results'));
 
             return 'Pengiriman diselesaikan.';
+        });
+    }
+
+    /**
+     * Receives the money of the COD receipt this note belongs to, once the goods were delivered.
+     */
+    public function receiveCod(ReceiveCodSettlementRequest $request, DeliveryNote $deliveryNote): RedirectResponse
+    {
+        return $this->redirectWithCodOutcome(function () use ($request, $deliveryNote): string {
+            $settlement = $this->codSettlements->receive($deliveryNote->sale, $request->user(), $request->validated());
+
+            return $settlement->status === CodSettlementStatus::AwaitingApproval
+                ? 'Uang COD tercatat. Selisihnya menunggu persetujuan.'
+                : 'Uang COD diterima.';
+        });
+    }
+
+    public function approveCod(Request $request, DeliveryNote $deliveryNote): RedirectResponse
+    {
+        return $this->redirectWithCodOutcome(function () use ($request, $deliveryNote): string {
+            $this->codSettlements->approve($deliveryNote->sale, $request->user());
+
+            return 'Penerimaan uang COD disetujui.';
         });
     }
 
@@ -172,6 +202,41 @@ class DeliveryNoteController extends Controller
             'customer_name' => $sale->customer_name,
             'lines' => $deliverableLines,
         ];
+    }
+
+    /**
+     * The money of the note's COD receipt, for those who may receive or approve it; null when the receipt is not COD, the
+     * note was cancelled, or its goods all came back, so there is nothing to receive on it.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function codMoneyOf(Request $request, DeliveryNote $note): ?array
+    {
+        $mayHandleMoney = EnsureUserCanAccessStore::grants($request, Permission::CodReceive) || EnsureUserCanAccessStore::grants($request, Permission::CodApprove);
+
+        if (! $mayHandleMoney || in_array($note->status, [DeliveryNoteStatus::Cancelled, DeliveryNoteStatus::Returned], true)) {
+            return null;
+        }
+
+        $note->sale->loadMissing('payments');
+
+        if (! $note->sale->isCod()) {
+            return null;
+        }
+
+        return DeliveryNoteCodResource::make(['row' => $this->codSettlements->rowOf($note->sale), 'note' => $note])->resolve($request);
+    }
+
+    /**
+     * @param  Closure(): string  $action  returns the success message
+     */
+    private function redirectWithCodOutcome(Closure $action): RedirectResponse
+    {
+        try {
+            return back()->with('success', $action());
+        } catch (CodSaleException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
     }
 
     /**

@@ -36,7 +36,7 @@ use Illuminate\Support\Facades\DB;
  * closing the day.
  *
  * @phpstan-type SettlementInput array{client_uuid: string, method: string, amount: numeric-string|float|int, reference?: string|null, notes?: string|null, difference_reason?: string|null}
- * @phpstan-type QueueRow array{sale: Sale, offset_amount: BigDecimal, amount_due: BigDecimal, has_unreturned_goods: bool}
+ * @phpstan-type QueueRow array{sale: Sale, offset_amount: BigDecimal, amount_due: BigDecimal, has_unreturned_goods: bool, is_goods_delivered: bool}
  */
 class CodSettlementService
 {
@@ -135,17 +135,20 @@ class CodSettlementService
         $offsets = $this->offsetsOf($sales->modelKeys());
         $saleIdsWithUnreturnedGoods = $this->saleIdsWithUnreturnedGoods($sales->modelKeys());
 
-        return $sales->map(function (Sale $sale) use ($offsets, $saleIdsWithUnreturnedGoods): array {
-            $offset = BigDecimal::of((string) $offsets->get($sale->id, '0'));
-            $due = BigDecimal::of($sale->codAmount())->minus($offset);
+        return $sales->map(fn (Sale $sale): array => $this->queueRowOf($sale, $offsets, $saleIdsWithUnreturnedGoods))->all();
+    }
 
-            return [
-                'sale' => $sale,
-                'offset_amount' => $offset,
-                'amount_due' => $sale->codSettlement !== null ? BigDecimal::of((string) $sale->codSettlement->expected_amount) : ($due->isNegative() ? BigDecimal::zero() : $due),
-                'has_unreturned_goods' => in_array($sale->id, $saleIdsWithUnreturnedGoods, true),
-            ];
-        })->all();
+    /**
+     * The same figures as a row of the queue, for one COD sale in any state: still to receive, waiting for an approval, or
+     * already received. Loads what the row needs.
+     *
+     * @return QueueRow
+     */
+    public function rowOf(Sale $sale): array
+    {
+        $sale->loadMissing(['payments', 'codSettlement', 'deliveryNotes']);
+
+        return $this->queueRowOf($sale, $this->offsetsOf([$sale->id]), $this->saleIdsWithUnreturnedGoods([$sale->id]));
     }
 
     public function settlementQueueCount(): int
@@ -159,6 +162,28 @@ class CodSettlementService
     public function awaitingApprovalCount(): int
     {
         return CodSettlement::query()->where('status', CodSettlementStatus::AwaitingApproval)->count();
+    }
+
+    /**
+     * Once the money is received, what was owed at that moment is the figure that counts, not what returns made later
+     * would leave.
+     *
+     * @param  Collection<int, string>  $offsets  per sale, see {@see offsetsOf()}
+     * @param  list<int>  $saleIdsWithUnreturnedGoods
+     * @return QueueRow
+     */
+    private function queueRowOf(Sale $sale, Collection $offsets, array $saleIdsWithUnreturnedGoods): array
+    {
+        $offset = BigDecimal::of((string) $offsets->get($sale->id, '0'));
+        $due = BigDecimal::of($sale->codAmount())->minus($offset);
+
+        return [
+            'sale' => $sale,
+            'offset_amount' => $offset,
+            'amount_due' => $sale->codSettlement !== null ? BigDecimal::of((string) $sale->codSettlement->expected_amount) : ($due->isNegative() ? BigDecimal::zero() : $due),
+            'has_unreturned_goods' => in_array($sale->id, $saleIdsWithUnreturnedGoods, true),
+            'is_goods_delivered' => $this->codSales->isDelivered($sale),
+        ];
     }
 
     /**

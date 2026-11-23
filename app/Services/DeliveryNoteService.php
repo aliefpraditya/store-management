@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\DeliveryNoteStatus;
+use App\Enums\SaleFulfillment;
 use App\Enums\SaleStatus;
 use App\Exceptions\DeliveryNoteException;
 use App\Models\CustomerOrder;
@@ -46,7 +47,7 @@ class DeliveryNoteService
     public function paginateNotes(string $statusValue, string $search, ?CarbonInterface $from, ?CarbonInterface $to, int $perPage): LengthAwarePaginator
     {
         return DeliveryNote::query()
-            ->with(['sale', 'sales'])
+            ->with(['sale.payments', 'sale.codSettlement', 'sales'])
             ->withCount('items')
             ->when(DeliveryNoteStatus::tryFrom($statusValue), fn (Builder $query, DeliveryNoteStatus $status) => $query->where('status', $status))
             ->when($from, fn (Builder $query, CarbonInterface $from) => $query->where('business_date', '>=', $from->toDateString()))
@@ -125,6 +126,8 @@ class DeliveryNoteService
                 throw DeliveryNoteException::noItems();
             }
 
+            $this->requireDelivery($sale);
+
             $linkedSale = $this->linkedSaleOf($sale, isLocked: true);
             $saleItems = SaleItem::query()
                 ->whereIn('sale_id', array_filter([$sale->id, $linkedSale?->id]))
@@ -173,6 +176,39 @@ class DeliveryNoteService
 
             return $note->load('items');
         });
+    }
+
+    /**
+     * The goods of a receipt taken at the store were handed over at the till, but the customer may still ask for them to be
+     * brought after all: the receipt is then marked as delivered, and it shows as not delivered until a note of it is
+     * finished. Does nothing for a receipt that is already delivered.
+     *
+     * @throws DeliveryNoteException
+     */
+    public function changeToDelivery(Sale $sale): Sale
+    {
+        return DB::transaction(function () use ($sale): Sale {
+            $lockedSale = Sale::query()->lockForUpdate()->findOrFail($sale->id);
+
+            if ($lockedSale->status !== SaleStatus::Completed) {
+                throw DeliveryNoteException::saleNotCompleted();
+            }
+
+            $this->requireDelivery($lockedSale);
+
+            return $lockedSale;
+        });
+    }
+
+    /**
+     * A delivery note means the goods are delivered, so making one marks a receipt taken at the store as delivered. Expects
+     * the sale locked.
+     */
+    private function requireDelivery(Sale $lockedSale): void
+    {
+        if ($lockedSale->fulfillment !== SaleFulfillment::Delivery) {
+            $lockedSale->forceFill(['fulfillment' => SaleFulfillment::Delivery])->save();
+        }
     }
 
     /**

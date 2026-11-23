@@ -15,6 +15,11 @@ class CodSaleException extends Exception
         return new self('Hanya nota COD yang bisa diproses di sini. Nota lain memakai Retur.');
     }
 
+    public static function notForDelivery(): self
+    {
+        return new self('Nota ini diambil di toko, tidak ada yang diantar.');
+    }
+
     public static function alreadyVoided(): self
     {
         return new self('Nota ini sudah di-void. Muat ulang daftar COD untuk melihat keadaan terbaru.');

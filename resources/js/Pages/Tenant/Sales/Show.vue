@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
+import { useQuasar } from 'quasar';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -11,6 +12,8 @@ const props = defineProps({
     void_blocker: { type: String, default: null },
     urls: { type: Object, required: true },
 });
+
+const $q = useQuasar();
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -30,6 +33,22 @@ function openVoid() {
 }
 
 const permissions = computed(() => usePage().props.auth.permissions);
+
+const canManageDelivery = computed(() => permissions.value.includes('delivery_notes.manage'));
+
+/**
+ * A receipt taken at the store is recorded as already handed over, so turning it into a delivery is only right when the goods in
+ * fact did not leave; the dialog says so before it does.
+ */
+function confirmChangeToDelivery() {
+    $q.dialog({
+        title: 'Ubah jadi diantar?',
+        message: `Nota ${props.sale.number} tercatat sudah dibawa pelanggan. Ubah jadi diantar hanya kalau barangnya sebenarnya belum keluar dari toko. Setelah itu nota tampil sebagai belum diantar sampai surat jalannya selesai.`,
+        cancel: { label: 'Kembali', flat: true, noCaps: true },
+        ok: { label: 'Ubah jadi Diantar', color: 'primary', unelevated: true, noCaps: true },
+        persistent: true,
+    }).onOk(() => router.post(props.urls.delivery_mode, {}, { preserveScroll: true }));
+}
 
 /** Whether an admin can accept the COD money that was received with a difference, which is the only thing waiting on this page. */
 const canApproveSettlement = computed(() => props.sale.cod_settlement?.status === 'awaiting_approval' && permissions.value.includes('cod.approve'));
@@ -63,7 +82,10 @@ function submitVoid() {
         <template #actions>
             <q-btn v-if="canVoid" outline no-caps dense color="negative" icon="block" label="Void Nota COD" class="q-mr-sm" @click="openVoid" />
             <q-btn v-if="sale.status === 'completed'" outline no-caps dense color="primary" icon="undo" label="Buat Retur" class="q-mr-sm" @click="router.visit(urls.new_return)" />
-            <q-btn v-if="sale.status === 'completed'" outline no-caps dense color="primary" icon="local_shipping" label="Buat Surat Jalan" @click="router.visit(urls.new_delivery_note)" />
+            <template v-if="sale.status === 'completed' && canManageDelivery">
+                <q-btn v-if="sale.fulfillment === 'delivery'" outline no-caps dense color="primary" icon="local_shipping" label="Buat Surat Jalan" @click="router.visit(urls.new_delivery_note)" />
+                <q-btn v-else outline no-caps dense color="primary" icon="local_shipping" label="Ubah jadi Diantar" @click="confirmChangeToDelivery" />
+            </template>
         </template>
 
         <article class="receipt">
@@ -73,8 +95,16 @@ function submitVoid() {
                     <small>{{ dateTimeFormat.format(new Date(sale.sold_at)) }} · {{ sale.register.code }} · {{ sale.cashier_name }}</small>
                     <small v-if="sale.customer_name">Pelanggan: {{ sale.customer_name }}</small>
                 </div>
-                <span class="chip" :class="sale.status === 'completed' ? 'chip--ok' : 'chip--bad'">{{ sale.status_label }}</span>
+                <span class="receipt__chips">
+                    <span class="chip" :class="sale.status === 'completed' ? 'chip--ok' : 'chip--bad'">{{ sale.status_label }}</span>
+                    <span v-if="sale.status === 'completed'" class="chip" :class="sale.is_delivery_pending ? 'chip--warn' : 'chip--off'">{{ sale.is_delivery_pending ? 'Belum diantar' : sale.fulfillment_label }}</span>
+                </span>
             </header>
+
+            <p v-if="sale.is_delivery_pending" class="receipt__alert">
+                <q-icon name="notification_important" size="18px" />
+                <span>Belum diantar, jadi nota ini ikut dihitung di badge Riwayat Nota. {{ sale.has_open_delivery_note ? 'Selesaikan pengiriman di surat jalannya.' : 'Buat surat jalannya.' }}</span>
+            </p>
 
             <p v-if="sale.status === 'voided'" class="receipt__void">
                 Nota di-void<template v-if="sale.voided_at"> pada {{ dateTimeFormat.format(new Date(sale.voided_at)) }}</template><template v-if="sale.voided_by_name"> oleh {{ sale.voided_by_name }}</template><template v-if="sale.void_reason">: {{ sale.void_reason }}</template>
@@ -181,6 +211,26 @@ function submitVoid() {
 .receipt__head small {
     color: var(--app-mute);
     font-size: 12.5px;
+}
+
+.receipt__alert {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 14px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #fdf1e0;
+    color: #c2710c;
+    font-size: 13.5px;
+    font-weight: 600;
+}
+
+.receipt__chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
 }
 
 .receipt__void {

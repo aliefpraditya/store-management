@@ -80,7 +80,12 @@ class SaleException extends Exception
 
     public static function deliveryNoteRequired(): self
     {
-        return new self('Nota COD harus punya surat jalan. Isi penerima dan alamat pengantaran.');
+        return new self('Nota yang diantar harus punya surat jalan. Isi penerima dan alamat pengantaran.');
+    }
+
+    public static function codNeedsDelivery(): self
+    {
+        return new self('COD hanya untuk nota yang diantar. Pilih Diantar, atau bayar sekarang.');
     }
 
     public static function codMoreThanOnce(): self

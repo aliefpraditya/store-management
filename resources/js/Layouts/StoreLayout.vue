@@ -38,8 +38,8 @@ const menuGroups = computed(() => {
             label: 'Penjualan',
             items: [
                 { label: 'Kasir', icon: 'shopping_cart', href: store.value.cashier_url, can: ['cashier.use'] },
-                { label: 'Riwayat Nota', icon: 'receipt_long', href: store.value.sales_url, can: ['sales.view'] },
-                { label: 'Surat Jalan', icon: 'local_shipping', href: store.value.delivery_notes_url, can: ['delivery_notes.view'] },
+                { label: 'Riwayat Nota', icon: 'receipt_long', href: store.value.sales_url, badge: page.props.menu_badges?.sales ?? 0, badgeHint: 'nota yang belum diantar', can: ['sales.view'] },
+                { label: 'Surat Jalan', icon: 'local_shipping', href: store.value.delivery_notes_url, badge: page.props.menu_badges?.delivery_notes ?? 0, badgeHint: 'nota COD yang uangnya belum diterima', can: ['delivery_notes.view'] },
                 { label: 'Retur', icon: 'undo', href: store.value.returns_url, badge: page.props.menu_badges?.returns ?? 0, badgeHint: 'retur menunggu persetujuan', can: ['returns.manage'] },
             ],
         },

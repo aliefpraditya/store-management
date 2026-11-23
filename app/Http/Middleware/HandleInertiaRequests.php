@@ -2,9 +2,12 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\Permission;
 use App\Enums\SaleReturnStatus;
 use App\Models\SaleReturn;
 use App\Models\Store;
+use App\Services\CodSettlementService;
+use App\Services\SaleHistoryService;
 use App\Services\StoreSettingService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -52,7 +55,7 @@ class HandleInertiaRequests extends Middleware
                 'error' => fn () => $request->session()->get('error'),
             ],
             'store' => fn () => $this->currentStore(),
-            'menu_badges' => fn () => $this->menuBadges(),
+            'menu_badges' => fn () => $this->menuBadges($request),
             'print_targets' => fn () => $this->printTargets(),
             'has_open_shift' => fn () => $request->session()->get(EnsureUserHasNoOpenShift::SESSION_KEY, []) !== [],
             // Not named `urls`: many pages pass a `urls` prop of their own, which would replace this one.
@@ -70,17 +73,27 @@ class HandleInertiaRequests extends Middleware
     }
 
     /**
-     * What waits for someone in the store, as the numbers on the sidebar entries; null on central pages.
+     * What waits for someone in the store, as the numbers on the sidebar entries; null on central pages. The delivery
+     * notes entry counts the COD sales whose money is not received yet or waits for an approval, and only for those who
+     * may receive or approve it: they are the ones who can act on it, and the others are spared the query.
      *
-     * @return array{returns: int}|null
+     * The receipt history entry counts the delivered receipts that did not reach the customer yet, for those who see it.
+     *
+     * @return array{returns: int, delivery_notes: int, sales: int}|null
      */
-    private function menuBadges(): ?array
+    private function menuBadges(Request $request): ?array
     {
         if (! tenancy()->initialized) {
             return null;
         }
 
-        return ['returns' => SaleReturn::query()->where('status', SaleReturnStatus::Pending)->count()];
+        $mayHandleCodMoney = EnsureUserCanAccessStore::grants($request, Permission::CodReceive) || EnsureUserCanAccessStore::grants($request, Permission::CodApprove);
+
+        return [
+            'returns' => SaleReturn::query()->where('status', SaleReturnStatus::Pending)->count(),
+            'delivery_notes' => $mayHandleCodMoney ? app(CodSettlementService::class)->settlementQueueCount() : 0,
+            'sales' => EnsureUserCanAccessStore::grants($request, Permission::SalesView) ? app(SaleHistoryService::class)->pendingDeliveryCount() : 0,
+        ];
     }
 
     /**

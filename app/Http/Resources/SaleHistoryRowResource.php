@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * One row of the receipt history. Expects `payments` and the `items_count` count.
+ * One row of the receipt history. Expects `payments`, `deliveryNotes` and the `items_count` count.
  *
  * @mixin Sale
  */
@@ -28,6 +28,9 @@ class SaleHistoryRowResource extends JsonResource
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
             'items_count' => $this->getAttribute('items_count'),
+            'fulfillment' => $this->fulfillment->value,
+            'fulfillment_label' => $this->fulfillment->label(),
+            'is_delivery_pending' => $this->isDeliveryPending(),
             'payment_methods' => $this->payments->map(fn ($payment): string => $payment->method->label())->unique()->values()->all(),
             'show_url' => route('tenant.sales.show', ['tenant' => tenant('code'), 'sale' => $this->id]),
         ];

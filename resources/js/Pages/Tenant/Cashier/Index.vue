@@ -28,6 +28,8 @@ const props = defineProps({
     summary: { type: Object, default: null },
     registers: { type: Array, required: true },
     payment_methods: { type: Array, required: true },
+    /** Taken at the store or delivered, as the payment window offers them. */
+    fulfillment_options: { type: Array, required: true },
     last_sale: { type: Object, default: null },
     /** The customer order made by the last checkout, alone or together with `last_sale`. */
     last_order: { type: Object, default: null },
@@ -35,6 +37,10 @@ const props = defineProps({
     order_counts: { type: Object, default: () => ({ open: 0, ready: 0, arrived: 0 }) },
     /** Returns of this shift that wait for an Admin's approval. */
     pending_return_count: { type: Number, default: 0 },
+    /** Receipts of this shift to be delivered that did not reach the customer yet. */
+    pending_delivery_count: { type: Number, default: 0 },
+    /** Delivered receipts not delivered yet, and COD ones delivered whose money is not received yet (counted only for who may receive it). */
+    cod_counts: { type: Object, default: () => ({ undelivered: 0, unreceived: 0 }) },
     /** The items this warehouse sold most lately, offered when nothing is searched. */
     best_sellers: { type: Array, default: () => [] },
     /** Whether the receipt opens for printing by itself once a sale is paid. */
@@ -534,7 +540,9 @@ function openReturn(receipt) {
  * Fetches the figures again in the background. It is async so it never cancels the visit of a payment in flight (a new
  * Inertia visit cancels the running one on the client, and the receipt that comes back would be thrown away).
  */
-const refreshShiftSummary = () => router.reload({ only: ['summary', 'order_counts', 'pending_return_count'], async: true });
+const refreshShiftSummary = () => router.reload({ only: ['summary', 'order_counts', 'pending_return_count', 'cod_counts', 'pending_delivery_count'], async: true });
+
+const codWaitingCount = computed(() => props.cod_counts.undelivered + props.cod_counts.unreceived);
 
 /**
  * F4 puts the cart on hold, or, when the cart is empty, brings a held one back. The cart being worked on goes on hold
@@ -683,7 +691,7 @@ onMounted(() => {
         startReviewWatch();
         badgeTimer = setInterval(() => {
             if (!isPaying.value) {
-                router.reload({ only: ['order_counts', 'pending_return_count'], async: true });
+                router.reload({ only: ['order_counts', 'pending_return_count', 'cod_counts', 'pending_delivery_count'], async: true });
             }
         }, BADGE_REFRESH_MS);
     }
@@ -712,12 +720,21 @@ onBeforeUnmount(() => {
                         <small v-else>Belum ada shift</small>
                     </div>
                     <div class="till__bar-actions">
-                        <q-btn v-if="isTillWorking" flat no-caps dense icon="receipt_long" label="Riwayat Nota" @click="isReceiptsOpen = true" />
+                        <q-btn v-if="isTillWorking" flat no-caps dense icon="receipt_long" label="Riwayat Nota" @click="isReceiptsOpen = true">
+                            <q-badge v-if="pending_delivery_count > 0" color="warning" floating :label="pending_delivery_count" />
+                            <q-tooltip v-if="pending_delivery_count > 0">{{ pending_delivery_count }} nota shift ini belum diantar</q-tooltip>
+                        </q-btn>
                         <q-btn v-if="isTillWorking" flat no-caps dense icon="undo" label="Retur" @click="isReturnLookupOpen = true">
                             <q-badge v-if="pending_return_count > 0" color="negative" floating :label="pending_return_count" />
                             <q-tooltip v-if="pending_return_count > 0">{{ pending_return_count }} retur shift ini menunggu persetujuan Admin. Shift belum bisa ditutup sebelum itu.</q-tooltip>
                         </q-btn>
-                        <q-btn v-if="isTillWorking" flat no-caps dense icon="local_shipping" label="COD" @click="isCodOpen = true" />
+                        <q-btn v-if="isTillWorking" flat no-caps dense icon="local_shipping" label="Surat Jalan" @click="isCodOpen = true">
+                            <q-badge v-if="codWaitingCount > 0" :color="cod_counts.unreceived > 0 ? 'negative' : 'warning'" floating :label="codWaitingCount" />
+                            <q-tooltip v-if="codWaitingCount > 0">
+                                <div v-if="cod_counts.undelivered > 0">{{ cod_counts.undelivered }} nota belum diantar</div>
+                                <div v-if="cod_counts.unreceived > 0">{{ cod_counts.unreceived }} nota COD uangnya belum diterima</div>
+                            </q-tooltip>
+                        </q-btn>
                         <q-btn v-if="isTillWorking" flat no-caps dense icon="assignment" @click="isOrdersOpen = true">
                             <span>Pesanan</span><kbd class="till__key">F7</kbd>
                             <q-badge v-if="order_counts.arrived > 0" color="negative" floating :label="order_counts.arrived" />
@@ -866,12 +883,12 @@ onBeforeUnmount(() => {
             </q-page>
         </q-page-container>
 
-        <PaymentDialog v-model="isPaymentOpen" :total="paymentTotal" :payment-methods="payment_methods" :is-processing="isPaying" :split="splitForPayment" :collecting-order="collectingOrder" @confirm="submitSale" />
+        <PaymentDialog v-model="isPaymentOpen" :total="paymentTotal" :payment-methods="payment_methods" :fulfillment-options="fulfillment_options" :is-processing="isPaying" :split="splitForPayment" :collecting-order="collectingOrder" @confirm="submitSale" />
         <CloseShiftDialog v-if="summary" v-model="isCloseOpen" :summary="summary" :is-processing="isClosing" @confirm="closeShift" />
         <SaleDoneDialog v-model="isSaleDoneOpen" :sale="last_sale" :order="last_order" :is-printed-automatically="is_receipt_printed_automatically" @delivery="openDelivery" @hidden="focusSearchWhenFree" />
         <HeldCartsDialog v-model="isHeldOpen" :held-carts="heldCarts.held.value" @resume="resumeHeldCart" @discard="heldCarts.discard" />
         <ShiftClosedDialog v-model="isShiftClosedOpen" :shift-totals="closed_shift" />
-        <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" @return="openReturn" />
+        <ReceiptHistoryDialog v-if="shift" v-model="isReceiptsOpen" :receipts-url="urls.receipts" :history-url="urls.sales_history" :can-open-history="can_leave_to_dashboard" @delivery="openDelivery" @return="openReturn" @changed="refreshShiftSummary" />
         <DeliveryNoteDialog v-model="isDeliveryOpen" :receipt="deliveryReceipt" />
         <ReturnLookupDialog v-if="shift" v-model="isReturnLookupOpen" :lookup-url="urls.return_lookup" @found="openReturn" />
         <ReturnDialog v-model="isReturnOpen" :receipt="returnReceipt" :products-url="urls.products" @saved="refreshShiftSummary" />

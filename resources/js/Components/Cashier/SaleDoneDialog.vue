@@ -9,7 +9,7 @@ import { formatRupiah } from '../../Composables/useMoneyFormat';
 
 const props = defineProps({
     modelValue: { type: Boolean, required: true },
-    /** @type {{number: string, sold_at: string, customer_name: string|null, total: string, paid_total: string, change_amount: string, is_cod: boolean, cod_amount: string, delivery_notes: {id: number, number: string, print_url: string}[], items: object[], payments: object[]}|null} */
+    /** @type {{number: string, sold_at: string, customer_name: string|null, total: string, paid_total: string, change_amount: string, is_cod: boolean, fulfillment: string, cod_amount: string, delivery_notes: {id: number, number: string, print_url: string}[], items: object[], payments: object[]}|null} */
     sale: { type: Object, default: null },
     /** @type {{number: string, customer_name: string, customer_phone: string, expected_date: string|null, total: string, deposit: string, remaining: string, origin_sale_number: string|null, print_url: string, items: object[]}|null} the customer order made together with the receipt, or alone */
     order: { type: Object, default: null },
@@ -148,13 +148,13 @@ async function printNote(note) {
                 <b>{{ formatRupiah(sale.change_amount) }}</b>
             </q-card-section>
 
-            <q-card-section v-if="sale?.is_cod && sale.delivery_notes.length === 0" class="done__notes">
+            <q-card-section v-if="sale?.fulfillment === 'delivery' && sale.delivery_notes.length === 0" class="done__notes">
                 <div class="done__note">
-                    <span>Barang nota ini disimpan di toko dan diantar bersama pesanan. Surat jalan dan penagihan COD diselesaikan sekali saat barang pesanan datang.</span>
+                    <span>Barang nota ini disimpan di toko dan diantar bersama pesanan. Surat jalan{{ sale.is_cod ? ' dan penagihan COD' : '' }} diselesaikan sekali saat barang pesanan datang.</span>
                 </div>
             </q-card-section>
 
-            <q-card-section v-if="sale?.is_cod" class="done__notes">
+            <q-card-section v-if="sale?.fulfillment === 'delivery'" class="done__notes">
                 <div v-for="note in sale.delivery_notes" :key="note.id" class="done__note">
                     <span>Surat jalan <b>{{ note.number }}</b> sudah dibuat. Cetak dan sertakan saat barang diantar.</span>
                     <q-btn color="primary" unelevated dense no-caps icon="print" label="Cetak Surat Jalan" :loading="printingId === note.id" @click="printNote(note)">
@@ -198,7 +198,7 @@ async function printNote(note) {
             </q-card-section>
 
             <q-card-actions align="right">
-                <q-btn v-if="sale" outline no-caps color="primary" icon="local_shipping" label="Surat Jalan" :disable="isPrinting" @click="openDelivery" />
+                <q-btn v-if="sale?.fulfillment === 'delivery' && sale.delivery_notes.length === 0" outline no-caps color="primary" icon="local_shipping" label="Buat Surat Jalan" :disable="isPrinting" @click="openDelivery" />
                 <q-btn color="primary" unelevated no-caps icon="print" :label="printButtonLabel" :loading="isPrinting" autofocus @click="printAndFinish" />
             </q-card-actions>
         </q-card>

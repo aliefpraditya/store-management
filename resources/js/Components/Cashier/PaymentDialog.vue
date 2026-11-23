@@ -12,6 +12,8 @@ const props = defineProps({
     total: { type: Number, required: true },
     /** @type {{value: string, label: string}[]} */
     paymentMethods: { type: Array, required: true },
+    /** How the goods reach the customer: taken at the store, or delivered. @type {{value: string, label: string}[]} */
+    fulfillmentOptions: { type: Array, required: true },
     isProcessing: { type: Boolean, default: false },
     /** The cart divided into receipt and order when part of it is not in stock; null when all of it is. */
     split: { type: Object, default: null },
@@ -22,6 +24,11 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'confirm']);
 
 const COD = 'cod';
+
+const IN_STORE = 'in_store';
+const DELIVERY = 'delivery';
+
+const FULFILLMENT_ICONS = { [IN_STORE]: 'storefront', [DELIVERY]: 'local_shipping' };
 
 /** What the arrows of the amount field (and the up and down keys) move it by; any amount can still be typed. */
 const AMOUNT_STEP = 50000;
@@ -40,6 +47,9 @@ const lines = ref([blankLine('cash')]);
 const delivery = ref(deliveryOf(props.collectingOrder));
 const orderForm = ref(blankOrderForm());
 
+/** Goods are taken at the store unless the cashier chooses to deliver them; only a delivered receipt gets a delivery note. */
+const fulfillment = ref(IN_STORE);
+
 /** Whether the cashier chose to change the recipient that came from the order. */
 const isDeliveryEdited = ref(false);
 
@@ -51,6 +61,7 @@ watch(
             lines.value = [blankLine('cash')];
             delivery.value = deliveryOf(props.collectingOrder);
             orderForm.value = blankOrderForm();
+            fulfillment.value = IN_STORE;
             isDeliveryEdited.value = false;
             isOriginSaleIncluded.value = true;
             isDeliveryHeld.value = true;
@@ -66,10 +77,13 @@ const originSaleUndelivered = computed(() => props.collectingOrder?.origin_sale_
 
 const isOriginSaleIncluded = ref(true);
 
-/** Whether the COD receipt made with an order waits for the order, so one delivery note and one collection serve both. */
+/** Whether the delivered receipt made with an order waits for the order, so one delivery note and one collection serve both. */
 const isDeliveryHeld = ref(true);
 
-const isDeliveryHeldNow = computed(() => isCod.value && isOrderMade.value && isDeliveryHeld.value);
+/** A receipt is delivered when chosen so; with nothing to pay for the receipt itself (an order alone) there is nothing to deliver. */
+const isDelivery = computed(() => fulfillment.value === DELIVERY && props.total > 0);
+
+const isDeliveryHeldNow = computed(() => isDelivery.value && isOrderMade.value && isDeliveryHeld.value);
 
 /** An order that has an address goes ahead as it is: the recipient is shown, not asked again, unless the cashier changes it. */
 const isDeliveryFromOrder = computed(() => props.collectingOrder !== null && Boolean(props.collectingOrder.customer_address) && !isDeliveryEdited.value);
@@ -102,7 +116,26 @@ const isCovered = computed(() => paidTotal.value >= props.total);
 
 const isChangeFromCash = computed(() => changeAmount.value <= cashPaid.value);
 
-const isCod = computed(() => lines.value.some((line) => line.method === COD));
+/**
+ * COD is not money received now but what is left to pay when the goods arrive, so it is its own choice, apart from the ways
+ * money comes in. Its amount is never typed: it is whatever the other payments leave of the total.
+ */
+const codLine = computed(() => lines.value.find((line) => line.method === COD));
+
+const isCod = computed(() => codLine.value !== undefined);
+
+const isCodOffered = computed(() => props.paymentMethods.some((method) => method.value === COD));
+
+const moneyLines = computed(() => lines.value.filter((line) => line.method !== COD));
+
+const moneyMethods = computed(() => props.paymentMethods.filter((method) => method.value !== COD));
+
+const paidByMoney = computed(() => roundMoney(moneyLines.value.reduce((sum, line) => sum + amountOf(line), 0)));
+
+const codAmount = computed(() => roundMoney(Math.max(props.total - paidByMoney.value, 0)));
+
+/** The other payments already cover the total, so nothing is left to pay on delivery. */
+const isCodWithoutBalance = computed(() => isCod.value && codAmount.value === 0);
 
 /** COD is what is left to pay on delivery, so with it the payments add up to the total exactly. */
 const isCodTheRest = computed(() => !isCod.value || paidTotal.value === roundMoney(props.total));
@@ -112,20 +145,20 @@ const isOrderReady = computed(() => !isOrderMade.value || (customerName.value.tr
 /** A deposit is money received now, so it cannot ride on a COD payment. */
 const isCodWithDeposit = computed(() => isCod.value && depositAmount.value > 0);
 
-/** A COD sale goes out with a delivery note, so who and where must be known before it can be saved. */
-const isDeliveryComplete = computed(() => !isCod.value || isDeliveryHeldNow.value || (effectiveRecipientName.value !== '' && delivery.value.recipient_address.trim() !== ''));
+/** A delivered sale goes out with a delivery note, so who and where must be known before it can be saved. */
+const isDeliveryComplete = computed(() => !isDelivery.value || isDeliveryHeldNow.value || (effectiveRecipientName.value !== '' && delivery.value.recipient_address.trim() !== ''));
 
 /** The customer is the one the goods are delivered to, so the delivery note takes the customer's name and does not ask for it twice. */
 const effectiveRecipientName = computed(() => customerName.value.trim());
 
-const isSalePartReady = computed(() => !isPaymentNeeded.value || (isCovered.value && isChangeFromCash.value && isCodTheRest.value && isDeliveryComplete.value && !isCodWithDeposit.value));
+const isSalePartReady = computed(() => !isPaymentNeeded.value || (isCovered.value && isChangeFromCash.value && isCodTheRest.value && isDeliveryComplete.value && !isCodWithDeposit.value && !isCodWithoutBalance.value));
 
 const canConfirm = computed(() => (isPaymentNeeded.value || isOrderMade.value || props.collectingOrder !== null) && isSalePartReady.value && isOrderReady.value && !props.isProcessing);
 
 const confirmLabel = computed(() => {
     if (props.collectingOrder !== null) {
-        if (isCod.value) {
-            return 'Buat Nota COD & Surat Jalan';
+        if (isDelivery.value) {
+            return isCod.value ? 'Buat Nota COD & Surat Jalan' : 'Bayar & Buat Surat Jalan';
         }
 
         return isPaymentNeeded.value ? `Ambil Pesanan, bayar ${formatRupiah(props.total)}` : 'Ambil Pesanan';
@@ -139,16 +172,27 @@ const confirmLabel = computed(() => {
         return 'Simpan Nota COD';
     }
 
+    if (isDelivery.value) {
+        return `Bayar ${formatRupiah(roundMoney(props.total + depositAmount.value))} & Surat Jalan`;
+    }
+
     return `Bayar ${formatRupiah(roundMoney(props.total + depositAmount.value))}`;
 });
 
-/** The COD method can be chosen on one line only, only when there is a receipt to pay, and not while the order takes a deposit. */
-const isMethodDisabled = (line, method) => method === COD && (props.total <= 0 || depositAmount.value > 0 || lines.value.some((other) => other !== line && other.method === COD));
+/** Taking the goods at the store cannot be chosen while the bill is left to be paid on delivery. */
+const fulfillmentChoices = computed(() => props.fulfillmentOptions.map((option) => ({
+    ...option,
+    icon: FULFILLMENT_ICONS[option.value],
+    disable: option.value === IN_STORE && isCod.value,
+})));
+
+/** COD can be chosen only when there is a receipt to pay, and not while the order takes a deposit. */
+const isCodChoiceDisabled = computed(() => props.total <= 0 || depositAmount.value > 0);
 
 /**
- * Choosing COD, transfer, QRIS or EDC fills in what is left to pay while the line is still empty: none of them gives
- * change, so the rest of the bill is almost always the amount. Cash is left empty because the cashier types what the
- * customer handed over.
+ * Choosing transfer, QRIS or EDC fills in what is left to pay while the line is still empty: none of them gives change,
+ * so the rest of the bill is almost always the amount. Cash is left empty because the cashier types what the customer
+ * handed over.
  */
 function chooseMethod(line, method) {
     line.method = method;
@@ -168,9 +212,35 @@ function addLine() {
     lines.value.push({ ...blankLine('qris'), amount: remaining > 0 ? remaining : '' });
 }
 
-function removeLine(index) {
-    lines.value.splice(index, 1);
+function removeLine(line) {
+    lines.value.splice(lines.value.indexOf(line), 1);
 }
+
+/**
+ * Puts the rest of the bill on COD, or takes it off again. COD only exists for a delivered receipt, so choosing it also
+ * chooses delivery. Money lines still empty are dropped, so a sale paid on delivery alone does not keep an empty cash line.
+ */
+function toggleCod() {
+    if (codLine.value) {
+        removeLine(codLine.value);
+
+        if (lines.value.length === 0) {
+            lines.value.push(blankLine('cash'));
+        }
+
+        return;
+    }
+
+    lines.value = lines.value.filter((line) => amountOf(line) > 0);
+    lines.value.push({ ...blankLine(COD), amount: codAmount.value });
+    fulfillment.value = DELIVERY;
+}
+
+watch(codAmount, (amount) => {
+    if (codLine.value) {
+        codLine.value.amount = amount;
+    }
+});
 
 /** The order part of the checkout as the request wants it; the lines are filled in by the till, which owns the cart. */
 function orderInput() {
@@ -188,7 +258,8 @@ function confirm() {
         payments: lines.value
             .filter((line) => isPaymentNeeded.value && amountOf(line) > 0)
             .map((line) => ({ method: line.method, amount: amountOf(line), reference: ['cash', COD].includes(line.method) ? null : line.reference.trim() || null })),
-        delivery_note: isCod.value && !isDeliveryHeldNow.value ? { ...delivery.value, recipient_name: effectiveRecipientName.value, include_linked_sale_items: originSaleUndelivered.value.length > 0 && isOriginSaleIncluded.value } : null,
+        fulfillment: isDelivery.value ? DELIVERY : IN_STORE,
+        delivery_note: isDelivery.value && !isDeliveryHeldNow.value ? { ...delivery.value, recipient_name: effectiveRecipientName.value, include_linked_sale_items: originSaleUndelivered.value.length > 0 && isOriginSaleIncluded.value } : null,
         ...(isDeliveryHeldNow.value ? { hold_delivery: true } : {}),
         order: isOrderMade.value ? orderInput() : null,
     });
@@ -222,15 +293,31 @@ function confirm() {
                 <p v-if="!isPaymentNeeded && collectingOrder" class="payment__note">Uang muka sudah melunasi pesanan ini, tidak ada yang perlu dibayar lagi.</p>
                 <p v-else-if="isOrderMade && total <= 0 && !isOrderPaidNow" class="payment__note">Tidak ada barang yang tersedia sekarang, jadi tidak ada nota penjualan. Seluruh keranjang dicatat sebagai pesanan. Centang "Pelanggan bayar pesanan sekarang" di bawah bila ada uang muka.</p>
 
+                <div v-if="total > 0" class="payment__fulfillment">
+                    <q-btn-toggle
+                        v-model="fulfillment"
+                        :options="fulfillmentChoices"
+                        no-caps
+                        unelevated
+                        spread
+                        toggle-color="primary"
+                        color="grey-3"
+                        text-color="grey-8"
+                        aria-label="Barang diambil di toko atau diantar"
+                    />
+                    <small v-if="isCod">COD hanya untuk nota yang diantar.</small>
+                    <small v-else-if="!isDelivery">Barang dibawa pelanggan sekarang. Tidak ada surat jalan.</small>
+                </div>
+
                 <template v-if="isPaymentNeeded">
-                <div v-for="(line, index) in lines" :key="index" class="payment__line">
+                <div v-for="(line, index) in moneyLines" :key="index" class="payment__line">
                     <div v-if="lines.length > 1" class="payment__line-head">
                         <b class="payment__line-title">Pembayaran {{ index + 1 }}</b>
-                        <q-btn flat round dense size="sm" icon="close" color="grey-7" class="payment__remove" :aria-label="`Hapus pembayaran ${index + 1}`" @click="removeLine(index)" />
+                        <q-btn flat round dense size="sm" icon="close" color="grey-7" class="payment__remove" :aria-label="`Hapus pembayaran ${index + 1}`" @click="removeLine(line)" />
                     </div>
                     <div class="payment__methods" role="group" aria-label="Metode pembayaran">
                         <q-btn
-                            v-for="method in paymentMethods"
+                            v-for="method in moneyMethods"
                             :key="method.value"
                             no-caps
                             :unelevated="line.method === method.value"
@@ -238,7 +325,6 @@ function confirm() {
                             :color="line.method === method.value ? 'primary' : 'grey-7'"
                             :icon="METHOD_ICONS[method.value] ?? 'payments'"
                             :label="method.label"
-                            :disable="isMethodDisabled(line, method.value)"
                             :aria-pressed="line.method === method.value"
                             class="payment__method"
                             @click="chooseMethod(line, method.value)"
@@ -259,7 +345,7 @@ function confirm() {
                         />
                     </div>
                     <q-input
-                        v-if="!['cash', 'cod'].includes(line.method)"
+                        v-if="line.method !== 'cash'"
                         v-model="line.reference"
                         outlined
                         dense
@@ -268,16 +354,30 @@ function confirm() {
                     />
                 </div>
 
+                <div v-if="codLine" class="payment__line payment__line--cod">
+                    <div class="payment__line-head">
+                        <b class="payment__line-title"><q-icon name="local_shipping" /> Bayar saat diantar (COD)</b>
+                        <q-btn flat round dense size="sm" icon="close" color="grey-7" class="payment__remove" aria-label="Batalkan bayar saat diantar" @click="toggleCod" />
+                    </div>
+                    <div class="payment__cod-amount">
+                        <b>{{ formatRupiah(codLine.amount) }}</b>
+                        <small>Sisa tagihan, dibayar pelanggan saat barang tiba. Cara bayarnya dipilih saat uang diterima, setelah surat jalan selesai.</small>
+                    </div>
+                </div>
+
                 <div class="payment__split">
                     <q-btn flat dense no-caps size="sm" color="grey-8" icon="add" label="Metode bayar lain" @click="addLine">
                         <q-tooltip>Bayar campur, mis. sebagian tunai, sisanya transfer</q-tooltip>
                     </q-btn>
+                    <q-btn v-if="isCodOffered && !codLine" flat dense no-caps size="sm" color="grey-8" icon="local_shipping" label="Bayar saat diantar (COD)" :disable="isCodChoiceDisabled" @click="toggleCod">
+                        <q-tooltip>Sisa tagihan dibayar saat barang tiba. Surat jalan dibuat bersama nota ini.</q-tooltip>
+                    </q-btn>
                 </div>
                 </template>
 
-                <q-input v-if="!collectingOrder" v-model="customerName" outlined dense maxlength="255" :label="isOrderMade ? 'Nama pelanggan (wajib untuk pesanan)' : isCod ? 'Nama pelanggan (wajib untuk COD)' : 'Nama pelanggan (opsional)'" class="payment__customer" />
+                <q-input v-if="!collectingOrder" v-model="customerName" outlined dense maxlength="255" :label="isOrderMade ? 'Nama pelanggan (wajib untuk pesanan)' : isDelivery ? 'Nama pelanggan (wajib untuk pengantaran)' : 'Nama pelanggan (opsional)'" class="payment__customer" />
 
-                <div v-if="isCod && isOrderMade" class="payment__delivery">
+                <div v-if="isDelivery && isOrderMade" class="payment__delivery">
                     <q-checkbox v-model="isDeliveryHeld" dense class="payment__held">
                         <span class="payment__held-text">
                             <b>Antar bersama pesanan</b>
@@ -286,8 +386,8 @@ function confirm() {
                     </q-checkbox>
                 </div>
 
-                <div v-if="isCod && !isDeliveryHeldNow" class="payment__delivery">
-                    <b>COD: surat jalan dibuat bersama nota ini</b>
+                <div v-if="isDelivery && !isDeliveryHeldNow" class="payment__delivery">
+                    <b>Diantar: surat jalan dibuat dan siap dicetak bersama nota ini</b>
 
                     <div v-if="isDeliveryFromOrder" class="payment__delivery-known">
                         <span><b>{{ delivery.recipient_name }}</b><template v-if="delivery.recipient_phone"> · {{ delivery.recipient_phone }}</template></span>
@@ -324,9 +424,10 @@ function confirm() {
                 </template>
             </q-card-section>
             <q-card-section v-if="isCovered && !isChangeFromCash" class="payment__warning">Kembalian hanya bisa diberikan dari pembayaran tunai.</q-card-section>
-            <q-card-section v-if="isCodWithDeposit" class="payment__warning">COD tidak bisa digabung dengan uang muka pesanan. Ganti metodenya atau kosongkan uang muka.</q-card-section>
+            <q-card-section v-if="isCodWithDeposit" class="payment__warning">COD tidak bisa digabung dengan uang muka pesanan. Batalkan bayar saat diantar atau kosongkan uang muka.</q-card-section>
+            <q-card-section v-else-if="isCodWithoutBalance" class="payment__warning">Pembayaran lain sudah menutup total, jadi tidak ada sisa untuk dibayar saat diantar. Batalkan COD atau kurangi jumlah yang dibayar sekarang.</q-card-section>
             <q-card-section v-else-if="isCod && !isCodTheRest" class="payment__warning">Jumlah COD harus sisa tagihan setelah pembayaran lain, tepat sampai total.</q-card-section>
-            <q-card-section v-else-if="isCod && !isDeliveryComplete" class="payment__warning">Isi nama pelanggan dan alamat pengantaran.</q-card-section>
+            <q-card-section v-else-if="isDelivery && !isDeliveryComplete" class="payment__warning">Isi nama pelanggan dan alamat pengantaran.</q-card-section>
 
             <q-card-actions align="right" class="payment__actions">
                 <q-btn flat no-caps label="Batal" :disable="isProcessing" @click="emit('update:modelValue', false)" />
@@ -508,8 +609,38 @@ function confirm() {
 
 .payment__split {
     display: flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
+    gap: 4px 12px;
     margin-top: -12px;
+}
+
+.payment__fulfillment {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.payment__fulfillment small {
+    color: var(--app-mute);
+}
+
+.payment__line--cod {
+    border-style: dashed;
+}
+
+.payment__cod-amount {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.payment__cod-amount b {
+    font-size: 20px;
+}
+
+.payment__cod-amount small {
+    color: var(--app-mute);
 }
 
 .payment__result {

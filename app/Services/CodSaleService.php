@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Enums\DeliveryNoteStatus;
 use App\Enums\PaymentMethod;
+use App\Enums\SaleFulfillment;
 use App\Enums\SaleStatus;
 use App\Exceptions\CodSaleException;
 use App\Models\CashShift;
@@ -60,8 +60,8 @@ class CodSaleService
     }
 
     /**
-     * The COD sales still waiting on their delivery, newest first, from any day: the ones to follow up or to void
-     * when the customer does not take the goods.
+     * The delivered receipts still waiting on their delivery, paid on delivery (COD) or already paid, newest first, from
+     * any day: the ones to follow up, or to void when a COD customer does not take the goods.
      *
      * @return Collection<int, Sale>
      */
@@ -71,7 +71,7 @@ class CodSaleService
     }
 
     /**
-     * How many COD sales wait for their delivery, so the till can say when its list shows only the newest ones.
+     * How many delivered receipts wait for their delivery, so the till can say when its list shows only the newest ones.
      */
     public function undeliveredCount(): int
     {
@@ -83,15 +83,13 @@ class CodSaleService
      */
     private function undeliveredSalesQuery(): Builder
     {
-        return Sale::query()
-            ->where('status', SaleStatus::Completed)
-            ->whereHas('payments', fn (Builder $payments) => $payments->where('method', PaymentMethod::Cod))
-            ->whereDoesntHave('deliveryNotes', fn (Builder $notes) => $notes->whereIn('status', DeliveryNoteStatus::withDeliveredGoods()));
+        return Sale::query()->pendingDelivery();
     }
 
     /**
      * The customer took the goods: every delivery note still on its way is sent and finished as delivered in full.
-     * Anything that came back is for the admin's delivery note page, where the quantities can be entered.
+     * Anything that came back is for the admin's delivery note page, where the quantities can be entered. It serves every
+     * delivered receipt, paid on delivery or not; a receipt taken at the store has nothing to deliver.
      *
      * @throws CodSaleException
      */
@@ -109,8 +107,8 @@ class CodSaleService
                 throw CodSaleException::notCompleted($lockedSale->status->label());
             }
 
-            if (! $lockedSale->isCod()) {
-                throw CodSaleException::notCod();
+            if ($lockedSale->fulfillment !== SaleFulfillment::Delivery && ! $lockedSale->isCod()) {
+                throw CodSaleException::notForDelivery();
             }
 
             $notesOnTheWay = $lockedSale->deliveryNotes->filter(fn (DeliveryNote $note): bool => $note->status->isUnfinished());

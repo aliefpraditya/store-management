@@ -7,10 +7,13 @@ import { printSheet } from '../../../Composables/printSheet';
 import { deliveryNoteStatusChipClass } from '../../../Composables/useDeliveryNoteStatus';
 import { usePrintTargets } from '../../../Composables/usePrintTargets';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
+import DeliveryNoteCodPanel from '../../../Components/DeliveryNoteCodPanel.vue';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
     note: { type: Object, required: true },
+    /** The money of the note's COD receipt, for those who may receive or approve it; null when there is none. @type {object|null} */
+    cod: { type: Object, default: null },
     /** @type {{id: number, name: string}[]} the drivers that can take the goods out */
     drivers: { type: Array, default: () => [] },
     settings_url: { type: String, default: null },
@@ -172,6 +175,8 @@ async function print() {
                 </tbody>
             </table>
         </article>
+
+        <DeliveryNoteCodPanel v-if="cod" :cod="cod" :return-sales="note.return_sales" />
 
         <q-dialog v-model="isShipOpen" persistent>
             <q-card class="complete">
