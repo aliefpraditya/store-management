@@ -126,6 +126,7 @@ Route::prefix('t/{tenant}')
         // A sheet is `signed` only when a POST first counts its print and hands out the address (receipts, orders, delivery notes); report sheets that anyone with this access may open again need no signature.
         Route::middleware('permission:reports.view')->group(function () {
             Route::get('reports/sales', [ReportController::class, 'sales'])->name('tenant.reports.sales');
+            Route::get('reports/sales/receipts', [ReportController::class, 'salesReceipts'])->name('tenant.reports.sales.receipts');
             Route::get('reports/sales/sheet', [ReportController::class, 'salesSheet'])->name('tenant.reports.sales.sheet');
             Route::get('reports/sales/detail-sheet', [ReportController::class, 'salesDetailSheet'])->name('tenant.reports.sales.detail-sheet');
             Route::get('reports/sales/detail-export', [ReportController::class, 'salesDetailExport'])->name('tenant.reports.sales.detail-export');

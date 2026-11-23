@@ -450,6 +450,7 @@ class SalesReportTest extends TestCase
                 ->where('groups.data.0.profit', '20000.00')
                 ->where('groups.data.0.margin_percent', '40.0')
                 ->where('groups.data.0.share_percent', '71.4')
+                ->where('groups.revenue_total', '70000.00')
                 ->where('groups.data.1.name', 'Cat')
                 ->where('groups.data.1.share_percent', '28.6')));
     }
@@ -503,7 +504,8 @@ class SalesReportTest extends TestCase
                 ->where('groups.total', 12)
                 ->where('groups.last_page', 3)
                 ->where('groups.from', 1)
-                ->where('groups.to', 5)));
+                ->where('groups.to', 5)
+                ->where('groups.revenue_total', '120000.00')));
 
         $this->actingAs($this->admin)->get($this->url(['groups_per_page' => 10, 'groups_page' => 2]))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload
@@ -1092,14 +1094,114 @@ class SalesReportTest extends TestCase
             ->missing('report.days.0.receipts.0.cashier_name'));
     }
 
-    public function test_the_screen_gives_the_addresses_of_the_detail_sheet_and_export_for_its_period(): void
+    public function test_the_receipt_list_gives_the_addresses_of_the_detail_sheet_and_export_for_its_period(): void
     {
         $period = ['from' => today()->subDays(6)->toDateString(), 'to' => today()->toDateString()];
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url([], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->component('Tenant/Reports/SalesReceipts')
             ->where('urls.detail_sheet', $this->url($period, 'sales.detail-sheet'))
             ->where('urls.detail_export', $this->url($period, 'sales.detail-export'))
-            ->where('payment_method_options.1.value', 'transfer'));
+            ->where('payment_method_options.1.value', 'transfer')
+            ->where('per_page_options', [15, 30, 50]));
+    }
+
+    public function test_the_receipt_list_shows_every_receipt_newest_first_with_its_goods_and_payments(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->admin)->get($this->url([], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->missing('receipts')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('receipts.total', 4)
+                ->where('receipts.per_page', 15)
+                ->has('receipts.data', 4)
+                ->where('receipts.data', fn ($rows): bool => collect($rows)->pluck('sold_at')->sortDesc()->values()->all() === collect($rows)->pluck('sold_at')->all())
+                ->where('receipts.data.3.payments.0.label', 'Transfer')
+                ->where('receipts.data.3.items.0.name', 'Kuas')
+                ->where('receipts.data.3.items.0.subtotal', '30000.00')
+                ->where('receipts.data.3.status', 'completed')
+                ->missing('receipts.data.0.cashier_name')));
+    }
+
+    public function test_the_receipt_list_counts_only_receipts_that_stand_and_lists_the_voided_ones_marked(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->admin)->get($this->url([], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.receipt_count', 3)
+                ->where('summary.total', '100000.00')
+                ->where('receipts.data', fn ($rows): bool => collect($rows)->where('status', 'voided')->count() === 1)));
+    }
+
+    public function test_the_receipt_list_can_be_searched_by_number_or_customer(): void
+    {
+        $this->sellInAWeek();
+        $sale = $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+        $this->store->run(fn () => Sale::query()->whereKey($sale->id)->update(['customer_name' => 'Bu Siti']));
+
+        foreach ([$sale->number, 'siti'] as $term) {
+            $this->actingAs($this->admin)->get($this->url(['search' => $term], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+                ->where('filters.search', $term)
+                ->loadDeferredProps(fn (Assert $reload) => $reload
+                    ->where('receipts.total', 1)
+                    ->where('receipts.data.0.number', $sale->number)
+                    ->where('summary.receipt_count', 1)));
+        }
+    }
+
+    public function test_the_receipt_list_can_be_narrowed_to_one_payment_method(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->admin)->get($this->url(['method' => 'transfer'], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->where('filters.method', 'transfer')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('receipts.total', 1)
+                ->where('receipts.data.0.payments.0.label', 'Transfer')
+                ->where('summary.total', '30000.00')));
+
+        foreach (['nonsense', 'return_credit', ['transfer']] as $notAMethod) {
+            $this->actingAs($this->admin)->get($this->url(['method' => $notAMethod], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+                ->where('filters.method', '')
+                ->loadDeferredProps(fn (Assert $reload) => $reload->where('receipts.total', 4)));
+        }
+    }
+
+    public function test_the_receipt_list_is_paged_and_a_page_past_the_last_gives_the_last(): void
+    {
+        $this->sellDifferentProducts(17);
+
+        $this->actingAs($this->admin)->get($this->url([], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('receipts.data', 15)
+                ->where('receipts.last_page', 2)
+                ->where('receipts.from', 1)
+                ->where('receipts.to', 15)));
+
+        $this->actingAs($this->admin)->get($this->url(['page' => 99], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('receipts.data', 2)
+                ->where('receipts.current_page', 2)
+                ->where('receipts.from', 16)));
+
+        foreach (['7', '0', 'abc'] as $notAnOption) {
+            $this->actingAs($this->admin)->get($this->url(['per_page' => $notAnOption, 'page' => 'abc'], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload->where('receipts.per_page', 15)->where('receipts.current_page', 1)));
+        }
+
+        $this->actingAs($this->admin)->get($this->url(['per_page' => 30], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->has('receipts.data', 17)->where('receipts.last_page', 1)));
+    }
+
+    public function test_the_receipt_list_is_for_admins_only_and_covers_this_month_without_dates(): void
+    {
+        $this->actingAs($this->cashier)->get($this->url([], 'sales.receipts'))->assertForbidden();
+
+        $this->actingAs($this->admin)->get($this->urlWithoutPeriod([], 'sales.receipts'))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('period.from', today()->startOfMonth()->toDateString())
+            ->where('period.to', today()->endOfMonth()->toDateString()));
     }
 
     public function test_the_detail_sheet_adds_up_what_was_sold_per_product_and_says_when_it_was_made(): void

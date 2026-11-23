@@ -242,9 +242,10 @@ class SalesReportService
     /**
      * One page of the sales per category or per brand, from the same figures as the products (after returns, with the
      * dead stock loss), so the groups add up to the products. Products without a category or brand are one group of
-     * their own. `$sort` is `name`, `revenue`, `profit` or `margin`, `$direction` `asc` or `desc`.
+     * their own. `$sort` is `name`, `revenue`, `profit` or `margin`, `$direction` `asc` or `desc`. `revenue_total` is the
+     * revenue of every group, not only of the page, for a chart that folds the groups off the page into one.
      *
-     * @return array{data: list<array{id: int|null, name: string, product_count: int, revenue: string, cost: string, profit: string, margin_percent: string, share_percent: string}>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int, grouping: string, sort: string, direction: string}
+     * @return array{data: list<array{id: int|null, name: string, product_count: int, revenue: string, cost: string, profit: string, margin_percent: string, share_percent: string}>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int, grouping: string, sort: string, direction: string, revenue_total: string}
      */
     public function groupsPage(CarbonImmutable $from, CarbonImmutable $to, SalesGrouping $grouping, string $sort, string $direction, int $page, int $perPage): array
     {
@@ -284,7 +285,7 @@ class SalesReportService
             return ($direction === 'desc' ? -$order : $order) ?: mb_strtolower($first['name']) <=> mb_strtolower($second['name']);
         })->values();
 
-        return [...$this->paginate($sorted, $page, $perPage), 'grouping' => $grouping->value, 'sort' => $sort, 'direction' => $direction];
+        return [...$this->paginate($sorted, $page, $perPage), 'grouping' => $grouping->value, 'sort' => $sort, 'direction' => $direction, 'revenue_total' => $this->money($totalRevenue)];
     }
 
     /**

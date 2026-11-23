@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\PaymentMethod;
 use App\Enums\SaleStatus;
 use App\Models\CashShift;
 use App\Models\Sale;
@@ -13,13 +14,16 @@ use Illuminate\Pagination\LengthAwarePaginator;
 /**
  * Looks receipts up: the store-wide history for admins, and the receipts of one shift for the till's dialog.
  *
- * @phpstan-type HistoryFilters array{from: string|null, to: string|null, search: string|null, cashier_id: int|null, status: string|null, delivery?: string|null}
+ * @phpstan-type HistoryFilters array{from: string|null, to: string|null, search: string|null, cashier_id: int|null, status: string|null, delivery?: string|null, method?: string|null}
  * @phpstan-type HistoryTotals array{receipt_count: int, total: string}
  */
 class SaleHistoryService
 {
     /** The `delivery` filter value that narrows the history to receipts not delivered yet. */
     public const PENDING_DELIVERY_FILTER = 'pending';
+
+    /** How many receipts a page of the receipt list of the sales report may hold, the first being the one it starts with. */
+    public const RECEIPT_LIST_PER_PAGE_OPTIONS = [15, 30, 50];
 
     /**
      * @param  HistoryFilters  $filters
@@ -34,6 +38,26 @@ class SaleHistoryService
             ->orderByDesc('id')
             ->paginate($perPage)
             ->withQueryString();
+    }
+
+    /**
+     * A page of receipts with their lines and payments, for the receipt list of the sales report, newest first. A page
+     * past the last gives the last, so an address typed by hand never lands on an empty page.
+     *
+     * @param  HistoryFilters  $filters
+     * @return LengthAwarePaginator<int, Sale>
+     */
+    public function paginateWithLines(array $filters, int $page, int $perPage): LengthAwarePaginator
+    {
+        $listing = fn (int $pageNumber): LengthAwarePaginator => $this->query($filters)
+            ->with(['items', 'payments'])
+            ->orderByDesc('sold_at')
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $pageNumber);
+
+        $paginator = $listing($page);
+
+        return $page > $paginator->lastPage() ? $listing($paginator->lastPage()) : $paginator;
     }
 
     /**
@@ -112,6 +136,7 @@ class SaleHistoryService
             ->when($filters['to'], fn (Builder $query, string $to) => $query->where('business_date', '<=', $to))
             ->when(SaleStatus::tryFrom((string) $filters['status']), fn (Builder $query, SaleStatus $status) => $query->where('status', $status))
             ->when(($filters['delivery'] ?? null) === self::PENDING_DELIVERY_FILTER, fn (Builder $query) => $query->pendingDelivery())
+            ->when(PaymentMethod::tryFrom((string) ($filters['method'] ?? '')), fn (Builder $query, PaymentMethod $method) => $query->whereHas('payments', fn (Builder $payments) => $payments->where('method', $method)))
             ->when(filled($filters['search']), fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->where('number', 'like', "%{$filters['search']}%")
                 ->orWhere('customer_name', 'like', "%{$filters['search']}%")));

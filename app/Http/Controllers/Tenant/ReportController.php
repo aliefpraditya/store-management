@@ -9,17 +9,20 @@ use App\Http\Requests\Tenant\DateRangeRequest;
 use App\Http\Requests\Tenant\IdleStockRequest;
 use App\Http\Requests\Tenant\RestockRequest;
 use App\Http\Requests\Tenant\SalesDetailReportRequest;
+use App\Http\Requests\Tenant\SalesReceiptListRequest;
 use App\Http\Requests\Tenant\SalesReportRequest;
 use App\Http\Requests\Tenant\StockMovementRequest;
 use App\Http\Requests\Tenant\StockReportRequest;
 use App\Http\Resources\IdleStockResource;
 use App\Http\Resources\MovedProductResource;
 use App\Http\Resources\RestockResource;
+use App\Http\Resources\SalesReportReceiptResource;
 use App\Http\Resources\StockPositionResource;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Services\IdleStockService;
 use App\Services\RestockReportService;
+use App\Services\SaleHistoryService;
 use App\Services\SalesDetailReportService;
 use App\Services\SalesDetailSheetRows;
 use App\Services\SalesDetailWorkbook;
@@ -45,6 +48,7 @@ class ReportController extends Controller
         private readonly SalesDetailReportService $salesDetailReport,
         private readonly SalesDetailSheetRows $salesDetailSheets,
         private readonly SalesDetailWorkbook $salesDetailWorkbook,
+        private readonly SaleHistoryService $saleHistory,
         private readonly StockReportService $stockReport,
         private readonly IdleStockService $idleStock,
         private readonly RestockReportService $restockReport,
@@ -72,11 +76,45 @@ class ReportController extends Controller
             'group_per_page_options' => SalesReportService::GROUP_PER_PAGE_OPTIONS,
             'is_period_cut_back' => $period['is_cut_back'],
             'max_days' => SalesReportService::MAX_DAYS,
-            'payment_method_options' => PaymentMethod::saleOptions(),
             'urls' => [
                 'sheet' => route('tenant.reports.sales.sheet', ['tenant' => tenant('code'), 'from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()]),
-                'detail_sheet' => route('tenant.reports.sales.detail-sheet', ['tenant' => tenant('code'), 'from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()]),
-                'detail_export' => route('tenant.reports.sales.detail-export', ['tenant' => tenant('code'), 'from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()]),
+            ],
+        ]);
+    }
+
+    /**
+     * Every receipt of the period, newest first, each opening to its goods and payments, with the detailed sheet and the
+     * spreadsheet to print or save. The summary and the table are deferred props, each in a group of its own, so the page
+     * shows at once and they load side by side. Narrowing or turning the table asks for that part alone.
+     */
+    public function salesReceipts(SalesReceiptListRequest $request): Response
+    {
+        $period = $this->salesReport->period($request->fromDate(), $request->toDate());
+        $method = $request->paymentMethod();
+        $filters = [
+            'from' => $period['from']->toDateString(),
+            'to' => $period['to']->toDateString(),
+            'search' => $request->search() ?: null,
+            'cashier_id' => null,
+            'status' => null,
+            'method' => $method?->value,
+        ];
+
+        return Inertia::render('Tenant/Reports/SalesReceipts', [
+            'period' => ['from' => $filters['from'], 'to' => $filters['to']],
+            'filters' => ['search' => $request->search(), 'method' => $method?->value ?? ''],
+            'summary' => Inertia::defer(fn (): array => $this->saleHistory->totals($filters), 'summary'),
+            'receipts' => Inertia::defer(fn (): array => $this->tablePage(
+                $this->saleHistory->paginateWithLines($filters, $request->page(), $request->perPage()),
+                SalesReportReceiptResource::class,
+            ), 'receipts'),
+            'payment_method_options' => PaymentMethod::saleOptions(),
+            'per_page_options' => SaleHistoryService::RECEIPT_LIST_PER_PAGE_OPTIONS,
+            'is_period_cut_back' => $period['is_cut_back'],
+            'max_days' => SalesReportService::MAX_DAYS,
+            'urls' => [
+                'detail_sheet' => route('tenant.reports.sales.detail-sheet', ['tenant' => tenant('code'), 'from' => $filters['from'], 'to' => $filters['to']]),
+                'detail_export' => route('tenant.reports.sales.detail-export', ['tenant' => tenant('code'), 'from' => $filters['from'], 'to' => $filters['to']]),
             ],
         ]);
     }
