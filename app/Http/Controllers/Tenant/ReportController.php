@@ -14,6 +14,7 @@ use App\Http\Requests\Tenant\SalesReportRequest;
 use App\Http\Requests\Tenant\SalesReturnsRequest;
 use App\Http\Requests\Tenant\StockMovementRequest;
 use App\Http\Requests\Tenant\StockReportRequest;
+use App\Http\Requests\Tenant\StockSummaryRequest;
 use App\Http\Resources\IdleStockResource;
 use App\Http\Resources\MovedProductResource;
 use App\Http\Resources\RestockResource;
@@ -44,6 +45,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ReportController extends Controller
 {
+    /** How many products each ranked list of the stock summary holds: the best sellers and the ones that will run out first. */
+    private const SUMMARY_LIST_PRODUCTS = 5;
+
     public function __construct(
         private readonly SalesReportService $salesReport,
         private readonly SalesDetailReportService $salesDetailReport,
@@ -174,8 +178,9 @@ class ReportController extends Controller
     }
 
     /**
-     * The three parts of the report are deferred props, each in a group of its own, so the page shows at once and the
-     * parts load side by side. Narrowing or turning the table of products asks for that part alone.
+     * The positions tab: the headline figures that narrow the table, and the table of products. Both are deferred props,
+     * each in a group of its own, so the page shows at once and they load side by side. Narrowing or turning the table
+     * asks for that part alone.
      */
     public function stock(StockReportRequest $request): Response
     {
@@ -187,7 +192,6 @@ class ReportController extends Controller
                 'status' => $request->status()?->value ?? '',
             ],
             'summary' => Inertia::defer(fn (): array => $this->stockReport->summary(), 'summary'),
-            'groups' => Inertia::defer(fn (): array => $this->stockReport->groupsPage($request->groupsGrouping(), $request->groupsPage(), $request->groupsPerPage()), 'groups'),
             'positions' => Inertia::defer(fn (): array => $this->tablePage(
                 $this->stockReport->positionsPage($request->search(), $request->categoryId(), $request->brandId(), $request->status(), $request->positionsSort(), $request->positionsDirection(), $request->positionsPage(), $request->positionsPerPage()),
                 StockPositionResource::class,
@@ -197,7 +201,32 @@ class ReportController extends Controller
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
             'brands' => Brand::query()->orderBy('name')->get(['id', 'name']),
             'per_page_options' => StockReportService::PER_PAGE_OPTIONS,
-            'group_per_page_options' => StockReportService::GROUP_PER_PAGE_OPTIONS,
+        ]);
+    }
+
+    /**
+     * The summary tab of the stock report: charts of where the stock's money sits, how healthy the stock is, what sells the
+     * most, which products will run out first, and how much of the stock does not sell. The parts are deferred props, each in
+     * a group of its own, so the page shows at once and they load side by side; switching the groups between categories and
+     * brands, between what they are worth and how much there is (in one base unit), or the unit of the best sellers, asks for
+     * that part alone. The best sellers, the idle share and the restock figures use the defaults of their own tabs, and the
+     * page says so and links there to change them.
+     */
+    public function stockSummary(StockSummaryRequest $request): Response
+    {
+        $window = RestockReportService::WINDOW_OPTIONS[0];
+        $cover = RestockReportService::COVER_OPTIONS[0];
+
+        return Inertia::render('Tenant/Reports/StockSummary', [
+            'summary' => Inertia::defer(fn (): array => $this->stockReport->summary(), 'summary'),
+            'groups' => Inertia::defer(fn (): array => $this->stockReport->groupsPage($request->groupsGrouping(), $request->groupsMetric(), $request->groupsUnit(), 1, StockReportService::SUMMARY_TOP_GROUPS), 'groups'),
+            'best_sellers' => Inertia::defer(fn (): array => $this->stockReport->bestSellers($window, $request->bestSellersUnit(), self::SUMMARY_LIST_PRODUCTS), 'best_sellers'),
+            'idle' => Inertia::defer(fn (): array => $this->idleStock->summary(IdleStockService::DEFAULT_DAYS), 'idle'),
+            'restock' => Inertia::defer(fn (): array => $this->restockReport->summary($window, $cover), 'restock'),
+            'urgent' => Inertia::defer(fn (): array => $this->restockReport->mostUrgent($window, $cover, self::SUMMARY_LIST_PRODUCTS), 'urgent'),
+            'idle_days' => IdleStockService::DEFAULT_DAYS,
+            'restock_window' => $window,
+            'restock_cover' => $cover,
         ]);
     }
 

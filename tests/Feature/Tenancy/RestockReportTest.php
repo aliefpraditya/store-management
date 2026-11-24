@@ -12,6 +12,7 @@ use App\Models\Stock;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\RestockReportService;
 use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
@@ -127,6 +128,18 @@ class RestockReportTest extends TestCase
     private function namesAre(array $names): Closure
     {
         return fn (Collection $rows): bool => $rows->pluck('name')->all() === $names;
+    }
+
+    public function test_the_products_that_run_out_first_come_soonest_first_and_leave_out_those_that_do_not_sell(): void
+    {
+        $this->stockTheShelves();
+        $restock = app(RestockReportService::class);
+
+        $urgent = $this->store->run(fn (): array => $restock->mostUrgent(30, 14, 5));
+
+        $this->assertSame(['Tali', 'Kuas'], array_column($urgent, 'name'));
+        $this->assertSame(['0.0', '5.0'], array_column($urgent, 'days_left'));
+        $this->assertSame(['Tali'], array_column($this->store->run(fn (): array => $restock->mostUrgent(30, 14, 1)), 'name'));
     }
 
     public function test_only_users_who_may_see_reports_may_open_the_restock_report(): void

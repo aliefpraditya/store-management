@@ -8,6 +8,8 @@ const props = defineProps({
     formatValue: { type: Function, required: true },
     /** What the chart is of, for a screen reader, which is also read the legend. */
     label: { type: String, required: true },
+    /** What is said when the whole is nothing. */
+    emptyText: { type: String, default: 'Belum ada penjualan pada periode ini.' },
 });
 
 const CENTER = 70;
@@ -41,7 +43,7 @@ const isDimmed = (key) => hoveredKey.value !== null && hoveredKey.value !== key;
 </script>
 
 <template>
-    <p v-if="total <= 0" class="pie__empty">Belum ada penjualan pada periode ini.</p>
+    <p v-if="total <= 0" class="pie__empty">{{ emptyText }}</p>
     <div v-else class="pie">
         <svg class="pie__chart" viewBox="0 0 140 140" role="img" :aria-label="label">
             <template v-for="wedge in wedges" :key="wedge.key">

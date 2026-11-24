@@ -2,13 +2,12 @@
 
 namespace App\Http\Requests\Tenant;
 
-use App\Enums\SalesGrouping;
 use App\Enums\StockStatusFilter;
 use App\Services\StockReportService;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
- * The stock report screen: what the table of products is narrowed to, and the page, size and grouping of its tables.
+ * The stock positions screen: what the table of products is narrowed to, and its page, size and order.
  * Like the other report screens, a value that is not one of the options is left out as if it was not sent: the address
  * is typed by hand now and then, and it must not end in an error page.
  */
@@ -68,29 +67,6 @@ class StockReportRequest extends FormRequest
      */
     public function positionsDirection(): string
     {
-        $direction = $this->query('positions_direction');
-
-        if (in_array($direction, ['asc', 'desc'], true)) {
-            return $direction;
-        }
-
-        return $this->positionsSort() === 'name' ? 'asc' : 'desc';
-    }
-
-    public function groupsGrouping(): SalesGrouping
-    {
-        $grouping = $this->query('groups_by');
-
-        return (is_string($grouping) ? SalesGrouping::tryFrom($grouping) : null) ?? SalesGrouping::Category;
-    }
-
-    public function groupsPage(): int
-    {
-        return $this->positiveInteger('groups_page');
-    }
-
-    public function groupsPerPage(): int
-    {
-        return $this->optionOrFirst('groups_per_page', StockReportService::GROUP_PER_PAGE_OPTIONS);
+        return $this->directionOf('positions_direction', $this->positionsSort());
     }
 }

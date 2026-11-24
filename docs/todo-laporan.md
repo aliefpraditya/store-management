@@ -1,6 +1,6 @@
 # TODO — Laporan penjualan dan laporan stok
 
-Terakhir diperbarui: 24 Nov 2026. Commit di `main`: `5f9d119`, `8b9be09`, `97185d1`, `8377845`. Tab Retur & void beserta pembersihannya ada di commit terbaru di `main`. Belum ada yang di-push.
+Terakhir diperbarui: 24 Nov 2026. Commit di `main`: `5f9d119`, `8b9be09`, `97185d1`, `8377845`, `ec40769` (tab Retur & void). Tab Ringkasan laporan stok ada di commit terbaru di `main`. Belum ada yang di-push.
 
 ## Laporan penjualan
 
@@ -31,28 +31,24 @@ Terakhir diperbarui: 24 Nov 2026. Commit di `main`: `5f9d119`, `8b9be09`, `97185
 
 **Tab opsional (belum diputuskan):** Jam & hari ramai; Pengiriman (nota diantar yang belum sampai, COD belum disetor); Antar toko (Super Admin).
 
-## Laporan stok: tab Ringkasan (baru, grafik)
+## Laporan stok
 
-Tab pertama laporan stok, seperti Ringkasan di penjualan. Hasil diskusi 23 Nov. Tab jadi: **Ringkasan**, Posisi stok, Perlu restok, Tidak terjual, Pergerakan.
+### Sudah selesai
 
-| # | Grafik | Menjawab | Sumber data |
-|---|---|---|---|
-| 1 | Pie komposisi nilai stok (3 bagian: stok jual, dead stock, retur menunggu diperiksa; nilai modal) | Uang tertanam di mana, berapa yang sudah "mati" | `StockReportService::summary()` (`sellable_value`, `dead_stock.value`, `returns_waiting.value`) |
-| 2 | Batang bersegmen kondisi barang aktif: sehat, menipis, habis | Berapa barang yang perlu perhatian | `summary()`: habis = `out_of_stock_count`; menipis = `below_minimum_count` − `out_of_stock_count`; sehat = `products_count` − `below_minimum_count` |
-| 3 | Pie nilai stok per kategori/merek (5 teratas + Lainnya, tombol Kategori/Merek) | Modal paling banyak tertanam di kategori apa | `StockReportService::groupsPage()`; tambahkan `value_total` (seperti `revenue_total` di penjualan) |
-| 4 | Meter stok mengendap: porsi nilai stok jual yang tidak terjual 60 hari | Seberapa besar modal yang tidak berputar | `IdleStockService::summary(60)` (`stock_value`, `share_percent`) |
-| 5 | Batang peringkat 5 barang paling mendesak direstok (sisa hari stok) | Barang yang akan habis duluan | `RestockReportService::page()` urut `days_left`, ambil 5 |
-
-Di atasnya: beberapa angka utama (nilai stok jual, estimasi biaya restok dari `RestockReportService::summary()`, dan jumlah stok negatif sebagai peringatan merah kalau ada). Grafik pergerakan stok per hari **ditunda** (butuh hitungan baru).
-
-Keputusan:
-- **Stok negatif bukan bagian grafik 2.** Barang bisa negatif sekaligus di bawah minimum, jadi bagiannya tumpang tindih; tampilkan sebagai angka peringatan terpisah.
-- **Tabel "Nilai stok jual per kategori/merek" dihapus dari tab Posisi stok** (digantikan grafik 3): hapus prop `groups` dan `group_per_page_options` di `ReportController::stock()`, `groupingOptions`/tabel/paginasinya di `Stock.vue`, dan pindahkan tes grup di `StockReportTest` ke route Ringkasan.
-- **Nilai bawaan dipakai, tetapi dijelaskan di layar.** Meter (4) memakai 60 hari; batang restok (5) memakai pengaturan bawaan tab Perlu restok (penjualan 30 hari terakhir, stok dianggap cukup 14 hari). Di bawah tiap grafik tulis penjelasannya dan beri tautan ke tab Tidak terjual / Perlu restok untuk mengubahnya. Ambil nilai dari konstanta `IdleStockService::DEFAULT_DAYS`, `RestockReportService::WINDOW_OPTIONS[0]`, `COVER_OPTIONS[0]`, jangan ditulis ulang.
-- Semua nilai stok adalah estimasi (stok × harga beli terakhir); peringatan "N barang belum punya harga beli" tetap ditampilkan.
-- Tanpa izin baru (`reports.view`), tanpa library baru. Pakai ulang `PieChart` dan `RankedBars`; komponen baru yang dibutuhkan: batang bersegmen (grafik 2, satu keseluruhan ≤ 6 bagian, dengan legenda) dan meter (grafik 4, satu rasio terhadap total, bukan pie dua bagian).
-- Tiap bagian dimuat sebagai prop tertunda (deferred) dalam grup sendiri, seperti halaman laporan lain, supaya halaman tampil seketika.
-- Menu samping "Laporan Stok" sekarang menuju `stock_report_url` (Posisi stok). Supaya mendarat di Ringkasan: tambahkan kunci URL baru untuk Ringkasan, arahkan menu ke situ, dan biarkan `tenant.reports.stock` tetap Posisi stok (menghindari memindahkan banyak tes). Periksa juga penanda menu aktif di `StoreLayout.vue`.
+- **Tab Ringkasan** (`reports/stock`, 24 Nov): tab pertama, hanya grafik. Tab sekarang: Ringkasan, Posisi stok, Perlu restok, Tidak terjual, Pergerakan. Isinya:
+  - Angka utama: nilai stok jual (estimasi), estimasi biaya restok, dan jumlah stok negatif (kartu merah, hanya bila ada).
+  - Pie uang tertanam di stok (stok jual, dead stock, retur menunggu diperiksa; nilai modal).
+  - Batang bersegmen kondisi barang aktif: sehat, menipis, habis, dengan tautan ke Posisi stok yang sudah tersaring.
+  - Pie stok jual per kategori atau merek (5 teratas + Lainnya, tombol Kategori/Merek), bisa diurutkan menurut **Nilai** (modal) atau **Jumlah stok** (enum `StockGroupMetric`). Jumlah stok hanya dijumlahkan **dalam satu satuan dasar** yang dipilih lewat dropdown (kg, sak, pcs tidak bisa dijumlahkan): barang bersatuan lain tidak ikut, bawaannya satuan yang paling banyak dipakai barang berstok (`StockReportService::stockUnits()`), dan nilai di bawah nama adalah nilai modal barang-barang satuan itu. Pada mode Nilai, `in_stock_quantity` dan `quantity_total` bernilai `null` karena akan menjumlahkan satuan berbeda.
+  - Meter stok mengendap (porsi nilai stok jual yang tidak terjual 60 hari).
+  - **Paling cepat habis:** batang peringkat 5 barang yang paling banyak terjual dalam 30 hari terakhir (nota selesai, retur belum dikurangkan), dalam satu satuan dasar yang dipilih lewat dropdown dengan alasan yang sama (`StockReportService::bestSellers()`).
+  - **Perkiraan stok habis:** bagian terpisah berisi 5 barang dengan sisa hari stok paling sedikit (`RestockReportService::mostUrgent()`), memakai penjualan 30 hari dan stok cukup 14 hari seperti tab Perlu restok.
+- **Nilai bawaan dijelaskan di layar:** meter memakai 60 hari tanpa penjualan (`IdleStockService::DEFAULT_DAYS`); batang restok memakai penjualan 30 hari terakhir dan stok dianggap cukup 14 hari (`RestockReportService::WINDOW_OPTIONS[0]`, `COVER_OPTIONS[0]`). Di bawah tiap grafik ada tautan ke tab Tidak terjual / Perlu restok untuk mengubahnya.
+- **Rumus kondisi barang diperbaiki dari rencana awal.** "Di bawah minimum" hanya berlaku bila barang punya minimum (> 0), jadi barang habis tanpa minimum tidak termasuk di dalamnya dan rumus `below_minimum − out_of_stock` bisa salah. Kini `StockReportService::summary()` memberi `low_stock_count` (di bawah minimum, belum habis) dan `healthy_count` (sisanya) yang tidak tumpang tindih dengan `out_of_stock_count`. Stok negatif tetap angka terpisah.
+- **Rute dipindah:** Ringkasan memakai `reports/stock` (nama `tenant.reports.stock`, kunci URL `stock_report_url`, jadi menu samping dan penanda menu aktif tidak perlu diubah), dan Posisi stok pindah ke `reports/stock/positions` (`tenant.reports.stock.positions`, `stock_positions_url`).
+- **Tabel "Nilai stok jual per kategori/merek" dihapus dari Posisi stok** (digantikan pie); tes grupnya pindah ke `StockSummaryReportTest`. `StockSummaryRequest` baru; `StockReportRequest` tinggal untuk tabel posisi. `RestockReportService::mostUrgent()` baru.
+- **Komponen baru:** `SegmentedBar.vue` (batang bersegmen tinggi, persen di dalam blok bila muat, legenda nama dan jumlah) dan `MeterBar.vue` (satu rasio; trek biru muda). `PieChart` punya prop `emptyText`. Warna kondisi memakai warna status tetap (hijau, kuning, merah) dengan label di legenda.
+- Grafik pergerakan stok per hari **ditunda** (butuh hitungan baru).
 
 ## Perlu dicek manual / belum diverifikasi
 
@@ -61,7 +57,8 @@ Keputusan:
 - Nomor halaman "Hal. X dari Y" di PDF rinci memakai CSS margin box (Chrome/Edge versi baru). Cek apakah muncul di printer toko.
 - Efek hover pada tab baru belum terlihat langsung di tangkapan layar; cek dengan kursor.
 - `composer require openspout/openspout` menampilkan 9 advisori keamanan pada 6 paket; belum diperiksa (`composer audit`).
-- Halaman penjualan dan komponen grafik sudah dicoba di browser headless dengan data contoh, belum dengan data asli.
+- Halaman penjualan, Ringkasan stok dan komponen grafik sudah dicoba di browser headless dengan data contoh, belum dengan data asli.
+- Ringkasan stok: cek dengan data asli apakah blok kuning (menipis) dan merah (habis) di batang kondisi terbaca bila kecil (persen hanya dicetak di blok selebar 9% ke atas; sisanya lewat legenda dan tooltip).
 
 ## Catatan teknis
 

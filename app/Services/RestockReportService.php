@@ -99,6 +99,30 @@ class RestockReportService
     }
 
     /**
+     * The products that will run out first: of those that need buying and sell, the ones with the fewest days of stock left,
+     * the soonest first (a product that is out has 0 days). A product that does not sell has no days left and is not here.
+     * `days_left` is a decimal string.
+     *
+     * @return list<array{id: int, name: string, days_left: string}>
+     */
+    public function mostUrgent(int $window, int $cover, int $limit): array
+    {
+        return $this->productsToBuy($window, $cover)
+            ->whereNotNull('days_left')
+            ->orderBy('days_left')
+            ->orderBy('products.name')
+            ->orderBy('products.id')
+            ->limit($limit)
+            ->get(['products.id', 'products.name', 'days_left'])
+            ->map(fn (Product $product): array => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'days_left' => (string) BigDecimal::of((string) $product->getAttribute('days_left'))->toScale(1, RoundingMode::HalfUp),
+            ])
+            ->all();
+    }
+
+    /**
      * One page of the products to buy, in the order asked (`$sort` is one of {@see self::sorts()}, `$direction` `asc` or
      * `desc`; products that tie keep a stable order by name, so a page does not shuffle between requests), narrowed to a
      * category when asked. A page past the last one gives the last. Every product carries `sellable_stock`,

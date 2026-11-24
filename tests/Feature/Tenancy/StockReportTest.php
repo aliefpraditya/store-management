@@ -44,7 +44,7 @@ class StockReportTest extends TestCase
      */
     private function url(array $query = []): string
     {
-        return route('tenant.reports.stock', ['tenant' => $this->store->code, ...$query]);
+        return route('tenant.reports.stock.positions', ['tenant' => $this->store->code, ...$query]);
     }
 
     /**
@@ -117,7 +117,6 @@ class StockReportTest extends TestCase
     {
         $this->actingAs($this->admin)->get($this->url())->assertOk()->assertInertia(fn (Assert $page) => $page
             ->missing('summary')
-            ->missing('groups')
             ->missing('positions')
             ->has('statuses', 5)
             ->where('filters', ['search' => '', 'category' => null, 'brand' => null, 'status' => '']));
@@ -132,6 +131,8 @@ class StockReportTest extends TestCase
                 'products_count' => 5,
                 'below_minimum_count' => 1,
                 'out_of_stock_count' => 1,
+                'low_stock_count' => 1,
+                'healthy_count' => 3,
                 'negative_count' => 1,
                 'sellable_value' => '62500.00',
                 'dead_stock' => ['products_count' => 1, 'value' => '1000.00'],
@@ -145,8 +146,7 @@ class StockReportTest extends TestCase
         $this->assertReport(fn (Assert $report) => $report
             ->where('summary.products_count', 0)
             ->where('summary.sellable_value', '0.00')
-            ->where('groups.total', 0)
-            ->where('groups.data', [])
+            ->where('summary.healthy_count', 0)
             ->where('positions.total', 0)
             ->where('positions.data', []));
     }
@@ -294,35 +294,6 @@ class StockReportTest extends TestCase
         $this->assertReport(fn (Assert $report) => $report->where('positions.data', $this->namesAre(['Diskon 50% Cat'])), ['search' => '%']);
     }
 
-    public function test_the_stock_value_is_shared_out_per_category_with_the_biggest_first(): void
-    {
-        $this->store->run(function (): void {
-            Category::factory()->create(['name' => 'Alat']);
-            Category::factory()->create(['name' => 'Cat']);
-        });
-        [$tools, $paint] = $this->store->run(fn (): array => [Category::query()->where('name', 'Alat')->value('id'), Category::query()->where('name', 'Cat')->value('id')]);
-        $this->putInStock($this->product('Palu', '2000', ['category_id' => $tools]), '1');
-        $this->putInStock($this->product('Cat Tembok', '6000', ['category_id' => $paint]), '10');
-
-        $this->assertReport(fn (Assert $report) => $report
-            ->where('groups.grouping', 'category')
-            ->where('groups.total', 2)
-            ->where('groups.data.0', ['id' => $paint, 'name' => 'Cat', 'products_count' => 1, 'value' => '60000.00', 'share_percent' => '96.8'])
-            ->where('groups.data.1', ['id' => $tools, 'name' => 'Alat', 'products_count' => 1, 'value' => '2000.00', 'share_percent' => '3.2']));
-    }
-
-    public function test_products_without_a_brand_are_one_group_of_their_own(): void
-    {
-        $brandId = $this->store->run(fn (): int => Brand::factory()->create(['name' => 'Dulux'])->id);
-        $this->putInStock($this->product('Cat Tembok', '1000', ['brand_id' => $brandId]), '3');
-        $this->putInStock($this->product('Palu', '1000'), '1');
-
-        $this->assertReport(fn (Assert $report) => $report
-            ->where('groups.grouping', 'brand')
-            ->where('groups.data.0', ['id' => $brandId, 'name' => 'Dulux', 'products_count' => 1, 'value' => '3000.00', 'share_percent' => '75.0'])
-            ->where('groups.data.1', ['id' => null, 'name' => '(Tanpa merek)', 'products_count' => 1, 'value' => '1000.00', 'share_percent' => '25.0']), ['groups_by' => 'brand']);
-    }
-
     public function test_a_page_past_the_last_gives_the_last_one(): void
     {
         $this->store->run(fn () => Product::factory()->count(16)->create());
@@ -342,7 +313,6 @@ class StockReportTest extends TestCase
 
         $this->assertReport(fn (Assert $report) => $report
             ->where('positions.per_page', 15)
-            ->where('positions.total', 6)
-            ->where('groups.per_page', 5), ['positions_per_page' => 7, 'groups_per_page' => 7, 'status' => 'bogus', 'category' => 'abc', 'brand' => '-4']);
+            ->where('positions.total', 6), ['positions_per_page' => 7, 'status' => 'bogus', 'category' => 'abc', 'brand' => '-4']);
     }
 }

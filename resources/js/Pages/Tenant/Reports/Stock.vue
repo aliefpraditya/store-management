@@ -8,15 +8,13 @@ import { formatQuantity, formatStock } from '../../../Composables/useQuantityFor
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 /**
- * `summary`, `groups` and `positions` are deferred props, each in a group of its own: the page shows at once and each
- * part fills in when the server has it, so they are undefined until then and only read inside a `<Deferred>` that
- * waits for them.
+ * `summary` and `positions` are deferred props, each in a group of its own: the page shows at once and each part fills
+ * in when the server has it, so they are undefined until then and only read inside a `<Deferred>` that waits for them.
  */
 const props = defineProps({
     /** What the table of products is narrowed to, as the address holds it. */
     filters: { type: Object, required: true },
     summary: { type: Object, default: undefined },
-    groups: { type: Object, default: undefined },
     positions: { type: Object, default: undefined },
     /** The stock conditions the table can be narrowed to, `{value, label}`. */
     statuses: { type: Array, required: true },
@@ -24,14 +22,7 @@ const props = defineProps({
     brands: { type: Array, required: true },
     /** The page sizes the table of products offers. */
     per_page_options: { type: Array, required: true },
-    /** The page sizes the table per category or brand offers. */
-    group_per_page_options: { type: Array, required: true },
 });
-
-const groupingOptions = [
-    { label: 'Kategori', value: 'category' },
-    { label: 'Merek', value: 'brand' },
-];
 
 const page = usePage();
 
@@ -58,9 +49,6 @@ function currentQuery(change = {}) {
         positions_per_page: props.positions?.per_page,
         positions_sort: props.positions?.sort,
         positions_direction: props.positions?.direction,
-        groups_by: props.groups?.grouping,
-        groups_page: props.groups?.current_page,
-        groups_per_page: props.groups?.per_page,
         ...change,
     };
 }
@@ -116,10 +104,6 @@ const sortState = (column) => (props.positions?.sort === column ? (props.positio
 
 const showPositionsPage = (positionsPage) => reloadParts(['positions'], { positions_page: positionsPage });
 const changePositionsPerPage = (perPage) => reloadParts(['positions'], { positions_page: 1, positions_per_page: perPage });
-
-const showGroupsPage = (groupsPage) => reloadParts(['groups'], { groups_page: groupsPage });
-const changeGroupsPerPage = (perPage) => reloadParts(['groups'], { groups_page: 1, groups_per_page: perPage });
-const changeGrouping = (grouping) => reloadParts(['groups'], { groups_page: 1, groups_by: grouping });
 
 /**
  * Whether a product with stock has no purchase price, so it counts for nothing in the value.
@@ -178,73 +162,6 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0 && (Number(p
                 </button>
             </div>
         </Deferred>
-
-        <section class="card">
-            <div class="card__head">
-                <h2>Nilai stok jual per {{ groups?.grouping === 'brand' ? 'merek' : 'kategori' }} <small>(estimasi)</small></h2>
-                <q-btn-toggle
-                    :model-value="groups?.grouping ?? 'category'"
-                    :options="groupingOptions"
-                    no-caps
-                    unelevated
-                    dense
-                    toggle-color="primary"
-                    color="grey-3"
-                    text-color="grey-8"
-                    @update:model-value="changeGrouping"
-                />
-            </div>
-            <Deferred data="groups">
-                <template #fallback>
-                    <q-skeleton height="200px" />
-                </template>
-
-                <template #default="{ reloading }">
-                    <p v-if="groups.total === 0" class="empty">Belum ada barang.</p>
-                    <div v-else :class="{ 'is-reloading': reloading }">
-                        <table class="table">
-                            <thead>
-                                <tr><th>{{ groups.grouping === 'brand' ? 'Merek' : 'Kategori' }}</th><th class="table__right">Barang</th><th class="table__right">Nilai stok jual</th><th class="table__right">Porsi</th></tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="group in groups.data" :key="group.id ?? 'none'">
-                                    <td>{{ group.name }}</td>
-                                    <td class="table__right">{{ group.products_count }}</td>
-                                    <td class="table__right"><b>{{ formatRupiah(group.value) }}</b></td>
-                                    <td class="table__right">{{ group.share_percent }}%</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <div class="pager">
-                            <span class="pager__range">{{ groups.from }}–{{ groups.to }} dari {{ groups.total }} {{ groups.grouping === 'brand' ? 'merek' : 'kategori' }}</span>
-                            <div class="pager__controls">
-                                <q-select
-                                    :model-value="groups.per_page"
-                                    :options="group_per_page_options"
-                                    outlined
-                                    dense
-                                    behavior="menu"
-                                    :option-label="(option) => `${option} per halaman`"
-                                    class="pager__per-page"
-                                    aria-label="Jumlah baris per halaman"
-                                    @update:model-value="changeGroupsPerPage"
-                                />
-                                <q-pagination
-                                    v-if="groups.last_page > 1"
-                                    :model-value="groups.current_page"
-                                    :max="groups.last_page"
-                                    :max-pages="5"
-                                    direction-links
-                                    boundary-links
-                                    color="primary"
-                                    @update:model-value="showGroupsPage"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </template>
-            </Deferred>
-        </section>
 
         <section ref="positionsCard" class="card">
             <h2>Posisi stok per barang</h2>
@@ -442,19 +359,6 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0 && (Number(p
     font-weight: 400;
 }
 
-.card__head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px 16px;
-    margin-bottom: 12px;
-}
-
-.card__head h2 {
-    margin: 0;
-}
-
 .filters {
     display: flex;
     flex-wrap: wrap;
@@ -572,11 +476,6 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0 && (Number(p
 .is-reloading {
     opacity: 0.5;
     transition: opacity 0.15s;
-}
-
-.empty {
-    margin: 0;
-    color: var(--app-mute);
 }
 
 .note {
