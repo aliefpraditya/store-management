@@ -57,8 +57,11 @@ class ReportController extends Controller
     ) {}
 
     /**
-     * The parts of the report are deferred props, each in a group of its own, so the page shows at once and the parts
-     * load side by side; turning a page of the products, or of the groups, asks for that one alone.
+     * The summary tab: figures and charts. The parts are deferred props, each in a group of its own, so the page shows at
+     * once and the parts load side by side; switching the groups between categories and brands asks for that one alone.
+     * The products and the groups are only the biggest few ({@see SalesReportService::SUMMARY_TOP_PRODUCTS}, {@see
+     * SalesReportService::SUMMARY_TOP_GROUPS}), whatever page or size the address names: the tables to page through are
+     * the business of {@see self::salesProducts()}.
      */
     public function sales(SalesReportRequest $request): Response
     {
@@ -69,16 +72,34 @@ class ReportController extends Controller
             'summary' => Inertia::defer(fn (): array => $this->salesReport->summary($period['from'], $period['to']), 'summary'),
             'comparison' => Inertia::defer(fn (): array => $this->salesReport->comparison($period['from'], $period['to']), 'comparison'),
             'payments' => Inertia::defer(fn (): array => $this->salesReport->payments($period['from'], $period['to']), 'payments'),
-            'products' => Inertia::defer(fn (): array => $this->salesReport->productsPage($period['from'], $period['to'], $request->productsPage(), $request->productsPerPage()), 'products'),
-            'groups' => Inertia::defer(fn (): array => $this->salesReport->groupsPage($period['from'], $period['to'], $request->groupsGrouping(), $request->groupsSort(), $request->groupsDirection(), $request->groupsPage(), $request->groupsPerPage()), 'groups'),
+            'products' => Inertia::defer(fn (): array => $this->salesReport->productsPage($period['from'], $period['to'], SalesReportService::PRODUCT_SORTS[0], 'desc', 1, SalesReportService::SUMMARY_TOP_PRODUCTS), 'products'),
+            'groups' => Inertia::defer(fn (): array => $this->salesReport->groupsPage($period['from'], $period['to'], $request->groupsGrouping(), SalesReportService::GROUP_SORTS[0], 'desc', 1, SalesReportService::SUMMARY_TOP_GROUPS), 'groups'),
             'return_details' => Inertia::defer(fn (): array => $this->salesReport->returnDetails($period['from'], $period['to']), 'return_details'),
-            'per_page_options' => SalesReportService::PER_PAGE_OPTIONS,
-            'group_per_page_options' => SalesReportService::GROUP_PER_PAGE_OPTIONS,
             'is_period_cut_back' => $period['is_cut_back'],
             'max_days' => SalesReportService::MAX_DAYS,
             'urls' => [
                 'sheet' => route('tenant.reports.sales.sheet', ['tenant' => tenant('code'), 'from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()]),
             ],
+        ]);
+    }
+
+    /**
+     * The tables of what was sold: the profit per product and the sales per category or brand, each paged and ordered on
+     * the server, so the order holds across pages. Both are deferred props, each in a group of its own, so the page shows at once and
+     * they load side by side; turning or ordering one asks for that one alone.
+     */
+    public function salesProducts(SalesReportRequest $request): Response
+    {
+        $period = $this->salesReport->period($request->fromDate(), $request->toDate());
+
+        return Inertia::render('Tenant/Reports/SalesProducts', [
+            'period' => ['from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()],
+            'products' => Inertia::defer(fn (): array => $this->salesReport->productsPage($period['from'], $period['to'], $request->productsSort(), $request->productsDirection(), $request->productsPage(), $request->productsPerPage()), 'products'),
+            'groups' => Inertia::defer(fn (): array => $this->salesReport->groupsPage($period['from'], $period['to'], $request->groupsGrouping(), $request->groupsSort(), $request->groupsDirection(), $request->groupsPage(), $request->groupsPerPage()), 'groups'),
+            'per_page_options' => SalesReportService::PER_PAGE_OPTIONS,
+            'group_per_page_options' => SalesReportService::GROUP_PER_PAGE_OPTIONS,
+            'is_period_cut_back' => $period['is_cut_back'],
+            'max_days' => SalesReportService::MAX_DAYS,
         ]);
     }
 

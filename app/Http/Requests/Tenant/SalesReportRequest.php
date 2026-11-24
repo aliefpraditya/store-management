@@ -24,6 +24,21 @@ class SalesReportRequest extends DateRangeRequest
         return $this->optionOrFirst('products_per_page', SalesReportService::PER_PAGE_OPTIONS);
     }
 
+    public function productsSort(): string
+    {
+        return $this->optionOrFirst('products_sort', SalesReportService::PRODUCT_SORTS);
+    }
+
+    /**
+     * The order the products are listed in: names run A to Z and the figures biggest first, unless the address says so.
+     *
+     * @return 'asc'|'desc'
+     */
+    public function productsDirection(): string
+    {
+        return $this->directionOf('products_direction', $this->productsSort());
+    }
+
     public function groupsGrouping(): SalesGrouping
     {
         $grouping = $this->query('groups_by');
@@ -53,12 +68,20 @@ class SalesReportRequest extends DateRangeRequest
      */
     public function groupsDirection(): string
     {
-        $direction = $this->query('groups_direction');
+        return $this->directionOf('groups_direction', $this->groupsSort());
+    }
+
+    /**
+     * @return 'asc'|'desc'
+     */
+    private function directionOf(string $key, string $sort): string
+    {
+        $direction = $this->query($key);
 
         if (in_array($direction, ['asc', 'desc'], true)) {
             return $direction;
         }
 
-        return $this->groupsSort() === 'name' ? 'asc' : 'desc';
+        return $sort === 'name' ? 'asc' : 'desc';
     }
 }

@@ -68,11 +68,22 @@ class SalesReportService
     /** How many rows a table of the screen may show per page, the first being the one it starts with. */
     public const PER_PAGE_OPTIONS = [7, 15, 30];
 
+    /** How many products the summary tab ranks, and how many categories or brands it shows before folding the rest into one. */
+    public const SUMMARY_TOP_PRODUCTS = 7;
+
+    public const SUMMARY_TOP_GROUPS = 5;
+
     /** The page sizes of the table per category or brand, which is a shorter list. */
     public const GROUP_PER_PAGE_OPTIONS = [5, 10];
 
     /** What the table per category or brand can be ordered by, the first being the order it starts in. */
-    public const GROUP_SORTS = ['revenue', 'profit', 'margin', 'name'];
+    public const GROUP_SORTS = ['revenue', 'profit', 'margin', 'name', 'products', 'share'];
+
+    /** What the table of products can be ordered by, the first being the order it starts in. */
+    public const PRODUCT_SORTS = ['profit', 'name', 'quantity', 'revenue', 'cost', 'margin'];
+
+    /** The column of a row an order name stands for, where it is not the name itself. */
+    private const SORT_FIELDS = ['margin' => 'margin_percent', 'share' => 'share_percent', 'products' => 'product_count'];
 
     /**
      * The period asked for, made one the report can give. A period needs both its days: with either missing the report
@@ -230,19 +241,42 @@ class SalesReportService
     }
 
     /**
-     * One page of the profit per product, best first. A page past the last one gives the last.
+     * One page of the profit per product, in the order asked for (see {@see self::PRODUCT_SORTS}: the profit, biggest first,
+     * to begin with). A page past the last one gives the last. `$sort` is one of {@see self::PRODUCT_SORTS}, `$direction`
+     * `asc` or `desc`.
      *
-     * @return array{data: list<ReportProduct>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int}
+     * @return array{data: list<ReportProduct>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int, sort: string, direction: string}
      */
-    public function productsPage(CarbonImmutable $from, CarbonImmutable $to, int $page, int $perPage): array
+    public function productsPage(CarbonImmutable $from, CarbonImmutable $to, string $sort, string $direction, int $page, int $perPage): array
     {
-        return $this->paginate($this->productRows($from, $to), $page, $perPage);
+        return [...$this->paginate($this->inOrder($this->productRows($from, $to), $sort, $direction), $page, $perPage), 'sort' => $sort, 'direction' => $direction];
+    }
+
+    /**
+     * Rows ordered by one of their columns, either way. The figures are compared as numbers and the names without regard to
+     * case; rows that tie keep a stable order by name, so a page does not shuffle between requests.
+     *
+     * @template TRow of array<string, mixed>
+     *
+     * @param  Collection<int|string, TRow>  $rows
+     * @return Collection<int, TRow>
+     */
+    private function inOrder(Collection $rows, string $sort, string $direction): Collection
+    {
+        $field = self::SORT_FIELDS[$sort] ?? $sort;
+        $sortValue = fn (array $row): float|string => $field === 'name' ? mb_strtolower($row['name']) : (float) $row[$field];
+
+        return $rows->sort(function (array $first, array $second) use ($sortValue, $direction): int {
+            $order = $sortValue($first) <=> $sortValue($second);
+
+            return ($direction === 'desc' ? -$order : $order) ?: mb_strtolower($first['name']) <=> mb_strtolower($second['name']);
+        })->values();
     }
 
     /**
      * One page of the sales per category or per brand, from the same figures as the products (after returns, with the
      * dead stock loss), so the groups add up to the products. Products without a category or brand are one group of
-     * their own. `$sort` is `name`, `revenue`, `profit` or `margin`, `$direction` `asc` or `desc`. `revenue_total` is the
+     * their own. `$sort` is one of {@see self::GROUP_SORTS}, `$direction` `asc` or `desc`. `revenue_total` is the
      * revenue of every group, not only of the page, for a chart that folds the groups off the page into one.
      *
      * @return array{data: list<array{id: int|null, name: string, product_count: int, revenue: string, cost: string, profit: string, margin_percent: string, share_percent: string}>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int, grouping: string, sort: string, direction: string, revenue_total: string}
@@ -276,16 +310,7 @@ class SalesReportService
                 ];
             });
 
-        $sortValue = fn (array $group): float|string => $sort === 'name' ? mb_strtolower($group['name']) : (float) $group[$sort === 'margin' ? 'margin_percent' : $sort];
-
-        // Groups that tie keep a stable order by name, so a page does not shuffle between requests.
-        $sorted = $groups->sort(function (array $first, array $second) use ($sortValue, $direction): int {
-            $order = $sortValue($first) <=> $sortValue($second);
-
-            return ($direction === 'desc' ? -$order : $order) ?: mb_strtolower($first['name']) <=> mb_strtolower($second['name']);
-        })->values();
-
-        return [...$this->paginate($sorted, $page, $perPage), 'grouping' => $grouping->value, 'sort' => $sort, 'direction' => $direction, 'revenue_total' => $this->money($totalRevenue)];
+        return [...$this->paginate($this->inOrder($groups, $sort, $direction), $page, $perPage), 'grouping' => $grouping->value, 'sort' => $sort, 'direction' => $direction, 'revenue_total' => $this->money($totalRevenue)];
     }
 
     /**

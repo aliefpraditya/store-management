@@ -1,34 +1,23 @@
 <script setup>
 import { computed } from 'vue';
 import { usePage } from '@inertiajs/vue3';
+import { urlForRange } from '../Composables/reportRange';
 import ReportTabs from './ReportTabs.vue';
 
 defineProps({
-    /** Which of the sales report's tabs the page is: `summary` or `receipts`. */
+    /** Which of the sales report's tabs the page is: `summary`, `receipts` or `products`. */
     current: { type: String, required: true },
 });
 
 const page = usePage();
 
 /** A tab opens on the period the page is showing, so moving between tabs does not ask for the period again. */
-function withPeriod(href) {
-    const period = page.props.period;
-
-    if (!period) {
-        return href;
-    }
-
-    const url = new URL(href, window.location.origin);
-
-    url.searchParams.set('from', period.from);
-    url.searchParams.set('to', period.to);
-
-    return `${url.pathname}${url.search}`;
-}
+const withPeriod = (href) => (page.props.period ? urlForRange(href, page.props.period.from, page.props.period.to) : href);
 
 const tabs = computed(() => [
     { key: 'summary', label: 'Ringkasan', icon: 'pie_chart', href: withPeriod(page.props.store.reports_url) },
     { key: 'receipts', label: 'Daftar nota', icon: 'receipt_long', href: withPeriod(page.props.store.sales_receipts_url) },
+    { key: 'products', label: 'Barang & kategori', icon: 'category', href: withPeriod(page.props.store.sales_products_url) },
 ]);
 </script>
 

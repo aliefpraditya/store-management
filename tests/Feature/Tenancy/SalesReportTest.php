@@ -437,7 +437,7 @@ class SalesReportTest extends TestCase
     {
         $this->sellInCategoriesAndBrands();
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.products'))->assertInertia(fn (Assert $page) => $page
             ->missing('groups')
             ->where('group_per_page_options', [5, 10])
             ->loadDeferredProps(fn (Assert $reload) => $reload
@@ -462,16 +462,18 @@ class SalesReportTest extends TestCase
     {
         $this->sellInCategoriesAndBrands();
 
-        $this->actingAs($this->admin)->get($this->url(['groups_by' => 'brand']))->assertInertia(fn (Assert $page) => $page
-            ->loadDeferredProps(fn (Assert $reload) => $reload
-                ->where('groups.grouping', 'brand')
-                ->where('groups.total', 2)
-                ->where('groups.data.0.name', 'Faber')
-                ->where('groups.data.0.revenue', '40000.00')
-                ->where('groups.data.1.id', null)
-                ->where('groups.data.1.name', '(Tanpa merek)')
-                ->where('groups.data.1.product_count', 2)
-                ->where('groups.data.1.revenue', '30000.00')));
+        foreach (['sales', 'sales.products'] as $route) {
+            $this->actingAs($this->admin)->get($this->url(['groups_by' => 'brand'], $route))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload
+                    ->where('groups.grouping', 'brand')
+                    ->where('groups.total', 2)
+                    ->where('groups.data.0.name', 'Faber')
+                    ->where('groups.data.0.revenue', '40000.00')
+                    ->where('groups.data.1.id', null)
+                    ->where('groups.data.1.name', '(Tanpa merek)')
+                    ->where('groups.data.1.product_count', 2)
+                    ->where('groups.data.1.revenue', '30000.00')));
+        }
     }
 
     public function test_the_groups_can_be_ordered_by_name_or_by_a_figure_either_way(): void
@@ -484,6 +486,10 @@ class SalesReportTest extends TestCase
             ['groups_sort' => 'profit', 'groups_direction' => 'asc', 'expected' => ['Cat', 'Alat Tulis']],
             ['groups_sort' => 'profit', 'expected' => ['Alat Tulis', 'Cat']],
             ['groups_sort' => 'margin', 'expected' => ['Alat Tulis', 'Cat']],
+            ['groups_sort' => 'products', 'expected' => ['Alat Tulis', 'Cat']],
+            ['groups_sort' => 'products', 'groups_direction' => 'asc', 'expected' => ['Cat', 'Alat Tulis']],
+            ['groups_sort' => 'share', 'expected' => ['Alat Tulis', 'Cat']],
+            ['groups_sort' => 'share', 'groups_direction' => 'asc', 'expected' => ['Cat', 'Alat Tulis']],
             ['groups_sort' => 'nonsense', 'groups_direction' => 'sideways', 'expected' => ['Alat Tulis', 'Cat']],
         ];
 
@@ -491,17 +497,64 @@ class SalesReportTest extends TestCase
             $expected = $order['expected'];
             unset($order['expected']);
 
-            $this->actingAs($this->admin)->get($this->url($order))->assertInertia(fn (Assert $page) => $page
+            $this->actingAs($this->admin)->get($this->url($order, 'sales.products'))->assertInertia(fn (Assert $page) => $page
                 ->loadDeferredProps(fn (Assert $reload) => $reload
                     ->where('groups.data', fn ($groups): bool => collect($groups)->pluck('name')->all() === $expected)));
         }
+    }
+
+    public function test_the_products_can_be_ordered_by_every_column_either_way_and_start_with_the_biggest_profit(): void
+    {
+        // Pensil 4 pieces (40.000, cost 24.000), Cat Tembok 2 (20.000, cost 12.000), Pulpen 1 (10.000, cost 6.000): the same margin.
+        $this->sellInCategoriesAndBrands();
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.products'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('products.sort', 'profit')
+                ->where('products.direction', 'desc')));
+
+        $orders = [
+            [[], ['Pensil', 'Cat Tembok', 'Pulpen']],
+            [['products_sort' => 'name'], ['Cat Tembok', 'Pensil', 'Pulpen']],
+            [['products_sort' => 'name', 'products_direction' => 'desc'], ['Pulpen', 'Pensil', 'Cat Tembok']],
+            [['products_sort' => 'quantity'], ['Pensil', 'Cat Tembok', 'Pulpen']],
+            [['products_sort' => 'quantity', 'products_direction' => 'asc'], ['Pulpen', 'Cat Tembok', 'Pensil']],
+            [['products_sort' => 'revenue'], ['Pensil', 'Cat Tembok', 'Pulpen']],
+            [['products_sort' => 'revenue', 'products_direction' => 'asc'], ['Pulpen', 'Cat Tembok', 'Pensil']],
+            [['products_sort' => 'cost'], ['Pensil', 'Cat Tembok', 'Pulpen']],
+            [['products_sort' => 'cost', 'products_direction' => 'asc'], ['Pulpen', 'Cat Tembok', 'Pensil']],
+            [['products_sort' => 'profit', 'products_direction' => 'asc'], ['Pulpen', 'Cat Tembok', 'Pensil']],
+            // The margin is the same for all three, so they tie and keep the order of their names whichever way it is asked.
+            [['products_sort' => 'margin'], ['Cat Tembok', 'Pensil', 'Pulpen']],
+            [['products_sort' => 'margin', 'products_direction' => 'asc'], ['Cat Tembok', 'Pensil', 'Pulpen']],
+            [['products_sort' => 'nonsense', 'products_direction' => 'sideways'], ['Pensil', 'Cat Tembok', 'Pulpen']],
+        ];
+
+        foreach ($orders as [$query, $expected]) {
+            $this->actingAs($this->admin)->get($this->url($query, 'sales.products'))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload
+                    ->where('products.data', fn ($products): bool => collect($products)->pluck('name')->all() === $expected)));
+        }
+    }
+
+    public function test_the_order_of_the_products_holds_across_pages(): void
+    {
+        $this->sellDifferentProducts(9);
+
+        // "Barang 1" to "Barang 9" by name, Z to A: the first page of seven takes 9 down to 3, so the second has what is left.
+        $this->actingAs($this->admin)->get($this->url(['products_sort' => 'name', 'products_direction' => 'desc', 'products_page' => 2], 'sales.products'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('products.sort', 'name')
+                ->where('products.direction', 'desc')
+                ->where('products.current_page', 2)
+                ->where('products.data', fn ($products): bool => collect($products)->pluck('name')->all() === ['Barang 2', 'Barang 1'])));
     }
 
     public function test_the_groups_are_paged_on_the_server_five_or_ten_at_a_time(): void
     {
         $this->sellDifferentProducts(12);
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.products'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->has('groups.data', 5)
                 ->where('groups.total', 12)
@@ -510,7 +563,7 @@ class SalesReportTest extends TestCase
                 ->where('groups.to', 5)
                 ->where('groups.revenue_total', '120000.00')));
 
-        $this->actingAs($this->admin)->get($this->url(['groups_per_page' => 10, 'groups_page' => 2]))->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(['groups_per_page' => 10, 'groups_page' => 2], 'sales.products'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->has('groups.data', 2)
                 ->where('groups.per_page', 10)
@@ -519,7 +572,7 @@ class SalesReportTest extends TestCase
                 ->where('groups.to', 12)));
 
         foreach (['7', '0', 'abc'] as $notAnOption) {
-            $this->actingAs($this->admin)->get($this->url(['groups_per_page' => $notAnOption, 'groups_page' => 99]))->assertInertia(fn (Assert $page) => $page
+            $this->actingAs($this->admin)->get($this->url(['groups_per_page' => $notAnOption, 'groups_page' => 99], 'sales.products'))->assertInertia(fn (Assert $page) => $page
                 ->loadDeferredProps(fn (Assert $reload) => $reload->where('groups.per_page', 5)->where('groups.current_page', 3)));
         }
     }
@@ -915,7 +968,7 @@ class SalesReportTest extends TestCase
     {
         $this->sellDifferentProducts(16);
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.products'))->assertInertia(fn (Assert $page) => $page
             ->where('per_page_options', [7, 15, 30])
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->has('products.data', 7)
@@ -926,7 +979,7 @@ class SalesReportTest extends TestCase
                 ->where('products.from', 1)
                 ->where('products.to', 7)));
 
-        $this->actingAs($this->admin)->get($this->url(['products_page' => 3]))->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(['products_page' => 3], 'sales.products'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->has('products.data', 2)
                 ->where('products.current_page', 3)
@@ -938,14 +991,14 @@ class SalesReportTest extends TestCase
     {
         $this->sellDifferentProducts(16);
 
-        $this->actingAs($this->admin)->get($this->url(['products_per_page' => 15]))->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(['products_per_page' => 15], 'sales.products'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->has('products.data', 15)
                 ->where('products.per_page', 15)
                 ->where('products.last_page', 2)));
 
         foreach (['30', '5', '100', 'abc', '0'] as $perPage) {
-            $this->actingAs($this->admin)->get($this->url(['products_per_page' => $perPage]))->assertInertia(fn (Assert $page) => $page
+            $this->actingAs($this->admin)->get($this->url(['products_per_page' => $perPage], 'sales.products'))->assertInertia(fn (Assert $page) => $page
                 ->loadDeferredProps(fn (Assert $reload) => $reload->where('products.per_page', $perPage === '30' ? 30 : 7)));
         }
     }
@@ -954,11 +1007,11 @@ class SalesReportTest extends TestCase
     {
         $this->sellDifferentProducts(9);
 
-        $this->actingAs($this->admin)->get($this->url(['products_page' => 99]))->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(['products_page' => 99], 'sales.products'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload->where('products.current_page', 2)->has('products.data', 2)));
 
         foreach (['abc', '0', '-3'] as $notAPage) {
-            $this->actingAs($this->admin)->get($this->url(['products_page' => $notAPage]))->assertInertia(fn (Assert $page) => $page
+            $this->actingAs($this->admin)->get($this->url(['products_page' => $notAPage], 'sales.products'))->assertInertia(fn (Assert $page) => $page
                 ->loadDeferredProps(fn (Assert $reload) => $reload->where('products.current_page', 1)));
         }
     }
@@ -1001,6 +1054,59 @@ class SalesReportTest extends TestCase
             ['summary' => ['summary'], 'comparison' => ['comparison'], 'payments' => ['payments'], 'products' => ['products'], 'groups' => ['groups'], 'return_details' => ['return_details']],
             $response->viewData('page')['deferredProps'],
         );
+    }
+
+    public function test_the_summary_always_gives_the_biggest_seven_products_and_five_groups_whatever_the_address_asks_for(): void
+    {
+        $this->sellDifferentProducts(12);
+
+        $this->actingAs($this->admin)->get($this->url(['products_per_page' => 30, 'products_page' => 2, 'groups_per_page' => 10, 'groups_page' => 2, 'groups_sort' => 'name']))->assertInertia(fn (Assert $page) => $page
+            ->missing('per_page_options')
+            ->missing('group_per_page_options')
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('products.data', 7)
+                ->where('products.current_page', 1)
+                ->where('products.per_page', 7)
+                ->has('groups.data', 5)
+                ->where('groups.current_page', 1)
+                ->where('groups.per_page', 5)
+                ->where('groups.sort', 'revenue')
+                ->where('groups.direction', 'desc')));
+    }
+
+    public function test_the_products_tab_loads_its_two_tables_in_a_group_each_and_turning_one_asks_for_it_alone(): void
+    {
+        $this->sellInAWeek();
+
+        $response = $this->actingAs($this->admin)->get($this->url(name: 'sales.products'))->assertOk();
+
+        $this->assertEquals(['products' => ['products'], 'groups' => ['groups']], $response->viewData('page')['deferredProps']);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Tenant/Reports/SalesProducts')
+            ->has('period')
+            ->missing('products')
+            ->missing('groups')
+            ->reloadOnly('products', fn (Assert $reload) => $reload
+                ->has('products.data', 1)
+                ->missing('groups'))
+            ->reloadOnly('groups', fn (Assert $reload) => $reload
+                ->has('groups.data', 1)
+                ->missing('products')));
+    }
+
+    public function test_the_products_tab_is_for_admins_covers_this_month_without_dates_and_says_when_it_cut_a_long_period(): void
+    {
+        $this->actingAs($this->cashier)->get($this->url(name: 'sales.products'))->assertForbidden();
+
+        $this->actingAs($this->admin)->get($this->urlWithoutPeriod([], 'sales.products'))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('period.from', today()->startOfMonth()->toDateString())
+            ->where('period.to', today()->endOfMonth()->toDateString())
+            ->where('is_period_cut_back', false)
+            ->where('store.sales_products_url', route('tenant.reports.sales.products', ['tenant' => $this->store->code])));
+
+        $this->actingAs($this->admin)->get($this->url(['from' => '2000-01-01', 'to' => today()->toDateString()], 'sales.products'))->assertInertia(fn (Assert $page) => $page
+            ->where('is_period_cut_back', true)
+            ->where('max_days', 366));
     }
 
     public function test_a_product_sold_without_a_cost_is_told(): void

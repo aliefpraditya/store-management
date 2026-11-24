@@ -7,12 +7,13 @@ import RankedBars from '../../../Components/RankedBars.vue';
 import SalesReportTabs from '../../../Components/SalesReportTabs.vue';
 import { OTHER_COLOR, SERIES_COLORS } from '../../../Composables/chartColors';
 import { printSheet } from '../../../Composables/printSheet';
+import { urlForRange } from '../../../Composables/reportRange';
 import { formatDeduction, formatRupiah } from '../../../Composables/useMoneyFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 /**
- * The server still sends the parts the other tabs will take over (the return details and the page sizes of the tables), so
- * the page leaves attributes alone instead of writing them onto the layout; they go when those tabs have pages of their own.
+ * The server still sends the part the returns tab will take over (the return details), so the page leaves attributes alone
+ * instead of writing it onto the layout; it goes when that tab has a page of its own.
  */
 defineOptions({ inheritAttrs: false });
 
@@ -117,14 +118,10 @@ function closeDay(day) {
 onBeforeUnmount(() => clearTimeout(hideTimer));
 
 /** The receipts of one day, in the receipt list. */
-function receiptsOfDay(day) {
-    const url = new URL(page.props.store.sales_receipts_url, window.location.origin);
+const receiptsOfDay = (day) => urlForRange(page.props.store.sales_receipts_url, day, day);
 
-    url.searchParams.set('from', day);
-    url.searchParams.set('to', day);
-
-    return `${url.pathname}${url.search}`;
-}
+/** The tables of products and of categories or brands, on the period on screen, opened on the grouping the pie is showing. */
+const productsTabUrl = computed(() => urlForRange(page.props.store.sales_products_url, props.period.from, props.period.to, { groups_by: props.groups?.grouping ?? 'category' }));
 
 const comparisonRange = computed(() => (props.comparison ? `${dayFormat.format(asLocalDate(props.comparison.from))} – ${dayFormat.format(asLocalDate(props.comparison.to))}` : ''));
 
@@ -350,11 +347,15 @@ const printReport = () => printSheet(() => props.urls.sheet);
                         </div>
                     </template>
                 </Deferred>
+                <Link :href="productsTabUrl" class="card__more card__more--below">Lihat tabel lengkap</Link>
             </section>
         </div>
 
         <section class="card">
-            <h2>Laba kotor terbesar per barang <small>(7 teratas, setelah retur)</small></h2>
+            <div class="card__head">
+                <h2>Laba kotor terbesar per barang <small>(7 teratas, setelah retur)</small></h2>
+                <Link :href="productsTabUrl" class="card__more">Lihat semua barang</Link>
+            </div>
             <Deferred data="products">
                 <template #fallback>
                     <q-skeleton height="200px" />
@@ -578,6 +579,15 @@ const printReport = () => printSheet(() => props.urls.sheet);
     margin: 0;
     font-weight: 600;
     white-space: nowrap;
+}
+
+.card__more {
+    font-size: 13px;
+}
+
+.card__more--below {
+    display: inline-block;
+    margin-top: 10px;
 }
 
 .day-pop__link {
