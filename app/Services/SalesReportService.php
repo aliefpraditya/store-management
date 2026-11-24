@@ -462,6 +462,21 @@ class SalesReportService
     }
 
     /**
+     * The sales, returns and voids of each day of the period that has any, keyed by day, for the day headings of the receipt
+     * list. Profit is left out: the list is about receipts, and the days are worked out the same way as in the summary, so a
+     * heading never disagrees with the chart.
+     *
+     * @return array<string, array{receipt_count: int, gross_total: string, returns_total: string, net_total: string, voids_count: int, voids_total: string}>
+     */
+    public function dayFigures(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        return collect($this->days($from, $to))
+            ->filter(fn (array $day): bool => $day['receipt_count'] > 0 || $day['voids_count'] > 0)
+            ->mapWithKeys(fn (array $day): array => [$day['date'] => collect($day)->only(['receipt_count', 'gross_total', 'returns_total', 'net_total', 'voids_count', 'voids_total'])->all()])
+            ->all();
+    }
+
+    /**
      * One row per day of the period, days without any sale included.
      *
      * @return list<ReportDay>

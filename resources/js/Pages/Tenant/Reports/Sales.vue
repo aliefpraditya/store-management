@@ -1,13 +1,13 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
-import { Deferred, router, usePage } from '@inertiajs/vue3';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { Deferred, Link, router, usePage } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
 import PieChart from '../../../Components/PieChart.vue';
 import RankedBars from '../../../Components/RankedBars.vue';
 import SalesReportTabs from '../../../Components/SalesReportTabs.vue';
 import { OTHER_COLOR, SERIES_COLORS } from '../../../Composables/chartColors';
 import { printSheet } from '../../../Composables/printSheet';
-import { formatRupiah } from '../../../Composables/useMoneyFormat';
+import { formatDeduction, formatRupiah } from '../../../Composables/useMoneyFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 /**
@@ -84,6 +84,48 @@ function describeChange(percent) {
     return { text: `${change > 0 ? '▲' : '▼'} ${Math.abs(change).toFixed(1)}%`, tone: change > 0 ? 'up' : 'down' };
 }
 
+const fullDayFormat = new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+/** How long the details stay up after the pointer leaves, so it can cross the gap from the bar to the dialog and reach its link. */
+const HIDE_DELAY_MS = 150;
+
+/** The day whose details are open, for its bar to stay lit while the dialog is up. */
+const openDay = ref(null);
+
+let hideTimer;
+
+/** Opens the details of a day, at once, whether the pointer is on its bar or on the dialog; moving to another bar swaps them. */
+function showDay(day) {
+    clearTimeout(hideTimer);
+    openDay.value = day;
+}
+
+function hideDaySoon() {
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+        openDay.value = null;
+    }, HIDE_DELAY_MS);
+}
+
+/** The dialog asked to close (a click outside it, or Escape): only the day that is open is closed, never one that took over. */
+function closeDay(day) {
+    if (openDay.value === day) {
+        openDay.value = null;
+    }
+}
+
+onBeforeUnmount(() => clearTimeout(hideTimer));
+
+/** The receipts of one day, in the receipt list. */
+function receiptsOfDay(day) {
+    const url = new URL(page.props.store.sales_receipts_url, window.location.origin);
+
+    url.searchParams.set('from', day);
+    url.searchParams.set('to', day);
+
+    return `${url.pathname}${url.search}`;
+}
+
 const comparisonRange = computed(() => (props.comparison ? `${dayFormat.format(asLocalDate(props.comparison.from))} – ${dayFormat.format(asLocalDate(props.comparison.to))}` : ''));
 
 /**
@@ -105,8 +147,12 @@ const paymentSlices = computed(() => {
     const methods = props.payments?.methods ?? [];
     const amountOf = (keys) => methods.filter((method) => keys.includes(method.method)).reduce((sum, method) => sum + Number(method.amount), 0);
 
+    /** The space inside "Rp 800.000" does not break, so a narrow legend wraps between the two lines and never inside an amount. */
+    const unbreakable = (amount) => formatRupiah(amount).replace(' ', ' ');
+    const codNote = `belum diantar ${unbreakable(amountOf(['cod_undelivered']))}\nsudah diantar ${unbreakable(amountOf(['cod_delivered']))}`;
+
     return [
-        ...PAYMENT_PARTS.map((part) => ({ key: part.key, label: part.label, value: amountOf(part.methods), color: part.color })),
+        ...PAYMENT_PARTS.map((part) => ({ key: part.key, label: part.label, value: amountOf(part.methods), color: part.color, note: part.key === 'cod' ? codNote : undefined })),
         { key: 'settled_before', label: 'Uang muka & kredit retur', value: amountOf(SETTLED_BEFORE_METHODS), color: OTHER_COLOR },
     ];
 });
@@ -228,13 +274,39 @@ const printReport = () => printSheet(() => props.urls.sheet);
                 </template>
 
                 <div class="bars">
-                    <div v-for="day in bars" :key="day.date" class="bars__day" :title="`${dayFormat.format(asLocalDate(day.date))}: penjualan ${formatRupiah(day.net_total)}, laba ${formatRupiah(day.gross_profit)} (${day.receipt_count} nota)`">
-                        <div class="bars__track">
+                    <button
+                        v-for="day in bars"
+                        :key="day.date"
+                        type="button"
+                        class="bars__day"
+                        :class="{ 'bars__day--on': openDay === day.date }"
+                        :aria-label="`Rincian ${fullDayFormat.format(asLocalDate(day.date))}`"
+                        @mouseenter="showDay(day.date)"
+                        @mouseleave="hideDaySoon"
+                        @focus="showDay(day.date)"
+                        @blur="hideDaySoon"
+                        @click="showDay(day.date)"
+                    >
+                        <span class="bars__track">
                             <i class="bars__sales" :style="{ height: `${day.salesHeight}%` }"></i>
                             <i class="bars__profit" :style="{ height: `${day.profitHeight}%` }"></i>
-                        </div>
-                        <span>{{ day.isLabelled ? asLocalDate(day.date).getDate() : '' }}</span>
-                    </div>
+                        </span>
+                        <span class="bars__label">{{ day.isLabelled ? asLocalDate(day.date).getDate() : '' }}</span>
+
+                        <q-menu no-parent-event no-focus no-refocus anchor="top middle" self="bottom middle" :offset="[0, 8]" :model-value="openDay === day.date" @update:model-value="(isOpen) => !isOpen && closeDay(day.date)">
+                            <div class="day-pop" @mouseenter="showDay(day.date)" @mouseleave="hideDaySoon">
+                                <strong>{{ fullDayFormat.format(asLocalDate(day.date)) }}</strong>
+                                <dl class="day-pop__rows">
+                                    <div><dt><i class="legend__swatch legend__swatch--sales"></i>Penjualan bersih</dt><dd>{{ formatRupiah(day.net_total) }}</dd></div>
+                                    <div><dt><i class="legend__swatch legend__swatch--profit"></i>Laba kotor</dt><dd>{{ formatRupiah(day.gross_profit) }}</dd></div>
+                                    <div><dt>Nota</dt><dd>{{ day.receipt_count }}</dd></div>
+                                    <div v-if="Number(day.returns_total) > 0"><dt>Retur</dt><dd>{{ formatDeduction(day.returns_total) }}</dd></div>
+                                    <div v-if="day.voids_count > 0"><dt>Void</dt><dd>{{ day.voids_count }} nota ({{ formatRupiah(day.voids_total) }})</dd></div>
+                                </dl>
+                                <Link v-if="day.receipt_count > 0 || day.voids_count > 0" :href="receiptsOfDay(day.date)" class="day-pop__link">Lihat nota hari ini</Link>
+                            </div>
+                        </q-menu>
+                    </button>
                 </div>
             </Deferred>
         </section>
@@ -433,6 +505,7 @@ const printReport = () => printSheet(() => props.urls.sheet);
     height: 150px;
 }
 
+/** A bar is a button: the whole column answers the pointer, so a thin bar is no harder to hit than a wide one. */
 .bars__day {
     display: flex;
     flex: 1;
@@ -440,8 +513,25 @@ const printReport = () => printSheet(() => props.urls.sheet);
     align-items: center;
     min-width: 0;
     height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: none;
     color: var(--app-mute);
+    cursor: pointer;
+    font: inherit;
     font-size: 11px;
+    transition: background-color 0.15s;
+}
+
+.bars__day:hover,
+.bars__day--on {
+    background: var(--app-brand-soft);
+}
+
+.bars__day:focus-visible {
+    outline: 2px solid var(--q-primary);
+    outline-offset: 1px;
 }
 
 /** Holds only the bar, so every bar stands on the same baseline whether or not its day is labelled. */
@@ -454,11 +544,46 @@ const printReport = () => printSheet(() => props.urls.sheet);
     min-height: 0;
 }
 
-.bars__day span {
+.bars__label {
     flex: none;
     height: 16px;
     line-height: 16px;
     white-space: nowrap;
+}
+
+.day-pop {
+    min-width: 230px;
+    padding: 12px 14px;
+}
+
+.day-pop__rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 8px 0 0;
+}
+
+.day-pop__rows div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    font-size: 13px;
+}
+
+.day-pop__rows dt {
+    color: var(--app-ink-soft);
+}
+
+.day-pop__rows dd {
+    margin: 0;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.day-pop__link {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 13px;
 }
 
 .bars__track {

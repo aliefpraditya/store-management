@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Generator;
 use OpenSpout\Common\Entity\Cell;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Color;
@@ -11,20 +12,27 @@ use OpenSpout\Writer\XLSX\Writer;
 
 /**
  * Writes sheets of rows (see {@see SalesDetailSheetRows}) as an xlsx file, one sheet each: bold heading row held in place
- * while scrolling, columns as wide as what they hold, and amounts shown with thousands separators and two decimals, since
- * a price is not rounded in this app. Rows are streamed to the file, so a long period does not have to fit in memory twice.
+ * while scrolling, a bold row of totals at the end, columns of a width that suits their heading, and amounts shown with
+ * thousands separators and two decimals, since a price is not rounded in this app. Rows are written as they are read, so the
+ * rows of a year are never held at once.
+ *
+ * The widths go by the heading, not by what the column holds, because the rows are not known when the width has to be
+ * set (it must come before the first row).
  */
 class SalesDetailWorkbook
 {
-    /** Widest a column is made, so one long note does not push the rest off the screen. */
-    private const MAX_COLUMN_WIDTH = 50;
+    /** Widths by heading; a column with another heading (an amount) gets {@see self::AMOUNT_WIDTH}. */
+    private const COLUMN_WIDTHS = [
+        'Tanggal' => 12, 'Jam' => 8, 'No. nota' => 26, 'Pelanggan' => 22, 'Pengambilan' => 16, 'Barang' => 42, 'Satuan' => 10, 'Alasan' => 30,
+        'Referensi pembayaran' => 36, 'No. retur' => 26, 'Nota asal' => 26, 'Penyelesaian' => 16, 'Metode pengembalian' => 20, 'Tanggal void' => 14, 'Tanggal nota' => 14,
+    ];
 
-    private const MIN_COLUMN_WIDTH = 10;
+    private const AMOUNT_WIDTH = 16;
 
     private const NUMBER_FORMAT = '#,##0.00';
 
     /**
-     * @param  array<string, array{rows: list<list<string|float|null>>, total: list<string|float|null>|null}>  $sheets  Sheet name => its rows (the heading row first) and the row of totals that closes it, if any.
+     * @param  array<string, Generator<int, list<string|float|null>, mixed, list<string|float|null>|null>>  $sheets  Sheet name => its rows: the heading row first, then the rows, and, returned, the row of totals that closes it (`null` for none).
      * @param  string  $path  Where the file is written, such as `php://output`.
      */
     public function write(array $sheets, string $path): void
@@ -34,56 +42,43 @@ class SalesDetailWorkbook
 
         $headingStyle = (new Style)->withFontBold(true)->withBackgroundColor(Color::rgb(229, 229, 229));
         $numberStyle = (new Style)->withFormat(self::NUMBER_FORMAT);
-        $totalStyle = (new Style)->withFontBold(true)->withBackgroundColor(Color::rgb(229, 229, 229));
-        $totalNumberStyle = $totalStyle->withFormat(self::NUMBER_FORMAT);
+        $totalNumberStyle = $headingStyle->withFormat(self::NUMBER_FORMAT);
         $isFirstSheet = true;
 
-        foreach ($sheets as $name => ['rows' => $rows, 'total' => $total]) {
+        foreach ($sheets as $name => $rows) {
             $sheet = $isFirstSheet ? $writer->getCurrentSheet() : $writer->addNewSheetAndMakeItCurrent();
             $isFirstSheet = false;
+
+            $headings = $rows->current();
 
             $sheet->setName($name);
             $sheet->setSheetView((new SheetView)->withFreezeRow(2));
 
-            foreach ($this->columnWidths($total === null ? $rows : [...$rows, $total]) as $column => $width) {
-                $sheet->setColumnWidth($width, $column + 1);
+            foreach ($headings as $column => $heading) {
+                $sheet->setColumnWidth((float) (self::COLUMN_WIDTHS[$heading] ?? self::AMOUNT_WIDTH), $column + 1);
             }
 
-            $writer->addRow(Row::fromValuesWithStyle($rows[0], $headingStyle));
+            $writer->addRow(Row::fromValuesWithStyle($headings, $headingStyle));
+            $rows->next();
 
-            foreach (array_slice($rows, 1) as $values) {
+            while ($rows->valid()) {
                 $writer->addRow(new Row(array_map(
                     fn (string|float|null $value): Cell => Cell::fromValue($value, is_float($value) ? $numberStyle : null),
-                    $values,
+                    $rows->current(),
                 )));
+                $rows->next();
             }
 
-            if ($total !== null) {
+            $totals = $rows->getReturn();
+
+            if ($totals !== null) {
                 $writer->addRow(new Row(array_map(
-                    fn (string|float|null $value): Cell => Cell::fromValue($value, is_float($value) ? $totalNumberStyle : $totalStyle),
-                    $total,
+                    fn (string|float|null $value): Cell => Cell::fromValue($value, is_float($value) ? $totalNumberStyle : $headingStyle),
+                    $totals,
                 )));
             }
         }
 
         $writer->close();
-    }
-
-    /**
-     * @param  list<list<string|float|null>>  $rows
-     * @return list<float>
-     */
-    private function columnWidths(array $rows): array
-    {
-        $widths = [];
-
-        foreach ($rows as $values) {
-            foreach ($values as $column => $value) {
-                $length = is_float($value) ? 14 : mb_strlen((string) $value) + 2;
-                $widths[$column] = min(max($widths[$column] ?? self::MIN_COLUMN_WIDTH, $length), self::MAX_COLUMN_WIDTH);
-            }
-        }
-
-        return array_map(floatval(...), $widths);
     }
 }

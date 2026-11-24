@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 
 const props = defineProps({
-    /** The parts of the whole, `{key, label, value, color}`; a part of nothing (or less) is left out. Keep it to six or fewer: fold the tail into one part. */
+    /** The parts of the whole, `{key, label, value, color, note?}` (a note is a line under the name in the legend); a part of nothing (or less) is left out. Keep it to six or fewer: fold the tail into one part. */
     slices: { type: Array, required: true },
     /** Writes a value as the legend shows it. */
     formatValue: { type: Function, required: true },
@@ -55,7 +55,7 @@ const isDimmed = (key) => hoveredKey.value !== null && hoveredKey.value !== key;
         <ul class="pie__legend">
             <li v-for="wedge in wedges" :key="wedge.key" :class="{ 'pie__row--dim': isDimmed(wedge.key) }" @mouseenter="hoveredKey = wedge.key" @mouseleave="hoveredKey = null">
                 <i class="pie__swatch" :style="{ background: wedge.color }"></i>
-                <span class="pie__name">{{ wedge.label }}</span>
+                <span class="pie__name">{{ wedge.label }}<small v-if="wedge.note" class="pie__note">{{ wedge.note }}</small></span>
                 <b class="pie__value">{{ formatValue(wedge.value) }}</b>
                 <span class="pie__percent">{{ wedge.percent }}%</span>
             </li>
@@ -122,6 +122,14 @@ const isDimmed = (key) => hoveredKey.value !== null && hoveredKey.value !== key;
 .pie__name {
     color: var(--app-ink-soft);
     overflow-wrap: anywhere;
+}
+
+/** A line break in a note is kept, so a note can be set as a short list. */
+.pie__note {
+    display: block;
+    color: var(--app-mute);
+    font-size: 12px;
+    white-space: pre-line;
 }
 
 .pie__value {

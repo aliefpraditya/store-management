@@ -3,6 +3,7 @@
 namespace Tests\Feature\Tenancy;
 
 use App\Enums\DeliveryNoteStatus;
+use App\Enums\PaymentMethod;
 use App\Enums\SaleReturnStatus;
 use App\Enums\StockOpnameReason;
 use App\Enums\StockOpnameScope;
@@ -14,6 +15,7 @@ use App\Models\Category;
 use App\Models\DeliveryNote;
 use App\Models\Product;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\SalePayment;
 use App\Models\SaleReturn;
 use App\Models\Stock;
@@ -24,6 +26,7 @@ use App\Models\User;
 use App\Services\CodSaleService;
 use App\Services\DailyClosingService;
 use App\Services\SaleReturnService;
+use App\Services\SalesDetailSheetRows;
 use App\Services\SaleService;
 use App\Services\SalesReportService;
 use App\Services\SaleVoidService;
@@ -1094,6 +1097,173 @@ class SalesReportTest extends TestCase
             ->missing('report.days.0.receipts.0.cashier_name'));
     }
 
+    /**
+     * One sheet of the spreadsheet as the writer reads it: every row it yields, the heading first, and the row of totals it
+     * returns. The period is the last `$days` days, today the last one.
+     *
+     * @return array{rows: list<list<string|float|null>>, totals: list<string|float|null>|null}
+     */
+    private function sheet(string $name, ?PaymentMethod $method = null, int $days = 7): array
+    {
+        return $this->store->run(function () use ($name, $method, $days): array {
+            $sheet = app(SalesDetailSheetRows::class)->sheets(CarbonImmutable::today()->subDays($days - 1), CarbonImmutable::today(), $method)[$name];
+            $rows = [];
+
+            while ($sheet->valid()) {
+                $rows[] = $sheet->current();
+                $sheet->next();
+            }
+
+            return ['rows' => $rows, 'totals' => $sheet->getReturn()];
+        });
+    }
+
+    public function test_the_spreadsheet_has_a_sheet_each_for_receipts_goods_returns_and_voids(): void
+    {
+        $sheets = $this->store->run(fn (): array => app(SalesDetailSheetRows::class)->sheets(CarbonImmutable::today(), CarbonImmutable::today()));
+
+        $this->assertSame(['Nota', 'Barang', 'Retur', 'Void'], array_keys($sheets));
+    }
+
+    public function test_a_receipt_is_one_row_with_what_was_paid_split_by_method_and_cash_after_the_change(): void
+    {
+        // 50.000 paid with 20.000 by transfer and 40.000 in cash: 10.000 goes back as change, so the cash that stayed is 30.000.
+        $sale = $this->sell(5, [['method' => 'transfer', 'amount' => 20000], ['method' => 'cash', 'amount' => 40000]]);
+        $this->store->run(fn () => SalePayment::query()->where('sale_id', $sale->id)->where('method', 'transfer')->update(['reference' => 'TRX-77']));
+
+        $sheet = $this->sheet('Nota');
+        $columns = array_flip($sheet['rows'][0]);
+        $row = $sheet['rows'][1];
+
+        $this->assertCount(2, $sheet['rows']);
+        $this->assertSame(today()->toDateString(), $row[$columns['Tanggal']]);
+        $this->assertSame($sale->number, $row[$columns['No. nota']]);
+        $this->assertSame('Ambil di toko', $row[$columns['Pengambilan']]);
+        $this->assertSame(50000.0, $row[$columns['Total']]);
+        $this->assertSame(30000.0, $row[$columns['Tunai']]);
+        $this->assertSame(20000.0, $row[$columns['Transfer']]);
+        $this->assertSame(0.0, $row[$columns['COD']]);
+        $this->assertSame('Transfer: TRX-77', $row[$columns['Referensi pembayaran']]);
+        $this->assertSame(50000.0, $row[$columns['Tunai']] + $row[$columns['Transfer']]);
+    }
+
+    public function test_the_receipt_sheet_closes_with_how_many_receipts_there_are_and_the_sums_of_its_amounts(): void
+    {
+        $this->sellInAWeek();
+
+        $sheet = $this->sheet('Nota');
+        $columns = array_flip($sheet['rows'][0]);
+
+        $this->assertCount(4, $sheet['rows']);
+        $this->assertSame('JUMLAH (3 nota)', $sheet['totals'][0]);
+        $this->assertSame(100000.0, $sheet['totals'][$columns['Total']]);
+        $this->assertSame(50000.0, $sheet['totals'][$columns['Tunai']]);
+        $this->assertSame(30000.0, $sheet['totals'][$columns['Transfer']]);
+        $this->assertSame(20000.0, $sheet['totals'][$columns['COD']]);
+        $this->assertNull($sheet['totals'][$columns['Pelanggan']]);
+        $this->assertNull($sheet['totals'][$columns['Referensi pembayaran']]);
+    }
+
+    public function test_every_goods_line_is_a_row_and_only_the_subtotals_are_summed(): void
+    {
+        $this->sellInAWeek();
+
+        $sheet = $this->sheet('Barang');
+
+        $this->assertCount(4, $sheet['rows']);
+        $this->assertSame(['Tanggal', 'No. nota', 'Barang', 'Jumlah', 'Satuan', 'Harga satuan', 'Subtotal'], $sheet['rows'][0]);
+        $this->assertSame([today()->subDay()->toDateString(), 'Kuas', 3.0, 'PCS', 10000.0, 30000.0], [$sheet['rows'][1][0], $sheet['rows'][1][2], $sheet['rows'][1][3], $sheet['rows'][1][4], $sheet['rows'][1][5], $sheet['rows'][1][6]]);
+        $this->assertSame(['JUMLAH', null, null, null, null, null, 100000.0], $sheet['totals']);
+    }
+
+    public function test_the_return_and_void_sheets_list_their_lines_and_sum_their_amounts(): void
+    {
+        $this->sellInAWeek();
+        $voided = $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+        $this->store->run(fn () => Sale::query()->whereKey($voided->id)->update(['status' => 'voided', 'void_reason' => 'Salah input', 'void_business_date' => today()]));
+
+        $returns = $this->sheet('Retur');
+        $voids = $this->sheet('Void');
+
+        $this->assertCount(2, $returns['rows']);
+        $this->assertSame([today()->toDateString(), 'Tunai', 'Kuas', 2.0, 'PCS', 20000.0], [$returns['rows'][1][0], $returns['rows'][1][4], $returns['rows'][1][6], $returns['rows'][1][7], $returns['rows'][1][8], $returns['rows'][1][9]]);
+        $this->assertSame(20000.0, $returns['totals'][9]);
+        $this->assertCount(2, $voids['rows']);
+        $this->assertSame([today()->toDateString(), $voided->number, 'Salah input', 10000.0], [$voids['rows'][1][0], $voids['rows'][1][1], $voids['rows'][1][3], $voids['rows'][1][4]]);
+        $this->assertSame(10000.0, $voids['totals'][4]);
+    }
+
+    public function test_a_period_without_transactions_leaves_only_the_headings_and_no_row_of_totals(): void
+    {
+        foreach (['Nota', 'Barang', 'Retur', 'Void'] as $name) {
+            $sheet = $this->sheet($name);
+
+            $this->assertCount(1, $sheet['rows']);
+            $this->assertNull($sheet['totals']);
+        }
+    }
+
+    public function test_the_sums_of_cents_are_not_thrown_off_by_floating_point_error(): void
+    {
+        $first = $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+        $second = $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+        $this->store->run(function () use ($first, $second): void {
+            SaleItem::query()->where('sale_id', $first->id)->update(['subtotal' => '0.10']);
+            SaleItem::query()->where('sale_id', $second->id)->update(['subtotal' => '0.20']);
+        });
+
+        $this->assertSame(0.3, $this->sheet('Barang')['totals'][6]);
+    }
+
+    public function test_a_sheet_narrowed_to_one_method_has_only_the_receipts_paid_by_it_and_no_returns_or_voids(): void
+    {
+        $this->sellInAWeek();
+
+        $this->assertCount(2, $this->sheet('Nota', PaymentMethod::Transfer)['rows']);
+        $this->assertSame('JUMLAH (1 nota)', $this->sheet('Nota', PaymentMethod::Transfer)['totals'][0]);
+        $this->assertCount(2, $this->sheet('Barang', PaymentMethod::Transfer)['rows']);
+        $this->assertSame(30000.0, $this->sheet('Barang', PaymentMethod::Transfer)['totals'][6]);
+        $this->assertCount(1, $this->sheet('Retur', PaymentMethod::Transfer)['rows']);
+        $this->assertCount(1, $this->sheet('Void', PaymentMethod::Transfer)['rows']);
+    }
+
+    public function test_the_receipts_come_in_the_order_of_their_business_day_then_their_time(): void
+    {
+        $today = $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+        $yesterday = $this->sell(1, [['method' => 'cash', 'amount' => 10000]], 1);
+        // A shift opened yesterday that runs past midnight: rung up after today's receipt, yet booked on yesterday.
+        $lateOfYesterday = $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+        $this->store->run(fn () => Sale::query()->whereKey($lateOfYesterday->id)->update(['business_date' => today()->subDay(), 'sold_at' => now()->addHour()]));
+
+        $numbers = array_column(array_slice($this->sheet('Nota')['rows'], 1), 2);
+
+        $this->assertSame([$yesterday->number, $lateOfYesterday->number, $today->number], $numbers);
+    }
+
+    public function test_the_printed_detail_sheet_covers_at_most_31_days_but_the_spreadsheet_a_whole_year(): void
+    {
+        $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+        $today = today()->toDateString();
+
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(30)->toDateString(), 'to' => $today], 'sales.detail-sheet'))->assertOk();
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(31)->toDateString(), 'to' => $today], 'sales.detail-sheet'))->assertStatus(422);
+
+        $year = $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(365)->toDateString(), 'to' => $today], 'sales.detail-export'));
+        $year->assertOk()->assertDownload('Laporan Penjualan Toko Uji '.today()->subDays(365)->toDateString().' - '.$today.'.xlsx');
+        $this->assertNotSame('', $year->streamedContent());
+    }
+
+    public function test_the_receipt_list_says_when_the_period_is_too_long_to_print(): void
+    {
+        $today = today()->toDateString();
+
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(30)->toDateString(), 'to' => $today], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->where('is_sheet_too_long', false)
+            ->where('max_sheet_days', 31));
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(31)->toDateString(), 'to' => $today], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->where('is_sheet_too_long', true));
+    }
+
     public function test_the_receipt_list_gives_the_addresses_of_the_detail_sheet_and_export_for_its_period(): void
     {
         $period = ['from' => today()->subDays(6)->toDateString(), 'to' => today()->toDateString()];
@@ -1193,6 +1363,90 @@ class SalesReportTest extends TestCase
 
         $this->actingAs($this->admin)->get($this->url(['per_page' => 30], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload->has('receipts.data', 17)->where('receipts.last_page', 1)));
+    }
+
+    public function test_the_receipt_list_gives_the_figures_of_each_day_for_the_day_headings(): void
+    {
+        $this->sellInAWeek();
+        $today = today()->toDateString();
+        $yesterday = today()->subDay()->toDateString();
+
+        $this->actingAs($this->admin)->get($this->url([], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('summary.days', 2)
+                ->where("summary.days.{$today}.receipt_count", 2)
+                ->where("summary.days.{$today}.gross_total", '70000.00')
+                ->where("summary.days.{$today}.returns_total", '20000.00')
+                ->where("summary.days.{$today}.net_total", '50000.00')
+                ->where("summary.days.{$today}.voids_count", 0)
+                ->where("summary.days.{$yesterday}.receipt_count", 1)
+                ->where("summary.days.{$yesterday}.returns_total", '0.00')
+                ->where("summary.days.{$yesterday}.net_total", '30000.00')));
+    }
+
+    public function test_the_day_figures_of_the_list_match_the_summary_of_the_sales_report(): void
+    {
+        $this->sellInAWeek();
+
+        $this->actingAs($this->admin)->get($this->url([], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('summary.days', fn ($days): bool => collect($days)->every(fn (array $day, string $date): bool => $this->store->run(fn (): bool => collect(app(SalesReportService::class)->summary(CarbonImmutable::parse($date), CarbonImmutable::parse($date))['days'])
+                    ->contains(fn (array $reportDay): bool => $reportDay['net_total'] === $day['net_total'] && $reportDay['receipt_count'] === $day['receipt_count']))))));
+    }
+
+    public function test_a_narrowed_list_has_only_the_count_and_total_of_the_matching_receipts_on_each_day(): void
+    {
+        $this->sellInAWeek();
+        $yesterday = today()->subDay()->toDateString();
+
+        $this->actingAs($this->admin)->get($this->url(['method' => 'transfer'], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('summary.days', 1)
+                ->where("summary.days.{$yesterday}.receipt_count", 1)
+                ->where("summary.days.{$yesterday}.gross_total", '30000.00')
+                ->where("summary.days.{$yesterday}.returns_total", null)
+                ->where("summary.days.{$yesterday}.net_total", null)
+                ->where("summary.days.{$yesterday}.voids_count", null)));
+    }
+
+    public function test_the_receipts_carry_their_business_day_and_are_grouped_by_it_not_by_the_time_they_were_rung_up(): void
+    {
+        $standing = $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+        $lateOfYesterday = $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+
+        // A shift opened yesterday that runs past midnight: sold after today's receipt, yet booked on yesterday.
+        $this->store->run(fn () => Sale::query()->whereKey($lateOfYesterday->id)->update(['business_date' => today()->subDay(), 'sold_at' => now()->addHour()]));
+
+        $this->actingAs($this->admin)->get($this->url([], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('receipts.data.0.number', $standing->number)
+                ->where('receipts.data.0.business_date', today()->toDateString())
+                ->where('receipts.data.1.number', $lateOfYesterday->number)
+                ->where('receipts.data.1.business_date', today()->subDay()->toDateString())));
+    }
+
+    public function test_a_page_that_opens_in_the_middle_of_a_day_says_so_and_one_that_opens_on_a_new_day_does_not(): void
+    {
+        $this->sellDifferentProducts(17);
+
+        $this->actingAs($this->admin)->get($this->url([], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('receipts.continues_previous_day', false)));
+        $this->actingAs($this->admin)->get($this->url(['page' => 2], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('receipts.continues_previous_day', true)));
+    }
+
+    public function test_a_page_whose_first_receipt_starts_a_new_day_does_not_continue_the_one_before(): void
+    {
+        $this->sellDifferentProducts(15);
+        $this->sell(1, [['method' => 'cash', 'amount' => 10000]], 1);
+        $this->sell(1, [['method' => 'cash', 'amount' => 10000]], 1);
+
+        $this->actingAs($this->admin)->get($this->url(['page' => 2], 'sales.receipts'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('receipts.current_page', 2)
+                ->has('receipts.data', 2)
+                ->where('receipts.data.0.business_date', today()->subDay()->toDateString())
+                ->where('receipts.continues_previous_day', false)));
     }
 
     public function test_the_receipt_list_is_for_admins_only_and_covers_this_month_without_dates(): void

@@ -7,6 +7,7 @@ use App\Enums\SaleStatus;
 use App\Models\CashShift;
 use App\Models\Sale;
 use Brick\Math\BigDecimal;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -41,23 +42,82 @@ class SaleHistoryService
     }
 
     /**
-     * A page of receipts with their lines and payments, for the receipt list of the sales report, newest first. A page
-     * past the last gives the last, so an address typed by hand never lands on an empty page.
+     * A page of receipts with their lines and payments, for the receipt list of the sales report, newest business day
+     * first and, within a day, newest first (see {@see self::inReportOrder()}). A page past the last gives the last, so an
+     * address typed by hand never lands on an empty page.
      *
      * @param  HistoryFilters  $filters
      * @return LengthAwarePaginator<int, Sale>
      */
     public function paginateWithLines(array $filters, int $page, int $perPage): LengthAwarePaginator
     {
-        $listing = fn (int $pageNumber): LengthAwarePaginator => $this->query($filters)
+        $listing = fn (int $pageNumber): LengthAwarePaginator => $this->inReportOrder($this->query($filters))
             ->with(['items', 'payments'])
-            ->orderByDesc('sold_at')
-            ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $pageNumber);
 
         $paginator = $listing($page);
 
         return $page > $paginator->lastPage() ? $listing($paginator->lastPage()) : $paginator;
+    }
+
+    /**
+     * Whether the first receipt of a page is of the same business day as the last one of the page before it, so the page
+     * opens in the middle of a day the list started on the page before. Always false for the first page.
+     *
+     * @param  HistoryFilters  $filters
+     * @param  LengthAwarePaginator<int, Sale>  $paginator  A page made by {@see self::paginateWithLines()}.
+     */
+    public function continuesPreviousDay(array $filters, LengthAwarePaginator $paginator): bool
+    {
+        $firstOnPage = $paginator->getCollection()->first();
+        $offsetOfFirst = ($paginator->currentPage() - 1) * $paginator->perPage();
+
+        if ($firstOnPage === null || $offsetOfFirst === 0) {
+            return false;
+        }
+
+        $previousDay = $this->inReportOrder($this->query($filters))->skip($offsetOfFirst - 1)->take(1)->value('business_date');
+
+        return $previousDay !== null && CarbonImmutable::parse($previousDay)->toDateString() === $firstOnPage->business_date->toDateString();
+    }
+
+    /**
+     * What the completed receipts of the filter come to on each business day that has any, for the day headings of the
+     * receipt list. A day has only its count and total here: the returns and voids of a day are not tied to a payment
+     * method or to a search, so they are left `null` rather than made up (see {@see SalesReportService::dayFigures()} for
+     * a whole day).
+     *
+     * @param  HistoryFilters  $filters
+     * @return array<string, array{receipt_count: int, gross_total: string, returns_total: null, net_total: null, voids_count: null, voids_total: null}>
+     */
+    public function totalsByDay(array $filters): array
+    {
+        return $this->query($filters)
+            ->where('status', SaleStatus::Completed)
+            ->groupBy('business_date')
+            ->selectRaw('business_date as day, count(*) as receipts, sum(total) as total')
+            ->get()
+            ->mapWithKeys(fn (Sale $row): array => [(string) $row->getAttribute('day') => [
+                'receipt_count' => (int) $row->getAttribute('receipts'),
+                'gross_total' => (string) BigDecimal::of((string) $row->getAttribute('total'))->toScale(2),
+                'returns_total' => null,
+                'net_total' => null,
+                'voids_count' => null,
+                'voids_total' => null,
+            ]])
+            ->all();
+    }
+
+    /**
+     * The order of the receipt list: by business day, since a day is what it is grouped by (a shift that runs past midnight
+     * keeps its opening day, so the time alone would mix the days), then newest first.
+     *
+     * @param  Builder<Sale>  $query
+     * @return Builder<Sale>
+     */
+    private function inReportOrder(Builder $query): Builder
+    {
+        return $query->orderByDesc('business_date')->orderByDesc('sold_at')->orderByDesc('id');
     }
 
     /**

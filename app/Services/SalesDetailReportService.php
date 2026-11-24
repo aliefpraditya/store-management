@@ -35,7 +35,22 @@ use Illuminate\Support\Collection;
  */
 class SalesDetailReportService
 {
+    /**
+     * The most days the printed sheet can cover. The sheet is built in memory, one table for every receipt, and a browser
+     * cannot lay out a year of them (about 75 receipts a day came to some 230 pages a month); the spreadsheet, which is
+     * streamed, can cover the whole of {@see SalesReportService::MAX_DAYS}.
+     */
+    public const MAX_SHEET_DAYS = 31;
+
     public function __construct(private readonly SalesReportService $salesReport) {}
+
+    /**
+     * Whether a period is longer than the printed sheet can cover.
+     */
+    public function exceedsSheetLimit(CarbonImmutable $from, CarbonImmutable $to): bool
+    {
+        return (int) round($from->startOfDay()->diffInDays($to->startOfDay())) + 1 > self::MAX_SHEET_DAYS;
+    }
 
     /**
      * @return array{from: string, to: string, filter: string|null, totals: array<string, string|int>, methods: list<array{method: string, label: string, amount: string}>, days: list<DetailDay>, goods: list<array{name: string, unit: string, quantity: string, subtotal: string}>, voids: list<array{number: string, business_date: string, void_date: string, reason: string|null, total: string}>, returns: list<array{number: string, receipt_number: string, date: string, resolution: string, reason: string|null, refund_method: string|null, credit_amount: string, items: list<array{name: string, quantity: string, unit: string, refund_subtotal: string}>}>}
@@ -237,7 +252,7 @@ class SalesDetailReportService
     /**
      * @return list<array{number: string, business_date: string, void_date: string, reason: string|null, total: string}>
      */
-    private function voids(CarbonImmutable $from, CarbonImmutable $to): array
+    public function voids(CarbonImmutable $from, CarbonImmutable $to): array
     {
         return Sale::query()
             ->where('status', SaleStatus::Voided)
@@ -258,7 +273,7 @@ class SalesDetailReportService
     /**
      * @return list<array{number: string, receipt_number: string, date: string, resolution: string, reason: string|null, refund_method: string|null, credit_amount: string, items: list<array{name: string, quantity: string, unit: string, refund_subtotal: string}>}>
      */
-    private function returns(CarbonImmutable $from, CarbonImmutable $to): array
+    public function returns(CarbonImmutable $from, CarbonImmutable $to): array
     {
         return SaleReturn::query()
             ->select('sale_returns.*')

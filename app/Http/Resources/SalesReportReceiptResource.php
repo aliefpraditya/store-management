@@ -24,6 +24,7 @@ class SalesReportReceiptResource extends JsonResource
         return [
             'id' => $this->id,
             'number' => $this->number,
+            'business_date' => $this->business_date->toDateString(),
             'sold_at' => $this->sold_at->toIso8601String(),
             'customer_name' => $this->customer_name,
             'fulfillment_label' => $this->fulfillment->label(),

@@ -83,9 +83,11 @@ class ReportController extends Controller
     }
 
     /**
-     * Every receipt of the period, newest first, each opening to its goods and payments, with the detailed sheet and the
-     * spreadsheet to print or save. The summary and the table are deferred props, each in a group of its own, so the page
-     * shows at once and they load side by side. Narrowing or turning the table asks for that part alone.
+     * Every receipt of the period, newest day first and grouped by day, each opening to its goods and payments, with the
+     * detailed sheet and the spreadsheet to print or save. The summary (with the figures of each day, for the day headings)
+     * and the table are deferred props, each in a group of its own, so the page shows at once and they load side by side.
+     * Narrowing or turning the table asks for that part alone. A narrowed list has the count and total of each day only,
+     * since returns and voids are not tied to a payment method or to a search.
      */
     public function salesReceipts(SalesReceiptListRequest $request): Response
     {
@@ -99,19 +101,29 @@ class ReportController extends Controller
             'status' => null,
             'method' => $method?->value,
         ];
+        $isNarrowed = $filters['search'] !== null || $filters['method'] !== null;
 
         return Inertia::render('Tenant/Reports/SalesReceipts', [
             'period' => ['from' => $filters['from'], 'to' => $filters['to']],
             'filters' => ['search' => $request->search(), 'method' => $method?->value ?? ''],
-            'summary' => Inertia::defer(fn (): array => $this->saleHistory->totals($filters), 'summary'),
-            'receipts' => Inertia::defer(fn (): array => $this->tablePage(
-                $this->saleHistory->paginateWithLines($filters, $request->page(), $request->perPage()),
-                SalesReportReceiptResource::class,
-            ), 'receipts'),
+            'summary' => Inertia::defer(fn (): array => [
+                ...$this->saleHistory->totals($filters),
+                'days' => $isNarrowed ? $this->saleHistory->totalsByDay($filters) : $this->salesReport->dayFigures($period['from'], $period['to']),
+            ], 'summary'),
+            'receipts' => Inertia::defer(function () use ($filters, $request): array {
+                $receipts = $this->saleHistory->paginateWithLines($filters, $request->page(), $request->perPage());
+
+                return [
+                    ...$this->tablePage($receipts, SalesReportReceiptResource::class),
+                    'continues_previous_day' => $this->saleHistory->continuesPreviousDay($filters, $receipts),
+                ];
+            }, 'receipts'),
             'payment_method_options' => PaymentMethod::saleOptions(),
             'per_page_options' => SaleHistoryService::RECEIPT_LIST_PER_PAGE_OPTIONS,
             'is_period_cut_back' => $period['is_cut_back'],
             'max_days' => SalesReportService::MAX_DAYS,
+            'is_sheet_too_long' => $this->salesDetailReport->exceedsSheetLimit($period['from'], $period['to']),
+            'max_sheet_days' => SalesDetailReportService::MAX_SHEET_DAYS,
             'urls' => [
                 'detail_sheet' => route('tenant.reports.sales.detail-sheet', ['tenant' => tenant('code'), 'from' => $filters['from'], 'to' => $filters['to']]),
                 'detail_export' => route('tenant.reports.sales.detail-export', ['tenant' => tenant('code'), 'from' => $filters['from'], 'to' => $filters['to']]),
@@ -226,11 +238,15 @@ class ReportController extends Controller
     }
 
     /**
-     * The same period as the summary sheet, but down to each receipt with its goods and payments.
+     * The same period as the summary sheet, but down to each receipt with its goods and payments. The sheet is built in
+     * memory and printed from the browser, so it covers at most {@see SalesDetailReportService::MAX_SHEET_DAYS} days; a
+     * longer period is refused rather than cut, so a report never quietly lacks days.
      */
     public function salesDetailSheet(SalesDetailReportRequest $request): Response
     {
         $period = $this->salesReport->period($request->fromDate(), $request->toDate());
+
+        abort_if($this->salesDetailReport->exceedsSheetLimit($period['from'], $period['to']), 422, 'Laporan rinci untuk dicetak paling lama '.SalesDetailReportService::MAX_SHEET_DAYS.' hari. Pilih periode yang lebih pendek, atau unduh Excel.');
 
         return Inertia::render('Tenant/Print/SalesDetailReport', [
             'report' => [...$this->salesDetailReport->report($period['from'], $period['to'], $request->paymentMethod()), 'store' => $this->settings->letterhead()],
@@ -240,14 +256,22 @@ class ReportController extends Controller
 
     /**
      * The detailed report of the period as an xlsx file: the receipts, their goods, the returns and the voids, each a sheet.
+     * The rows are read and written one at a time inside the response, so a whole year (the longest period the report
+     * gives) costs little memory; what it costs is time, which is why the limit of the script is lifted for it.
      */
     public function salesDetailExport(SalesDetailReportRequest $request): StreamedResponse
     {
         $period = $this->salesReport->period($request->fromDate(), $request->toDate());
-        $sheets = $this->salesDetailSheets->sheets($this->salesDetailReport->report($period['from'], $period['to'], $request->paymentMethod()));
+        $method = $request->paymentMethod();
         $fileName = $this->exportFileName($this->settings->letterhead()['name'], $period['from'], $period['to']);
 
-        return response()->streamDownload(fn () => $this->salesDetailWorkbook->write($sheets, 'php://output'), $fileName, [
+        return response()->streamDownload(function () use ($period, $method): void {
+            if (function_exists('set_time_limit')) {
+                set_time_limit(300);
+            }
+
+            $this->salesDetailWorkbook->write($this->salesDetailSheets->sheets($period['from'], $period['to'], $method), 'php://output');
+        }, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
     }

@@ -25,6 +25,9 @@ const props = defineProps({
     /** Whether the period asked for was longer than the report allows and was cut back from its start. */
     is_period_cut_back: { type: Boolean, required: true },
     max_days: { type: Number, required: true },
+    /** Whether the period is longer than the printed detailed sheet can cover; the spreadsheet has no such limit. */
+    is_sheet_too_long: { type: Boolean, required: true },
+    max_sheet_days: { type: Number, required: true },
     /** The addresses of the detailed sheet and of the spreadsheet, for the period on screen. */
     urls: { type: Object, required: true },
 });
@@ -122,12 +125,35 @@ const changePerPage = (perPage) => reloadParts(['receipts'], { page: 1, per_page
 
 /** @param {{label: string}[]} payments */
 const methodsOf = (payments) => [...new Set(payments.map((payment) => payment.label))].join(', ');
+
+const dayFormat = new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const asLocalDate = (isoDay) => new Date(`${isoDay}T00:00:00`);
+
+/**
+ * The receipts of the page in runs of one business day, in the order the server gave them (newest day first, which the
+ * server sorts by so a day is never split into two runs). Each run gets a heading with the day's figures.
+ */
+const dayGroups = computed(() => {
+    const groups = [];
+
+    for (const receipt of props.receipts?.data ?? []) {
+        const lastGroup = groups[groups.length - 1];
+
+        if (lastGroup?.date === receipt.business_date) {
+            lastGroup.receipts.push(receipt);
+        } else {
+            groups.push({ date: receipt.business_date, receipts: [receipt] });
+        }
+    }
+
+    return groups;
+});
 </script>
 
 <template>
     <StoreLayout title="Laporan Penjualan">
         <template #actions>
-            <q-btn outline no-caps icon="picture_as_pdf" label="Cetak / PDF rinci" @click="printDetailReport" />
+            <q-btn outline no-caps icon="picture_as_pdf" label="Cetak / PDF rinci" :disable="is_sheet_too_long" @click="printDetailReport" />
             <q-btn outline no-caps icon="table_view" label="Excel rinci" class="q-ml-sm" :loading="isDownloadingExcel" @click="downloadDetailExcel" />
         </template>
 
@@ -138,6 +164,7 @@ const methodsOf = (payments) => [...new Set(payments.map((payment) => payment.la
             <DateInput v-model="to" label="Sampai" outlined dense :error="!to" error-message="Wajib diisi" class="period__date" />
         </div>
         <p v-if="is_period_cut_back" class="notice">Periode terlalu panjang, jadi laporan hanya memuat {{ max_days }} hari terakhir sampai tanggal akhir. Pilih periode yang lebih pendek untuk melihat yang lebih awal.</p>
+        <p v-if="is_sheet_too_long" class="notice">Periode lebih dari {{ max_sheet_days }} hari terlalu panjang untuk dicetak, jadi tombol Cetak / PDF rinci dimatikan. Unduh Excel untuk periode ini, atau pilih periode paling lama {{ max_sheet_days }} hari.</p>
 
         <Deferred data="summary">
             <template #fallback>
@@ -193,49 +220,63 @@ const methodsOf = (payments) => [...new Set(payments.map((payment) => payment.la
                                     <tr v-if="receipts.data.length === 0">
                                         <td colspan="6" class="table__empty">Tidak ada nota yang cocok pada periode ini.</td>
                                     </tr>
-                                    <template v-for="receipt in receipts.data" :key="receipt.id">
-                                        <tr class="table__row" :class="{ 'table__row--void': receipt.status === 'voided' }" @click="toggleReceipt(receipt.id)">
-                                            <td class="table__toggle">
-                                                <q-btn flat round dense size="sm" :icon="openIds.includes(receipt.id) ? 'expand_less' : 'expand_more'" :aria-expanded="openIds.includes(receipt.id)" :aria-label="`Rincian nota ${receipt.number}`" @click.stop="toggleReceipt(receipt.id)" />
-                                            </td>
-                                            <td>
-                                                <b>{{ receipt.number }}</b>
-                                                <small class="table__muted">{{ dateTimeFormat.format(new Date(receipt.sold_at)) }}</small>
-                                            </td>
-                                            <td>{{ receipt.customer_name ?? '-' }}</td>
-                                            <td>{{ receipt.fulfillment_label }}</td>
-                                            <td>{{ methodsOf(receipt.payments) }}</td>
-                                            <td class="table__right">
-                                                <b>{{ formatRupiah(receipt.total) }}</b>
-                                                <small v-if="receipt.status === 'voided'" class="table__void-mark">{{ receipt.status_label }}</small>
+                                    <template v-for="(group, groupIndex) in dayGroups" :key="group.date">
+                                        <tr class="table__day">
+                                            <td colspan="6">
+                                                <strong>{{ dayFormat.format(asLocalDate(group.date)) }}</strong>
+                                                <span v-if="groupIndex === 0 && receipts.continues_previous_day" class="table__continued">(lanjutan)</span>
+                                                <span v-if="summary?.days?.[group.date]" class="table__day-figures">
+                                                    {{ summary.days[group.date].receipt_count }} nota · Penjualan {{ formatRupiah(summary.days[group.date].gross_total) }}
+                                                    <template v-if="Number(summary.days[group.date].returns_total) > 0"> · Retur {{ formatDeduction(summary.days[group.date].returns_total) }}</template>
+                                                    <template v-if="summary.days[group.date].net_total !== null"> · Bersih <strong>{{ formatRupiah(summary.days[group.date].net_total) }}</strong></template>
+                                                    <template v-if="summary.days[group.date].voids_count > 0"> · Void {{ summary.days[group.date].voids_count }} nota ({{ formatRupiah(summary.days[group.date].voids_total) }})</template>
+                                                </span>
                                             </td>
                                         </tr>
-                                        <tr v-if="openIds.includes(receipt.id)" class="table__detail">
-                                            <td></td>
-                                            <td colspan="5">
-                                                <table class="lines">
-                                                    <tbody>
-                                                        <tr v-for="(item, index) in receipt.items" :key="index">
-                                                            <td>{{ item.name }}</td>
-                                                            <td class="table__right">{{ formatQuantity(item.quantity) }} {{ item.unit }}</td>
-                                                            <td class="table__right">{{ formatRupiah(item.unit_price) }}</td>
-                                                            <td class="table__right">{{ formatRupiah(item.subtotal) }}</td>
-                                                        </tr>
-                                                        <tr v-if="Number(receipt.discount_total) > 0">
-                                                            <td colspan="3">Diskon</td>
-                                                            <td class="table__right">{{ formatDeduction(receipt.discount_total) }}</td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
-                                                <p class="paid">
-                                                    Dibayar:
-                                                    <span v-for="(payment, index) in receipt.payments" :key="index">{{ index > 0 ? ' + ' : ' ' }}{{ payment.label }} {{ formatRupiah(payment.amount) }}<template v-if="payment.reference"> (ref. {{ payment.reference }})</template></span>
-                                                    <template v-if="Number(receipt.change_amount) > 0"> · kembali {{ formatRupiah(receipt.change_amount) }}</template>
-                                                    <template v-if="receipt.status === 'voided'"> · di-void<template v-if="receipt.void_reason">: {{ receipt.void_reason }}</template></template>
-                                                </p>
-                                                <Link v-if="canOpenReceipt" :href="receipt.show_url" class="paid__link">Buka nota</Link>
-                                            </td>
-                                        </tr>
+                                        <template v-for="receipt in group.receipts" :key="receipt.id">
+                                            <tr class="table__row" :class="{ 'table__row--void': receipt.status === 'voided' }" @click="toggleReceipt(receipt.id)">
+                                                <td class="table__toggle">
+                                                    <q-btn flat round dense size="sm" :icon="openIds.includes(receipt.id) ? 'expand_less' : 'expand_more'" :aria-expanded="openIds.includes(receipt.id)" :aria-label="`Rincian nota ${receipt.number}`" @click.stop="toggleReceipt(receipt.id)" />
+                                                </td>
+                                                <td>
+                                                    <b>{{ receipt.number }}</b>
+                                                    <small class="table__muted">{{ dateTimeFormat.format(new Date(receipt.sold_at)) }}</small>
+                                                </td>
+                                                <td>{{ receipt.customer_name ?? '-' }}</td>
+                                                <td>{{ receipt.fulfillment_label }}</td>
+                                                <td>{{ methodsOf(receipt.payments) }}</td>
+                                                <td class="table__right">
+                                                    <b>{{ formatRupiah(receipt.total) }}</b>
+                                                    <small v-if="receipt.status === 'voided'" class="table__void-mark">{{ receipt.status_label }}</small>
+                                                </td>
+                                            </tr>
+                                            <tr v-if="openIds.includes(receipt.id)" class="table__detail">
+                                                <td></td>
+                                                <td colspan="5">
+                                                    <table class="lines">
+                                                        <tbody>
+                                                            <tr v-for="(item, index) in receipt.items" :key="index">
+                                                                <td>{{ item.name }}</td>
+                                                                <td class="table__right">{{ formatQuantity(item.quantity) }} {{ item.unit }}</td>
+                                                                <td class="table__right">{{ formatRupiah(item.unit_price) }}</td>
+                                                                <td class="table__right">{{ formatRupiah(item.subtotal) }}</td>
+                                                            </tr>
+                                                            <tr v-if="Number(receipt.discount_total) > 0">
+                                                                <td colspan="3">Diskon</td>
+                                                                <td class="table__right">{{ formatDeduction(receipt.discount_total) }}</td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                    <p class="paid">
+                                                        Dibayar:
+                                                        <span v-for="(payment, index) in receipt.payments" :key="index">{{ index > 0 ? ' + ' : ' ' }}{{ payment.label }} {{ formatRupiah(payment.amount) }}<template v-if="payment.reference"> (ref. {{ payment.reference }})</template></span>
+                                                        <template v-if="Number(receipt.change_amount) > 0"> · kembali {{ formatRupiah(receipt.change_amount) }}</template>
+                                                        <template v-if="receipt.status === 'voided'"> · di-void<template v-if="receipt.void_reason">: {{ receipt.void_reason }}</template></template>
+                                                    </p>
+                                                    <Link v-if="canOpenReceipt" :href="receipt.show_url" class="paid__link">Buka nota</Link>
+                                                </td>
+                                            </tr>
+                                        </template>
                                     </template>
                                 </tbody>
                             </table>
@@ -269,7 +310,7 @@ const methodsOf = (payments) => [...new Set(payments.map((payment) => payment.la
                     </div>
                 </template>
             </Deferred>
-            <p class="note">Nota void tampil di daftar dan diberi tanda, tetapi tidak dihitung di atas. Tombol Cetak dan Excel di kanan atas memuat semua nota periode ini (pilihan metode bayar ikut, pencarian tidak), lengkap dengan retur dan void.</p>
+            <p class="note">Nota dikelompokkan per hari buku (shift yang lewat tengah malam tetap di hari bukanya). Angka di judul hari adalah angka seluruh hari, walau nota hari itu terbagi di beberapa halaman. Saat pencarian atau metode bayar dipilih, judul hanya memuat jumlah dan total nota yang cocok, karena retur dan void tidak terikat metode bayar. Nota void tampil dan diberi tanda, tetapi tidak dihitung. Tombol Cetak dan Excel di kanan atas memuat semua nota periode ini (pilihan metode bayar ikut, pencarian tidak), lengkap dengan retur dan void.</p>
         </section>
     </StoreLayout>
 </template>
@@ -412,6 +453,23 @@ const methodsOf = (payments) => [...new Set(payments.map((payment) => payment.la
     padding: 28px 6px;
     color: var(--app-mute);
     text-align: center;
+}
+
+.table .table__day td {
+    padding: 10px 6px;
+    background: var(--app-bg);
+    border-bottom: 1px solid var(--app-line);
+    font-size: 13px;
+}
+
+.table__continued {
+    margin-left: 4px;
+    color: var(--app-mute);
+}
+
+.table__day-figures {
+    margin-left: 10px;
+    color: var(--app-ink-soft);
 }
 
 .table__row {
