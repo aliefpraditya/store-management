@@ -25,6 +25,7 @@ use App\Models\Category;
 use App\Services\IdleStockService;
 use App\Services\RestockReportService;
 use App\Services\SaleHistoryService;
+use App\Services\SalesBusyTimeReportService;
 use App\Services\SalesDetailReportService;
 use App\Services\SalesDetailSheetRows;
 use App\Services\SalesDetailWorkbook;
@@ -50,6 +51,7 @@ class ReportController extends Controller
 
     public function __construct(
         private readonly SalesReportService $salesReport,
+        private readonly SalesBusyTimeReportService $salesBusyTime,
         private readonly SalesDetailReportService $salesDetailReport,
         private readonly SalesDetailSheetRows $salesDetailSheets,
         private readonly SalesDetailWorkbook $salesDetailWorkbook,
@@ -102,6 +104,22 @@ class ReportController extends Controller
             'groups' => Inertia::defer(fn (): array => $this->salesReport->groupsPage($period['from'], $period['to'], $request->groupsGrouping(), $request->groupsSort(), $request->groupsDirection(), $request->groupsPage(), $request->groupsPerPage()), 'groups'),
             'per_page_options' => SalesReportService::PER_PAGE_OPTIONS,
             'group_per_page_options' => SalesReportService::GROUP_PER_PAGE_OPTIONS,
+            'is_period_cut_back' => $period['is_cut_back'],
+            'max_days' => SalesReportService::MAX_DAYS,
+        ]);
+    }
+
+    /**
+     * When the store is busy: the receipts of the period by hour and by weekday, as totals and as averages per trading
+     * day. One deferred prop, so the page shows at once and the charts fill in when the server has them.
+     */
+    public function salesBusy(DateRangeRequest $request): Response
+    {
+        $period = $this->salesReport->period($request->fromDate(), $request->toDate());
+
+        return Inertia::render('Tenant/Reports/SalesBusy', [
+            'period' => ['from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()],
+            'busy' => Inertia::defer(fn (): array => $this->salesBusyTime->report($period['from'], $period['to']), 'busy'),
             'is_period_cut_back' => $period['is_cut_back'],
             'max_days' => SalesReportService::MAX_DAYS,
         ]);

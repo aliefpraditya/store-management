@@ -5,7 +5,7 @@ import { urlForRange } from '../Composables/reportRange';
 import ReportTabs from './ReportTabs.vue';
 
 defineProps({
-    /** Which of the sales report's tabs the page is: `summary`, `receipts`, `products` or `returns`. */
+    /** Which of the sales report's tabs the page is: `summary`, `receipts`, `products`, `busy` or `returns`. */
     current: { type: String, required: true },
 });
 
@@ -18,6 +18,7 @@ const tabs = computed(() => [
     { key: 'summary', label: 'Ringkasan', icon: 'pie_chart', href: withPeriod(page.props.store.reports_url) },
     { key: 'receipts', label: 'Daftar nota', icon: 'receipt_long', href: withPeriod(page.props.store.sales_receipts_url) },
     { key: 'products', label: 'Barang & kategori', icon: 'category', href: withPeriod(page.props.store.sales_products_url) },
+    { key: 'busy', label: 'Jam & hari ramai', icon: 'schedule', href: withPeriod(page.props.store.sales_busy_url) },
     { key: 'returns', label: 'Retur & void', icon: 'assignment_return', href: withPeriod(page.props.store.sales_returns_url) },
 ]);
 </script>

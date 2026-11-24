@@ -1,11 +1,12 @@
 # TODO — Laporan penjualan dan laporan stok
 
-Terakhir diperbarui: 24 Nov 2026. Commit di `main`: `5f9d119`, `8b9be09`, `97185d1`, `8377845`, `ec40769` (tab Retur & void). Tab Ringkasan laporan stok ada di commit terbaru di `main`. Belum ada yang di-push.
+Terakhir diperbarui: 24 Nov 2026. Commit di `main`: `5f9d119`, `8b9be09`, `97185d1`, `8377845`, `ec40769` (tab Retur & void), `0a8ba92` (Ringkasan laporan stok). Tab Jam & hari ramai ada di commit terbaru di `main`. Belum ada yang di-push.
 
 ## Laporan penjualan
 
 ### Sudah selesai
 
+- **Tab Jam & hari ramai** (`reports/sales/busy`, 24 Nov): kapan toko ramai. Isinya empat angka (jam tersibuk, hari tersibuk, waktu tersibuk = hari + jam, dan jumlah hari buka), peta panas hari × jam, batang per jam, dan batang per hari dalam seminggu. Tombol **Penjualan | Jumlah nota** mengganti ukuran semua grafik tanpa memuat ulang; halaman mulai dari Penjualan. Hover pada kotak peta panas dan pada batang membuka dialog kecil seperti di grafik harian Ringkasan (judul, nota dan penjualan per hari, total, hari buka); logikanya dibagi lewat `Composables/useHoverPopup.js` dan isinya `Components/HoverDetails.vue`, dan grafik harian Ringkasan memakai composable yang sama. Hari adalah hari buku nota (nota lewat tengah malam dalam shift kemarin masuk hari kemarin), jam adalah `sold_at`. Semua angka adalah **rata-rata per hari yang ada nota**, bukan total periode, supaya hari yang kebetulan lebih sering muncul (lima Senin lawan empat Selasa) tidak mengubah perbandingan; totalnya tetap ada di tooltip. Tooltip dan kartu juga menyebut **hari tanpa nota** (`days_without_receipts`: hari dalam periode sampai hari ini yang tidak ada nota, per hari dalam seminggu untuk kotak dan batang hari); libur dan tidak laku tidak bisa dibedakan dari data, jadi hari itu tidak ikut dirata-rata, dan hari ini tidak dihitung selagi belum ada nota. Nota void tidak dihitung dan penjualan adalah total nota sebelum retur. Kode: `SalesBusyTimeReportService`, `ReportController::salesBusy()`, komponen baru `HourHeatmap.vue` dan `ColumnBars.vue`, halaman `SalesBusy.vue`.
 - **Tab Retur & void** (`reports/sales/returns`, 24 Nov): nasib barang retur dan barang paling sering diretur (dipindah dari Ringkasan), ditambah daftar retur disetujui (nomor, nota asal, penyelesaian, barang, alasan, nilai) dan daftar nota void (tanggal nota, tanggal void, alasan, total), terbaru dulu, dipaginasi di server (10/25/50) dengan jumlah dan nilai seluruh periode di judulnya. Semua kolom kedua daftar bisa diurutkan (diurutkan di server, berlaku lintas halaman; kolom teks mulai A–Z, tanggal dan nilai mulai terbaru/terbesar; yang sama nilainya tetap terbaru dulu pada urutan menurun). Siapa yang menangani retur atau void tidak ditampilkan. Pembersihan ikut beres: Ringkasan tidak lagi menghitung `return_details`, `inheritAttrs` dihapus, tes `return_details` pindah ke rute baru, dan paginasi koleksi dipindah ke trait `PaginatesReportRows` agar dipakai bersama.
 - **Tab Barang & kategori** (`reports/sales/products`, 24 Nov): tabel laba kotor per barang (paginasi 7/15/30) dan tabel penjualan per kategori atau merek (paginasi 5/10, tombol Kategori/Merek); semua kolom di kedua tabel bisa diurutkan (diurutkan di server, jadi urutan berlaku lintas halaman). Daftar nota sengaja tidak bisa diurutkan karena dikelompokkan per hari. Ringkasan kini selalu memberi 7 barang dan 5 kelompok teratas (tidak lagi mengikuti halaman/ukuran di alamat) dan punya tautan "Lihat semua" ke tab ini yang membawa periode dan pilihan Kategori/Merek. Alamat dengan periode disusun lewat `Composables/reportRange.js`.
 - **Excel rinci bisa setahun** (24 Nov): baris nota dan baris barang dibaca langsung dari database satu per satu (bukan model Eloquent) lalu ditulis ke berkas, jadi memori datar. Sebelumnya setahun memuat +438 MB dan melewati batas 512 MB. PDF rinci dibatasi 31 hari (browser tidak sanggup merender setahun); periode lebih panjang ditolak dengan pesan, tombolnya dimatikan, dan Excel tetap tersedia. Kode: `SalesDetailSheetRows` (generator per sheet), `SalesDetailWorkbook` (lebar kolom tetap menurut judul).
@@ -24,12 +25,13 @@ Terakhir diperbarui: 24 Nov 2026. Commit di `main`: `5f9d119`, `8b9be09`, `97185
 | Daftar nota | selesai (sudah per hari) |
 | Barang & kategori | selesai |
 | Retur & void | selesai |
+| Jam & hari ramai | selesai |
 
 **Tab Pembayaran dicoret.** Isinya sudah tertutup: jumlah per metode ada di pie Ringkasan; transfer/QRIS/EDC dengan nomor referensi ada di Daftar nota (filter metode, buka baris) dan di Excel rinci (kolom per metode dan kolom referensi).
 
 ### Yang belum dikerjakan
 
-**Tab opsional (belum diputuskan):** Jam & hari ramai; Pengiriman (nota diantar yang belum sampai, COD belum disetor); Antar toko (Super Admin).
+**Tab opsional (belum diputuskan):** Pengiriman (nota diantar yang belum sampai, COD belum disetor); Antar toko (Super Admin).
 
 ## Laporan stok
 
@@ -57,6 +59,7 @@ Terakhir diperbarui: 24 Nov 2026. Commit di `main`: `5f9d119`, `8b9be09`, `97185
 - Nomor halaman "Hal. X dari Y" di PDF rinci memakai CSS margin box (Chrome/Edge versi baru). Cek apakah muncul di printer toko.
 - Efek hover pada tab baru belum terlihat langsung di tangkapan layar; cek dengan kursor.
 - `composer require openspout/openspout` menampilkan 9 advisori keamanan pada 6 paket; belum diperiksa (`composer audit`).
+- Jam & hari ramai: cek dengan data asli apakah rata-rata per hari buka terbaca wajar (mis. toko yang buka sebagian hari saja) dan apakah peta panas cukup jelas saat jam bukanya lebar (0–23 bila ada nota dini hari).
 - Halaman penjualan, Ringkasan stok dan komponen grafik sudah dicoba di browser headless dengan data contoh, belum dengan data asli.
 - Ringkasan stok: cek dengan data asli apakah blok kuning (menipis) dan merah (habis) di batang kondisi terbaca bila kecil (persen hanya dicetak di blok selebar 9% ke atas; sisanya lewat legenda dan tooltip).
 

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { Deferred, Link, router, usePage } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
 import PieChart from '../../../Components/PieChart.vue';
@@ -8,6 +8,7 @@ import SalesReportTabs from '../../../Components/SalesReportTabs.vue';
 import { OTHER_COLOR, SERIES_COLORS } from '../../../Composables/chartColors';
 import { printSheet } from '../../../Composables/printSheet';
 import { urlForRange } from '../../../Composables/reportRange';
+import { useHoverPopup } from '../../../Composables/useHoverPopup';
 import { formatDeduction, formatRupiah } from '../../../Composables/useMoneyFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
@@ -81,35 +82,8 @@ function describeChange(percent) {
 
 const fullDayFormat = new Intl.DateTimeFormat('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-/** How long the details stay up after the pointer leaves, so it can cross the gap from the bar to the dialog and reach its link. */
-const HIDE_DELAY_MS = 150;
-
-/** The day whose details are open, for its bar to stay lit while the dialog is up. */
-const openDay = ref(null);
-
-let hideTimer;
-
-/** Opens the details of a day, at once, whether the pointer is on its bar or on the dialog; moving to another bar swaps them. */
-function showDay(day) {
-    clearTimeout(hideTimer);
-    openDay.value = day;
-}
-
-function hideDaySoon() {
-    clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => {
-        openDay.value = null;
-    }, HIDE_DELAY_MS);
-}
-
-/** The dialog asked to close (a click outside it, or Escape): only the day that is open is closed, never one that took over. */
-function closeDay(day) {
-    if (openDay.value === day) {
-        openDay.value = null;
-    }
-}
-
-onBeforeUnmount(() => clearTimeout(hideTimer));
+/** The day whose details are open, for its bar to stay lit while the dialog is up; the dialog stays up long enough to reach its link. */
+const { openKey: openDay, show: showDay, hideSoon: hideDaySoon, close: closeDay } = useHoverPopup();
 
 /** The receipts of one day, in the receipt list. */
 const receiptsOfDay = (day) => urlForRange(page.props.store.sales_receipts_url, day, day);
