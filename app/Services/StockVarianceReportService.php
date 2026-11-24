@@ -15,12 +15,13 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * The variances of the stock counts posted in a period: what went missing and what turned up, in what it was worth when the
- * count was posted (the variance times the purchase price at posting; an item without a purchase price is worth nothing, which
- * is told). Only counts of what is on the shelf are here ({@see StockOpnameReason::isStockCheck()}): opening stock, arrivals
- * and the inspection of returned goods are not variances. A count belongs to the day it was posted, as in the sales report's
- * dead stock loss, and the units of different products are never added, only their values. Money is returned as decimal
- * strings. Must run while the store's tenancy is initialized.
+ * The shortages of the stock counts posted in a period: what went missing, in what it was worth when the count was posted (the
+ * variance times the purchase price at posting; an item without a purchase price is worth nothing, which is told). Only the
+ * shortages are here: a count that finds more than the system holds is, until purchases are recorded, mostly stock that was
+ * bought, which is no variance to report. Only counts of what is on the shelf are here ({@see StockOpnameReason::isStockCheck()}):
+ * opening stock, arrivals and the inspection of returned goods are not variances. A count belongs to the day it was posted, as
+ * in the sales report's dead stock loss, and the units of different products are never added, only their values. Money is
+ * returned as decimal strings. Must run while the store's tenancy is initialized.
  *
  * A shortage given the reason "Rusak" is split by the admin into units sent to dead stock (already a loss in the profit of the
  * sales report, from the day the count is posted), units sold on as damaged goods (a loss only when sold, for less than they
@@ -29,9 +30,8 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * @phpstan-import-type ReportPage from PaginatesReportRows
  *
- * @phpstan-type VarianceFigures array{items_count: int, shortage_value: string, surplus_value: string, net_value: string}
- * @phpstan-type VarianceSummary array{opnames_count: int, items_count: int, shortage_items: int, surplus_items: int, shortage_value: string, surplus_value: string, net_value: string, dead_stock_value: string, damaged_goods_value: string, full_price_value: string, unbooked_value: string, items_without_cost: int}
- * @phpstan-type VarianceReason array{label: string, items_count: int, shortage_value: string, surplus_value: string, net_value: string, dead_stock_value: string, damaged_goods_value: string, full_price_value: string}
+ * @phpstan-type VarianceSummary array{opnames_count: int, shortage_items: int, shortage_value: string, dead_stock_value: string, damaged_goods_value: string, full_price_value: string, unbooked_value: string, items_without_cost: int}
+ * @phpstan-type VarianceReason array{label: string, items_count: int, shortage_value: string, dead_stock_value: string, damaged_goods_value: string, full_price_value: string}
  */
 class StockVarianceReportService
 {
@@ -54,26 +54,19 @@ class StockVarianceReportService
     public function summary(CarbonImmutable $from, CarbonImmutable $to): array
     {
         $figures = $this->varianceItems($from, $to)->toBase()->selectRaw(<<<'SQL'
-            count(*) as items_count,
-            count(case when stock_opname_items.variance < 0 then 1 end) as shortage_items,
-            count(case when stock_opname_items.variance > 0 then 1 end) as surplus_items,
+            count(*) as shortage_items,
             count(case when coalesce(stock_opname_items.cost_price_at_posting, 0) = 0 then 1 end) as items_without_cost,
         SQL.$this->valueSums())->first();
 
         $shortage = BigDecimal::of((string) $figures->shortage_value);
-        $surplus = BigDecimal::of((string) $figures->surplus_value);
         $deadStock = BigDecimal::of((string) $figures->dead_stock_value);
         $damagedGoods = BigDecimal::of((string) $figures->damaged_goods_value);
         $fullPrice = BigDecimal::of((string) $figures->full_price_value);
 
         return [
             'opnames_count' => $this->postedStockChecks($from, $to)->count(),
-            'items_count' => (int) $figures->items_count,
             'shortage_items' => (int) $figures->shortage_items,
-            'surplus_items' => (int) $figures->surplus_items,
             'shortage_value' => $this->money($shortage),
-            'surplus_value' => $this->money($surplus),
-            'net_value' => $this->money($surplus->minus($shortage)),
             'dead_stock_value' => $this->money($deadStock),
             'damaged_goods_value' => $this->money($damagedGoods),
             'full_price_value' => $this->money($fullPrice),
@@ -83,7 +76,7 @@ class StockVarianceReportService
     }
 
     /**
-     * The variances split by the reason given for them, the biggest shortage first. An item's own reason is used, and the
+     * The shortages split by the reason given for them, the biggest first. An item's own reason is used, and the
      * reason of its count for the older counts that were made before items had one; the same label is one row.
      *
      * @return list<VarianceReason>
@@ -105,8 +98,6 @@ class StockVarianceReportService
                     'label' => $label,
                     'items_count' => (int) $sameLabel->sum('items_count'),
                     'shortage_value' => $this->money($sum('shortage_value')),
-                    'surplus_value' => $this->money($sum('surplus_value')),
-                    'net_value' => $this->money($sum('surplus_value')->minus($sum('shortage_value'))),
                     'dead_stock_value' => $this->money($sum('dead_stock_value')),
                     'damaged_goods_value' => $this->money($sum('damaged_goods_value')),
                     'full_price_value' => $this->money($sum('full_price_value')),
@@ -125,7 +116,6 @@ class StockVarianceReportService
     public function topProducts(CarbonImmutable $from, CarbonImmutable $to, int $limit): array
     {
         $rows = $this->varianceItems($from, $to)->toBase()
-            ->where('stock_opname_items.variance', '<', 0)
             ->selectRaw('stock_opname_items.product_id, sum(-stock_opname_items.variance * '.self::COST_SQL.') as shortage_value')
             ->groupBy('stock_opname_items.product_id')
             ->having('shortage_value', '>', 0)
@@ -143,10 +133,10 @@ class StockVarianceReportService
     }
 
     /**
-     * One page of the counts posted in the period, the latest first, each with what its variances were worth; a count with no
-     * variance is listed too, since a count that came out even is worth knowing. A page past the last gives the last.
+     * One page of the counts posted in the period, the latest first, each with what its shortages were worth; a count with no
+     * shortage is listed too, since a count that came out even is worth knowing. A page past the last gives the last.
      *
-     * @return array{data: list<array{id: int, number: string, posted_on: string, warehouse: string, reason: string, items_count: int, shortage_value: string, surplus_value: string, net_value: string}>}&ReportPage
+     * @return array{data: list<array{id: int, number: string, posted_on: string, warehouse: string, reason: string, items_count: int, shortage_value: string}>}&ReportPage
      */
     public function opnamesPage(CarbonImmutable $from, CarbonImmutable $to, int $page, int $perPage): array
     {
@@ -166,8 +156,6 @@ class StockVarianceReportService
         return [
             'data' => $paginator->getCollection()->map(function (StockOpname $opname) use ($figures): array {
                 $row = $figures[$opname->id] ?? null;
-                $shortage = BigDecimal::of((string) ($row->shortage_value ?? 0));
-                $surplus = BigDecimal::of((string) ($row->surplus_value ?? 0));
 
                 return [
                     'id' => $opname->id,
@@ -176,9 +164,7 @@ class StockVarianceReportService
                     'warehouse' => $opname->warehouse->name,
                     'reason' => $opname->reason_code?->label() ?? '-',
                     'items_count' => (int) ($row->items_count ?? 0),
-                    'shortage_value' => $this->money($shortage),
-                    'surplus_value' => $this->money($surplus),
-                    'net_value' => $this->money($surplus->minus($shortage)),
+                    'shortage_value' => $this->money($row->shortage_value ?? 0),
                 ];
             })->values()->all(),
             ...$this->pageOf($paginator),
@@ -199,7 +185,7 @@ class StockVarianceReportService
     }
 
     /**
-     * The items of those counts that had a variance, with `stock_opnames` joined.
+     * The items of those counts that came out short, with `stock_opnames` joined.
      *
      * @return Builder<StockOpnameItem>
      */
@@ -210,24 +196,22 @@ class StockVarianceReportService
             ->where('stock_opnames.status', StockOpnameStatus::Posted)
             ->whereIn('stock_opnames.reason_code', $this->stockCheckReasons())
             ->whereBetween('stock_opnames.posted_at', [$from->startOfDay(), $to->endOfDay()])
-            ->whereNotNull('stock_opname_items.variance')
-            ->where('stock_opname_items.variance', '!=', 0);
+            ->where('stock_opname_items.variance', '<', 0);
     }
 
     /**
-     * What a variance is worth, summed: the shortages and the surpluses, and of the shortages the units sent to dead stock, sold
-     * on as damaged goods and found fine after all, each at the price when the count was posted.
+     * What the shortages are worth, summed, and of them the units sent to dead stock, sold on as damaged goods and found fine
+     * after all, each at the price when the count was posted.
      */
     private function valueSums(): string
     {
         $cost = self::COST_SQL;
 
         return <<<SQL
-            coalesce(sum(case when stock_opname_items.variance < 0 then -stock_opname_items.variance * {$cost} end), 0) as shortage_value,
-            coalesce(sum(case when stock_opname_items.variance > 0 then stock_opname_items.variance * {$cost} end), 0) as surplus_value,
-            coalesce(sum(case when stock_opname_items.variance < 0 then coalesce(stock_opname_items.dead_stock_quantity, 0) * {$cost} end), 0) as dead_stock_value,
-            coalesce(sum(case when stock_opname_items.variance < 0 then coalesce(stock_opname_items.damaged_goods_quantity, 0) * {$cost} end), 0) as damaged_goods_value,
-            coalesce(sum(case when stock_opname_items.variance < 0 then coalesce(stock_opname_items.full_price_quantity, 0) * {$cost} end), 0) as full_price_value
+            coalesce(sum(-stock_opname_items.variance * {$cost}), 0) as shortage_value,
+            coalesce(sum(coalesce(stock_opname_items.dead_stock_quantity, 0) * {$cost}), 0) as dead_stock_value,
+            coalesce(sum(coalesce(stock_opname_items.damaged_goods_quantity, 0) * {$cost}), 0) as damaged_goods_value,
+            coalesce(sum(coalesce(stock_opname_items.full_price_quantity, 0) * {$cost}), 0) as full_price_value
         SQL;
     }
 

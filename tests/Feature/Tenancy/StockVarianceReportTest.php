@@ -157,18 +157,14 @@ class StockVarianceReportTest extends TestCase
                 ->missing('products')));
     }
 
-    public function test_the_summary_values_the_shortages_and_the_surpluses_at_the_price_when_posted(): void
+    public function test_the_summary_values_only_the_shortages_at_the_price_when_posted(): void
     {
         $this->postTheCounts();
 
         $this->assertReport(fn (Assert $report) => $report->where('summary', [
             'opnames_count' => 4,
-            'items_count' => 6,
             'shortage_items' => 5,
-            'surplus_items' => 1,
             'shortage_value' => '25000.00',
-            'surplus_value' => '15000.00',
-            'net_value' => '-10000.00',
             'dead_stock_value' => '4000.00',
             'damaged_goods_value' => '2000.00',
             'full_price_value' => '4000.00',
@@ -183,19 +179,18 @@ class StockVarianceReportTest extends TestCase
 
         $this->assertReport(fn (Assert $report) => $report
             ->where('opnames.total', 4)
-            ->where('summary.items_count', 6)
+            ->where('summary.shortage_items', 5)
             ->where('products', fn ($products) => ! collect($products)->contains(fn (array $product): bool => $product['shortage_value'] === '700.00' || $product['shortage_value'] === '8000.00')));
     }
 
-    public function test_the_variances_are_split_by_reason_and_an_older_count_uses_the_reason_of_its_count(): void
+    public function test_the_shortages_are_split_by_reason_an_older_count_uses_the_reason_of_its_count_and_a_surplus_has_none(): void
     {
         $this->postTheCounts();
 
         $this->assertReport(fn (Assert $report) => $report
-            ->has('reasons', 3)
-            ->where('reasons.0', ['label' => 'Hilang', 'items_count' => 4, 'shortage_value' => '15000.00', 'surplus_value' => '0.00', 'net_value' => '-15000.00', 'dead_stock_value' => '0.00', 'damaged_goods_value' => '0.00', 'full_price_value' => '0.00'])
-            ->where('reasons.1', ['label' => 'Rusak', 'items_count' => 1, 'shortage_value' => '10000.00', 'surplus_value' => '0.00', 'net_value' => '-10000.00', 'dead_stock_value' => '4000.00', 'damaged_goods_value' => '2000.00', 'full_price_value' => '4000.00'])
-            ->where('reasons.2', ['label' => 'Cek stok', 'items_count' => 1, 'shortage_value' => '0.00', 'surplus_value' => '15000.00', 'net_value' => '15000.00', 'dead_stock_value' => '0.00', 'damaged_goods_value' => '0.00', 'full_price_value' => '0.00']));
+            ->has('reasons', 2)
+            ->where('reasons.0', ['label' => 'Hilang', 'items_count' => 4, 'shortage_value' => '15000.00', 'dead_stock_value' => '0.00', 'damaged_goods_value' => '0.00', 'full_price_value' => '0.00'])
+            ->where('reasons.1', ['label' => 'Rusak', 'items_count' => 1, 'shortage_value' => '10000.00', 'dead_stock_value' => '4000.00', 'damaged_goods_value' => '2000.00', 'full_price_value' => '4000.00']));
     }
 
     public function test_the_products_that_lost_the_most_come_first_and_one_that_lost_nothing_is_left_out(): void
@@ -209,17 +204,17 @@ class StockVarianceReportTest extends TestCase
         ]));
     }
 
-    public function test_the_counts_are_listed_latest_first_with_what_their_variances_were_worth_and_an_even_one_too(): void
+    public function test_the_counts_are_listed_latest_first_with_what_their_shortages_were_worth_and_an_even_one_too(): void
     {
         $this->postTheCounts();
 
         $this->assertReport(fn (Assert $report) => $report
             ->where('opnames.total', 4)
-            ->where('opnames.data', fn ($opnames) => collect($opnames)->map(fn (array $opname): array => [$opname['posted_on'], $opname['reason'], $opname['warehouse'], $opname['items_count'], $opname['shortage_value'], $opname['surplus_value'], $opname['net_value']])->all() === [
-                ['2026-11-12', 'Opname Rutin', 'Main Warehouse', 0, '0.00', '0.00', '0.00'],
-                ['2026-11-10', 'Opname Rutin', 'Main Warehouse', 1, '2000.00', '0.00', '-2000.00'],
-                ['2026-11-08', 'Hilang', 'Main Warehouse', 1, '3000.00', '0.00', '-3000.00'],
-                ['2026-11-05', 'Opname Rutin', 'Main Warehouse', 4, '20000.00', '15000.00', '-5000.00'],
+            ->where('opnames.data', fn ($opnames) => collect($opnames)->map(fn (array $opname): array => [$opname['posted_on'], $opname['reason'], $opname['warehouse'], $opname['items_count'], $opname['shortage_value']])->all() === [
+                ['2026-11-12', 'Opname Rutin', 'Main Warehouse', 0, '0.00'],
+                ['2026-11-10', 'Opname Rutin', 'Main Warehouse', 1, '2000.00'],
+                ['2026-11-08', 'Hilang', 'Main Warehouse', 1, '3000.00'],
+                ['2026-11-05', 'Opname Rutin', 'Main Warehouse', 3, '20000.00'],
             ])
             ->where('opnames.data.0.url', fn (string $url) => str_contains($url, '/stock-opnames/')));
     }
@@ -261,7 +256,7 @@ class StockVarianceReportTest extends TestCase
     {
         $this->assertReport(fn (Assert $report) => $report
             ->where('summary.opnames_count', 0)
-            ->where('summary.items_count', 0)
+            ->where('summary.shortage_items', 0)
             ->where('summary.shortage_value', '0.00')
             ->where('summary.unbooked_value', '0.00')
             ->where('reasons', [])

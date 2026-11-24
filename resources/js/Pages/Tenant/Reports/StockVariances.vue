@@ -57,7 +57,6 @@ function decisionNote(reason) {
 
 /**
  * The reasons with the biggest shortage, the rest folded into one part so the pie keeps to a handful of parts it can be read in.
- * A reason that lost nothing (only found stock) has no part.
  */
 const shortageSlices = computed(() => {
     const losing = (props.reasons ?? []).filter((reason) => Number(reason.shortage_value) > 0);
@@ -123,14 +122,9 @@ const changeOpnamesPerPage = (perPage) => reloadOpnames({ opnames_page: 1, opnam
                     <em>{{ summary.shortage_items }} barang</em>
                 </div>
                 <div class="kpi">
-                    <small>Selisih lebih (nilai modal)</small>
-                    <b>{{ formatRupiah(summary.surplus_value) }}</b>
-                    <em>{{ summary.surplus_items }} barang</em>
-                </div>
-                <div class="kpi">
-                    <small>Bersih</small>
-                    <b :class="{ 'is-loss': Number(summary.net_value) < 0 }">{{ formatRupiah(summary.net_value) }}</b>
-                    <em>dari {{ summary.opnames_count }} opname yang diposting</em>
+                    <small>Opname diposting</small>
+                    <b>{{ summary.opnames_count }}</b>
+                    <em>yang menghitung isi rak, pada periode ini</em>
                 </div>
                 <div class="kpi">
                     <small>Kurang yang belum mengurangi laba</small>
@@ -176,7 +170,7 @@ const changeOpnamesPerPage = (perPage) => reloadOpnames({ opnames_page: 1, opnam
                 <div v-else class="table-scroll">
                     <table class="table">
                         <thead>
-                            <tr><th>Alasan</th><th class="table__right">Barang</th><th class="table__right">Kurang</th><th class="table__right">Lebih</th><th class="table__right">Bersih</th></tr>
+                            <tr><th>Alasan</th><th class="table__right">Barang</th><th class="table__right">Kurang</th></tr>
                         </thead>
                         <tbody>
                             <tr v-for="reason in reasons" :key="reason.label">
@@ -185,15 +179,13 @@ const changeOpnamesPerPage = (perPage) => reloadOpnames({ opnames_page: 1, opnam
                                     <small v-if="decisionNote(reason)" class="table__muted">{{ decisionNote(reason).replace(/\n/g, ' · ') }}</small>
                                 </td>
                                 <td class="table__right">{{ reason.items_count }}</td>
-                                <td class="table__right">{{ formatRupiah(reason.shortage_value) }}</td>
-                                <td class="table__right">{{ formatRupiah(reason.surplus_value) }}</td>
-                                <td class="table__right" :class="{ 'is-loss': Number(reason.net_value) < 0 }"><b>{{ formatRupiah(reason.net_value) }}</b></td>
+                                <td class="table__right is-loss"><b>{{ formatRupiah(reason.shortage_value) }}</b></td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
             </Deferred>
-            <p class="note">Nilai memakai harga beli saat opname diposting. Satuan antar-barang tidak dijumlahkan, hanya nilainya. Hanya opname yang menghitung isi rak yang masuk; stok awal, penambahan stok, dan pemeriksaan retur bukan selisih.</p>
+            <p class="note">Hanya selisih kurang yang dihitung. Selisih lebih tidak ikut sampai pembelian bisa dicatat, karena kebanyakan itu barang yang dibeli. Nilai memakai harga beli saat opname diposting. Satuan antar-barang tidak dijumlahkan, hanya nilainya. Hanya opname yang menghitung isi rak yang masuk; stok awal, penambahan stok, dan pemeriksaan retur bukan selisih.</p>
         </section>
 
         <section class="card">
@@ -212,7 +204,7 @@ const changeOpnamesPerPage = (perPage) => reloadOpnames({ opnames_page: 1, opnam
                         <div class="table-scroll">
                             <table class="table">
                                 <thead>
-                                    <tr><th>Opname</th><th>Diposting</th><th>Gudang</th><th>Jenis</th><th class="table__right">Barang selisih</th><th class="table__right">Kurang</th><th class="table__right">Lebih</th><th class="table__right">Bersih</th></tr>
+                                    <tr><th>Opname</th><th>Diposting</th><th>Gudang</th><th>Jenis</th><th class="table__right">Barang kurang</th><th class="table__right">Kurang</th></tr>
                                 </thead>
                                 <tbody>
                                     <tr v-for="opname in opnames.data" :key="opname.id">
@@ -220,10 +212,8 @@ const changeOpnamesPerPage = (perPage) => reloadOpnames({ opnames_page: 1, opnam
                                         <td class="table__date">{{ shortDayFormat.format(asLocalDate(opname.posted_on)) }}</td>
                                         <td>{{ opname.warehouse }}</td>
                                         <td>{{ opname.reason }}</td>
-                                        <td class="table__right">{{ opname.items_count === 0 ? 'Tanpa selisih' : opname.items_count }}</td>
-                                        <td class="table__right">{{ formatRupiah(opname.shortage_value) }}</td>
-                                        <td class="table__right">{{ formatRupiah(opname.surplus_value) }}</td>
-                                        <td class="table__right" :class="{ 'is-loss': Number(opname.net_value) < 0 }"><b>{{ formatRupiah(opname.net_value) }}</b></td>
+                                        <td class="table__right">{{ opname.items_count === 0 ? 'Tanpa selisih kurang' : opname.items_count }}</td>
+                                        <td class="table__right" :class="{ 'is-loss': Number(opname.shortage_value) > 0 }"><b>{{ formatRupiah(opname.shortage_value) }}</b></td>
                                     </tr>
                                 </tbody>
                             </table>
