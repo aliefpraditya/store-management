@@ -32,6 +32,7 @@ use App\Services\SalesReportService;
 use App\Services\SaleVoidService;
 use App\Services\StoreDashboardService;
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -632,7 +633,7 @@ class SalesReportTest extends TestCase
 
         $this->inspectReturns([[$this->brush, '3', '1', '2', '6000'], [$paint, '0', '0', '5', '2000']]);
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
             ->missing('return_details')
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->where('return_details.outcomes', [
@@ -649,7 +650,7 @@ class SalesReportTest extends TestCase
         $this->inspectReturns([[$this->brush, '9', '9', '9', '6000']], status: StockOpnameStatus::Counting);
         $this->inspectReturns([[$this->brush, '9', '9', '9', '6000']], reason: StockOpnameReason::Routine);
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->where('return_details.outcomes.0.cost_total', '6000.00')
                 ->where('return_details.outcomes.1.cost_total', '0.00')
@@ -661,7 +662,7 @@ class SalesReportTest extends TestCase
     {
         $this->sellAndReturn();
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload->where('return_details.returned', ['products_count' => 1, 'cost_total' => '24000.00'])));
     }
 
@@ -674,7 +675,7 @@ class SalesReportTest extends TestCase
             Stock::query()->updateOrInsert(['product_id' => $this->brush->id, 'warehouse_id' => $this->mainWarehouse()->id], ['quantity' => '100']);
         });
 
-        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(30)->toDateString(), 'to' => today()->subDays(20)->toDateString()]))->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(30)->toDateString(), 'to' => today()->subDays(20)->toDateString()], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload->where('return_details.waiting', ['products_count' => 2, 'cost_total' => '36000.00'])));
     }
 
@@ -682,7 +683,7 @@ class SalesReportTest extends TestCase
     {
         $this->sellAndReturn();
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->where('return_details.products', [[
                     'product_id' => $this->brush->id,
@@ -704,7 +705,7 @@ class SalesReportTest extends TestCase
             'items' => [['sale_item_id' => $old->items[0]->id, 'quantity' => 1, 'disposition' => 'resellable']],
         ]));
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload->where('return_details.products.0.rate_percent', null)));
     }
 
@@ -712,7 +713,7 @@ class SalesReportTest extends TestCase
     {
         $this->sellAndReturn();
 
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->has('return_details.outcomes')
                 ->has('return_details.products')
@@ -722,7 +723,7 @@ class SalesReportTest extends TestCase
 
     public function test_nothing_returned_leaves_the_figures_at_nothing(): void
     {
-        $this->actingAs($this->admin)->get($this->url())->assertInertia(fn (Assert $page) => $page
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
             ->loadDeferredProps(fn (Assert $reload) => $reload
                 ->where('return_details.returned', ['products_count' => 0, 'cost_total' => '0.00'])
                 ->where('return_details.waiting', ['products_count' => 0, 'cost_total' => '0.00'])
@@ -1032,18 +1033,11 @@ class SalesReportTest extends TestCase
                 ->has('products.data', 1)
                 ->missing('summary')
                 ->missing('payments')
-                ->missing('groups')
-                ->missing('return_details'))
+                ->missing('groups'))
             ->reloadOnly('groups', fn (Assert $reload) => $reload
                 ->has('groups.data', 1)
                 ->missing('summary')
-                ->missing('products')
-                ->missing('return_details'))
-            ->reloadOnly('return_details', fn (Assert $reload) => $reload
-                ->has('return_details.outcomes', 3)
-                ->missing('summary')
-                ->missing('products')
-                ->missing('groups')));
+                ->missing('products')));
     }
 
     public function test_every_part_of_the_screen_loads_in_a_group_of_its_own_so_they_load_side_by_side(): void
@@ -1051,9 +1045,245 @@ class SalesReportTest extends TestCase
         $response = $this->actingAs($this->admin)->get($this->url())->assertOk();
 
         $this->assertEquals(
-            ['summary' => ['summary'], 'comparison' => ['comparison'], 'payments' => ['payments'], 'products' => ['products'], 'groups' => ['groups'], 'return_details' => ['return_details']],
+            ['summary' => ['summary'], 'comparison' => ['comparison'], 'payments' => ['payments'], 'products' => ['products'], 'groups' => ['groups']],
             $response->viewData('page')['deferredProps'],
         );
+    }
+
+    /**
+     * `$count` receipts of one brush, voided: the first `$daysAgo` days back, each one day further than the one before, with
+     * the reason "Salah input N".
+     *
+     * @return list<Sale>
+     */
+    private function voidReceipts(int $count, int $firstDaysAgo = 0): array
+    {
+        return array_map(function (int $number) use ($firstDaysAgo): Sale {
+            $sale = $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+            $this->store->run(fn () => Sale::query()->whereKey($sale->id)->update(['status' => 'voided', 'void_reason' => "Salah input {$number}", 'void_business_date' => today()->subDays($firstDaysAgo + $number - 1)]));
+
+            return $sale;
+        }, range(1, $count));
+    }
+
+    public function test_the_returns_tab_loads_its_three_parts_in_a_group_each_and_turning_a_list_asks_for_it_alone(): void
+    {
+        $this->sellAndReturn();
+        $this->voidReceipts(1);
+
+        $response = $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertOk();
+
+        $this->assertEquals(['return_details' => ['return_details'], 'returns' => ['returns'], 'voids' => ['voids']], $response->viewData('page')['deferredProps']);
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Tenant/Reports/SalesReturns')
+            ->has('period')
+            ->where('per_page_options', [10, 25, 50])
+            ->missing('return_details')
+            ->missing('returns')
+            ->missing('voids')
+            ->reloadOnly('returns', fn (Assert $reload) => $reload
+                ->has('returns.data', 4)
+                ->missing('voids')
+                ->missing('return_details'))
+            ->reloadOnly('voids', fn (Assert $reload) => $reload
+                ->has('voids.data', 1)
+                ->missing('returns')
+                ->missing('return_details')));
+    }
+
+    public function test_the_returns_list_has_every_approved_return_newest_first_with_its_goods_reason_and_amount(): void
+    {
+        $this->sellAndReturn();
+        $newest = $this->store->run(function (): SaleReturn {
+            SaleReturn::query()->update(['reason' => 'Barang rusak']);
+
+            return SaleReturn::query()->orderByDesc('id')->firstOrFail();
+        });
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('returns.total', 4)
+                ->where('returns.amount_total', '40000.00')
+                ->where('returns.data.0.number', $newest->number)
+                ->where('returns.data.0.date', today()->toDateString())
+                ->where('returns.data.0.resolution', 'Refund')
+                ->where('returns.data.0.refund_method', 'Tunai')
+                ->where('returns.data.0.reason', 'Barang rusak')
+                ->where('returns.data.0.credit_amount', '10000.00')
+                ->where('returns.data.0.items.0.name', 'Kuas')
+                ->where('returns.data.0.items.0.quantity', '1.000')
+                ->missing('returns.data.0.cashier_name')
+                ->missing('returns.data.0.requested_by')
+                ->missing('returns.data.0.approved_by')));
+    }
+
+    public function test_the_voids_list_has_the_receipts_voided_in_the_period_newest_first_with_their_reasons(): void
+    {
+        [$today, $yesterday] = $this->voidReceipts(2);
+        $this->sell(1, [['method' => 'cash', 'amount' => 10000]]);
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('voids.total', 2)
+                ->where('voids.amount_total', '20000.00')
+                ->where('voids.data.0.number', $today->number)
+                ->where('voids.data.0.void_date', today()->toDateString())
+                ->where('voids.data.0.reason', 'Salah input 1')
+                ->where('voids.data.1.number', $yesterday->number)
+                ->where('voids.data.1.void_date', today()->subDay()->toDateString())
+                ->where('voids.data.1.total', '10000.00')));
+    }
+
+    public function test_a_period_without_returns_or_voids_leaves_empty_lists(): void
+    {
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('returns.total', 0)
+                ->where('returns.data', [])
+                ->where('returns.amount_total', '0.00')
+                ->where('voids.total', 0)
+                ->where('voids.data', [])
+                ->where('voids.amount_total', '0.00')));
+    }
+
+    public function test_the_returns_and_voids_lists_are_paged_on_the_server_ten_at_a_time(): void
+    {
+        $this->voidReceipts(12);
+
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(20)->toDateString()], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('voids.data', 10)
+                ->where('voids.total', 12)
+                ->where('voids.last_page', 2)
+                ->where('voids.from', 1)
+                ->where('voids.to', 10)
+                ->where('voids.amount_total', '120000.00')));
+
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(20)->toDateString(), 'voids_page' => 99], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->has('voids.data', 2)
+                ->where('voids.current_page', 2)
+                ->where('voids.from', 11)
+                ->where('voids.to', 12)));
+
+        $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(20)->toDateString(), 'voids_per_page' => 25], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->has('voids.data', 12)->where('voids.last_page', 1)));
+
+        foreach (['7', '0', 'abc'] as $notAnOption) {
+            $this->actingAs($this->admin)->get($this->url(['from' => today()->subDays(20)->toDateString(), 'voids_per_page' => $notAnOption, 'voids_page' => 'abc', 'returns_page' => '-2'], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload->where('voids.per_page', 10)->where('voids.current_page', 1)->where('returns.current_page', 1)));
+        }
+    }
+
+    /**
+     * Whether the rows of a list hold exactly these values of one field, in this order.
+     *
+     * @param  list<string>  $expected
+     */
+    private function listing(string $field, array $expected): Closure
+    {
+        return fn (mixed $rows): bool => collect($rows)->pluck($field)->all() === $expected;
+    }
+
+    public function test_the_returns_can_be_ordered_by_a_column_either_way_and_start_with_the_newest(): void
+    {
+        $this->sellAndReturn();
+        $numbers = $this->store->run(function (): array {
+            foreach (SaleReturn::query()->orderBy('id')->get() as $index => $return) {
+                $return->update(['reason' => ['Cacat', 'Zebra', 'Anu', 'Mudah'][$index]]);
+            }
+
+            return SaleReturn::query()->orderBy('id')->pluck('number')->all();
+        });
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('returns.sort', 'date')
+                ->where('returns.direction', 'desc')
+                ->where('returns.data.0.number', $numbers[3])
+                ->where('returns.data.3.number', $numbers[0])));
+
+        $this->actingAs($this->admin)->get($this->url(['returns_sort' => 'date', 'returns_direction' => 'asc'], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('returns.data.0.number', $numbers[0])->where('returns.data.3.number', $numbers[3])));
+
+        $this->actingAs($this->admin)->get($this->url(['returns_sort' => 'reason'], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('returns.sort', 'reason')
+                ->where('returns.direction', 'asc')
+                ->where('returns.data', $this->listing('reason', ['Anu', 'Cacat', 'Mudah', 'Zebra']))));
+
+        $this->actingAs($this->admin)->get($this->url(['returns_sort' => 'reason', 'returns_direction' => 'desc'], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('returns.data', $this->listing('reason', ['Zebra', 'Mudah', 'Cacat', 'Anu']))));
+
+        $this->actingAs($this->admin)->get($this->url(['returns_sort' => 'number'], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('returns.data', $this->listing('number', collect($numbers)->sort()->values()->all()))));
+
+        foreach (['receipt', 'resolution', 'items', 'amount'] as $column) {
+            $this->actingAs($this->admin)->get($this->url(['returns_sort' => $column], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload->where('returns.sort', $column)->has('returns.data', 4)));
+        }
+    }
+
+    public function test_the_voids_can_be_ordered_by_a_column_either_way_and_start_with_the_newest_void(): void
+    {
+        [$today, $yesterday, $twoDaysAgo] = $this->voidReceipts(3);
+
+        $this->actingAs($this->admin)->get($this->url(name: 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('voids.sort', 'void_date')
+                ->where('voids.direction', 'desc')
+                ->where('voids.data', $this->listing('number', [$today->number, $yesterday->number, $twoDaysAgo->number]))));
+
+        $this->actingAs($this->admin)->get($this->url(['voids_sort' => 'void_date', 'voids_direction' => 'asc'], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('voids.data', $this->listing('number', [$twoDaysAgo->number, $yesterday->number, $today->number]))));
+
+        $this->actingAs($this->admin)->get($this->url(['voids_sort' => 'reason'], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('voids.direction', 'asc')
+                ->where('voids.data', $this->listing('reason', ['Salah input 1', 'Salah input 2', 'Salah input 3']))));
+
+        $this->actingAs($this->admin)->get($this->url(['voids_sort' => 'reason', 'voids_direction' => 'desc'], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload->where('voids.data', $this->listing('reason', ['Salah input 3', 'Salah input 2', 'Salah input 1']))));
+
+        foreach (['number', 'receipt_date', 'total'] as $column) {
+            $this->actingAs($this->admin)->get($this->url(['voids_sort' => $column], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload->where('voids.sort', $column)->has('voids.data', 3)));
+        }
+    }
+
+    public function test_the_order_of_the_lists_holds_across_pages_and_a_sort_that_is_not_a_column_is_the_first(): void
+    {
+        $this->voidReceipts(12);
+        $from = today()->subDays(20)->toDateString();
+
+        $this->actingAs($this->admin)->get($this->url(['from' => $from, 'voids_sort' => 'reason', 'voids_direction' => 'asc', 'voids_page' => 2], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->loadDeferredProps(fn (Assert $reload) => $reload
+                ->where('voids.current_page', 2)
+                ->where('voids.data', $this->listing('reason', ['Salah input 8', 'Salah input 9']))));
+
+        foreach (['password', '', ['void_date']] as $notAColumn) {
+            $this->actingAs($this->admin)->get($this->url(['from' => $from, 'voids_sort' => $notAColumn, 'voids_direction' => 'sideways', 'returns_sort' => $notAColumn], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+                ->loadDeferredProps(fn (Assert $reload) => $reload
+                    ->where('voids.sort', 'void_date')
+                    ->where('voids.direction', 'desc')
+                    ->where('returns.sort', 'date')
+                    ->where('returns.direction', 'desc')));
+        }
+    }
+
+    public function test_the_returns_tab_is_for_admins_covers_this_month_without_dates_and_says_when_it_cut_a_long_period(): void
+    {
+        $this->actingAs($this->cashier)->get($this->url(name: 'sales.returns'))->assertForbidden();
+
+        $this->actingAs($this->admin)->get($this->urlWithoutPeriod([], 'sales.returns'))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->where('period.from', today()->startOfMonth()->toDateString())
+            ->where('period.to', today()->endOfMonth()->toDateString())
+            ->where('is_period_cut_back', false)
+            ->where('store.sales_returns_url', route('tenant.reports.sales.returns', ['tenant' => $this->store->code])));
+
+        $this->actingAs($this->admin)->get($this->url(['from' => '2000-01-01', 'to' => today()->toDateString()], 'sales.returns'))->assertInertia(fn (Assert $page) => $page
+            ->where('is_period_cut_back', true)
+            ->where('max_days', 366));
     }
 
     public function test_the_summary_always_gives_the_biggest_seven_products_and_five_groups_whatever_the_address_asks_for(): void

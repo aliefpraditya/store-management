@@ -12,12 +12,6 @@ import { formatDeduction, formatRupiah } from '../../../Composables/useMoneyForm
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 /**
- * The server still sends the part the returns tab will take over (the return details), so the page leaves attributes alone
- * instead of writing it onto the layout; it goes when that tab has a page of its own.
- */
-defineOptions({ inheritAttrs: false });
-
-/**
  * `summary`, `comparison`, `payments`, `products` and `groups` are deferred props: the page shows at once and each
  * part fills in when the server has it, so they are undefined until then and only read inside a `<Deferred>` that
  * waits for them.

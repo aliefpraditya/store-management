@@ -11,6 +11,7 @@ use App\Http\Requests\Tenant\RestockRequest;
 use App\Http\Requests\Tenant\SalesDetailReportRequest;
 use App\Http\Requests\Tenant\SalesReceiptListRequest;
 use App\Http\Requests\Tenant\SalesReportRequest;
+use App\Http\Requests\Tenant\SalesReturnsRequest;
 use App\Http\Requests\Tenant\StockMovementRequest;
 use App\Http\Requests\Tenant\StockReportRequest;
 use App\Http\Resources\IdleStockResource;
@@ -74,7 +75,6 @@ class ReportController extends Controller
             'payments' => Inertia::defer(fn (): array => $this->salesReport->payments($period['from'], $period['to']), 'payments'),
             'products' => Inertia::defer(fn (): array => $this->salesReport->productsPage($period['from'], $period['to'], SalesReportService::PRODUCT_SORTS[0], 'desc', 1, SalesReportService::SUMMARY_TOP_PRODUCTS), 'products'),
             'groups' => Inertia::defer(fn (): array => $this->salesReport->groupsPage($period['from'], $period['to'], $request->groupsGrouping(), SalesReportService::GROUP_SORTS[0], 'desc', 1, SalesReportService::SUMMARY_TOP_GROUPS), 'groups'),
-            'return_details' => Inertia::defer(fn (): array => $this->salesReport->returnDetails($period['from'], $period['to']), 'return_details'),
             'is_period_cut_back' => $period['is_cut_back'],
             'max_days' => SalesReportService::MAX_DAYS,
             'urls' => [
@@ -98,6 +98,27 @@ class ReportController extends Controller
             'groups' => Inertia::defer(fn (): array => $this->salesReport->groupsPage($period['from'], $period['to'], $request->groupsGrouping(), $request->groupsSort(), $request->groupsDirection(), $request->groupsPage(), $request->groupsPerPage()), 'groups'),
             'per_page_options' => SalesReportService::PER_PAGE_OPTIONS,
             'group_per_page_options' => SalesReportService::GROUP_PER_PAGE_OPTIONS,
+            'is_period_cut_back' => $period['is_cut_back'],
+            'max_days' => SalesReportService::MAX_DAYS,
+        ]);
+    }
+
+    /**
+     * What came back and what was voided: what became of the returned goods and the products returned most often, and the
+     * lists of the approved returns and of the voided receipts with their reasons, each paged and ordered on the server. All four are
+     * deferred props, each in a group of its own, so the page shows at once and they load side by side; turning a list asks
+     * for that one alone. Who handled a return or a void is not shown, as in the rest of the sales report.
+     */
+    public function salesReturns(SalesReturnsRequest $request): Response
+    {
+        $period = $this->salesReport->period($request->fromDate(), $request->toDate());
+
+        return Inertia::render('Tenant/Reports/SalesReturns', [
+            'period' => ['from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()],
+            'return_details' => Inertia::defer(fn (): array => $this->salesReport->returnDetails($period['from'], $period['to']), 'return_details'),
+            'returns' => Inertia::defer(fn (): array => $this->salesDetailReport->returnsPage($period['from'], $period['to'], $request->returnsSort(), $request->returnsDirection(), $request->returnsPage(), $request->returnsPerPage()), 'returns'),
+            'voids' => Inertia::defer(fn (): array => $this->salesDetailReport->voidsPage($period['from'], $period['to'], $request->voidsSort(), $request->voidsDirection(), $request->voidsPage(), $request->voidsPerPage()), 'voids'),
+            'per_page_options' => SalesDetailReportService::LIST_PER_PAGE_OPTIONS,
             'is_period_cut_back' => $period['is_cut_back'],
             'max_days' => SalesReportService::MAX_DAYS,
         ]);

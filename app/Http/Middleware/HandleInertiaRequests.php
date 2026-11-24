@@ -121,7 +121,7 @@ class HandleInertiaRequests extends Middleware
     /**
      * The store of the current page, for every page under /t/{code}; null on central pages.
      *
-     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, unit_create_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string, expenses_url: string, daily_closings_url: string, settings_url: string, reports_url: string, sales_receipts_url: string, sales_products_url: string, stock_report_url: string, restock_url: string, idle_stock_url: string, stock_movements_url: string}|null
+     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, unit_create_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string, expenses_url: string, daily_closings_url: string, settings_url: string, reports_url: string, sales_receipts_url: string, sales_products_url: string, sales_returns_url: string, stock_report_url: string, restock_url: string, idle_stock_url: string, stock_movements_url: string}|null
      */
     private function currentStore(): ?array
     {
@@ -152,6 +152,7 @@ class HandleInertiaRequests extends Middleware
             'reports_url' => route('tenant.reports.sales', ['tenant' => $store->code]),
             'sales_receipts_url' => route('tenant.reports.sales.receipts', ['tenant' => $store->code]),
             'sales_products_url' => route('tenant.reports.sales.products', ['tenant' => $store->code]),
+            'sales_returns_url' => route('tenant.reports.sales.returns', ['tenant' => $store->code]),
             'stock_report_url' => route('tenant.reports.stock', ['tenant' => $store->code]),
             'restock_url' => route('tenant.reports.stock.restock', ['tenant' => $store->code]),
             'idle_stock_url' => route('tenant.reports.stock.idle', ['tenant' => $store->code]),

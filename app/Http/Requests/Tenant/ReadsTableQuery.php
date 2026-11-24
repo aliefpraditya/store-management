@@ -48,4 +48,22 @@ trait ReadsTableQuery
 
         return $options[0];
     }
+
+    /**
+     * The order a table is listed in: the address says so, or else the columns in `$ascendingFirst` (the names) run A to Z
+     * and every other column (the figures, the dates) biggest or newest first.
+     *
+     * @param  list<string>  $ascendingFirst
+     * @return 'asc'|'desc'
+     */
+    protected function directionOf(string $key, string $sort, array $ascendingFirst = ['name']): string
+    {
+        $direction = $this->query($key);
+
+        if (in_array($direction, ['asc', 'desc'], true)) {
+            return $direction;
+        }
+
+        return in_array($sort, $ascendingFirst, true) ? 'asc' : 'desc';
+    }
 }

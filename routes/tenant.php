@@ -128,6 +128,7 @@ Route::prefix('t/{tenant}')
             Route::get('reports/sales', [ReportController::class, 'sales'])->name('tenant.reports.sales');
             Route::get('reports/sales/products', [ReportController::class, 'salesProducts'])->name('tenant.reports.sales.products');
             Route::get('reports/sales/receipts', [ReportController::class, 'salesReceipts'])->name('tenant.reports.sales.receipts');
+            Route::get('reports/sales/returns', [ReportController::class, 'salesReturns'])->name('tenant.reports.sales.returns');
             Route::get('reports/sales/sheet', [ReportController::class, 'salesSheet'])->name('tenant.reports.sales.sheet');
             Route::get('reports/sales/detail-sheet', [ReportController::class, 'salesDetailSheet'])->name('tenant.reports.sales.detail-sheet');
             Route::get('reports/sales/detail-export', [ReportController::class, 'salesDetailExport'])->name('tenant.reports.sales.detail-export');

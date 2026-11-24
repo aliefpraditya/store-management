@@ -10,6 +10,7 @@ use App\Models\SaleItem;
 use App\Models\SalePayment;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
+use App\Services\Concerns\PaginatesReportRows;
 use Brick\Math\BigDecimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -42,7 +43,94 @@ class SalesDetailReportService
      */
     public const MAX_SHEET_DAYS = 31;
 
+    /** How many returns or voids a page of the lists of the sales report may hold, the first being the one it starts with. */
+    public const LIST_PER_PAGE_OPTIONS = [10, 25, 50];
+
+    /** The columns the list of returns can be ordered by, the day first: newest first to begin with. */
+    public const RETURN_SORTS = ['date', 'number', 'receipt', 'resolution', 'items', 'reason', 'amount'];
+
+    /** The columns the list of voided receipts can be ordered by, the day of the void first: newest first to begin with. */
+    public const VOID_SORTS = ['void_date', 'number', 'receipt_date', 'reason', 'total'];
+
+    /** The columns of either list that hold words, so they run A to Z the first time they are chosen. */
+    public const TEXT_SORTS = ['number', 'receipt', 'resolution', 'items', 'reason'];
+
+    use PaginatesReportRows;
+
     public function __construct(private readonly SalesReportService $salesReport) {}
+
+    /**
+     * One page of the approved returns of the period in the order asked for (see {@see self::RETURN_SORTS}; `$direction` is
+     * `asc` or `desc`), with their goods and the reason given, and what all of them come to (`amount_total`, of every page).
+     * Returns that tie are listed by when they were made, newest first when the order is descending. Who handled a return is
+     * left out, as in the rest of the sales report. A page past the last gives the last.
+     *
+     * @return array{data: list<array<string, mixed>>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int, sort: string, direction: string, amount_total: string}
+     */
+    public function returnsPage(CarbonImmutable $from, CarbonImmutable $to, string $sort, string $direction, int $page, int $perPage): array
+    {
+        $returns = collect($this->returns($from, $to));
+        $sortValue = fn (array $return): float|string => match ($sort) {
+            'date' => $return['date'],
+            'number' => mb_strtolower($return['number']),
+            'receipt' => mb_strtolower($return['receipt_number']),
+            'resolution' => mb_strtolower($return['resolution'].' '.$return['refund_method']),
+            'items' => mb_strtolower($return['items'][0]['name'] ?? ''),
+            'reason' => mb_strtolower($return['reason'] ?? ''),
+            'amount' => (float) $return['credit_amount'],
+        };
+
+        return [
+            ...$this->paginateCollection($this->inOrder($returns, $sortValue, $direction), $page, $perPage),
+            'sort' => $sort,
+            'direction' => $direction,
+            'amount_total' => $this->money($returns->reduce(fn (BigDecimal $sum, array $return): BigDecimal => $sum->plus($return['credit_amount']), BigDecimal::zero())),
+        ];
+    }
+
+    /**
+     * One page of the receipts voided in the period (by the day of the void) in the order asked for (see
+     * {@see self::VOID_SORTS}; `$direction` is `asc` or `desc`), with the reason given, and what all of them come to
+     * (`amount_total`, of every page). Receipts that tie are listed by when they were voided, newest first when the order is
+     * descending. A page past the last gives the last.
+     *
+     * @return array{data: list<array<string, mixed>>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int, sort: string, direction: string, amount_total: string}
+     */
+    public function voidsPage(CarbonImmutable $from, CarbonImmutable $to, string $sort, string $direction, int $page, int $perPage): array
+    {
+        $voids = collect($this->voids($from, $to));
+        $sortValue = fn (array $void): float|string => match ($sort) {
+            'void_date' => $void['void_date'],
+            'number' => mb_strtolower($void['number']),
+            'receipt_date' => $void['business_date'],
+            'reason' => mb_strtolower($void['reason'] ?? ''),
+            'total' => (float) $void['total'],
+        };
+
+        return [
+            ...$this->paginateCollection($this->inOrder($voids, $sortValue, $direction), $page, $perPage),
+            'sort' => $sort,
+            'direction' => $direction,
+            'amount_total' => $this->money($voids->reduce(fn (BigDecimal $sum, array $void): BigDecimal => $sum->plus($void['total']), BigDecimal::zero())),
+        ];
+    }
+
+    /**
+     * Rows, which come oldest first, ordered by what `$sortValue` gives. The sort keeps rows that tie in the order they are
+     * in, so a descending order lists them newest first and a page does not shuffle between requests.
+     *
+     * @template TRow of array<string, mixed>
+     *
+     * @param  Collection<int, TRow>  $chronological
+     * @param  callable(TRow): (float|string)  $sortValue
+     * @return Collection<int, TRow>
+     */
+    private function inOrder(Collection $chronological, callable $sortValue, string $direction): Collection
+    {
+        $isDescending = $direction === 'desc';
+
+        return ($isDescending ? $chronological->reverse() : $chronological)->sortBy($sortValue, SORT_REGULAR, $isDescending)->values();
+    }
 
     /**
      * Whether a period is longer than the printed sheet can cover.

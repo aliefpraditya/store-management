@@ -20,6 +20,7 @@ use App\Models\SaleReturn;
 use App\Models\SaleReturnItem;
 use App\Models\Stock;
 use App\Models\StockOpnameItem;
+use App\Services\Concerns\PaginatesReportRows;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
@@ -57,6 +58,8 @@ use Illuminate\Support\Collection;
  */
 class SalesReportService
 {
+    use PaginatesReportRows;
+
     /** The most days of one report, so a mistyped date cannot ask for years of rows. */
     public const MAX_DAYS = 366;
 
@@ -249,7 +252,7 @@ class SalesReportService
      */
     public function productsPage(CarbonImmutable $from, CarbonImmutable $to, string $sort, string $direction, int $page, int $perPage): array
     {
-        return [...$this->paginate($this->inOrder($this->productRows($from, $to), $sort, $direction), $page, $perPage), 'sort' => $sort, 'direction' => $direction];
+        return [...$this->paginateCollection($this->inOrder($this->productRows($from, $to), $sort, $direction), $page, $perPage), 'sort' => $sort, 'direction' => $direction];
     }
 
     /**
@@ -310,7 +313,7 @@ class SalesReportService
                 ];
             });
 
-        return [...$this->paginate($this->inOrder($groups, $sort, $direction), $page, $perPage), 'grouping' => $grouping->value, 'sort' => $sort, 'direction' => $direction, 'revenue_total' => $this->money($totalRevenue)];
+        return [...$this->paginateCollection($this->inOrder($groups, $sort, $direction), $page, $perPage), 'grouping' => $grouping->value, 'sort' => $sort, 'direction' => $direction, 'revenue_total' => $this->money($totalRevenue)];
     }
 
     /**
@@ -426,29 +429,6 @@ class SalesReportService
                 'rate_percent' => $soldQuantity->isPositive() ? (string) BigDecimal::of((string) $row->quantity)->multipliedBy(100)->dividedBy($soldQuantity, 1, RoundingMode::HalfUp) : null,
             ];
         })->all();
-    }
-
-    /**
-     * @template TRow
-     *
-     * @param  Collection<int, TRow>  $rows
-     * @return array{data: list<TRow>, current_page: int, last_page: int, per_page: int, from: int|null, to: int|null, total: int}
-     */
-    private function paginate(Collection $rows, int $page, int $perPage): array
-    {
-        $lastPage = max((int) ceil($rows->count() / $perPage), 1);
-        $currentPage = min(max($page, 1), $lastPage);
-        $pageRows = $rows->forPage($currentPage, $perPage)->values();
-
-        return [
-            'data' => $pageRows->all(),
-            'current_page' => $currentPage,
-            'last_page' => $lastPage,
-            'per_page' => $perPage,
-            'from' => $pageRows->isEmpty() ? null : ($currentPage - 1) * $perPage + 1,
-            'to' => $pageRows->isEmpty() ? null : ($currentPage - 1) * $perPage + $pageRows->count(),
-            'total' => $rows->count(),
-        ];
     }
 
     /**

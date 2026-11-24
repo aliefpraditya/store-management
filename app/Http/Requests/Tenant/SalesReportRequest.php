@@ -70,18 +70,4 @@ class SalesReportRequest extends DateRangeRequest
     {
         return $this->directionOf('groups_direction', $this->groupsSort());
     }
-
-    /**
-     * @return 'asc'|'desc'
-     */
-    private function directionOf(string $key, string $sort): string
-    {
-        $direction = $this->query($key);
-
-        if (in_array($direction, ['asc', 'desc'], true)) {
-            return $direction;
-        }
-
-        return $sort === 'name' ? 'asc' : 'desc';
-    }
 }
