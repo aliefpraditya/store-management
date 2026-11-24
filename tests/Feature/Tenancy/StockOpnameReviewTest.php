@@ -143,7 +143,7 @@ class StockOpnameReviewTest extends TestCase
         return $this->store->run(fn () => Product::query()->where('damaged_from_product_id', $product->id)->first());
     }
 
-    public function test_every_store_starts_with_the_four_reasons(): void
+    public function test_every_store_starts_with_the_five_reasons(): void
     {
         $reasons = $this->store->run(fn (): array => OpnameReason::query()->orderBy('id')->get()->map(fn (OpnameReason $reason): array => [$reason->name, $reason->behavior, $reason->is_system, $reason->is_active])->all());
 
@@ -152,6 +152,7 @@ class StockOpnameReviewTest extends TestCase
             ['Cek stok', OpnameReasonBehavior::Plain, true, true],
             ['Hilang', OpnameReasonBehavior::Plain, true, true],
             ['Rusak', OpnameReasonBehavior::Damaged, true, true],
+            ['Dimusnahkan', OpnameReasonBehavior::Plain, true, true],
         ], $reasons);
     }
 
@@ -181,6 +182,24 @@ class StockOpnameReviewTest extends TestCase
         $item = $this->store->run(fn () => $item->fresh());
         $this->assertSame([$this->admin->id, true], [$item->reviewed_by, $item->reviewed_at !== null]);
         $this->assertSame('Hilang: dicuri', $this->store->run(fn () => StockMovement::query()->where('product_id', $product->id)->sole()->note));
+    }
+
+    public function test_dead_stock_thrown_away_is_posted_as_dimusnahkan_and_leaves_the_dead_stock_warehouse(): void
+    {
+        $product = $this->brush();
+        $deadStock = $this->store->run(function () use ($product): Warehouse {
+            $deadStock = Warehouse::query()->where('code', 'DEAD')->firstOrFail();
+            Stock::query()->updateOrInsert(['product_id' => $product->id, 'warehouse_id' => $deadStock->id], ['quantity' => '10']);
+
+            return $deadStock;
+        });
+        [$opname, $item] = $this->opnameCounting($product, '0', ['warehouse_id' => $deadStock->id]);
+
+        $this->review($opname, $item, ['reason_id' => $this->reasonId('Dimusnahkan'), 'note' => 'dibuang ke TPA', 'is_reviewed' => true])->assertSessionHasNoErrors();
+        $this->postOpname($opname)->assertSessionHas('success');
+
+        $this->assertSame(['0.000', '10.000'], [$this->stockOf($product, 'DEAD'), $this->stockOf($product)]);
+        $this->assertSame('Dimusnahkan: dibuang ke TPA', $this->store->run(fn () => StockMovement::query()->where('product_id', $product->id)->where('warehouse_id', $deadStock->id)->sole()->note));
     }
 
     public function test_items_without_a_variance_need_no_reason_or_review(): void

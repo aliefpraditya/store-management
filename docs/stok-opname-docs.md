@@ -286,7 +286,7 @@ Migrasi: `2026_11_05_100000_add_opname_reasons_review_and_damaged_goods.php`.
 | `id` | bigint, PK | | |
 | `name` | string(255) | tidak | **unique** |
 | `behavior` | enum(`plain`,`damaged`) | tidak | default `plain`. Hanya `damaged` meminta keputusan barang rusak |
-| `is_system` | boolean | tidak | default `false`. Empat bawaan: `Pembelian`, `Cek stok`, `Hilang` (plain), `Rusak` (damaged) |
+| `is_system` | boolean | tidak | default `false`. Lima bawaan: `Pembelian`, `Cek stok`, `Hilang`, `Dimusnahkan` (plain), `Rusak` (damaged) |
 | `is_active` | boolean | tidak | default `true`. Alasan tidak pernah dihapus, hanya dinonaktifkan |
 | `created_at`, `updated_at` | timestamp | ya | |
 

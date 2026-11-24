@@ -31,6 +31,7 @@ class OpnameReason extends Model implements AuditableContract
         'Cek stok' => OpnameReasonBehavior::Plain,
         'Hilang' => OpnameReasonBehavior::Plain,
         'Rusak' => OpnameReasonBehavior::Damaged,
+        'Dimusnahkan' => OpnameReasonBehavior::Plain,
     ];
 
     /**

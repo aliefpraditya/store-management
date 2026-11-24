@@ -7,7 +7,7 @@ use App\Models\OpnameReason;
 use Illuminate\Support\Collection;
 
 /**
- * The reasons an opname variance can be given. The four every store starts with come first; an admin adds more, renames
+ * The reasons an opname variance can be given. The five every store starts with come first; an admin adds more, renames
  * them, and switches them off. A reason is never deleted, so old opnames keep what they were told. A reason an admin
  * adds is plain: only the system's own Rusak asks for a decision about the damaged goods.
  *

@@ -103,7 +103,7 @@ Migrasi: `2026_11_05_100000_add_opname_reasons_review_and_damaged_goods`. Alasan
 | `is_active` | boolean | tidak | Default `true` |
 | `created_at`, `updated_at` | timestamp | ya | |
 
-Empat baris bawaan (`Pembelian`, `Cek stok`, `Hilang` plain; `Rusak` damaged, semuanya `is_system = true`) dimasukkan langsung oleh migrasi, **dan** didefinisikan lagi di `OpnameReason::DEFAULTS` yang dipakai `StoreDatabaseSeeder` (`firstOrCreate`). Pada toko baru migrasi lebih dulu, sehingga seeder tidak menambah apa-apa; dua sumber itu harus diubah bersamaan (§13).
+Lima baris bawaan (`Pembelian`, `Cek stok`, `Hilang`, `Dimusnahkan` plain; `Rusak` damaged, semuanya `is_system = true`) dimasukkan oleh migrasi (`Dimusnahkan` oleh migrasi `add_dimusnahkan_opname_reason`, yang juga menjadikan alasan buatan admin bernama sama sebagai alasan sistem), **dan** didefinisikan lagi di `OpnameReason::DEFAULTS` yang dipakai `StoreDatabaseSeeder` (`firstOrCreate`). Pada toko baru migrasi lebih dulu, sehingga seeder tidak menambah apa-apa; dua sumber itu harus diubah bersamaan (§13).
 
 ### `drivers` (DB toko)
 

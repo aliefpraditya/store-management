@@ -427,7 +427,7 @@ class StoreSettingTest extends TestCase
         $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page
             ->where('settings.paper_width', 58)
             ->where('opname_reasons.1.name', 'Cek stok rutin')
-            ->where('opname_reasons.4.name', 'Kadaluarsa')
+            ->where('opname_reasons.5.name', 'Kadaluarsa')
             ->where('drivers.0.name', 'Pak Adi')
             ->where('drivers.1', ['id' => $joko->id, 'name' => 'Pak Joko', 'is_active' => false]));
     }
@@ -439,7 +439,7 @@ class StoreSettingTest extends TestCase
         $this->save(['paper_width' => 58]);
 
         $this->assertSame(['Pak Joko'], $this->store->run(fn (): array => Driver::query()->pluck('name')->all()));
-        $this->assertSame(4, $this->store->run(fn (): int => OpnameReason::query()->count()));
+        $this->assertSame(5, $this->store->run(fn (): int => OpnameReason::query()->count()));
     }
 
     public function test_nothing_is_saved_when_two_names_swap_places_and_meet_at_the_unique_name(): void

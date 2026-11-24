@@ -68,7 +68,7 @@ class OpnameReasonTest extends TestCase
     public function test_the_settings_page_lists_the_reasons(): void
     {
         $this->actingAs($this->admin)->get(route('tenant.settings.index', ['tenant' => $this->store->code]))->assertOk()->assertInertia(fn (Assert $page) => $page
-            ->has('opname_reasons', 4)
+            ->has('opname_reasons', 5)
             ->where('opname_reasons.0.name', 'Pembelian')
             ->where('opname_reasons.0.is_system', true)
             ->where('opname_reasons.0.is_active', true)
@@ -122,13 +122,13 @@ class OpnameReasonTest extends TestCase
         $this->save([$this->row(null, 'Baru'), $this->row(null, 'baru')])->assertSessionHasErrors('opname_reasons.1.name');
         $this->save([$this->row($this->reason('Cek stok'), 'Cek stok')])->assertSessionHasNoErrors();
 
-        $this->assertSame(4, $this->store->run(fn (): int => OpnameReason::query()->count()));
+        $this->assertSame(5, $this->store->run(fn (): int => OpnameReason::query()->count()));
     }
 
     public function test_only_admins_manage_the_reasons(): void
     {
         $this->save([$this->row(null, 'Baru')], $this->storeUser())->assertForbidden();
 
-        $this->assertSame(4, $this->store->run(fn (): int => OpnameReason::query()->count()));
+        $this->assertSame(5, $this->store->run(fn (): int => OpnameReason::query()->count()));
     }
 }
