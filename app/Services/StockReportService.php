@@ -74,7 +74,10 @@ class StockReportService
      * out but not below it. A product with a negative balance sits in whichever of the three its sellable stock and minimum
      * say; it is counted apart as `negative_count`.
      *
-     * @return array{products_count: int, below_minimum_count: int, out_of_stock_count: int, low_stock_count: int, healthy_count: int, negative_count: int, sellable_value: string, dead_stock: array{products_count: int, value: string}, returns_waiting: array{products_count: int, value: string}, products_without_cost: int}
+     * `damaged_goods` is the part of the sellable stock that is damaged goods (DG products, sold at a lower price): they sit
+     * in the sellable warehouse, so `sellable_value` includes them, and a chart of where the money is takes them out of it.
+     *
+     * @return array{products_count: int, below_minimum_count: int, out_of_stock_count: int, low_stock_count: int, healthy_count: int, negative_count: int, sellable_value: string, damaged_goods: array{products_count: int, value: string}, dead_stock: array{products_count: int, value: string}, returns_waiting: array{products_count: int, value: string}, products_without_cost: int}
      */
     public function summary(): array
     {
@@ -85,6 +88,8 @@ class StockReportService
             count(case when is_active = 1 and sellable_stock != 0 and is_below_minimum = 1 then 1 end) as low_stock_count,
             count(case when has_negative_stock = 1 then 1 end) as negative_count,
             coalesce(sum(greatest(sellable_stock, 0) * cost_price), 0) as sellable_value,
+            count(case when is_damaged_goods = 1 and sellable_stock > 0 then 1 end) as damaged_goods_count,
+            coalesce(sum(case when is_damaged_goods = 1 then greatest(sellable_stock, 0) * cost_price end), 0) as damaged_goods_value,
             count(case when dead_stock > 0 then 1 end) as dead_stock_count,
             coalesce(sum(greatest(dead_stock, 0) * cost_price), 0) as dead_stock_value,
             count(case when returns_stock > 0 then 1 end) as returns_waiting_count,
@@ -104,6 +109,7 @@ class StockReportService
             'healthy_count' => $productsCount - $outOfStockCount - $lowStockCount,
             'negative_count' => (int) $figures->negative_count,
             'sellable_value' => $this->money($figures->sellable_value),
+            'damaged_goods' => ['products_count' => (int) $figures->damaged_goods_count, 'value' => $this->money($figures->damaged_goods_value)],
             'dead_stock' => ['products_count' => (int) $figures->dead_stock_count, 'value' => $this->money($figures->dead_stock_value)],
             'returns_waiting' => ['products_count' => (int) $figures->returns_waiting_count, 'value' => $this->money($figures->returns_waiting_value)],
             'products_without_cost' => (int) $figures->products_without_cost,

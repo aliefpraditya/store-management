@@ -4,7 +4,7 @@ import { usePage } from '@inertiajs/vue3';
 import ReportTabs from './ReportTabs.vue';
 
 defineProps({
-    /** Which of the stock reports the page is: `summary`, `positions`, `restock`, `idle` or `movements`. */
+    /** Which of the stock reports the page is: `summary`, `positions`, `restock`, `idle`, `movements` or `variances`. */
     current: { type: String, required: true },
 });
 
@@ -16,6 +16,7 @@ const tabs = computed(() => [
     { key: 'restock', label: 'Perlu restok', icon: 'add_shopping_cart', href: store.value.restock_url },
     { key: 'idle', label: 'Tidak terjual', icon: 'hourglass_empty', href: store.value.idle_stock_url },
     { key: 'movements', label: 'Pergerakan', icon: 'swap_vert', href: store.value.stock_movements_url },
+    { key: 'variances', label: 'Selisih opname', icon: 'fact_check', href: store.value.stock_variances_url },
 ]);
 </script>
 

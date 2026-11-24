@@ -135,10 +135,22 @@ class StockReportTest extends TestCase
                 'healthy_count' => 3,
                 'negative_count' => 1,
                 'sellable_value' => '62500.00',
+                'damaged_goods' => ['products_count' => 0, 'value' => '0.00'],
                 'dead_stock' => ['products_count' => 1, 'value' => '1000.00'],
                 'returns_waiting' => ['products_count' => 1, 'value' => '3000.00'],
                 'products_without_cost' => 1,
             ]));
+    }
+
+    public function test_damaged_goods_are_told_apart_inside_the_sellable_value(): void
+    {
+        $this->putInStock($this->product('Kuas'), '10');
+        $this->putInStock($this->product('Kuas DG', '500', ['is_damaged_goods' => true]), '4');
+        $this->putInStock($this->product('Cat DG habis', '500', ['is_damaged_goods' => true]), '0');
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('summary.sellable_value', '12000.00')
+            ->where('summary.damaged_goods', ['products_count' => 1, 'value' => '2000.00']));
     }
 
     public function test_a_store_without_products_has_a_report_of_zeroes(): void

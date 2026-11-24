@@ -65,6 +65,23 @@ enum StockOpnameReason: string
     }
 
     /**
+     * Whether the opname counts what is on the shelf, so a variance is stock that went missing or turned up. Not opening
+     * stock (the first count), an arrival (what came in is typed) or the inspection of a returns warehouse (it sends units on).
+     */
+    public function isStockCheck(): bool
+    {
+        return ! in_array($this, [self::OpeningBalance, self::StockIncrease, self::ReturnsCheck], true);
+    }
+
+    /**
+     * @return list<self>
+     */
+    public static function stockChecks(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $reason): bool => $reason->isStockCheck()));
+    }
+
+    /**
      * @return list<self>
      */
     public static function selectable(): array

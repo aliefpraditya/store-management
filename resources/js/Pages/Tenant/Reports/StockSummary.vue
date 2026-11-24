@@ -58,10 +58,14 @@ const valueSlices = computed(() => {
         return [];
     }
 
-    const { dead_stock: deadStock, returns_waiting: returnsWaiting } = props.summary;
+    const { damaged_goods: damagedGoods, dead_stock: deadStock, returns_waiting: returnsWaiting } = props.summary;
+
+    /** Damaged goods sit in the sellable warehouse, so the stock to sell at full price is what is left of its value without them. */
+    const fullPriceValue = Math.max(Number(props.summary.sellable_value) - Number(damagedGoods.value), 0);
 
     return [
-        { key: 'sellable', label: 'Stok jual', value: Number(props.summary.sellable_value), color: SERIES_COLORS[0] },
+        { key: 'sellable', label: 'Stok jual', value: fullPriceValue, color: SERIES_COLORS[0], note: 'dijual dengan harga normal' },
+        { key: 'damaged', label: 'Barang DG', value: Number(damagedGoods.value), color: SERIES_COLORS[3], note: `${damagedGoods.products_count} barang, dijual lebih murah` },
         { key: 'dead', label: 'Dead stock', value: Number(deadStock.value), color: SERIES_COLORS[1], note: `${deadStock.products_count} barang, tidak bisa dijual` },
         { key: 'returns', label: 'Retur menunggu diperiksa', value: Number(returnsWaiting.value), color: SERIES_COLORS[2], note: `${returnsWaiting.products_count} barang, belum diputuskan` },
     ];
@@ -152,6 +156,7 @@ const changeBestSellersUnit = (unit) => reloadPart('best_sellers', { sellers_uni
                     <small>Nilai stok jual (estimasi)</small>
                     <b>{{ formatRupiah(summary.sellable_value) }}</b>
                     <em>{{ summary.products_count }} barang aktif · stok × harga beli terakhir</em>
+                    <em v-if="Number(summary.damaged_goods.value) > 0">termasuk barang DG {{ formatRupiah(summary.damaged_goods.value) }}</em>
                     <em v-if="summary.products_without_cost > 0" class="kpi__warn">{{ summary.products_without_cost }} barang berstok belum punya harga beli, jadi tidak ikut dihitung</em>
                 </div>
                 <div class="kpi">
@@ -180,7 +185,7 @@ const changeBestSellersUnit = (unit) => reloadPart('best_sellers', { sellers_uni
                     </template>
 
                     <PieChart :slices="valueSlices" :format-value="formatRupiah" label="Nilai stok menurut kondisi" empty-text="Belum ada stok." />
-                    <p class="note">Dead stock dan retur yang menunggu diperiksa sudah tidak bisa dijual, jadi uangnya belum kembali lewat penjualan.</p>
+                    <p class="note">Barang DG masih bisa dijual tetapi dengan harga lebih murah. Dead stock dan retur yang menunggu diperiksa tidak bisa dijual, jadi uangnya belum kembali lewat penjualan.</p>
                 </Deferred>
             </section>
 

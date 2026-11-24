@@ -15,6 +15,7 @@ use App\Http\Requests\Tenant\SalesReturnsRequest;
 use App\Http\Requests\Tenant\StockMovementRequest;
 use App\Http\Requests\Tenant\StockReportRequest;
 use App\Http\Requests\Tenant\StockSummaryRequest;
+use App\Http\Requests\Tenant\StockVarianceRequest;
 use App\Http\Resources\IdleStockResource;
 use App\Http\Resources\MovedProductResource;
 use App\Http\Resources\RestockResource;
@@ -32,6 +33,7 @@ use App\Services\SalesDetailWorkbook;
 use App\Services\SalesReportService;
 use App\Services\StockMovementReportService;
 use App\Services\StockReportService;
+use App\Services\StockVarianceReportService;
 use App\Services\StoreSettingService;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -60,6 +62,7 @@ class ReportController extends Controller
         private readonly IdleStockService $idleStock,
         private readonly RestockReportService $restockReport,
         private readonly StockMovementReportService $stockMovements,
+        private readonly StockVarianceReportService $stockVarianceReport,
         private readonly StoreSettingService $settings,
     ) {}
 
@@ -315,6 +318,41 @@ class ReportController extends Controller
             'is_period_cut_back' => $period['is_cut_back'],
             'max_days' => SalesReportService::MAX_DAYS,
         ]);
+    }
+
+    /**
+     * What the stock counts found missing or extra in a period, in what it was worth: the figures, the shortage per reason and
+     * per product, and the list of the counts posted, each paged on the server. All four are deferred props, each in a group of
+     * its own, so the page shows at once and they load side by side; turning the list asks for that one alone. The period is
+     * made one the report can give, the same as for the sales report.
+     */
+    public function stockVariances(StockVarianceRequest $request): Response
+    {
+        $period = $this->salesReport->period($request->fromDate(), $request->toDate());
+
+        return Inertia::render('Tenant/Reports/StockVariances', [
+            'period' => ['from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()],
+            'summary' => Inertia::defer(fn (): array => $this->stockVarianceReport->summary($period['from'], $period['to']), 'summary'),
+            'reasons' => Inertia::defer(fn (): array => $this->stockVarianceReport->reasons($period['from'], $period['to']), 'reasons'),
+            'products' => Inertia::defer(fn (): array => $this->stockVarianceReport->topProducts($period['from'], $period['to'], StockVarianceReportService::TOP_PRODUCTS), 'products'),
+            'opnames' => Inertia::defer(fn (): array => $this->opnamesWithUrls($this->stockVarianceReport->opnamesPage($period['from'], $period['to'], $request->opnamesPage(), $request->opnamesPerPage())), 'opnames'),
+            'per_page_options' => StockVarianceReportService::OPNAME_PER_PAGE_OPTIONS,
+            'is_period_cut_back' => $period['is_cut_back'],
+            'max_days' => SalesReportService::MAX_DAYS,
+        ]);
+    }
+
+    /**
+     * A page of counts with the address of each, for the page to link to it.
+     *
+     * @param  array{data: list<array<string, mixed>>}&array<string, mixed>  $page
+     * @return array<string, mixed>
+     */
+    private function opnamesWithUrls(array $page): array
+    {
+        $page['data'] = array_map(fn (array $opname): array => [...$opname, 'url' => route('tenant.stock-opnames.show', ['tenant' => tenant('code'), 'stock_opname' => $opname['id']])], $page['data']);
+
+        return $page;
     }
 
     public function salesSheet(DateRangeRequest $request): Response
