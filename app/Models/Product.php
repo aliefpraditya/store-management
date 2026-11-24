@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\WarehouseType;
+use Carbon\CarbonImmutable;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -150,10 +151,19 @@ class Product extends Model implements AuditableContract
      * total in the warehouses of each type, `sellable_intact_packs` and
      * `dead_intact_packs`: how many whole sealed packs of it are in the warehouses of each type, and `is_below_minimum`, see {@see self::BELOW_MINIMUM_SQL}.
      *
+     * With `$asOf` the totals are what they were at the end of that day: the sum of what the stock ledger recorded up to
+     * then, not the `stocks` cache, which only knows the present. A product with nothing recorded by then has 0.
+     *
      * @param  Builder<Product>  $query
      */
-    public function scopeWithStockTotals(Builder $query): void
+    public function scopeWithStockTotals(Builder $query, ?CarbonImmutable $asOf = null): void
     {
+        if ($asOf !== null) {
+            $this->addLedgerStockTotals($query, $asOf);
+
+            return;
+        }
+
         $totalIn = fn (WarehouseType $type, string $column = 'quantity') => Stock::query()
             ->selectRaw("coalesce(sum(stocks.{$column}), 0)")
             ->whereColumn('stocks.product_id', 'products.id')
@@ -167,6 +177,32 @@ class Product extends Model implements AuditableContract
             'sellable_intact_packs' => $totalIn(WarehouseType::Sellable, 'intact_packs'),
             'dead_intact_packs' => $totalIn(WarehouseType::DeadStock, 'intact_packs'),
         ])->selectRaw(self::BELOW_MINIMUM_SQL.' as is_below_minimum', [WarehouseType::Sellable->value]);
+    }
+
+    /**
+     * The columns of {@see self::scopeWithStockTotals()} worked out from the ledger up to the end of `$asOf`. A product
+     * with a minimum is below it when its sellable total then was, the same rule as {@see self::BELOW_MINIMUM_SQL}.
+     *
+     * @param  Builder<Product>  $query
+     */
+    private function addLedgerStockTotals(Builder $query, CarbonImmutable $asOf): void
+    {
+        $totalIn = fn (WarehouseType $type, string $column = 'quantity') => StockMovement::query()
+            ->selectRaw("coalesce(sum(stock_movements.{$column}), 0)")
+            ->whereColumn('stock_movements.product_id', 'products.id')
+            ->where('stock_movements.moved_at', '<=', $asOf->endOfDay()->toDateTimeString())
+            ->whereIn('stock_movements.warehouse_id', Warehouse::query()->select('id')->where('type', $type));
+
+        $sellableStock = $totalIn(WarehouseType::Sellable);
+
+        $query->addSelect([
+            'products.*',
+            'sellable_stock' => $sellableStock,
+            'dead_stock' => $totalIn(WarehouseType::DeadStock),
+            'returns_stock' => $totalIn(WarehouseType::Returns),
+            'sellable_intact_packs' => $totalIn(WarehouseType::Sellable, 'pack_change'),
+            'dead_intact_packs' => $totalIn(WarehouseType::DeadStock, 'pack_change'),
+        ])->selectRaw('(products.min_stock > 0 and ('.$sellableStock->toSql().') < products.min_stock) as is_below_minimum', $sellableStock->getBindings());
     }
 
     /**

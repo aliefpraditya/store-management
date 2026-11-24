@@ -86,7 +86,7 @@ class StockSummaryReportTest extends TestCase
         $response = $this->actingAs($this->admin)->get($this->url())->assertOk();
 
         $this->assertEquals(
-            ['summary' => ['summary'], 'groups' => ['groups'], 'best_sellers' => ['best_sellers'], 'idle' => ['idle'], 'restock' => ['restock'], 'urgent' => ['urgent']],
+            ['summary' => ['summary'], 'groups' => ['groups'], 'best_sellers' => ['best_sellers'], 'idle' => ['idle'], 'restock' => ['restock'], 'running_out' => ['running_out']],
             $response->viewData('page')['deferredProps'],
         );
         $response->assertInertia(fn (Assert $page) => $page
@@ -95,7 +95,7 @@ class StockSummaryReportTest extends TestCase
             ->missing('best_sellers')
             ->missing('idle')
             ->missing('restock')
-            ->missing('urgent')
+            ->missing('running_out')
             ->where('idle_days', 60)
             ->where('restock_window', 30)
             ->where('restock_cover', 14));
@@ -116,7 +116,7 @@ class StockSummaryReportTest extends TestCase
             ->where('best_sellers.unit', null)
             ->where('idle.share_percent', '0.0')
             ->where('restock.products_count', 0)
-            ->where('urgent', []));
+            ->where('running_out', []));
     }
 
     public function test_active_products_are_split_into_healthy_low_and_out_without_overlap(): void
@@ -134,6 +134,26 @@ class StockSummaryReportTest extends TestCase
             ->where('summary.low_stock_count', 1)
             ->where('summary.healthy_count', 2)
             ->where('summary.below_minimum_count', 2));
+    }
+
+    public function test_the_products_running_out_come_soonest_first_without_those_already_out(): void
+    {
+        $cement = $this->product('Semen');
+        $this->putInStock($cement, '3');
+        $this->sell($cement, '30', 10);
+        $rope = $this->product('Tali');
+        $this->putInStock($rope, '9');
+        $this->sell($rope, '30', 10);
+        $paint = $this->product('Cat');
+        $this->putInStock($paint, '0');
+        $this->sell($paint, '30', 10);
+        $this->putInStock($this->product('Paku'), '8');
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('running_out', [
+                ['id' => $cement->id, 'name' => 'Semen', 'days_left' => '3.0'],
+                ['id' => $rope->id, 'name' => 'Tali', 'days_left' => '9.0'],
+            ]));
     }
 
     public function test_the_stock_value_is_shared_out_per_category_with_the_biggest_first_and_the_total_of_all(): void

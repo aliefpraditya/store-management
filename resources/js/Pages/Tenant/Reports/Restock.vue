@@ -8,14 +8,17 @@ import { formatQuantity, formatStock } from '../../../Composables/useQuantityFor
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 /**
- * `summary` and `products` are deferred props, each in a group of its own: the page shows at once and each part fills
- * in when the server has it, so they are undefined until then and only read inside a `<Deferred>` that waits for them.
+ * `summary`, `products` and `idle_out_of_stock` are deferred props, each in a group of its own: the page shows at once and
+ * each part fills in when the server has it, so they are undefined until then and only read inside a `<Deferred>` that
+ * waits for them.
  */
 const props = defineProps({
     /** What the report is worked out with and narrowed to, as the address holds it. */
     filters: { type: Object, required: true },
     summary: { type: Object, default: undefined },
     products: { type: Object, default: undefined },
+    /** The products that are out of stock and did not sell, which only their minimum asks to buy: a short list apart from the table. */
+    idle_out_of_stock: { type: Object, default: undefined },
     /** How many days of sales the pace can be read from. */
     window_options: { type: Array, required: true },
     /** How many days the stock can be wanted to last. */
@@ -46,6 +49,7 @@ function currentQuery(change = {}) {
         category: category.value || undefined,
         page: props.products?.current_page,
         per_page: props.products?.per_page,
+        idle_page: props.idle_out_of_stock?.current_page,
         sort: props.products?.sort,
         direction: props.products?.direction,
         ...change,
@@ -62,9 +66,9 @@ function reloadParts(only, change) {
 }
 
 /** The pace and the days wanted change who has to be bought, so the cards and the table both ask again; `filters` as well so the address and the fields agree. */
-watch([salesDays, coverDays], () => reloadParts(['summary', 'products', 'filters'], { page: undefined }));
+watch([salesDays, coverDays], () => reloadParts(['summary', 'products', 'idle_out_of_stock', 'filters'], { page: undefined, idle_page: undefined }));
 
-watch(category, () => reloadParts(['products', 'filters'], { page: undefined }));
+watch(category, () => reloadParts(['products', 'idle_out_of_stock', 'filters'], { page: undefined, idle_page: undefined }));
 
 /**
  * Ordering by the column the table is already in turns its direction; a new column starts with the most urgent first
@@ -85,6 +89,7 @@ const sortState = (column) => (props.products?.sort === column ? (props.products
 
 const showPage = (productsPage) => reloadParts(['products'], { page: productsPage });
 const changePerPage = (perPage) => reloadParts(['products'], { page: 1, per_page: perPage });
+const showIdlePage = (idlePage) => reloadParts(['idle_out_of_stock'], { idle_page: idlePage });
 
 /**
  * How long the stock lasts, for a reader: out of stock, no way to tell (the product did not sell in the window), or the
@@ -97,6 +102,27 @@ function describeDaysLeft(daysLeft) {
     }
 
     return Number(daysLeft) === 0 ? 'Habis' : `${formatQuantity(daysLeft)} hari`;
+}
+
+/** The status colours are fixed (never themed), the same as in the stock summary. */
+const DAYS_COLORS = { good: '#0ca30c', warning: '#fab219', critical: '#d03b3b' };
+
+/**
+ * The bar under "Cukup untuk": how much of the days wanted the stock lasts. Full and green when it lasts as long as wanted,
+ * yellow under that, red under half of it. Nothing for a product that did not sell (no way to tell), and nothing to fill when
+ * the stock is out.
+ * @param {string|null} daysLeft
+ * @returns {{width: string, color: string}|null}
+ */
+function daysBar(daysLeft) {
+    if (daysLeft === null) {
+        return null;
+    }
+
+    const share = Math.min(Number(daysLeft) / props.filters.cover, 1);
+    const color = share >= 1 ? DAYS_COLORS.good : share >= 0.5 ? DAYS_COLORS.warning : DAYS_COLORS.critical;
+
+    return { width: `${Math.round(share * 100)}%`, color };
 }
 
 /**
@@ -215,7 +241,12 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0;
                                             </template>
                                             <span v-else class="table__muted">tidak terjual</span>
                                         </td>
-                                        <td class="table__right">{{ describeDaysLeft(product.days_left) }}</td>
+                                        <td class="table__right">
+                                            {{ describeDaysLeft(product.days_left) }}
+                                            <span v-if="daysBar(product.days_left)" class="days-bar" aria-hidden="true">
+                                                <span class="days-bar__fill" :style="{ width: daysBar(product.days_left).width, background: daysBar(product.days_left).color }"></span>
+                                            </span>
+                                        </td>
                                         <td class="table__right"><b>{{ formatStock(product.suggested_quantity, product.units, product.base_unit, null) }}</b></td>
                                         <td class="table__right">
                                             {{ formatRupiah(product.suggested_cost) }}
@@ -256,10 +287,63 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0;
             </Deferred>
             <ul class="note">
                 <li><b>Terjual {{ filters.window }} hari</b>: jumlah yang terjual dalam {{ filters.window }} hari terakhir. Dibagi {{ filters.window }}, itulah rata-rata terjual per hari.</li>
-                <li><b>Cukup untuk</b>: stok sekarang dibagi rata-rata terjual per hari. Contoh: stok 5, terjual 1 per hari, cukup untuk 5 hari.</li>
+                <li><b>Cukup untuk</b>: stok sekarang dibagi rata-rata terjual per hari. Contoh: stok 5, terjual 1 per hari, cukup untuk 5 hari. Batangnya penuh bila stok cukup selama {{ filters.cover }} hari yang diminta: hijau bila penuh, kuning di bawahnya, merah di bawah setengahnya.</li>
                 <li><b>Saran beli</b>: yang perlu dibeli supaya stok cukup untuk {{ filters.cover }} hari, dan tidak kurang dari stok minimum barang.</li>
-                <li>Tidak ikut: barang rusak (DG) dan barang nonaktif. Barang yang tidak terjual hanya muncul bila stoknya di bawah minimum.</li>
+                <li>Tidak ikut: barang rusak (DG) dan barang nonaktif. Barang yang tidak terjual hanya muncul bila stoknya di bawah minimum. Kalau stoknya juga sudah habis, ia pindah ke daftar di bawah.</li>
             </ul>
+        </section>
+
+        <section class="card">
+            <h2>Habis dan tidak terjual dalam {{ filters.window }} hari terakhir <small class="card__hint">hanya muncul karena stok minimum</small></h2>
+
+            <Deferred data="idle_out_of_stock">
+                <template #fallback>
+                    <q-skeleton height="120px" />
+                </template>
+
+                <template #default="{ reloading }">
+                    <div :class="{ 'is-reloading': reloading }">
+                        <div class="table-scroll">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Barang</th>
+                                        <th class="table__right">Stok minimum</th>
+                                        <th class="table__right">Saran beli</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-if="idle_out_of_stock.data.length === 0">
+                                        <td colspan="3" class="table__empty">Tidak ada barang yang habis dan tidak terjual.</td>
+                                    </tr>
+                                    <tr v-for="product in idle_out_of_stock.data" :key="product.id">
+                                        <td>
+                                            <b>{{ product.name }}</b>
+                                            <small class="table__muted">{{ [product.sku, product.category, product.brand].filter(Boolean).join(' · ') }}</small>
+                                        </td>
+                                        <td class="table__right">{{ formatStock(product.min_stock, product.units, product.base_unit, null) }}</td>
+                                        <td class="table__right">{{ formatStock(product.suggested_quantity, product.units, product.base_unit, null) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div v-if="idle_out_of_stock.total > 0" class="pager">
+                            <span class="pager__range">{{ idle_out_of_stock.from }}–{{ idle_out_of_stock.to }} dari {{ idle_out_of_stock.total }} barang</span>
+                            <q-pagination
+                                v-if="idle_out_of_stock.last_page > 1"
+                                :model-value="idle_out_of_stock.current_page"
+                                :max="idle_out_of_stock.last_page"
+                                :max-pages="7"
+                                direction-links
+                                boundary-links
+                                color="primary"
+                                @update:model-value="showIdlePage"
+                            />
+                        </div>
+                    </div>
+                </template>
+            </Deferred>
+            <p class="note note--plain">Tidak ikut hitungan biaya dan jumlah di atas. Kalau barangnya tidak akan dijual lagi, nonaktifkan atau kosongkan stok minimumnya.</p>
         </section>
     </StoreLayout>
 </template>
@@ -426,6 +510,22 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0;
     text-align: center;
 }
 
+.days-bar {
+    display: block;
+    width: 90px;
+    height: 6px;
+    margin: 4px 0 0 auto;
+    overflow: hidden;
+    border-radius: 3px;
+    background: var(--app-line);
+}
+
+.days-bar__fill {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+}
+
 .pager {
     display: flex;
     flex-wrap: wrap;
@@ -461,6 +561,16 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0;
     padding-left: 18px;
     color: var(--app-mute);
     font-size: 12px;
+}
+
+.note--plain {
+    padding-left: 0;
+}
+
+.card__hint {
+    color: var(--app-mute);
+    font-size: 12px;
+    font-weight: 400;
 }
 
 .note li + li {

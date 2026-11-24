@@ -12,7 +12,7 @@ import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 /**
- * `summary`, `groups`, `best_sellers`, `idle`, `restock` and `urgent` are deferred props, each in a group of its own: the
+ * `summary`, `groups`, `best_sellers`, `idle`, `restock` and `running_out` are deferred props, each in a group of its own: the
  * page shows at once and each part fills in when the server has it, so they are undefined until then and only read inside
  * a `<Deferred>` that waits for them.
  */
@@ -22,7 +22,8 @@ const props = defineProps({
     best_sellers: { type: Object, default: undefined },
     idle: { type: Object, default: undefined },
     restock: { type: Object, default: undefined },
-    urgent: { type: Array, default: undefined },
+    /** The products that will run out soonest (not the ones already out), with the days their stock lasts. */
+    running_out: { type: Array, default: undefined },
     /** The days without a sale that make stock idle here: the default of the tab "Tidak terjual". */
     idle_days: { type: Number, required: true },
     /** The days of sales that set the pace of the restock figures: the default of the tab "Perlu restok". */
@@ -51,7 +52,7 @@ const INK_ON_WARNING = '#0b0b0b';
 const positionsWith = (status) => `${page.props.store.stock_positions_url}?status=${status}`;
 
 const formatProducts = (count) => `${count} barang`;
-const formatDays = (days) => (Number(days) === 0 ? 'Habis' : `${Number(days).toLocaleString('id-ID')} hari`);
+const formatDays = (days) => `${Number(days).toLocaleString('id-ID')} hari`;
 
 const valueSlices = computed(() => {
     if (!props.summary) {
@@ -111,7 +112,7 @@ const groupSlices = computed(() => {
     return rest > 0.005 ? [...shown, { key: 'rest', label: 'Lainnya', value: rest, color: OTHER_COLOR }] : shown;
 });
 
-const urgentRows = computed(() => (props.urgent ?? []).map((product) => ({ key: product.id, label: product.name, value: Number(product.days_left) })));
+const runningOutRows = computed(() => (props.running_out ?? []).map((product) => ({ key: product.id, label: product.name, value: Number(product.days_left) })));
 
 const bestSellerRows = computed(() => (props.best_sellers?.data ?? []).map((product) => ({ key: product.id, label: product.name, value: Number(product.sold_quantity) })));
 
@@ -313,16 +314,16 @@ const changeBestSellersUnit = (unit) => reloadPart('best_sellers', { sellers_uni
 
             <section class="card">
                 <div class="card__head">
-                    <h2>Perkiraan stok habis <small>(5 teratas, sisa hari stok)</small></h2>
+                    <h2>Stok menipis <small>(5 teratas, akan habis paling cepat)</small></h2>
                     <Link :href="page.props.store.restock_url" class="card__more">Lihat semua yang perlu direstok</Link>
                 </div>
-                <Deferred data="urgent">
+                <Deferred data="running_out">
                     <template #fallback>
                         <q-skeleton height="150px" />
                     </template>
 
-                    <RankedBars :rows="urgentRows" :format-value="formatDays" empty-text="Tidak ada barang laku yang perlu direstok." />
-                    <p class="note">Dihitung dari penjualan {{ restock_window }} hari terakhir, dengan stok dianggap cukup untuk {{ restock_cover }} hari. Barang yang tidak laku tidak ikut. <Link :href="page.props.store.restock_url">Ubah di tab Perlu restok</Link></p>
+                    <RankedBars :rows="runningOutRows" :format-value="formatDays" empty-text="Tidak ada barang laku yang akan segera habis." />
+                    <p class="note">Perkiraan sisa hari stok, dihitung dari penjualan {{ restock_window }} hari terakhir. Barang yang sudah habis atau tidak laku tidak ikut. <Link :href="page.props.store.restock_url">Ubah di tab Perlu restok</Link></p>
                 </Deferred>
             </section>
         </div>

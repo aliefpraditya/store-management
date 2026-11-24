@@ -7,12 +7,14 @@ use App\Enums\SaleStatus;
 use App\Enums\StockGroupMetric;
 use App\Enums\StockStatusFilter;
 use App\Models\Product;
+use App\Models\StockMovement;
 use App\Services\Concerns\PaginatesReportRows;
 use Brick\Math\BigDecimal;
 use Brick\Math\RoundingMode;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
  * The stock the store holds now, in the three kinds of warehouse (sellable, dead stock, and the returns warehouse where
@@ -77,11 +79,14 @@ class StockReportService
      * `damaged_goods` is the part of the sellable stock that is damaged goods (DG products, sold at a lower price): they sit
      * in the sellable warehouse, so `sellable_value` includes them, and a chart of where the money is takes them out of it.
      *
+     * With `$asOf` every figure is that of the end of that day, read from the ledger; the value still uses today's purchase
+     * price, so it is an estimate of what the stock was worth then.
+     *
      * @return array{products_count: int, below_minimum_count: int, out_of_stock_count: int, low_stock_count: int, healthy_count: int, negative_count: int, sellable_value: string, damaged_goods: array{products_count: int, value: string}, dead_stock: array{products_count: int, value: string}, returns_waiting: array{products_count: int, value: string}, products_without_cost: int}
      */
-    public function summary(): array
+    public function summary(?CarbonImmutable $asOf = null): array
     {
-        $figures = $this->stockedProducts()->toBase()->selectRaw(<<<'SQL'
+        $figures = $this->stockedProducts($asOf)->toBase()->selectRaw(<<<'SQL'
             count(case when is_active = 1 then 1 end) as products_count,
             count(case when is_active = 1 and is_below_minimum = 1 then 1 end) as below_minimum_count,
             count(case when is_active = 1 and sellable_stock = 0 then 1 end) as out_of_stock_count,
@@ -250,13 +255,14 @@ class StockReportService
      * does not shuffle between requests), narrowed by a search on the name or
      * SKU, a category, a brand and a stock condition. A page past the last one gives the last. Every product carries
      * `sellable_stock`, `dead_stock`, `returns_stock`, `is_below_minimum` and `has_negative_stock`
-     * (see {@see Product::scopeWithStockTotals()}), with its category, brand and units loaded.
+     * (see {@see Product::scopeWithStockTotals()}), with its category, brand and units loaded. With `$asOf` the stock is what
+     * it was at the end of that day, read from the ledger; the value still uses today's purchase price.
      *
      * @return LengthAwarePaginator<int, Product>
      */
-    public function positionsPage(string $search, ?int $categoryId, ?int $brandId, ?StockStatusFilter $status, string $sort, string $direction, int $page, int $perPage): LengthAwarePaginator
+    public function positionsPage(string $search, ?int $categoryId, ?int $brandId, ?StockStatusFilter $status, string $sort, string $direction, int $page, int $perPage, ?CarbonImmutable $asOf = null): LengthAwarePaginator
     {
-        $products = $this->stockedProducts()
+        $products = $this->stockedProducts($asOf)
             ->search($search)
             ->when($categoryId, fn (Builder $query, int $categoryId) => $query->where('products.category_id', $categoryId))
             ->when($brandId, fn (Builder $query, int $brandId) => $query->where('products.brand_id', $brandId))
@@ -270,20 +276,51 @@ class StockReportService
     }
 
     /**
+     * The day of the first thing the stock ledger recorded, or `null` while it is empty: a day before it is one the ledger
+     * knows nothing of, so the stock then reads as 0 only on paper.
+     */
+    public function ledgerStartsOn(): ?string
+    {
+        $firstMovedAt = StockMovement::query()->min('moved_at');
+
+        return $firstMovedAt === null ? null : CarbonImmutable::parse($firstMovedAt)->toDateString();
+    }
+
+    /**
      * The products the report is about, each with its stock per kind of warehouse, as a table named `products` so the
      * filters and totals can read the stock columns like any other column: the active ones, and the inactive ones that
      * still hold stock.
      *
      * @return Builder<Product>
      */
-    private function stockedProducts(): Builder
+    private function stockedProducts(?CarbonImmutable $asOf = null): Builder
     {
-        $withStock = Product::query()
-            ->withStockTotals()
-            ->selectRaw(self::HAS_NEGATIVE_STOCK_SQL.' as has_negative_stock')
-            ->where(fn (Builder $products) => $products->where('products.is_active', true)->orWhereRaw(self::HAS_STOCK_SQL));
+        $withStock = Product::query()->withStockTotals($asOf);
+
+        if ($asOf === null) {
+            $withStock->selectRaw(self::HAS_NEGATIVE_STOCK_SQL.' as has_negative_stock')
+                ->where(fn (Builder $products) => $products->where('products.is_active', true)->orWhereRaw(self::HAS_STOCK_SQL));
+        } else {
+            $hasNegativeStock = $this->warehouseBalancesOn($asOf)->havingRaw('sum(stock_movements.quantity) < 0');
+
+            $withStock->selectRaw('exists ('.$hasNegativeStock->toSql().') as has_negative_stock', $hasNegativeStock->getBindings())
+                ->where(fn (Builder $products) => $products->where('products.is_active', true)->orWhereExists($this->warehouseBalancesOn($asOf)->havingRaw('sum(stock_movements.quantity) != 0')));
+        }
 
         return Product::query()->fromSub($withStock, 'products');
+    }
+
+    /**
+     * What the ledger holds for the product of the outer query, one row per warehouse, up to the end of `$asOf`: the ledger's
+     * answer to a row of `stocks`, for asking whether any warehouse held (or owed) something on that day.
+     */
+    private function warehouseBalancesOn(CarbonImmutable $asOf): QueryBuilder
+    {
+        return StockMovement::query()->toBase()
+            ->selectRaw('1')
+            ->whereColumn('stock_movements.product_id', 'products.id')
+            ->where('stock_movements.moved_at', '<=', $asOf->endOfDay()->toDateTimeString())
+            ->groupBy('stock_movements.warehouse_id');
     }
 
     private function quantity(BigDecimal|string|int|float|null $quantity): string

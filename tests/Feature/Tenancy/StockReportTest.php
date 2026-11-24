@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Enums\StockMovementType;
 use App\Enums\UserRole;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\Stock;
+use App\Models\StockMovement;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -119,7 +121,84 @@ class StockReportTest extends TestCase
             ->missing('summary')
             ->missing('positions')
             ->has('statuses', 5)
-            ->where('filters', ['search' => '', 'category' => null, 'brand' => null, 'status' => '']));
+            ->where('filters', ['search' => '', 'category' => null, 'brand' => null, 'status' => '', 'as_of' => null])
+            ->where('first_recorded_on', null));
+    }
+
+    private function recordOn(Product $product, string $quantity, string $movedAt, string $warehouseCode = 'MAIN'): void
+    {
+        $this->store->run(fn () => StockMovement::factory()->create([
+            'product_id' => $product->id,
+            'warehouse_id' => Warehouse::query()->where('code', $warehouseCode)->value('id'),
+            'type' => StockMovementType::OpnameAdjustment,
+            'quantity' => $quantity,
+            'balance_after' => $quantity,
+            'moved_at' => $movedAt,
+        ]));
+    }
+
+    public function test_the_stock_can_be_shown_as_it_was_on_an_earlier_day(): void
+    {
+        $nails = $this->product('Paku', '500');
+        $this->recordOn($nails, '10', '2025-11-05 09:00:00');
+        $this->recordOn($nails, '-4', '2025-11-10 09:00:00');
+        $this->recordOn($nails, '4', '2025-11-10 09:00:00', 'DEAD');
+        $this->recordOn($nails, '-4', '2025-12-02 09:00:00', 'DEAD');
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('summary.dead_stock', ['products_count' => 1, 'value' => '2000.00'])
+            ->where('summary.sellable_value', '3000.00')
+            ->where('positions.data.0.sellable_stock', '6.000')
+            ->where('positions.data.0.dead_stock', '4.000'), ['as_of' => '2025-11-30']);
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('summary.dead_stock', ['products_count' => 0, 'value' => '0.00'])
+            ->where('positions.data.0.dead_stock', '0.000'), ['as_of' => '2025-12-02']);
+    }
+
+    public function test_a_day_that_is_not_a_past_day_shows_the_stock_of_now(): void
+    {
+        foreach (['2026-02-30', 'tomorrow', now()->toDateString(), now()->addDay()->toDateString()] as $asOf) {
+            $this->actingAs($this->admin)->get($this->url(['as_of' => $asOf]))->assertInertia(fn (Assert $page) => $page
+                ->where('filters.as_of', null)
+                ->where('first_recorded_on', null));
+        }
+    }
+
+    public function test_the_day_the_ledger_starts_is_told_for_a_past_day(): void
+    {
+        $this->recordOn($this->product('Paku'), '10', '2025-11-05 09:00:00');
+
+        $this->actingAs($this->admin)->get($this->url(['as_of' => '2025-10-01']))->assertInertia(fn (Assert $page) => $page
+            ->where('filters.as_of', '2025-10-01')
+            ->where('first_recorded_on', '2025-11-05'));
+    }
+
+    public function test_the_conditions_and_the_inactive_products_are_those_of_the_day_asked_for(): void
+    {
+        $brush = $this->product('Kuas', '6000', ['min_stock' => 20]);
+        $this->recordOn($brush, '30', '2025-11-01 09:00:00');
+        $this->recordOn($brush, '-15', '2025-11-20 09:00:00');
+        $this->recordOn($brush, '-20', '2025-12-05 09:00:00');
+
+        $oldPaint = $this->product('Cat Lama', '100', ['is_active' => false]);
+        $this->recordOn($oldPaint, '5', '2025-11-01 09:00:00');
+        $this->recordOn($oldPaint, '-5', '2025-11-25 09:00:00');
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('summary.products_count', 1)
+            ->where('summary.below_minimum_count', 0)
+            ->where('summary.negative_count', 0)
+            ->where('positions.data', fn ($rows) => collect($rows)->pluck('name')->all() === ['Cat Lama', 'Kuas']), ['as_of' => '2025-11-15']);
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('summary.below_minimum_count', 1)
+            ->where('summary.negative_count', 0)
+            ->where('positions.data', fn ($rows) => collect($rows)->pluck('name')->all() === ['Kuas']), ['as_of' => '2025-11-30']);
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('summary.below_minimum_count', 1)
+            ->where('summary.negative_count', 1), ['as_of' => '2025-12-31']);
     }
 
     public function test_the_summary_counts_and_values_the_stock_that_is_there(): void

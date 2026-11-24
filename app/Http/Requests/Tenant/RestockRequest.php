@@ -8,7 +8,8 @@ use Illuminate\Foundation\Http\FormRequest;
 
 /**
  * The restock screen: how many days of sales set the pace, how many days the stock should last, the category the table is
- * narrowed to, and the order, page and size of the table. Like the other report screens, a value that is not one of the
+ * narrowed to, and the order, page and size of the table (and the page of the short list of products that are out and not
+ * selling). Like the other report screens, a value that is not one of the
  * options is left out as if it was not sent: the address is typed by hand now and then, and it must not end in an error
  * page.
  */
@@ -69,6 +70,11 @@ class RestockRequest extends FormRequest
     public function page(): int
     {
         return $this->positiveInteger('page');
+    }
+
+    public function idleOutOfStockPage(): int
+    {
+        return $this->positiveInteger('idle_page');
     }
 
     public function perPage(): int

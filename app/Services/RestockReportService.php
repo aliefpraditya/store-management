@@ -18,7 +18,9 @@ use Illuminate\Database\Eloquent\Builder;
  * the larger of the product's minimum and the pace over `$cover` days, and the suggestion is what is missing from the
  * sellable stock (a negative balance counts as nothing there), rounded up to a whole base unit. A product is listed when
  * something is missing: it is under its minimum, or it would run out within `$cover` days. Damaged goods (DG) are left
- * out because they are not bought, and so are inactive products.
+ * out because they are not bought, and so are inactive products. A product that is out of stock and did not sell in the
+ * window is not to buy either; when it has a minimum it is listed apart ({@see self::idleOutOfStockPage()}), and
+ * the figures of the list do not count it.
  *
  * `days_left` is how many days the sellable stock lasts at that pace: 0 when it is out, `null` when the product did not
  * sell in the window (it is listed for its minimum then). The cost of the suggestion is at the last purchase price, an
@@ -50,6 +52,12 @@ class RestockReportService
         'suggested_quantity' => 'suggested_quantity %s',
         'suggested_cost' => 'suggested_quantity * cost_price %s',
     ];
+
+    /** How many rows a page of the products that are out and not selling has. */
+    public const IDLE_OUT_OF_STOCK_PER_PAGE = 10;
+
+    /** A product with nothing to sell (a negative balance counts as nothing) that did not sell in the window. */
+    private const IS_IDLE_OUT_OF_STOCK_SQL = 'sellable_stock <= 0 and sold_quantity = 0';
 
     /** The columns a table starts in ascending order for: the most urgent, and names from A to Z. */
     private const ASCENDING_FIRST_SORTS = ['days_left', 'name'];
@@ -99,15 +107,16 @@ class RestockReportService
     }
 
     /**
-     * The products that will run out first: of those that need buying and sell, the ones with the fewest days of stock left,
-     * the soonest first (a product that is out has 0 days). A product that does not sell has no days left and is not here.
-     * `days_left` is a decimal string.
+     * The products that will run out soonest: of those that need buying and sell, the ones with the fewest days of stock
+     * left, the soonest first. A product that is already out is left out (it has nothing left to run out of; the restock
+     * table has it), and so is one that does not sell, which has no days left. `days_left` is a decimal string.
      *
      * @return list<array{id: int, name: string, days_left: string}>
      */
-    public function mostUrgent(int $window, int $cover, int $limit): array
+    public function runningOutSoonest(int $window, int $cover, int $limit): array
     {
         return $this->productsToBuy($window, $cover)
+            ->where('sellable_stock', '>', 0)
             ->whereNotNull('days_left')
             ->orderBy('days_left')
             ->orderBy('products.name')
@@ -143,13 +152,44 @@ class RestockReportService
     }
 
     /**
-     * The products that need buying, as a table named `products` so the filters and totals can read the stock columns,
-     * `sold_quantity`, `days_left` and `suggested_quantity` like any other column. Built in layers because a figure
-     * cannot be read in the query that works it out.
+     * One page of the products that are out of stock and did not sell in the window, which only a minimum asks to buy
+     * (`suggested_quantity` is that minimum), by name. They are kept apart from {@see self::page()} so that the cost and the
+     * counts of what to buy are not swollen by products that may no longer be wanted: the store can look at them and decide
+     * whether the minimum still holds. Carries the same columns as {@see self::page()}.
+     *
+     * @return LengthAwarePaginator<int, Product>
+     */
+    public function idleOutOfStockPage(int $window, int $cover, ?int $categoryId, int $page, int $perPage): LengthAwarePaginator
+    {
+        $products = $this->productsWithSuggestion($window, $cover)
+            ->whereRaw(self::IS_IDLE_OUT_OF_STOCK_SQL)
+            ->when($categoryId, fn (Builder $query, int $categoryId) => $query->where('products.category_id', $categoryId))
+            ->with(['category', 'brand', 'productUnits'])
+            ->orderBy('products.name')
+            ->orderBy('products.id');
+
+        return $this->clampedPage($products, $page, $perPage);
+    }
+
+    /**
+     * The products to buy: the ones that sell or still have stock. A product that is out and did not sell is left to
+     * {@see self::idleOutOfStockPage()}.
      *
      * @return Builder<Product>
      */
     private function productsToBuy(int $window, int $cover): Builder
+    {
+        return $this->productsWithSuggestion($window, $cover)->whereRaw('not ('.self::IS_IDLE_OUT_OF_STOCK_SQL.')');
+    }
+
+    /**
+     * The products that need buying, selling or not, as a table named `products` so the filters and totals can read the
+     * stock columns, `sold_quantity`, `days_left` and `suggested_quantity` like any other column. Built in layers because
+     * a figure cannot be read in the query that works it out.
+     *
+     * @return Builder<Product>
+     */
+    private function productsWithSuggestion(int $window, int $cover): Builder
     {
         $periodStart = CarbonImmutable::today()->subDays($window - 1);
 

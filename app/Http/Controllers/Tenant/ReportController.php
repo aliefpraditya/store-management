@@ -205,16 +205,20 @@ class ReportController extends Controller
      */
     public function stock(StockReportRequest $request): Response
     {
+        $asOf = $request->asOf();
+
         return Inertia::render('Tenant/Reports/Stock', [
             'filters' => [
                 'search' => $request->search(),
                 'category' => $request->categoryId(),
                 'brand' => $request->brandId(),
                 'status' => $request->status()?->value ?? '',
+                'as_of' => $asOf?->toDateString(),
             ],
-            'summary' => Inertia::defer(fn (): array => $this->stockReport->summary(), 'summary'),
+            'first_recorded_on' => $asOf === null ? null : $this->stockReport->ledgerStartsOn(),
+            'summary' => Inertia::defer(fn (): array => $this->stockReport->summary($asOf), 'summary'),
             'positions' => Inertia::defer(fn (): array => $this->tablePage(
-                $this->stockReport->positionsPage($request->search(), $request->categoryId(), $request->brandId(), $request->status(), $request->positionsSort(), $request->positionsDirection(), $request->positionsPage(), $request->positionsPerPage()),
+                $this->stockReport->positionsPage($request->search(), $request->categoryId(), $request->brandId(), $request->status(), $request->positionsSort(), $request->positionsDirection(), $request->positionsPage(), $request->positionsPerPage(), $asOf),
                 StockPositionResource::class,
                 ['sort' => $request->positionsSort(), 'direction' => $request->positionsDirection()],
             ), 'positions'),
@@ -227,7 +231,7 @@ class ReportController extends Controller
 
     /**
      * The summary tab of the stock report: charts of where the stock's money sits, how healthy the stock is, what sells the
-     * most, which products will run out first, and how much of the stock does not sell. The parts are deferred props, each in
+     * most, which products will run out soonest, and how much of the stock does not sell. The parts are deferred props, each in
      * a group of its own, so the page shows at once and they load side by side; switching the groups between categories and
      * brands, between what they are worth and how much there is (in one base unit), or the unit of the best sellers, asks for
      * that part alone. The best sellers, the idle share and the restock figures use the defaults of their own tabs, and the
@@ -244,7 +248,7 @@ class ReportController extends Controller
             'best_sellers' => Inertia::defer(fn (): array => $this->stockReport->bestSellers($window, $request->bestSellersUnit(), self::SUMMARY_LIST_PRODUCTS), 'best_sellers'),
             'idle' => Inertia::defer(fn (): array => $this->idleStock->summary(IdleStockService::DEFAULT_DAYS), 'idle'),
             'restock' => Inertia::defer(fn (): array => $this->restockReport->summary($window, $cover), 'restock'),
-            'urgent' => Inertia::defer(fn (): array => $this->restockReport->mostUrgent($window, $cover, self::SUMMARY_LIST_PRODUCTS), 'urgent'),
+            'running_out' => Inertia::defer(fn (): array => $this->restockReport->runningOutSoonest($window, $cover, self::SUMMARY_LIST_PRODUCTS), 'running_out'),
             'idle_days' => IdleStockService::DEFAULT_DAYS,
             'restock_window' => $window,
             'restock_cover' => $cover,
@@ -273,8 +277,8 @@ class ReportController extends Controller
     }
 
     /**
-     * The summary and the table are deferred props, each in a group of its own, so the page shows at once and they load
-     * side by side. Narrowing or turning the table asks for that part alone.
+     * The summary, the table and the short list of products that are out and not selling are deferred props, each in a group
+     * of its own, so the page shows at once and they load side by side. Narrowing or turning a table asks for that part alone.
      */
     public function restock(RestockRequest $request): Response
     {
@@ -289,6 +293,10 @@ class ReportController extends Controller
                 RestockResource::class,
                 ['sort' => $request->sort(), 'direction' => $request->direction()],
             ), 'products'),
+            'idle_out_of_stock' => Inertia::defer(fn (): array => $this->tablePage(
+                $this->restockReport->idleOutOfStockPage($window, $cover, $request->categoryId(), $request->idleOutOfStockPage(), RestockReportService::IDLE_OUT_OF_STOCK_PER_PAGE),
+                RestockResource::class,
+            ), 'idle_out_of_stock'),
             'window_options' => RestockReportService::WINDOW_OPTIONS,
             'cover_options' => RestockReportService::COVER_OPTIONS,
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),

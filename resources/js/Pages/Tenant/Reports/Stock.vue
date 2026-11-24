@@ -1,6 +1,7 @@
 <script setup>
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Deferred, router, usePage } from '@inertiajs/vue3';
+import DateInput from '../../../Components/DateInput.vue';
 import SearchableSelect from '../../../Components/SearchableSelect.vue';
 import StockReportTabs from '../../../Components/StockReportTabs.vue';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
@@ -12,8 +13,10 @@ import StoreLayout from '../../../Layouts/StoreLayout.vue';
  * in when the server has it, so they are undefined until then and only read inside a `<Deferred>` that waits for them.
  */
 const props = defineProps({
-    /** What the table of products is narrowed to, as the address holds it. */
+    /** What the table of products is narrowed to, and the day the stock is shown as of (`as_of`, null for now), as the address holds it. */
     filters: { type: Object, required: true },
+    /** The day the stock ledger starts (`YYYY-MM-DD`); only sent when a past day is asked for. */
+    first_recorded_on: { type: String, default: null },
     summary: { type: Object, default: undefined },
     positions: { type: Object, default: undefined },
     /** The stock conditions the table can be narrowed to, `{value, label}`. */
@@ -30,7 +33,17 @@ const search = ref(props.filters.search);
 const category = ref(props.filters.category);
 const brand = ref(props.filters.brand ?? '');
 const status = ref(props.filters.status);
+const asOf = ref(props.filters.as_of ?? '');
 const positionsCard = ref(null);
+
+/**
+ * A day as people read it, from the `YYYY-MM-DD` the address holds.
+ * @param {string} day
+ */
+const readableDay = (day) => new Date(`${day}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+
+/** Whether the day asked for is before the ledger started, so the stock then reads 0 only on paper. */
+const isBeforeLedger = computed(() => Boolean(props.filters.as_of && props.first_recorded_on && props.filters.as_of < props.first_recorded_on));
 
 const statusOptions = [{ label: 'Semua kondisi', value: '' }, ...props.statuses];
 
@@ -45,6 +58,7 @@ function currentQuery(change = {}) {
         category: category.value || undefined,
         brand: brand.value || undefined,
         status: status.value || undefined,
+        as_of: asOf.value || undefined,
         positions_page: props.positions?.current_page,
         positions_per_page: props.positions?.per_page,
         positions_sort: props.positions?.sort,
@@ -73,6 +87,9 @@ watch(search, () => {
 });
 
 watch([category, brand, status], applyFilters);
+
+/** A new day changes the figures as well as the table, so both are asked for again. */
+watch(asOf, () => reloadParts(['summary', 'positions', 'filters', 'first_recorded_on'], { positions_page: undefined }));
 
 /** A search typed just before leaving the page must not pull the admin back to it. */
 onBeforeUnmount(() => clearTimeout(searchTimer));
@@ -115,6 +132,15 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0 && (Number(p
 <template>
     <StoreLayout title="Laporan Stok">
         <StockReportTabs current="positions" />
+
+        <section class="card as-of">
+            <DateInput v-model="asOf" label="Posisi per tanggal" outlined dense clearable class="as-of__date" />
+            <p v-if="filters.as_of" class="as-of__note">
+                Posisi stok akhir hari <b>{{ readableDay(filters.as_of) }}</b>, dihitung dari catatan pergerakan stok. Nilai memakai harga beli terakhir (hari ini), jadi hanya perkiraan.
+            </p>
+            <p v-else class="as-of__note">Kosongkan untuk melihat posisi stok sekarang.</p>
+            <p v-if="isBeforeLedger" class="as-of__warn">Catatan stok baru dimulai {{ readableDay(first_recorded_on) }}, jadi stok sebelum itu tampil 0 dan belum bisa dipercaya.</p>
+        </section>
 
         <Deferred data="summary">
             <template #fallback>
@@ -357,6 +383,29 @@ const isWithoutCost = (product) => Number(product.cost_price) === 0 && (Number(p
 .card h2 small {
     color: var(--app-mute);
     font-weight: 400;
+}
+
+.as-of {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 16px;
+}
+
+.as-of__date {
+    width: 200px;
+}
+
+.as-of__note,
+.as-of__warn {
+    margin: 0;
+    color: var(--app-mute);
+    font-size: 12px;
+}
+
+.as-of__warn {
+    flex-basis: 100%;
+    color: #b45309;
 }
 
 .filters {

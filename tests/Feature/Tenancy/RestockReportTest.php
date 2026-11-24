@@ -130,16 +130,72 @@ class RestockReportTest extends TestCase
         return fn (Collection $rows): bool => $rows->pluck('name')->all() === $names;
     }
 
-    public function test_the_products_that_run_out_first_come_soonest_first_and_leave_out_those_that_do_not_sell(): void
+    public function test_the_products_that_run_out_soonest_leave_out_those_already_out_and_those_that_do_not_sell(): void
     {
         $this->stockTheShelves();
         $restock = app(RestockReportService::class);
 
-        $urgent = $this->store->run(fn (): array => $restock->mostUrgent(30, 14, 5));
+        $runningOut = $this->store->run(fn (): array => $restock->runningOutSoonest(30, 14, 5));
 
-        $this->assertSame(['Tali', 'Kuas'], array_column($urgent, 'name'));
-        $this->assertSame(['0.0', '5.0'], array_column($urgent, 'days_left'));
-        $this->assertSame(['Tali'], array_column($this->store->run(fn (): array => $restock->mostUrgent(30, 14, 1)), 'name'));
+        $this->assertSame(['Kuas'], array_column($runningOut, 'name'));
+        $this->assertSame(['5.0'], array_column($runningOut, 'days_left'));
+    }
+
+    public function test_the_products_that_run_out_soonest_come_the_soonest_first(): void
+    {
+        $this->stockTheShelves();
+        $cement = $this->product('Semen');
+        $this->putInStock($cement, '300');
+        $this->sell($cement, '30', 10);
+        $restock = app(RestockReportService::class);
+
+        $this->assertSame(['Kuas', 'Cat', 'Semen'], array_column($this->store->run(fn (): array => $restock->runningOutSoonest(30, 365, 5)), 'name'));
+        $this->assertSame(['Kuas', 'Cat'], array_column($this->store->run(fn (): array => $restock->runningOutSoonest(30, 365, 2)), 'name'));
+    }
+
+    public function test_products_that_are_out_and_not_selling_are_listed_apart_and_not_counted_in_what_to_buy(): void
+    {
+        $this->stockTheShelves();
+        $this->putInStock($this->product('Lem', '1000', ['min_stock' => 6]), '0');
+        $this->putInStock($this->product('Amplas', '1000', ['min_stock' => 4]), '-2');
+        $this->putInStock($this->product('Isolasi', '1000', ['min_stock' => 0]), '0');
+        $soldLongAgo = $this->product('Paku', '1000', ['min_stock' => 3]);
+        $this->putInStock($soldLongAgo, '0');
+        $this->sell($soldLongAgo, '50', 40);
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('summary.products_count', 3)
+            ->where('summary.below_minimum_count', 1)
+            ->where('products.total', 3)
+            ->where('products.data', $this->namesAre(['Tali', 'Kuas', 'Palu']))
+            ->where('idle_out_of_stock.total', 3)
+            ->where('idle_out_of_stock.data', $this->namesAre(['Amplas', 'Lem', 'Paku']))
+            ->where('idle_out_of_stock.data.1.suggested_quantity', '6')
+            ->where('idle_out_of_stock.data.1.min_stock', '6.000'));
+    }
+
+    public function test_the_products_that_are_out_and_not_selling_come_in_pages_and_by_category(): void
+    {
+        $paintId = $this->store->run(fn (): int => Category::factory()->create(['name' => 'Cat'])->id);
+
+        foreach (range(1, 12) as $number) {
+            $attributes = ['min_stock' => 2, ...($number === 12 ? ['category_id' => $paintId] : [])];
+            $this->putInStock($this->product(sprintf('Habis %02d', $number), attributes: $attributes), '0');
+        }
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('idle_out_of_stock.total', 12)
+            ->where('idle_out_of_stock.per_page', 10)
+            ->where('idle_out_of_stock.last_page', 2)
+            ->where('idle_out_of_stock.data.0.name', 'Habis 01'), ['idle_page' => 1]);
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('idle_out_of_stock.current_page', 2)
+            ->where('idle_out_of_stock.data', $this->namesAre(['Habis 11', 'Habis 12'])), ['idle_page' => 2]);
+
+        $this->assertReport(fn (Assert $report) => $report
+            ->where('idle_out_of_stock.total', 1)
+            ->where('idle_out_of_stock.data.0.name', 'Habis 12'), ['category' => $paintId]);
     }
 
     public function test_only_users_who_may_see_reports_may_open_the_restock_report(): void
@@ -286,7 +342,9 @@ class RestockReportTest extends TestCase
     public function test_a_page_past_the_last_gives_the_last_one(): void
     {
         foreach (range(1, 16) as $number) {
-            $this->putInStock($this->product("Barang {$number}", attributes: ['min_stock' => 5]), '0');
+            $product = $this->product("Barang {$number}", attributes: ['min_stock' => 5]);
+            $this->putInStock($product, '0');
+            $this->sell($product, '1', 1);
         }
 
         $this->assertReport(fn (Assert $report) => $report
