@@ -4,6 +4,7 @@ import { router, usePage } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { returnStatusChipClass } from '../../../Composables/useReturnStatus';
+import { visitUnlessNewTab } from '../../../Composables/useVisitLink';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -79,7 +80,7 @@ watch([status, from, to], () => applyFilters());
                         <td colspan="6" class="returns__empty">Belum ada retur.</td>
                     </tr>
                     <tr v-for="saleReturn in returns.data" :key="saleReturn.id" class="returns__row" @click="router.visit(saleReturn.show_url)">
-                        <td><b>{{ saleReturn.number }}</b></td>
+                        <td><a :href="saleReturn.show_url" class="row-link" @click.stop="visitUnlessNewTab($event, saleReturn.show_url)"><b>{{ saleReturn.number }}</b></a></td>
                         <td>{{ dateTimeFormat.format(new Date(saleReturn.returned_at)) }}</td>
                         <td>{{ saleReturn.sale_number }}</td>
                         <td>{{ saleReturn.cashier_name }}</td>
@@ -91,7 +92,7 @@ watch([status, from, to], () => applyFilters());
         </div>
 
         <div v-if="returns.total > 0" class="pager">
-            <span class="returns__muted">{{ returns.from }}–{{ returns.to }} dari {{ returns.total }} retur</span>
+            <span class="returns__muted">{{ returns.from }}â€“{{ returns.to }} dari {{ returns.total }} retur</span>
             <q-pagination
                 v-if="returns.last_page > 1"
                 :model-value="returns.current_page"

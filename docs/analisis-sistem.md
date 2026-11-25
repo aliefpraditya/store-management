@@ -2078,6 +2078,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 | Pemeliharaan | `tenants:migrate` + `schema_version`; log provisioning; antrean job dengan retry |
 | Pengujian | Unit test Price/Purchase/Stock/**Costing FIFO**/Return service (termasuk invarian stok = Σ layer); feature test posting, void, retur, shift, sinkron; uji migrasi data |
 | Kompatibilitas | Chrome/Edge terbaru (PC); layout kasir 1366×768; PWA terpasang di PC register |
+| Navigasi | Setiap perpindahan halaman berupa tautan sungguhan (`<a href>`), supaya klik kanan → "Buka di tab baru", Ctrl/Cmd+klik, dan klik tengah bekerja: menu sidebar, nomor dokumen di daftar, dan tombol tambah/ubah. Klik biasa tetap navigasi Inertia tanpa reload (`visitUnlessNewTab`). Baris tabel yang bisa diklik tetap boleh, asal kolom pertamanya tautan. Aksi yang mengubah data (simpan, batal, void) tetap tombol, bukan tautan |
 
 ---
 

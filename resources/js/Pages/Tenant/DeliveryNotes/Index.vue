@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
 import { deliveryNoteCodStateChipClass, deliveryNoteStatusChipClass } from '../../../Composables/useDeliveryNoteStatus';
+import { visitUnlessNewTab } from '../../../Composables/useVisitLink';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -73,7 +74,7 @@ watch([status, from, to], () => applyFilters());
                         <td colspan="7" class="notes__empty">Belum ada surat jalan. Buat dari nota yang barangnya diantar ke pelanggan.</td>
                     </tr>
                     <tr v-for="note in notes.data" :key="note.id" class="notes__row" @click="router.visit(note.show_url)">
-                        <td><b>{{ note.number }}</b></td>
+                        <td><a :href="note.show_url" class="row-link" @click.stop="visitUnlessNewTab($event, note.show_url)"><b>{{ note.number }}</b></a></td>
                         <td>{{ dateFormat.format(new Date(note.business_date)) }}</td>
                         <td>{{ note.recipient_name }}</td>
                         <td>{{ [note.sale_number, ...note.other_sale_numbers].join(', ') }}</td>
@@ -88,7 +89,7 @@ watch([status, from, to], () => applyFilters());
         </div>
 
         <div v-if="notes.total > 0" class="pager">
-            <span class="notes__muted">{{ notes.from }}–{{ notes.to }} dari {{ notes.total }} surat jalan</span>
+            <span class="notes__muted">{{ notes.from }}â€“{{ notes.to }} dari {{ notes.total }} surat jalan</span>
             <q-pagination
                 v-if="notes.last_page > 1"
                 :model-value="notes.current_page"

@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
+import { visitUnlessNewTab } from '../../../Composables/useVisitLink';
 import CentralLayout from '../../../Layouts/CentralLayout.vue';
 
 defineProps({
@@ -54,7 +55,7 @@ function retryProvisioning(store) {
 <template>
     <CentralLayout title="Master Toko">
         <template #actions>
-            <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Toko" @click="router.visit(create_url)" />
+            <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Toko" :href="create_url" @click="visitUnlessNewTab($event, create_url)" />
         </template>
 
         <div class="stores">
@@ -96,7 +97,7 @@ function retryProvisioning(store) {
                                 :aria-label="`Aktif: ${store.name}`"
                                 @update:model-value="toggleActive(store, $event)"
                             />
-                            <span v-else class="stores__muted">—</span>
+                            <span v-else class="stores__muted">â€”</span>
                         </td>
                         <td class="stores__actions">
                             <q-btn
@@ -111,7 +112,7 @@ function retryProvisioning(store) {
                                 :disable="busyStoreId !== null"
                                 @click="retryProvisioning(store)"
                             />
-                            <q-btn flat round dense icon="edit" color="grey-7" :aria-label="`Edit ${store.name}`" @click="router.visit(store.edit_url)" />
+                            <q-btn flat round dense icon="edit" color="grey-7" :aria-label="`Edit ${store.name}`" :href="store.edit_url" @click="visitUnlessNewTab($event, store.edit_url)" />
                         </td>
                     </tr>
                 </tbody>

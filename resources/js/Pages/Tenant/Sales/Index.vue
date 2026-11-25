@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
+import { visitUnlessNewTab } from '../../../Composables/useVisitLink';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -109,10 +110,10 @@ watch([from, to, cashier, status, delivery], () => applyFilters());
                         <td colspan="8" class="receipts__empty">Tidak ada nota pada pilihan ini.</td>
                     </tr>
                     <tr v-for="sale in sales.data" :key="sale.id" class="receipts__row" :class="{ 'receipts__row--pending': sale.is_delivery_pending }" @click="router.visit(sale.show_url)">
-                        <td><b>{{ sale.number }}</b></td>
+                        <td><a :href="sale.show_url" class="row-link" @click.stop="visitUnlessNewTab($event, sale.show_url)"><b>{{ sale.number }}</b></a></td>
                         <td>{{ dateTimeFormat.format(new Date(sale.sold_at)) }}</td>
                         <td>{{ sale.cashier_name }}</td>
-                        <td>{{ sale.customer_name ?? '—' }}</td>
+                        <td>{{ sale.customer_name ?? 'â€”' }}</td>
                         <td class="receipts__right">{{ sale.items_count }}</td>
                         <td>{{ sale.payment_methods.join(', ') }}</td>
                         <td class="receipts__right"><b>{{ formatRupiah(sale.total) }}</b></td>
@@ -126,7 +127,7 @@ watch([from, to, cashier, status, delivery], () => applyFilters());
         </div>
 
         <div v-if="sales.total > 0" class="pager">
-            <span class="receipts__muted">{{ sales.from }}–{{ sales.to }} dari {{ sales.total }} nota</span>
+            <span class="receipts__muted">{{ sales.from }}â€“{{ sales.to }} dari {{ sales.total }} nota</span>
             <q-pagination
                 v-if="sales.last_page > 1"
                 :model-value="sales.current_page"

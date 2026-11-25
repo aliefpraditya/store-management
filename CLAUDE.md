@@ -97,6 +97,8 @@ resources/js/
 
 Pages are resolved with `import.meta.glob('./Pages/**/*.vue')`; follow the pattern `Pages/[Domain]/Index.vue` and `Pages/[Domain]/Form.vue`. Add `Components/`, `Composables/`, `Layouts/` only when there is something to share — check for an existing component before writing a new one.
 
+**Navigation must be real links (right-click → "open in new tab" must work).** Anything that moves to another page — a sidebar item, a document number in a list, an add/edit button, a "back" button — is an `<a href>` (a `q-btn`/`q-item` with `:href`, or Inertia's `<Link>`), never a bare `@click="router.visit(...)"`. When it is a Quasar element, add `@click="visitUnlessNewTab($event, url)"` from `Composables/useVisitLink.js`: a plain left click stays an Inertia visit (no reload), while Ctrl/Cmd/Shift/middle-click and the browser's context menu are left to the browser. A clickable table row may keep its row `@click`, but its first cell holds the real link (`class="row-link"`, with `@click.stop`). Actions that change data (save, cancel, void) stay buttons.
+
 ## Key domain concepts
 
 -   **Store (toko)** — a tenant with its own DB; `receipt_prefix` (e.g. `MU`) is the receipt-number prefix, separate from the DB name `store_{snake_case_name}`. "Owner" = the store name; there is no owners table.

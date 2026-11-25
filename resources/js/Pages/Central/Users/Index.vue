@@ -1,6 +1,7 @@
 <script setup>
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
+import { visitUnlessNewTab } from '../../../Composables/useVisitLink';
 import CentralLayout from '../../../Layouts/CentralLayout.vue';
 
 defineProps({
@@ -36,7 +37,7 @@ function toggleActive(user, isActive) {
 <template>
     <CentralLayout title="User & Akses">
         <template #actions>
-            <q-btn color="primary" unelevated no-caps icon="add" label="Tambah User" @click="router.visit(create_url)" />
+            <q-btn color="primary" unelevated no-caps icon="add" label="Tambah User" :href="create_url" @click="visitUnlessNewTab($event, create_url)" />
         </template>
 
         <div class="users">
@@ -62,7 +63,7 @@ function toggleActive(user, isActive) {
                             </span>
                             <span v-else class="users__muted">Belum ada toko</span>
                         </td>
-                        <td>{{ user.store?.name ?? (user.role && !user.role.is_store_role ? 'Semua' : '—') }}</td>
+                        <td>{{ user.store?.name ?? (user.role && !user.role.is_store_role ? 'Semua' : 'â€”') }}</td>
                         <td class="users__center">
                             <q-toggle
                                 :model-value="user.is_active"
@@ -76,7 +77,7 @@ function toggleActive(user, isActive) {
                             </q-toggle>
                         </td>
                         <td class="users__center">
-                            <q-btn flat round dense icon="edit" color="grey-7" :aria-label="`Edit ${user.name}`" @click="router.visit(user.edit_url)" />
+                            <q-btn flat round dense icon="edit" color="grey-7" :aria-label="`Edit ${user.name}`" :href="user.edit_url" @click="visitUnlessNewTab($event, user.edit_url)" />
                         </td>
                     </tr>
                 </tbody>

@@ -4,6 +4,7 @@ import { Head, router, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import AppFooter from '../Components/AppFooter.vue';
 import { useFlashMessages } from '../Composables/useFlashMessages';
+import { visitUnlessNewTab } from '../Composables/useVisitLink';
 
 const props = defineProps({
     title: { type: String, required: true },
@@ -132,7 +133,8 @@ function signOut() {
                     icon="shopping_cart"
                     label="Kembali ke Kasir"
                     class="q-mr-sm"
-                    @click="router.visit(page.props.store.cashier_url)"
+                    :href="page.props.store.cashier_url"
+                    @click="visitUnlessNewTab($event, page.props.store.cashier_url)"
                 />
                 <slot name="actions" />
             </q-toolbar>
@@ -157,10 +159,11 @@ function signOut() {
                         :key="item.label"
                         :clickable="!!item.href"
                         :disable="!item.href"
+                        :href="item.href"
                         :active="isActive(item)"
                         active-class="shell__item--on"
                         class="shell__item"
-                        @click="item.href && router.visit(item.href)"
+                        @click="item.href && visitUnlessNewTab($event, item.href)"
                     >
                         <q-item-section avatar class="shell__item-icon">
                             <q-icon :name="item.icon" size="20px" />

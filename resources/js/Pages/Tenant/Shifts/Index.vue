@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
+import { visitUnlessNewTab } from '../../../Composables/useVisitLink';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -81,14 +82,14 @@ watch([status, difference, from, to], () => applyFilters());
                     </tr>
                     <tr v-for="shift in shifts.data" :key="shift.id" class="shifts__row" @click="router.visit(shift.show_url)">
                         <td>
-                            <b>{{ shift.label }}</b>
+                            <a :href="shift.show_url" class="row-link" @click.stop="visitUnlessNewTab($event, shift.show_url)"><b>{{ shift.label }}</b></a>
                             <small class="shifts__muted">{{ shift.register_name }}</small>
                         </td>
                         <td>{{ dateFormat.format(new Date(shift.business_date)) }}</td>
                         <td>{{ shift.cashier_name }}</td>
                         <td>
                             {{ timeFormat.format(new Date(shift.opened_at)) }}
-                            <template v-if="shift.closed_at">– {{ timeFormat.format(new Date(shift.closed_at)) }}</template>
+                            <template v-if="shift.closed_at">â€“ {{ timeFormat.format(new Date(shift.closed_at)) }}</template>
                             <span v-else class="chip" :class="shift.status === 'open' ? 'chip--ok' : 'chip--warn'">{{ shift.status_label }}</span>
                         </td>
                         <td class="shifts__right">
@@ -97,7 +98,7 @@ watch([status, difference, from, to], () => applyFilters());
                         </td>
                         <td class="shifts__right" :class="{ 'shifts__minus': Number(shift.cash_difference) < 0 }">
                             <template v-if="shift.cash_difference !== null">{{ formatRupiah(shift.cash_difference) }}</template>
-                            <template v-else>–</template>
+                            <template v-else>â€“</template>
                         </td>
                         <td>
                             <span v-if="shift.status !== 'open'" class="chip" :class="differenceChipClass[shift.difference_status]">{{ shift.difference_status_label }}</span>
@@ -108,7 +109,7 @@ watch([status, difference, from, to], () => applyFilters());
         </div>
 
         <div v-if="shifts.total > 0" class="pager">
-            <span class="shifts__muted">{{ shifts.from }}–{{ shifts.to }} dari {{ shifts.total }} shift</span>
+            <span class="shifts__muted">{{ shifts.from }}â€“{{ shifts.to }} dari {{ shifts.total }} shift</span>
             <q-pagination
                 v-if="shifts.last_page > 1"
                 :model-value="shifts.current_page"
