@@ -6,6 +6,7 @@ import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import { purchaseStatusChipClass } from '../../../Composables/usePurchaseStatus';
 import { visitUnlessNewTab } from '../../../Composables/useVisitLink';
+import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 
 const props = defineProps({
