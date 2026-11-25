@@ -238,7 +238,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                         <td>{{ product.category }}</td>
                         <td>
                             <template v-if="product.brand">{{ product.brand }}</template>
-                            <span v-else class="items__muted">â€”</span>
+                            <span v-else class="items__muted">—</span>
                         </td>
                         <td class="items__right">
                             <span :class="{ 'chip chip--bad': product.is_below_minimum }">
@@ -250,13 +250,13 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             <span v-if="Number(product.dead_stock) > 0" class="chip chip--warn">
                                 {{ formatStock(product.dead_stock, product.units, product.base_unit, product.sealed_pack?.dead_intact ?? null) }}
                             </span>
-                            <span v-else class="items__muted">â€”</span>
+                            <span v-else class="items__muted">{{ formatStock(0, product.units, product.base_unit, null) }}</span>
                             <small v-if="Number(product.returns_stock) > 0" class="items__muted items__returns">+ {{ formatStock(product.returns_stock, product.units, product.base_unit, null) }} retur menunggu</small>
                         </td>
                         <td class="items__right">{{ priceFormat.format(product.cost_price) }}</td>
                         <td class="items__right">
                             <template v-if="product.default_sale">{{ product.default_sale.unit }} {{ priceFormat.format(product.default_sale.price) }}</template>
-                            <span v-else class="items__muted">â€”</span>
+                            <span v-else class="items__muted">—</span>
                         </td>
                         <td>
                             <span class="chip" :class="product.is_active ? 'chip--ok' : 'chip--off'">{{ product.is_active ? 'Aktif' : 'Nonaktif' }}</span>
@@ -294,7 +294,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
         />
 
         <div v-if="products.total > 0" class="pager">
-            <span class="items__muted">{{ products.from }}â€“{{ products.to }} dari {{ products.total }} barang</span>
+            <span class="items__muted">{{ products.from }}–{{ products.to }} dari {{ products.total }} barang</span>
             <q-pagination
                 v-if="products.last_page > 1"
                 :model-value="products.current_page"
