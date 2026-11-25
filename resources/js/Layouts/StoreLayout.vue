@@ -44,9 +44,15 @@ const menuGroups = computed(() => {
             ],
         },
         {
-            label: 'Pembelian',
+            label: 'Data Master',
             items: [
                 { label: 'Supplier', icon: 'storefront', href: store.value.suppliers_url, can: ['suppliers.manage'] },
+                { label: 'Ekspedisi', icon: 'directions_boat', href: store.value.carriers_url, can: ['carriers.manage'] },
+            ],
+        },
+        {
+            label: 'Pembelian',
+            items: [
                 { label: 'Nota Pembelian', icon: 'request_quote', href: store.value.purchases_url, can: ['purchases.manage'] },
             ],
         },

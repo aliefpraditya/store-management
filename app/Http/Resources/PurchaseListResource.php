@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * One row of the purchase list. Expects `supplier` loaded and `items_count` and `attachments_count`.
+ * One row of the purchase list. Expects `supplier` and `carrier` loaded and `items_count` and `attachments_count`.
  *
  * @mixin Purchase
  */
@@ -25,9 +25,11 @@ class PurchaseListResource extends JsonResource
             'supplier_document_number' => $this->supplier_document_number,
             'purchase_date' => $this->purchase_date->toDateString(),
             'expected_date' => $this->expected_date?->toDateString(),
+            'carrier_name' => $this->carrier?->name,
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
             'total_amount' => $this->total_amount,
+            'is_paid' => $this->isPaid(),
             'items_count' => $this->items_count,
             'attachments_count' => $this->attachments_count,
             'url' => route('tenant.purchases.show', ['tenant' => tenant('code'), 'purchase' => $this->id]),

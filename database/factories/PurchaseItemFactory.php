@@ -29,7 +29,6 @@ class PurchaseItemFactory extends Factory
             'unit_cost' => 5000,
             'base_unit_cost' => 5000,
             'subtotal' => 50000,
-            'received_base_quantity' => 0,
             'notes' => null,
         ];
     }

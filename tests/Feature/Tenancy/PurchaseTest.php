@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\Tenancy;
 
+use App\Enums\Permission;
+use App\Enums\PurchasePaymentMethod;
 use App\Enums\PurchaseStatus;
 use App\Enums\UserRole;
+use App\Models\Carrier;
 use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\PurchaseAttachment;
@@ -14,6 +17,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -78,6 +82,23 @@ class PurchaseTest extends TestCase
         $this->actingAs($this->admin)->post($this->url('store'), $this->body($product, $overrides))->assertSessionHasNoErrors();
 
         return $this->store->run(fn (): Purchase => Purchase::query()->latest('id')->firstOrFail());
+    }
+
+    /**
+     * Confirms a draft the way a nota with a bill is confirmed: paid in full in advance, as the payment window sends it.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    private function pay(Purchase $draft, array $overrides = []): void
+    {
+        $this->actingAs($this->admin)->post($this->url('pay', ['purchase' => $draft->id]), ['payment_method' => 'transfer', 'paid_date' => today()->toDateString(), ...$overrides])
+            ->assertSessionHasNoErrors();
+    }
+
+    /** A draft whose only line is free, as a supplier's replacement nota is: nothing to pay. */
+    private function freeDraft(Product $product): Purchase
+    {
+        return $this->draft($product, ['supplier_document_number' => 'INV-GANTI', 'items' => [['product_id' => $product->id, 'unit_code' => 'DUS', 'quantity' => 2, 'unit_cost' => 0]]]);
     }
 
     private function statusOf(Purchase $purchase): PurchaseStatus
@@ -173,17 +194,127 @@ class PurchaseTest extends TestCase
         $this->actingAs($this->admin)->post($this->url('store'), $this->body($product, ['warehouse_id' => $deadStockWarehouseId]))
             ->assertSessionHasErrors(['warehouse_id' => 'Gudang tujuan harus gudang jual yang aktif.']);
         $this->actingAs($this->admin)->post($this->url('store'), $this->body($product, ['expected_date' => today()->subDay()->toDateString()]))
-            ->assertSessionHasErrors(['expected_date' => 'Perkiraan tiba tidak boleh sebelum tanggal nota.']);
+            ->assertSessionHasErrors(['expected_date' => 'Perkiraan tiba di ekspedisi tidak boleh sebelum tanggal nota.']);
 
         $this->assertSame(0, $this->store->run(fn (): int => Purchase::query()->count()));
+    }
+
+    private function carrier(string $name = 'Ekspedisi Laut Jaya', bool $isActive = true): Carrier
+    {
+        return $this->store->run(fn (): Carrier => Carrier::factory()->create(['name' => $name, 'is_active' => $isActive]));
+    }
+
+    public function test_the_form_gives_each_supplier_and_carrier_with_its_city_so_the_matching_carrier_can_be_suggested(): void
+    {
+        $this->store->run(function (): void {
+            $this->supplier->update(['city' => 'Surabaya']);
+            Carrier::factory()->create(['name' => 'Trans Papua', 'city' => 'Surabaya']);
+        });
+
+        $this->actingAs($this->admin)->get($this->url('create'))->assertInertia(fn (Assert $page) => $page
+            ->where('suppliers.0.city', 'Surabaya')
+            ->where('carriers.0.name', 'Trans Papua')
+            ->where('carriers.0.city', 'Surabaya'));
+    }
+
+    public function test_the_list_can_be_narrowed_to_one_carrier_and_shows_it(): void
+    {
+        $product = $this->sellableProduct();
+        $viaLautJaya = $this->draft($product, ['carrier_id' => $this->carrier()->id, 'supplier_document_number' => 'INV-LAUT']);
+        $withoutCarrier = $this->draft($product, ['supplier_document_number' => 'INV-TANPA']);
+        $carrierId = $this->store->run(fn (): int => Purchase::query()->findOrFail($viaLautJaya->id)->carrier_id);
+
+        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->has('purchases.data', 2)->has('carriers', 1));
+        $this->actingAs($this->admin)->get($this->url('index', ['carrier' => $carrierId]))->assertInertia(fn (Assert $page) => $page
+            ->has('purchases.data', 1)
+            ->where('purchases.data.0.number', $viaLautJaya->number)
+            ->where('purchases.data.0.carrier_name', 'Ekspedisi Laut Jaya')
+            ->where('filters.carrier', $carrierId));
+
+        $this->assertNotSame($viaLautJaya->number, $withoutCarrier->number);
+    }
+
+    public function test_a_nota_saves_when_the_browser_sends_an_empty_attachments_field(): void
+    {
+        $product = $this->sellableProduct();
+
+        $this->actingAs($this->admin)->post($this->url('store'), $this->body($product, ['attachments' => '', 'carrier_id' => '']))->assertSessionHasNoErrors();
+
+        $this->assertSame(0, $this->store->run(fn (): int => $this->onlyPurchase()->attachments()->count()));
+    }
+
+    public function test_a_nota_can_name_the_carrier_it_is_sent_with(): void
+    {
+        $carrier = $this->carrier();
+
+        $draft = $this->draft($this->sellableProduct(), ['carrier_id' => $carrier->id, 'expected_date' => today()->addDays(3)->toDateString()]);
+
+        $this->assertSame($carrier->id, $this->store->run(fn (): ?int => Purchase::query()->findOrFail($draft->id)->carrier_id));
+        $this->actingAs($this->admin)->get($this->url('show', ['purchase' => $draft->id]))->assertInertia(fn (Assert $page) => $page->where('purchase.carrier_name', 'Ekspedisi Laut Jaya'));
+    }
+
+    public function test_the_carrier_is_optional_and_can_be_cleared_from_a_draft(): void
+    {
+        $product = $this->sellableProduct();
+        $draft = $this->draft($product);
+        $this->assertNull($this->store->run(fn (): ?int => Purchase::query()->findOrFail($draft->id)->carrier_id));
+
+        $body = $this->body($product, ['carrier_id' => $this->carrier()->id]);
+        unset($body['client_uuid']);
+        $this->actingAs($this->admin)->put($this->url('update', ['purchase' => $draft->id]), $body)->assertSessionHasNoErrors();
+        $this->assertNotNull($this->store->run(fn (): ?int => Purchase::query()->findOrFail($draft->id)->carrier_id));
+
+        unset($body['carrier_id']);
+        $this->actingAs($this->admin)->put($this->url('update', ['purchase' => $draft->id]), $body)->assertSessionHasNoErrors();
+        $this->assertNull($this->store->run(fn (): ?int => Purchase::query()->findOrFail($draft->id)->carrier_id));
+    }
+
+    public function test_a_switched_off_carrier_cannot_be_newly_chosen_but_stays_on_the_nota_that_has_it(): void
+    {
+        $product = $this->sellableProduct();
+        $carrier = $this->carrier();
+        $draft = $this->draft($product, ['carrier_id' => $carrier->id]);
+        $this->store->run(fn () => $carrier->update(['is_active' => false]));
+
+        $this->actingAs($this->admin)->post($this->url('store'), $this->body($product, ['supplier_document_number' => 'INV-002', 'carrier_id' => $carrier->id]))
+            ->assertSessionHasErrors(['carrier_id' => 'Ekspedisi tidak ditemukan atau sudah nonaktif.']);
+
+        $body = $this->body($product, ['notes' => 'Tetap', 'carrier_id' => $carrier->id]);
+        unset($body['client_uuid']);
+        $this->actingAs($this->admin)->put($this->url('update', ['purchase' => $draft->id]), $body)->assertSessionHasNoErrors();
+    }
+
+    public function test_the_form_offers_the_active_carriers_and_the_one_the_nota_already_has(): void
+    {
+        $this->carrier('Ekspedisi Aktif');
+        $switchedOff = $this->carrier('Ekspedisi Lama');
+        $draft = $this->draft($this->sellableProduct(), ['carrier_id' => $switchedOff->id]);
+        $this->store->run(fn () => $switchedOff->update(['is_active' => false]));
+        $this->carrier('Ekspedisi Mati', isActive: false);
+        $names = fn (array $expected) => fn (Assert $page) => $page->where('carriers', fn ($rows) => collect($rows)->pluck('name')->all() === $expected);
+
+        $this->actingAs($this->admin)->get($this->url('create'))->assertInertia($names(['Ekspedisi Aktif']));
+        $this->actingAs($this->admin)->get($this->url('edit', ['purchase' => $draft->id]))->assertInertia($names(['Ekspedisi Aktif', 'Ekspedisi Lama']));
+    }
+
+    public function test_a_supplier_nota_can_list_free_goods_at_price_zero(): void
+    {
+        $product = $this->sellableProduct();
+
+        $draft = $this->draft($product, ['supplier_document_number' => 'INV-GANTI', 'items' => [['product_id' => $product->id, 'unit_code' => 'DUS', 'quantity' => 2, 'unit_cost' => 0]]]);
+
+        $item = $this->store->run(fn (): PurchaseItem => PurchaseItem::query()->where('purchase_id', $draft->id)->sole());
+
+        $this->assertSame(['0.00', '0.0000', '0.00'], [$item->unit_cost, $item->base_unit_cost, $item->subtotal]);
+        $this->assertSame('0.00', $this->store->run(fn (): string => (string) Purchase::query()->findOrFail($draft->id)->total_amount));
     }
 
     public function test_quantities_and_prices_must_be_positive_numbers_within_their_decimals(): void
     {
         $product = $this->sellableProduct();
 
-        $this->actingAs($this->admin)->post($this->url('store'), $this->body($product, ['items' => [['product_id' => $product->id, 'unit_code' => 'PCS', 'quantity' => 0, 'unit_cost' => 0]]]))
-            ->assertSessionHasErrors(['items.0.quantity' => 'Jumlah harus lebih dari nol.', 'items.0.unit_cost' => 'Harga harus lebih dari nol.']);
+        $this->actingAs($this->admin)->post($this->url('store'), $this->body($product, ['items' => [['product_id' => $product->id, 'unit_code' => 'PCS', 'quantity' => 0, 'unit_cost' => -1]]]))
+            ->assertSessionHasErrors(['items.0.quantity' => 'Jumlah harus lebih dari nol.', 'items.0.unit_cost' => 'Harga tidak boleh negatif.']);
         $this->actingAs($this->admin)->post($this->url('store'), $this->body($product, ['items' => [['product_id' => $product->id, 'unit_code' => 'PCS', 'quantity' => '1.2345', 'unit_cost' => '10.123']]]))
             ->assertSessionHasErrors(['items.0.quantity' => 'Jumlah maksimal 3 angka desimal.', 'items.0.unit_cost' => 'Harga maksimal 2 angka desimal.']);
     }
@@ -264,7 +395,7 @@ class PurchaseTest extends TestCase
     {
         $product = $this->sellableProduct();
         $draft = $this->draft($product);
-        $this->actingAs($this->admin)->post($this->url('confirm', ['purchase' => $draft->id]))->assertSessionHasNoErrors();
+        $this->pay($draft);
 
         $body = $this->body($product);
         unset($body['client_uuid']);
@@ -274,9 +405,9 @@ class PurchaseTest extends TestCase
         $this->actingAs($this->admin)->get($this->url('edit', ['purchase' => $draft->id]))->assertRedirect($this->url('show', ['purchase' => $draft->id]));
     }
 
-    public function test_confirming_turns_a_draft_into_an_order_once(): void
+    public function test_confirming_a_nota_with_nothing_to_pay_turns_it_into_an_order_once_without_a_payment(): void
     {
-        $draft = $this->draft($this->sellableProduct());
+        $draft = $this->freeDraft($this->sellableProduct());
 
         $this->actingAs($this->admin)->post($this->url('confirm', ['purchase' => $draft->id]))->assertSessionHasNoErrors();
 
@@ -284,8 +415,84 @@ class PurchaseTest extends TestCase
         $this->assertSame(PurchaseStatus::Ordered, $purchase->status);
         $this->assertSame($this->admin->id, $purchase->confirmed_by);
         $this->assertNotNull($purchase->confirmed_at);
+        $this->assertFalse($purchase->isPaid());
 
         $this->actingAs($this->admin)->post($this->url('confirm', ['purchase' => $draft->id]))->assertSessionHas('error', 'Hanya nota draft yang bisa dikonfirmasi.');
+    }
+
+    public function test_a_nota_with_a_bill_cannot_be_confirmed_without_paying(): void
+    {
+        $draft = $this->draft($this->sellableProduct());
+
+        $this->actingAs($this->admin)->post($this->url('confirm', ['purchase' => $draft->id]))->assertSessionHas('error', 'Nota ini harus dibayar saat dikonfirmasi. Pakai Konfirmasi & Bayar.');
+
+        $this->assertSame(PurchaseStatus::Draft, $this->statusOf($draft));
+    }
+
+    public function test_confirm_and_pay_orders_the_nota_and_records_the_payment_in_full(): void
+    {
+        $draft = $this->draft($this->sellableProduct());
+
+        $this->pay($draft, ['payment_method' => 'cash', 'paid_date' => today()->subDay()->toDateString(), 'payment_notes' => ' Lunas ']);
+
+        $purchase = $this->onlyPurchase();
+        $this->assertSame(PurchaseStatus::Ordered, $purchase->status);
+        $this->assertTrue($purchase->isPaid());
+        $this->assertSame('350000.00', $purchase->paid_amount);
+        $this->assertSame(PurchasePaymentMethod::Cash, $purchase->payment_method);
+        $this->assertSame(today()->subDay()->toDateString(), $purchase->paid_date->toDateString());
+        $this->assertSame('Lunas', $purchase->payment_notes);
+        $this->assertSame($this->admin->id, $purchase->paid_by);
+        $this->assertSame($this->admin->id, $purchase->confirmed_by);
+
+        $this->actingAs($this->admin)->get($this->url('show', ['purchase' => $draft->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('purchase.is_paid', true)
+            ->where('purchase.payment_method_label', 'Tunai')
+            ->where('purchase.paid_amount', '350000.00'));
+        $this->actingAs($this->admin)->get($this->url('index'))->assertInertia(fn (Assert $page) => $page->where('purchases.data.0.is_paid', true));
+    }
+
+    public function test_a_nota_with_nothing_to_pay_cannot_be_paid(): void
+    {
+        $draft = $this->freeDraft($this->sellableProduct());
+
+        $this->actingAs($this->admin)->post($this->url('pay', ['purchase' => $draft->id]), ['payment_method' => 'transfer', 'paid_date' => today()->toDateString()])
+            ->assertSessionHas('error', 'Nota ini tidak punya tagihan, jadi tidak ada yang dibayar. Cukup konfirmasi.');
+
+        $this->assertSame(PurchaseStatus::Draft, $this->statusOf($draft));
+    }
+
+    public function test_a_nota_is_paid_only_once(): void
+    {
+        $draft = $this->draft($this->sellableProduct());
+        $this->pay($draft);
+
+        $this->actingAs($this->admin)->post($this->url('pay', ['purchase' => $draft->id]), ['payment_method' => 'transfer', 'paid_date' => today()->toDateString()])
+            ->assertSessionHas('error', 'Hanya nota draft yang bisa dikonfirmasi.');
+    }
+
+    public function test_a_payment_needs_a_known_method_and_a_date_that_is_not_in_the_future(): void
+    {
+        $draft = $this->draft($this->sellableProduct());
+
+        $this->actingAs($this->admin)->post($this->url('pay', ['purchase' => $draft->id]), ['payment_method' => '', 'paid_date' => ''])
+            ->assertSessionHasErrors(['payment_method' => 'Pilih cara bayar.', 'paid_date' => 'Isi tanggal bayar.']);
+        $this->actingAs($this->admin)->post($this->url('pay', ['purchase' => $draft->id]), ['payment_method' => 'barter', 'paid_date' => today()->addDay()->toDateString()])
+            ->assertSessionHasErrors(['payment_method' => 'Cara bayar tidak dikenal.', 'paid_date' => 'Tanggal bayar tidak boleh di masa depan.']);
+
+        $this->assertSame(PurchaseStatus::Draft, $this->statusOf($draft));
+    }
+
+    public function test_paying_needs_its_own_permission_on_top_of_managing_purchases(): void
+    {
+        $draft = $this->draft($this->sellableProduct());
+        $central = DB::connection('mysql');
+        $central->table('permission_user')->insert(['user_id' => $this->cashier->id, 'permission_id' => $central->table('permissions')->where('name', Permission::PurchasesManage->value)->value('id')]);
+
+        $this->actingAs($this->cashier)->get($this->url('show', ['purchase' => $draft->id]))->assertOk();
+        $this->actingAs($this->cashier)->post($this->url('pay', ['purchase' => $draft->id]), ['payment_method' => 'transfer', 'paid_date' => today()->toDateString()])->assertForbidden();
+
+        $this->assertSame(PurchaseStatus::Draft, $this->statusOf($draft));
     }
 
     public function test_a_nota_without_lines_or_with_a_switched_off_supplier_is_not_confirmed(): void
@@ -308,7 +515,7 @@ class PurchaseTest extends TestCase
         $this->actingAs($this->admin)->post($this->url('cancel', ['purchase' => $draft->id]), ['reason' => ''])->assertSessionHasErrors(['reason' => 'Isi alasan pembatalan.']);
         $this->assertSame(PurchaseStatus::Draft, $this->statusOf($draft));
 
-        $this->actingAs($this->admin)->post($this->url('confirm', ['purchase' => $draft->id]));
+        $this->pay($draft);
         $this->actingAs($this->admin)->post($this->url('cancel', ['purchase' => $draft->id]), ['reason' => ' Supplier kehabisan '])->assertSessionHasNoErrors();
 
         $purchase = $this->onlyPurchase();
@@ -317,16 +524,18 @@ class PurchaseTest extends TestCase
         $this->assertNotNull($purchase->cancelled_at);
 
         $this->actingAs($this->admin)->post($this->url('cancel', ['purchase' => $draft->id]), ['reason' => 'Lagi'])
-            ->assertSessionHas('error', 'Nota ini tidak bisa dibatalkan lagi karena sudah ada barang yang diterima atau notanya sudah selesai.');
+            ->assertSessionHas('error', 'Nota ini tidak bisa dibatalkan lagi karena barangnya sudah dikirim atau notanya sudah selesai.');
     }
 
-    public function test_a_nota_that_has_received_goods_cannot_be_cancelled(): void
+    public function test_a_nota_whose_goods_are_on_the_way_or_done_cannot_be_cancelled(): void
     {
-        $purchase = $this->store->run(fn (): Purchase => Purchase::factory()->create(['supplier_id' => $this->supplier->id, 'status' => PurchaseStatus::PartiallyReceived]));
+        foreach ([PurchaseStatus::Shipped, PurchaseStatus::Completed] as $status) {
+            $purchase = $this->store->run(fn (): Purchase => Purchase::factory()->create(['supplier_id' => $this->supplier->id, 'status' => $status]));
 
-        $this->actingAs($this->admin)->post($this->url('cancel', ['purchase' => $purchase->id]), ['reason' => 'Salah'])->assertSessionHas('error');
+            $this->actingAs($this->admin)->post($this->url('cancel', ['purchase' => $purchase->id]), ['reason' => 'Salah'])->assertSessionHas('error');
 
-        $this->assertSame(PurchaseStatus::PartiallyReceived, $this->statusOf($purchase));
+            $this->assertSame($status, $this->statusOf($purchase));
+        }
     }
 
     public function test_the_list_is_narrowed_by_search_supplier_status_and_day(): void
@@ -335,7 +544,7 @@ class PurchaseTest extends TestCase
         $first = $this->draft($product, ['supplier_document_number' => 'INV-AAA', 'purchase_date' => '2026-11-01']);
         $otherSupplier = $this->store->run(fn (): Supplier => Supplier::factory()->create(['name' => 'CV Semen']));
         $second = $this->draft($product, ['supplier_id' => $otherSupplier->id, 'supplier_document_number' => 'INV-BBB', 'purchase_date' => '2026-11-15']);
-        $this->actingAs($this->admin)->post($this->url('confirm', ['purchase' => $second->id]));
+        $this->pay($second);
 
         $numbers = fn (array $expected) => fn (Assert $page) => $page->component('Tenant/Purchases/Index')->where('purchases.data', fn ($rows) => collect($rows)->pluck('number')->all() === $expected);
 

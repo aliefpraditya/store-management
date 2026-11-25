@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Tenant\BarcodeLabelController;
 use App\Http\Controllers\Tenant\BulkPriceController;
+use App\Http\Controllers\Tenant\CarrierController;
 use App\Http\Controllers\Tenant\CashierCodController;
 use App\Http\Controllers\Tenant\CashierController;
 use App\Http\Controllers\Tenant\CashierDeliveryNoteController;
@@ -158,6 +159,12 @@ Route::prefix('t/{tenant}')
             Route::put('{supplier}', [SupplierController::class, 'update'])->name('update');
         });
 
+        Route::prefix('carriers')->name('tenant.carriers.')->middleware('permission:carriers.manage')->group(function () {
+            Route::get('/', [CarrierController::class, 'index'])->name('index');
+            Route::post('/', [CarrierController::class, 'store'])->name('store');
+            Route::put('{carrier}', [CarrierController::class, 'update'])->name('update');
+        });
+
         Route::prefix('purchases')->name('tenant.purchases.')->middleware('permission:purchases.manage')->scopeBindings()->group(function () {
             Route::get('/', [PurchaseController::class, 'index'])->name('index');
             Route::get('create', [PurchaseController::class, 'create'])->name('create');
@@ -166,6 +173,7 @@ Route::prefix('t/{tenant}')
             Route::get('{purchase}/edit', [PurchaseController::class, 'edit'])->name('edit');
             Route::put('{purchase}', [PurchaseController::class, 'update'])->name('update');
             Route::post('{purchase}/confirmations', [PurchaseController::class, 'confirm'])->name('confirm');
+            Route::post('{purchase}/payments', [PurchaseController::class, 'pay'])->middleware('permission:purchases.pay')->name('pay');
             Route::post('{purchase}/cancellations', [PurchaseController::class, 'cancel'])->name('cancel');
             Route::post('{purchase}/attachments', [PurchaseAttachmentController::class, 'store'])->name('attachments.store');
             Route::get('{purchase}/attachments/{attachment}', [PurchaseAttachmentController::class, 'show'])->name('attachments.show');

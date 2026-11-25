@@ -84,7 +84,7 @@ class RoleManagementTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Central/Roles/Form')
                 ->where('role', null)
-                ->has('permission_groups', 6)
+                ->has('permission_groups', 7)
                 ->where('permission_groups.0.group', 'Umum')
                 ->where('permission_groups.0.permissions.0.name', 'dashboard.view')
             );

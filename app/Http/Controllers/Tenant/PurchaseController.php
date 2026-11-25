@@ -2,18 +2,22 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\PurchasePaymentMethod;
 use App\Enums\PurchaseStatus;
 use App\Enums\WarehouseType;
 use App\Exceptions\PurchaseException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\CancelPurchaseRequest;
 use App\Http\Requests\Tenant\DateRangeRequest;
+use App\Http\Requests\Tenant\PayPurchaseRequest;
 use App\Http\Requests\Tenant\SavePurchaseRequest;
 use App\Http\Resources\PurchaseListResource;
 use App\Http\Resources\PurchaseResource;
+use App\Models\Carrier;
 use App\Models\Purchase;
 use App\Models\Supplier;
 use App\Models\Warehouse;
+use App\Services\CarrierService;
 use App\Services\PurchaseAttachmentService;
 use App\Services\PurchaseService;
 use App\Services\SupplierService;
@@ -33,6 +37,7 @@ class PurchaseController extends Controller
     public function __construct(
         private readonly PurchaseService $purchaseService,
         private readonly SupplierService $supplierService,
+        private readonly CarrierService $carrierService,
     ) {}
 
     public function index(DateRangeRequest $request): Response
@@ -41,6 +46,7 @@ class PurchaseController extends Controller
             'from' => $request->fromDate()?->toDateString(),
             'to' => $request->toDate()?->toDateString(),
             'supplier' => $request->integer('supplier') ?: null,
+            'carrier' => $request->integer('carrier') ?: null,
             'status' => $request->string('status')->toString() ?: null,
             'search' => $request->string('search')->trim()->toString() ?: null,
         ];
@@ -50,6 +56,7 @@ class PurchaseController extends Controller
                 ->through(fn (Purchase $purchase): array => PurchaseListResource::make($purchase)->resolve()),
             'filters' => $filters,
             'suppliers' => Supplier::query()->orderBy('name')->get(['id', 'name']),
+            'carriers' => Carrier::query()->orderBy('name')->get(['id', 'name']),
             'statuses' => PurchaseStatus::options(),
             'create_url' => route('tenant.purchases.create', ['tenant' => tenant('code')]),
         ]);
@@ -78,7 +85,10 @@ class PurchaseController extends Controller
 
     public function show(Purchase $purchase): Response
     {
-        return Inertia::render('Tenant/Purchases/Show', ['purchase' => $this->resourceOf($purchase)]);
+        return Inertia::render('Tenant/Purchases/Show', [
+            'purchase' => $this->resourceOf($purchase),
+            'payment_methods' => PurchasePaymentMethod::options(),
+        ]);
     }
 
     public function edit(Purchase $purchase): Response|RedirectResponse
@@ -91,7 +101,7 @@ class PurchaseController extends Controller
 
         return Inertia::render('Tenant/Purchases/Form', [
             'purchase' => $this->resourceOf($purchase),
-            ...$this->formOptions(),
+            ...$this->formOptions($purchase),
         ]);
     }
 
@@ -119,6 +129,17 @@ class PurchaseController extends Controller
         return back()->with('success', 'Nota dikonfirmasi. Barang dan harganya sekarang terkunci.');
     }
 
+    public function pay(PayPurchaseRequest $request, Purchase $purchase): RedirectResponse
+    {
+        try {
+            $this->purchaseService->confirmAndPay($purchase, $request->user(), $request->validated());
+        } catch (PurchaseException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return back()->with('success', 'Nota dikonfirmasi dan dibayar. Barang dan harganya sekarang terkunci.');
+    }
+
     public function cancel(CancelPurchaseRequest $request, Purchase $purchase): RedirectResponse
     {
         try {
@@ -135,19 +156,21 @@ class PurchaseController extends Controller
      */
     private function resourceOf(Purchase $purchase): array
     {
-        return PurchaseResource::make($purchase->load(['supplier', 'warehouse', 'items.product.productUnits', 'attachments']))->resolve();
+        return PurchaseResource::make($purchase->load(['supplier', 'carrier', 'warehouse', 'items.product.productUnits', 'attachments']))->resolve();
     }
 
     /**
-     * What the form offers to choose from: the suppliers that can still be bought from, and the sellable warehouses a nota
-     * can be meant for (the default one first).
+     * What the form offers to choose from: the suppliers that can still be bought from, the carriers the goods can be sent
+     * with (plus the one a purchase being edited already has), and the sellable warehouses a nota can be meant for (the
+     * default one first). Suppliers and carriers carry their city, so the form can suggest the carrier in the supplier's city.
      *
      * @return array<string, mixed>
      */
-    private function formOptions(): array
+    private function formOptions(?Purchase $editedPurchase = null): array
     {
         return [
-            'suppliers' => $this->supplierService->active()->map(fn (Supplier $supplier): array => ['id' => $supplier->id, 'name' => $supplier->name])->values(),
+            'suppliers' => $this->supplierService->active()->map(fn (Supplier $supplier): array => ['id' => $supplier->id, 'name' => $supplier->name, 'city' => $supplier->city])->values(),
+            'carriers' => $this->carrierService->selectable($editedPurchase?->carrier_id)->map(fn (Carrier $carrier): array => ['id' => $carrier->id, 'name' => $carrier->name, 'city' => $carrier->city])->values(),
             'warehouses' => Warehouse::query()->where('type', WarehouseType::Sellable)->where('is_active', true)->orderByDesc('is_default')->orderBy('name')->get(['id', 'name']),
             'search_url' => route('tenant.products.search', ['tenant' => tenant('code')]),
             'store_url' => route('tenant.purchases.store', ['tenant' => tenant('code')]),

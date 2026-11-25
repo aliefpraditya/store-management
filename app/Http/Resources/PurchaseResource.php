@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * A purchase for its detail and edit screens. Expects `supplier`, `warehouse`, `items.product.productUnits`,
+ * A purchase for its detail and edit screens. Expects `supplier`, `carrier`, `warehouse`, `items.product.productUnits`,
  * `items.product.baseUnit` and `attachments` loaded.
  *
  * @mixin Purchase
@@ -31,11 +31,19 @@ class PurchaseResource extends JsonResource
             'supplier_document_number' => $this->supplier_document_number,
             'purchase_date' => $this->purchase_date->toDateString(),
             'expected_date' => $this->expected_date?->toDateString(),
+            'carrier_id' => $this->carrier_id,
+            'carrier_name' => $this->carrier?->name,
             'warehouse_id' => $this->warehouse_id,
             'warehouse_name' => $this->warehouse->name,
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
             'total_amount' => $this->total_amount,
+            'is_paid' => $this->isPaid(),
+            'paid_date' => $this->paid_date?->toDateString(),
+            'paid_amount' => $this->paid_amount,
+            'payment_method_label' => $this->payment_method?->label(),
+            'payment_notes' => $this->payment_notes,
+            'paid_by_name' => $this->paid_by_name,
             'notes' => $this->notes,
             'created_by_name' => $this->created_by_name,
             'confirmed_by_name' => $this->confirmed_by_name,
@@ -60,7 +68,6 @@ class PurchaseResource extends JsonResource
                 'base_quantity' => $item->base_quantity,
                 'unit_cost' => $item->unit_cost,
                 'subtotal' => $item->subtotal,
-                'received_base_quantity' => $item->received_base_quantity,
                 'notes' => $item->notes,
             ])->values(),
             'attachments' => $this->attachments->map(fn (PurchaseAttachment $attachment): array => [
@@ -76,6 +83,7 @@ class PurchaseResource extends JsonResource
                 'edit' => route('tenant.purchases.edit', $routeParameters),
                 'update' => route('tenant.purchases.update', $routeParameters),
                 'confirm' => route('tenant.purchases.confirm', $routeParameters),
+                'pay' => route('tenant.purchases.pay', $routeParameters),
                 'cancel' => route('tenant.purchases.cancel', $routeParameters),
                 'attachments' => route('tenant.purchases.attachments.store', $routeParameters),
             ],

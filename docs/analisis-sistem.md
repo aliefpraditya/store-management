@@ -33,7 +33,7 @@
 | 14 | **Owner = nama toko; hanya Mitra Utama yang menjadi toko, Cahaya Baru diabaikan** (migrasi dikerjakan nanti; sekarang yang penting skema barang) | Tabel `owners` **dihapus**. Migrasi hanya mengambil barang & transaksi Mitra Utama (7.11). Skema barang ditinjau ulang (6.2a) |
 | 15 | **Kebijakan satuan boleh dibeli/dijual juga bisa diubah Admin Toko** | Kolom milik toko sepenuhnya (4.3); tanpa kebijakan awal dari pusat (v0.6) |
 | 16 | **Persen untung = margin saja** (tanpa markup) | `selling_price = modal / (1 − margin%)`; tampilan hanya margin (7.1) |
-| 17 | **Pembelian dari supplier dipisah dari penerimaan kontainer**; penerimaan merujuk pembelian (full/partial) | `purchases` + `purchase_items`, status `partially_received/received/closed`, `goods_receipt_items.purchase_item_id` (7.1b, BPMN-12, ERD 6.4) |
+| 17 | **Pembelian dari supplier dipisah dari penerimaan kontainer**; penerimaan merujuk pembelian (diterima sekali) | `purchases` + `purchase_items`, status `draft/ordered/shipped/completed/cancelled`, `goods_receipt_items.purchase_item_id` (7.1b, BPMN-12, ERD 6.4) |
 | 18 | **Kredit & hutang dihapus dulu** (wireframe 16 & 23) | Tidak ada `customers`/piutang; metode bayar hanya tunai/transfer/QRIS/EDC; hutang lama = info saja (7.8) |
 | 19 | **Offline dikerjakan di belakang** (Fase 1b) | Roadmap dipecah Fase 1a (go-live online) dan 1b (offline); prinsip offline-ready tetap dari awal (4.4) |
 | 20 | **Kerjakan dulu yang penting: input stok barang + penjualan** (R1 Inti) | Roadmap R1/R2/R3 (0.3, 9); R1 memakai harga beli terakhir (tanpa FIFO), 1 gudang, tanpa pembelian/opname/shift/retur |
@@ -111,11 +111,11 @@ Toko
 > **Catatan v0.7:** isi **R1** mengikuti peta menu di 0.3. Butir "penerimaan/pembelian" di F2 di bawah adalah **R2**; butir shift, retur, surat jalan, tutup hari, dan pengeluaran adalah **R1**.
 - **F0 Fondasi:** login + routing per role, master toko (provisioning DB), user & akses, audit.
 - **F1 Barang (per toko):** kategori, merek, satuan, supplier, barang, multi-satuan + konversi, satuan boleh dibeli/dijual, harga nominal/margin (tanpa pembulatan), histori harga, persen untung (margin), import Excel.
-- **F2 Stok:** multi-gudang, histori stok, **pembelian dari supplier**, penerimaan kontainer multi-supplier (merujuk pembelian full/partial), stok opname, transfer antar-gudang, **cek stok barang di semua toko (Master/pusat)**.
+- **F2 Stok:** multi-gudang, histori stok, **pembelian dari supplier**, penerimaan kontainer multi-supplier (merujuk pembelian, diterima sekali), stok opname, transfer antar-gudang, **cek stok barang di semua toko (Master/pusat)**.
 - **F3 Penjualan:** kasir (**online dulu, offline = Fase 1b**), pembayaran (tunai/transfer/QRIS/EDC), nota (browser print), shift & kas (2 shift/hari), pembatalan & void, retur (refund / tukar).
 - **F4 Migrasi data lama:** barang, merek, stok awal, transaksi — hanya Mitra Utama; hutang lama = info saja.
 
-**Di luar Fase 1 (dicatat saja, tidak dirancang detail):** laporan overall akuntansi lintas toko, transfer antar-toko, alokasi biaya kontainer ke modal, penanganan dead stock lanjutan (jual diskon / musnah / retur ke supplier), diskon, moving average, cetak ESC/POS langsung, PPN, role Accounting.
+**Di luar Fase 1 (dicatat saja, tidak dirancang detail):** laporan overall akuntansi lintas toko, transfer antar-toko, alokasi biaya kontainer ke modal (arah: ongkir masuk harga jual, cara bagi belum diputuskan), penanganan dead stock lanjutan (jual diskon / musnah / retur ke supplier), diskon, moving average, cetak ESC/POS langsung, PPN, role Accounting.
 
 ### 1.2 Log keputusan
 
@@ -125,7 +125,7 @@ Toko
 | D2 | Gudang | Multi-gudang per toko; otomatis **Main Warehouse** (`sellable`) dan **Dead Stock** (`dead_stock`) | ✔ |
 | D3 | Transfer stok | Antar-gudang: MVP. Antar-toko: **Fase 2**; jembatan = opname parsial berkode alasan | ✔ Anda |
 | D4 | Master barang | **Per toko** (kategori, merek, satuan, supplier, barang, harga, kebijakan satuan). Tanpa katalog pusat/publish (D27). Pusat hanya menyimpan toko, user, akses | ✔ Anda |
-| D5 | Biaya kontainer | Dicatat saja, tidak masuk modal | ✔ |
+| D5 | Biaya kontainer | Sementara dicatat saja, tidak masuk modal. **Direvisi (arah):** biaya kontainer (ongkir) nanti masuk ke modal barang dan memengaruhi harga jual; cara pembagiannya belum diputuskan (7.2 butir 13) | ✔ |
 | D6 | Harga beli | **Harga beli terakhir** (`products.cost_price`) dipakai untuk **basis harga jual persen** dan peringatan harga di bawah modal. **HPP & nilai persediaan memakai FIFO per layer** (D22). Tanpa moving average | ✔ (diperjelas v0.3.2) |
 | D7 | Pajak | Tanpa PPN | ✔ |
 | D8 | Stok minus | Dilarang (online only, D34); bisa diizinkan per toko lewat pengaturan. ~~Offline: peringatan + `sync_issues`~~ dibatalkan | ✔ + usul |
@@ -141,7 +141,7 @@ Toko
 | D17 | Void | **Sebelum dibayar:** batal langsung + dicatat (`sale_cancellations`). **Sesudah dibayar:** ajukan, Admin menyetujui, hanya di shift berjalan; sesudahnya lewat Retur. **Pengecualian nota COD yang belum diantar:** Kasir atau Admin langsung mem-void dengan alasan, kapan pun nota dibuat, tanpa persetujuan (7.5); DP tunai ikut mengurangi tunai seharusnya shift pembatal, dan nota menyimpan siapa, kapan, dan alasannya | ✔ Anda + usul |
 | D18 | Retur | Tanpa batas hari; approval Admin wajib; selisih boleh dikembalikan tunai; **barang retur masuk Gudang Retur (bukan stok jual), diperiksa lewat opname gudang retur, lalu otomatis dibagi ke stok jual gudang asal / dead stock / barang DG** (7.7); kasir dan admin tidak memilih nasib barang saat retur | ✔ Anda |
 | D19 | Pelanggan, kredit & hutang | **Dihapus dari Fase 1** (wireframe 16 & 23): tidak ada `customers`, penjualan hutang, pembayaran hutang. Tukar barang pada retur tetap ada (nilai retur dipotong otomatis di layar Retur, bukan metode bayar yang dipilih kasir) | ✔ Anda |
-| D24 | Pembelian dari supplier | **Modul terpisah** dari penerimaan kontainer: `purchases` + `purchase_items`; penerimaan dapat merujuk pembelian **full atau partial**; harga/modal FIFO diambil dari pembelian | ✔ Anda |
+| D24 | Pembelian dari supplier | **Modul terpisah** dari penerimaan kontainer: `purchases` + `purchase_items`; penerimaan merujuk pembelian dan **menerimanya sekali** (tanpa diterima sebagian); status `draft → ordered → shipped → completed`; **dibayar penuh di muka saat konfirmasi (Konfirmasi & Bayar, izin `purchases.pay`), dicatat di nota saja**; barang kurang diselesaikan dengan refund atau kirim ulang (supplier menerbitkan nota baru berharga 0); harga/modal FIFO diambil dari pembelian | ✔ Anda |
 | D25 | ~~Offline~~ | ~~Tetap wajib, dikerjakan di Fase 1b~~ — **digantikan D34** | ✔ Anda |
 | D34 | **Online only, 1 hosting** | Offline/PWA/sinkron/backup lokal dibatalkan (R3 dihapus). Arsitektur: **Laravel + Inertia (Vue) + Quasar** dalam satu aplikasi, satu domain, auth sesi. Alasan: deployment mudah, 1 hosting. Risiko diterima: internet mati = kasir berhenti (cadangan: catat manual + nota susulan, atau tethering) | ✔ Anda (26 Okt 2026) |
 | D26 | Prioritas rilis | **R1 Inti = operasional harian toko** (peta menu 0.3): tambah toko, barang & harga, stok opname, kasir, buka/tutup kas, pembayaran, nota, retur, surat jalan, tutup hari, pengeluaran. **R2:** pembelian, penerimaan kontainer, FIFO, transfer/multi-gudang, cek stok lintas toko, salin barang, migrasi transaksi, layar audit. ~~**R3:** offline~~ **dibatalkan (D34)** | ✔ Anda |
@@ -538,7 +538,7 @@ flowchart TD
 flowchart TD
     subgraph GD["Petugas Gudang"]
         G1(["Kontainer dikirim / tiba"]) --> G2["Buat penerimaan: no. kontainer, tanggal kirim, tanggal sampai, gudang tujuan"]
-        G2 --> G3["Tambah blok supplier: PT, no. dokumen, tanggal dokumen; opsional Ambil dari pembelian (full atau partial)"]
+        G2 --> G3["Tambah blok supplier: PT, no. dokumen, tanggal dokumen; opsional Ambil dari pembelian (diterima sekali)"]
         G3 --> G4["Mulai bongkar: catat tanggal/jam mulai"]
         G4 --> G5["Per supplier: baris dari pembelian (qty diterima maksimal sisa, harga ikut pembelian) atau barang tanpa pembelian (harga manual); qty dokumen, diterima, rusak"]
         G5 --> G6{"Ada supplier lain di kontainer ini?"}
@@ -757,35 +757,37 @@ flowchart TD
     S7 --> S8
 ```
 
-### 5.13 BPMN-12 — Pembelian dari Supplier & Penerimaan (Full / Partial) (R2)
+### 5.13 BPMN-12 — Pembelian dari Supplier, Pengiriman & Penerimaan (diterima sekali) (R2)
 
 ```mermaid
 flowchart TD
     subgraph ADM["Admin Toko"]
-        A1(["Buat pembelian: supplier, no. nota supplier, tanggal, perkiraan tiba"]) --> A2["Isi barang: satuan (hanya yang boleh dibeli), qty, harga beli"]
-        A3["Konfirmasi pembelian (status ordered)"]
-        A9["Tutup sisa (short close) bila sisa tidak akan datang"]
+        A1(["Buat pembelian: supplier, no. nota supplier, tanggal, ekspedisi pengantar (opsional), perkiraan tiba di ekspedisi"]) --> A2["Isi barang: satuan (hanya yang boleh dibeli), qty, harga beli"]
+        A3["Konfirmasi & Bayar: nota dikunci dan dibayar penuh di muka, cara bayar + tanggal + catatan (status ordered, Dipesan, tanda Dibayar). Nota tanpa tagihan (semua baris harga 0) cukup Konfirmasi"]
+        A4["Container berangkat: catat pengiriman container (ekspedisi wajib, no. kontainer, nomor resi, tanggal berangkat); pembelian di dalamnya otomatis berstatus shipped, Dikirim, tanpa tombol manual"]
+        A9["Catat nota baru dari supplier untuk barang kirim ulang: harga 0 (gratis)"]
     end
     subgraph GD["Petugas Gudang"]
-        G1(["Barang tiba: buat penerimaan kontainer"]) --> G2["Tambah blok supplier lalu pilih Ambil dari pembelian"]
-        G3["Isi qty diterima per baris pembelian, maksimal sisa"]
+        G1(["Barang tiba dari ekspedisi: buat penerimaan"]) --> G2["Pilih Ambil dari pembelian"]
+        G3["Cek fisik tiap baris: qty diterima dan qty rusak"]
+        G4{"Jumlah dan kondisi sesuai nota?"}
+        G5["Catat selisih per baris dan pilih tindak lanjut: refund atau kirim ulang"]
     end
     subgraph SYS["Sistem"]
         S1["Simpan purchases dan purchase_items, hitung total"]
-        S2["Penerimaan diposting: tambah stok + layer FIFO memakai harga dari pembelian"]
-        S3["Perbarui received_base_quantity tiap baris pembelian"]
-        S4{"Semua baris pembelian sudah diterima penuh?"}
-        S5["Status received"]
-        S6["Status partially_received, sisa tetap terbuka; penerimaan berikutnya mengulang alur dari Buat penerimaan"]
-        S7["Status closed, sisa dianggap batal"]
+        S2["Penerimaan diposting: tambah stok barang yang baik + layer FIFO memakai harga dari pembelian"]
+        S3["Status completed, Selesai"]
     end
     A2 --> S1 --> A3
-    A3 --> G1
-    G1 --> G2 --> G3 --> S2 --> S3 --> S4
-    S4 -->|"Ya"| S5
-    S4 -->|"Tidak"| S6
-    S6 --> A9 --> S7
+    A3 --> A4 --> G1
+    G1 --> G2 --> G3 --> G4
+    G4 -->|"Ya"| S2
+    G4 -->|"Tidak"| G5 --> S2
+    S2 --> S3
+    G5 -->|"Kirim ulang"| A9 --> A1
 ```
+
+Pembelian **diterima sekali**: tidak ada status diterima sebagian. Barang kurang atau rusak dicatat sebagai selisih di penerimaan, lalu diselesaikan dengan **refund** (supplier mengembalikan **nilai barang ditambah ongkirnya**; hanya dicatat sebagai keputusan dan nominal, karena pencatatan uang masuk dari supplier belum ada) atau **kirim ulang** (supplier menerbitkan nota baru untuk barang itu dengan harga 0, dicatat sebagai pembelian baru).
 
 ### 5.14 BPMN-13 — Cek Stok Barang di Semua Toko (Master) (R2)
 
@@ -1272,11 +1274,14 @@ erDiagram
 
 ### 6.4r DB Toko — c2. Pembelian & penerimaan kontainer (R2)
 
-> Tabel baru R2: pemasok, pembelian, dan penerimaan kontainer (multi-supplier, biaya kontainer). Penerimaan merujuk baris pembelian (penuh atau sebagian).
+> Tabel baru R2: pemasok, pembelian, dan penerimaan kontainer (multi-supplier, biaya kontainer). Penerimaan merujuk baris pembelian dan menerima nota itu sekali (tanpa penerimaan sebagian).
 
 ```mermaid
 erDiagram
     suppliers ||--o{ purchases : "supplies"
+    carriers ||--o{ carrier_contacts : "people to call"
+    carriers ||--o{ purchases : "carries (optional)"
+    carriers ||--o{ goods_receipts : "delivers (required)"
     purchases ||--|{ purchase_items : "lines"
     products ||--o{ purchase_items : ""
     product_units ||--o{ purchase_items : "purchase unit"
@@ -1293,7 +1298,26 @@ erDiagram
         bigint id PK
         string name
         string phone
+        string province "free text, optional"
+        string city "free text, optional"
         boolean is_active
+    }
+    carriers {
+        bigint id PK
+        string name UK
+        string phone
+        text address
+        string province "free text, optional"
+        string city "free text, where goods are taken in"
+        smallint transit_days "usual days to the store"
+        text notes
+        boolean is_active
+    }
+    carrier_contacts {
+        bigint id PK
+        bigint carrier_id FK
+        string name
+        string phone
     }
     purchases {
         bigint id PK
@@ -1301,14 +1325,20 @@ erDiagram
         bigint supplier_id FK
         string supplier_document_number "invoice or order number from supplier"
         date purchase_date
-        date expected_date "ETA"
+        date expected_date "ETA at the carrier, not at the store"
+        bigint carrier_id FK "optional"
         bigint warehouse_id FK "default destination"
-        enum status "draft, ordered, partially_received, received, closed, cancelled"
+        enum status "draft, ordered, shipped, completed, cancelled"
         decimal total_amount
         text notes
         bigint created_by
         bigint confirmed_by
         datetime confirmed_at
+        date paid_date "empty for a nota with nothing to pay"
+        decimal paid_amount "always the full total"
+        enum payment_method "transfer, cash, other"
+        string payment_notes
+        bigint paid_by
         string cancel_reason
     }
     purchase_items {
@@ -1322,14 +1352,15 @@ erDiagram
         decimal unit_cost
         decimal base_unit_cost
         decimal subtotal
-        decimal received_base_quantity "cache, from posted receipts"
         string notes
     }
     goods_receipts {
         bigint id PK
         string number UK
         string container_number
-        date shipped_date
+        bigint carrier_id FK "required"
+        string tracking_number "resi from the carrier"
+        date shipped_date "container departure; sets the purchases to shipped"
         date arrival_date
         datetime unloading_started_at
         datetime unloading_finished_at
@@ -1352,7 +1383,7 @@ erDiagram
     goods_receipt_items {
         bigint id PK
         bigint goods_receipt_supplier_id FK
-        bigint purchase_item_id FK "optional: receipt against a purchase line, full or partial"
+        bigint purchase_item_id FK "optional: receipt against a purchase line, received once"
         bigint product_id FK
         bigint product_unit_id FK
         decimal document_quantity
@@ -1749,24 +1780,25 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 
 ### 7.1b F2-0 — Pembelian dari Supplier — **R2**
 
-**Tujuan:** mencatat **apa yang dibeli** dari supplier (nota pembelian/pesanan) terpisah dari **kedatangan fisik** (penerimaan kontainer, 7.2). Satu pembelian bisa diterima sekaligus (*full*) atau bertahap (*partial*) lewat beberapa penerimaan; satu kontainer bisa memuat banyak pembelian dari banyak supplier.
+**Tujuan:** mencatat **apa yang dibeli** dari supplier (nota pembelian/pesanan) terpisah dari **kedatangan fisik** (penerimaan, 7.2). Satu pembelian **diterima sekali** oleh gudang; satu kontainer bisa memuat banyak pembelian dari banyak supplier.
 
-**Layar:** Daftar Pembelian (filter status, supplier, tanggal) · Form Pembelian · Detail (item, jumlah diterima, sisa, riwayat penerimaan yang merujuk) · Laporan pembelian per supplier.
+**Layar:** Daftar Pembelian (filter status, supplier, tanggal) · Form Pembelian · Detail (item, ekspedisi, status, penerimaan yang merujuk) · Laporan pembelian per supplier.
 
-**Header:** nomor (`PB/{prefiks}/{YYMM}/{seq}`), supplier, **no. nota/invoice supplier**, tanggal pembelian, perkiraan tiba (ETA), gudang tujuan default, catatan.
-**Item:** barang, satuan (**hanya yang boleh dibeli**), qty pesan, **harga beli per satuan** → qty dasar, harga beli dasar, subtotal; kolom turunan *diterima*, *sisa*.
-**Status:** `draft → ordered → partially_received → received`, ditambah `closed` (sisa ditutup / short close) dan `cancelled`.
+**Header:** nomor (`PB/{prefiks}/{YYMM}/{seq}`), supplier, **no. nota/invoice supplier**, tanggal pembelian, **ekspedisi** (opsional, dipilih dari master ekspedisi toko), **perkiraan tiba di ekspedisi** (`expected_date`, bukan tiba di toko), gudang tujuan default, catatan.
+**Item:** barang, satuan (**hanya yang boleh dibeli**), qty pesan, **harga beli per satuan** → qty dasar, harga beli dasar, subtotal. Jumlah yang benar-benar diterima dicatat di penerimaan (7.2), bukan di baris pembelian.
+**Status:** `draft → ordered → shipped → completed`, atau `cancelled`. Label: Draft · **Dipesan** · **Dikirim** · **Selesai** · Dibatalkan.
 
 **Aturan bisnis**
-1. Draft boleh diubah bebas; **`ordered`** = pembelian dikonfirmasi (Admin) dan bisa diterima. Setelah ada penerimaan, harga dan satuan terkunci; qty pesan hanya boleh dinaikkan atau diturunkan sampai tidak kurang dari yang sudah diterima.
+1. Draft boleh diubah bebas; **`ordered`** (Dipesan) = pembelian dikonfirmasi (Admin), barang dan harga terkunci. Nota berisi tagihan **selalu dibayar penuh di muka** lewat satu tombol **Konfirmasi & Bayar** (tanpa pembayaran, nota tidak bisa dikonfirmasi); nota yang semua barisnya berharga 0 (kirim ulang gratis, butir 6) cukup **Konfirmasi** dan tidak pernah berstatus dibayar.
 2. Pembelian **tidak mengubah stok, `cost_price`, maupun layer FIFO** — itu terjadi saat **penerimaan diposting** (stok baru ada ketika barang benar-benar datang).
-3. Penerimaan merujuk **baris pembelian** (`goods_receipt_items.purchase_item_id`); qty diterima ≤ **sisa** baris itu. Melebihi sisa → ditolak; revisi qty pembelian dulu.
-4. `purchase_items.received_base_quantity` dan status pembelian dihitung ulang dari penerimaan yang `received`: sebagian → `partially_received`, semua baris penuh → `received`. Penerimaan dibatalkan → qty dikembalikan ke sisa.
-5. **Tutup sisa** (`closed`): Admin menutup pembelian yang sisanya tidak akan datang (alasan wajib); sisa tidak lagi bisa diterima.
-6. **Batal** hanya bila belum ada penerimaan; sudah ada penerimaan → gunakan Tutup sisa.
+3. **`shipped`** (Dikirim): barang sudah dibawa ekspedisi menuju toko (di jalan). Statusnya **terisi otomatis ketika container yang memuat nota itu berangkat** (pengiriman container, 7.2: ekspedisi wajib, nomor resi, tanggal berangkat); **tidak ada tombol "tandai dikirim"**. Ini terjadi setelah barang sampai di ekspedisi (perkiraan tiba di ekspedisi, 7.1b header), bukan saat supplier menyerahkannya. **`completed`** (Selesai): terisi saat penerimaan nota ini diposting oleh gudang.
+4. Penerimaan merujuk **baris pembelian** (`goods_receipt_items.purchase_item_id`) dan **menerima seluruh nota sekali**: tidak ada diterima sebagian, tidak ada tutup sisa. Qty kurang atau rusak dicatat sebagai selisih di penerimaan (7.2 butir 12).
+5. **Batal** hanya bila barang belum dikirim (`draft` atau `ordered`); sesudah `shipped` nota tidak bisa dibatalkan.
+6. **Kirim ulang:** bila barang kurang dan diputuskan **kirim ulang**, supplier menerbitkan **nota baru untuk kita** berisi barang itu dengan **harga 0 (gratis)**; Admin mencatatnya sebagai pembelian biasa (nomor nota supplier sendiri), terpisah dari nota asal. Harga baris boleh 0 (tidak boleh negatif). Barang gratis itu datang dengan kontainer/pengiriman sendiri yang **tetap dibayar toko**, jadi biaya kontainernya dicatat pada penerimaannya (7.2 butir 13).
 7. Modal FIFO dan harga beli terakhir memakai **harga di pembelian** (dikonversi ke satuan dasar). Penerimaan tanpa pembelian tetap dimungkinkan dengan harga manual, kecuali pengaturan `receiving_requires_purchase` diaktifkan.
-8. Pembayaran ke supplier / utang usaha **tidak** termasuk Fase 1 (hanya total pembelian).
-9. Peran: Admin membuat/konfirmasi/tutup; Warehouse hanya membaca dan menerima barang.
+8. **Pembayaran** dicatat di nota itu sendiri (bukan tabel terpisah): `paid_date`, `paid_amount` (= total nota, selalu lunas), `payment_method` (`transfer`, `cash`, `other`), `payment_notes`, `paid_by`. Pembayaran **dicatat terpisah, tidak terhubung ke kas toko atau menu Pengeluaran**; bukti bayar memakai lampiran nota. Tanggal bayar tidak boleh di masa depan. Utang usaha, DP, dan cicilan **tidak** termasuk (selalu bayar di muka). Nota yang sudah dibayar lalu dibatalkan: pengembalian uang diurus di luar sistem (dialog pembatalan memberi peringatan). **Refund** barang kurang/rusak (nilai barang ditambah ongkirnya) hanya dicatat sebagai keputusan dan nominal, tanpa pencatatan uang masuk.
+9. Peran: Admin membuat/konfirmasi/tandai dikirim; Warehouse hanya membaca dan menerima barang. **Konfirmasi & Bayar memakai izin sendiri `purchases.pay`** (di atas `purchases.manage`), diberikan ke Admin Toko; Super Admin memegang semua izin.
+10. **Ekspedisi** adalah master per toko (`carriers`: nama, telepon, alamat, **provinsi dan kota tempat barang diterima**, **estimasi lama kirim ke toko dalam hari** `transit_days`, catatan, aktif; kontak lebih dari satu di `carrier_contacts`: nama + telepon) dengan izin dan menu sendiri (`carriers.manage`, grup Pembelian). **Provinsi dan kota** (supplier: lokasinya; ekspedisi: tempat menerima barang) berupa **teks bebas opsional** dengan saran dari isian yang pernah dipakai; master provinsi/kota resmi belum ada dan bisa menyusul (pencocokan kota memakai teks apa adanya, tanpa membedakan huruf besar-kecil). **Default ekspedisi di nota:** memilih supplier otomatis memilih ekspedisi yang kotanya sama bila hanya ada satu; bila ada beberapa atau tidak ada, ekspedisi di kota itu tampil paling atas dan pilihan tetap bisa diganti ke ekspedisi kota lain. Seperti supplier, ekspedisi tidak dihapus, hanya dinonaktifkan; yang nonaktif tidak bisa dipilih di pembelian baru, tetapi tetap melekat di pembelian yang sudah memakainya.
 
 ---
 
@@ -1774,24 +1806,27 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 
 **Layar:** Daftar Penerimaan (kolom ref. pembelian) · Form Penerimaan · Detail (read-only + riwayat status).
 
-**Header:** nomor, **no. kontainer**, **tanggal kirim**, **tanggal sampai**, **bongkar mulai/selesai**, **gudang tujuan**, catatan.
-**Blok supplier (≥ 1):** supplier (PT), no. dokumen, tanggal dokumen; tombol **Ambil dari pembelian** memuat baris pembelian yang masih punya sisa untuk supplier itu.
-**Item per blok:** dua jenis baris: (a) **dari pembelian** — barang/satuan/harga ikut baris pembelian, kolom *dipesan · sudah diterima · sisa · diterima sekarang* (full atau partial); (b) **tanpa pembelian** — pilih barang sendiri dan isi harga manual. Keduanya punya qty dokumen (packing list), qty diterima, qty rusak → qty dasar, harga beli dasar, selisih vs dokumen.
-**Biaya kontainer:** `freight`, `customs`, `handling`, `other` + vendor, nominal, tanggal bayar. **Hanya dicatat** (D5).
+**Header:** nomor, **no. kontainer**, **ekspedisi pengantar (wajib, dari master ekspedisi 7.1b)**, **nomor resi ekspedisi**, **tanggal kirim** (tanggal container berangkat; menyimpannya mengubah pembelian di dalamnya jadi `shipped`; perkiraan tiba di toko dihitung dari `transit_days` ekspedisi), **tanggal sampai**, **bongkar mulai/selesai**, **gudang tujuan**, catatan.
+**Blok supplier (≥ 1):** supplier (PT), no. dokumen, tanggal dokumen; tombol **Ambil dari pembelian** memuat baris pembelian berstatus `shipped` untuk supplier itu.
+**Item per blok:** dua jenis baris: (a) **dari pembelian** — barang/satuan/harga ikut baris pembelian, kolom *dipesan · diterima · rusak · selisih*; (b) **tanpa pembelian** — pilih barang sendiri dan isi harga manual. Keduanya punya qty dokumen (packing list), qty diterima, qty rusak → qty dasar, harga beli dasar, selisih vs dokumen.
+**Biaya kontainer:** `freight`, `customs`, `handling`, `other` + vendor, nominal, tanggal bayar. **Sementara hanya dicatat; arah berikutnya biaya ini (ongkir) masuk ke modal barang sehingga memengaruhi harga jual** (D5, butir 13).
 
 **Status:** `draft → unloading → submitted → received` (+ `cancelled`).
 
 **Aturan bisnis**
 1. Satu kontainer banyak supplier; barang yang sama dari supplier berbeda = baris terpisah, digabung per barang saat posting.
 2. Stok bertambah **hanya saat posting** ke gudang tujuan (`goods_receipt`); qty rusak tidak masuk stok. Posting membuat **satu layer FIFO per item** (`stock_layers`, modal = `base_unit_cost`, `entered_at` = waktu posting).
-3. Harga beli dasar berbeda dari `cost_price` → update `cost_price` + `price_histories` (sumber `goods_receipt`) + hitung ulang harga persen; ringkasan "N barang berubah harga" tampil sebelum posting.
+3. Harga beli dasar berbeda dari `cost_price` → update `cost_price` + `price_histories` (sumber `goods_receipt`) + hitung ulang harga persen; ringkasan "N barang berubah harga" tampil sebelum posting. **Ditunda sampai FIFO dan alokasi biaya kontainer dikerjakan:** apakah baris berharga 0 (kirim ulang gratis, 7.1b butir 6) boleh menurunkan `cost_price` menjadi 0. Usulan: tidak memperbarui `cost_price` sampai ongkir terbagi ke modal.
 4. Validasi tanggal: `shipped_date ≤ arrival_date ≤ unloading_started_at ≤ unloading_finished_at`.
 5. Setelah `received` dokumen terkunci; koreksi = `cancelled` + alasan (mutasi balik). **Ditolak bila layer penerimaan itu sudah terpakai sebagian/seluruhnya** (barang sudah terjual/dipindah); gunakan opname/koreksi.
 6. Approval Admin opsional (pengaturan).
 7. Total nilai barang per supplier dan total biaya kontainer ditampilkan terpisah (informasi).
-8. **Merujuk pembelian (full/partial):** satu blok supplier boleh memuat baris dari beberapa pembelian supplier yang sama; satu pembelian boleh diterima di beberapa penerimaan. `received_quantity` ≤ sisa baris pembelian. Harga/modal diambil dari baris pembelian (tidak bisa diubah di penerimaan; koreksi harga lewat revisi pembelian sebelum diterima).
-9. Posting memperbarui `received_base_quantity` dan status pembelian terkait (7.1b); pembatalan penerimaan mengembalikannya.
+8. **Merujuk pembelian:** satu blok supplier boleh memuat beberapa pembelian dari supplier yang sama; **satu pembelian diterima di satu penerimaan** (tidak ada penerimaan sebagian). Harga/modal diambil dari baris pembelian (tidak bisa diubah di penerimaan; koreksi harga lewat pembelian baru sebelum dikirim).
+9. Posting mengubah status pembelian terkait menjadi `completed` (7.1b); pembatalan penerimaan mengembalikannya ke `shipped`.
 10. Bila `receiving_requires_purchase` aktif, baris tanpa pembelian ditolak.
+11. **Ekspedisi wajib diisi** pada setiap penerimaan kontainer (`goods_receipts.carrier_id`), berbeda dengan pembelian yang boleh tanpa ekspedisi sampai ditandai dikirim. Hanya ekspedisi aktif yang bisa dipilih.
+12. **Pengecekan gudang:** gudang membandingkan barang yang datang dengan nota: qty diterima dan qty rusak per baris. Bila jumlah atau kondisinya tidak sesuai, selisih dicatat per baris dengan tindak lanjut **refund** (nilai barang + ongkirnya; nominal ikut dicatat) atau **kirim ulang**. Kirim ulang = supplier menerbitkan nota baru berharga 0 yang dicatat sebagai pembelian baru (7.1b butir 6). Barang rusak tidak masuk stok (butir 2).
+13. **Biaya kontainer ke harga jual (arah, belum dikerjakan):** biaya kontainer (ongkir) akan dibagi ke modal tiap barang pada penerimaan itu, lalu masuk `cost_price` dan memengaruhi harga jual lewat rumus margin. Cara pembagian (per nilai barang, per qty, atau per volume/berat) **belum diputuskan**. Barang kirim ulang berharga 0 (7.1b butir 6) tetap ikut menerima alokasi ini karena **kita yang membayar kontainernya**; modalnya jadi biaya kontainer yang terbagi ke barang itu, bukan 0.
 
 **Edge case:** barang belum ada → "Tambah barang cepat" langsung dari form (membuat barang di toko ini); kontainer dibongkar bertahap → no. kontainer boleh muncul di >1 penerimaan (peringatan informatif); draft menggantung → filter "draft > 7 hari".
 
@@ -2090,7 +2125,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 | M | Isi | Catatan |
 |---|---|---|
 | M1 | Tenancy, login + routing role, master toko, user/akses, audit, **master barang per toko**, barang & harga, import Excel | API **offline-ready** sejak awal (4.4) |
-| M2 | Gudang & histori stok, **costing FIFO**, **pembelian dari supplier**, penerimaan kontainer (merujuk pembelian full/partial), opname, transfer antar-gudang, cek stok lintas toko (pusat) | |
+| M2 | Gudang & histori stok, **costing FIFO**, **pembelian dari supplier**, penerimaan kontainer (merujuk pembelian, diterima sekali), opname, transfer antar-gudang, cek stok lintas toko (pusat) | |
 | M3 | Kasir online + shift & kas + nota + batal/void + laporan dasar | Layar kasir Quasar |
 | M4 | Retur (refund/tukar) + migrasi data (Mitra Utama) + UAT + deploy | **Go-live online, pilot 1 toko** |
 
@@ -2099,7 +2134,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 |---|---|---|
 | M5 | Offline PWA, sinkronisasi, backup lokal + antrean masalah | Biaya & risiko terbesar; didahului prototipe 3–5 hari di PC kasir nyata |
 
-**Backlog (dicatat, tidak dikerjakan di Fase 1):** pelanggan, kredit & piutang (dihapus dulu), laporan overall akuntansi (role Accounting), transfer antar-toko (cek stok lintas toko untuk Master sudah masuk Fase 1), alokasi biaya kontainer, pembayaran ke supplier (utang usaha), penanganan dead stock lanjutan, diskon, moving average, ESC/POS langsung, PPN, retur ke supplier, fallback server localhost (hanya bila backup file tidak memadai).
+**Backlog (dicatat, tidak dikerjakan di Fase 1):** pelanggan, kredit & piutang (dihapus dulu), laporan overall akuntansi (role Accounting), transfer antar-toko (cek stok lintas toko untuk Master sudah masuk Fase 1), alokasi biaya kontainer, utang usaha / pembayaran bertahap ke supplier (bayar di muka penuh sudah dicatat di nota), penanganan dead stock lanjutan, diskon, moving average, ESC/POS langsung, PPN, retur ke supplier, fallback server localhost (hanya bila backup file tidak memadai).
 
 ---
 
@@ -2122,7 +2157,7 @@ Dihapus dari Fase 1 sesuai permintaan (wireframe 16 dan 23 dihapus/diubah): tida
 | Kredit & hutang pelanggan | **Dihapus dulu** (wireframe 16 & 23); merek tetap |
 | Tukar barang pada retur | **Tetap ada**; barang pengganti dipilih di layar Retur, potongan nilai retur otomatis (bukan metode bayar kasir) |
 | Piutang lama (Rp 389,6 jt, 281 nota) | Info saja (`legacy_unpaid_amount`) + ekspor Excel; tanpa modul piutang |
-| Pembelian dari supplier | **Modul terpisah** dari penerimaan kontainer; penerimaan merujuk pembelian full/partial |
+| Pembelian dari supplier | **Modul terpisah** dari penerimaan kontainer; penerimaan merujuk pembelian dan menerimanya sekali |
 | Owner | **Owner = nama toko**; **hanya Mitra Utama** yang menjadi toko, Cahaya Baru diabaikan; tidak ada laporan/atribut owner |
 | Void/retur saat offline | Cukup menunggu online |
 | Backup lokal | Pilih yang paling mudah → **file backup otomatis** (PWA), bukan server localhost |

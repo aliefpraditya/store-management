@@ -12,6 +12,7 @@ const props = defineProps({
     purchases: { type: Object, required: true },
     filters: { type: Object, required: true },
     suppliers: { type: Array, required: true },
+    carriers: { type: Array, required: true },
     statuses: { type: Array, required: true },
     create_url: { type: String, required: true },
 });
@@ -20,6 +21,7 @@ const page = usePage();
 
 const search = ref(props.filters.search ?? '');
 const supplierFilter = ref(props.filters.supplier ?? '');
+const carrierFilter = ref(props.filters.carrier ?? '');
 const statusFilter = ref(props.filters.status ?? '');
 const fromDate = ref(props.filters.from ?? '');
 const toDate = ref(props.filters.to ?? '');
@@ -32,6 +34,7 @@ function applyFilters(extra = {}) {
         {
             search: search.value || undefined,
             supplier: supplierFilter.value || undefined,
+            carrier: carrierFilter.value || undefined,
             status: statusFilter.value || undefined,
             from: fromDate.value || undefined,
             to: toDate.value || undefined,
@@ -48,7 +51,7 @@ watch(search, () => {
     searchTimer = setTimeout(() => applyFilters(), 300);
 });
 
-watch([supplierFilter, statusFilter, fromDate, toDate], () => applyFilters());
+watch([supplierFilter, carrierFilter, statusFilter, fromDate, toDate], () => applyFilters());
 
 /** A search typed just before leaving the page must not pull the admin back to it. */
 onBeforeUnmount(() => clearTimeout(searchTimer));
@@ -76,6 +79,18 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                 dense
                 class="filters__select"
             />
+            <q-select
+                v-model="carrierFilter"
+                :options="[{ id: '', name: 'Semua ekspedisi' }, ...carriers]"
+                option-value="id"
+                option-label="name"
+                emit-value
+                map-options
+                behavior="menu"
+                outlined
+                dense
+                class="filters__select"
+            />
             <q-select v-model="statusFilter" :options="[{ value: '', label: 'Semua status' }, ...statuses]" option-value="value" option-label="label" emit-value map-options behavior="menu" outlined dense class="filters__select" />
             <DateInput v-model="fromDate" label="Dari" outlined dense clearable class="filters__date" />
             <DateInput v-model="toDate" label="Sampai" outlined dense clearable class="filters__date" />
@@ -87,6 +102,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                     <tr>
                         <th>Nota</th>
                         <th>Supplier</th>
+                        <th>Ekspedisi</th>
                         <th class="purchases__right">Barang</th>
                         <th class="purchases__right">Total</th>
                         <th>Status</th>
@@ -94,30 +110,37 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                 </thead>
                 <tbody>
                     <tr v-if="purchases.data.length === 0">
-                        <td colspan="5" class="purchases__empty">Belum ada nota pembelian. Buat nota untuk barang yang dipesan dari supplier.</td>
+                        <td colspan="6" class="purchases__empty">Belum ada nota pembelian. Buat nota untuk barang yang dipesan dari supplier.</td>
                     </tr>
                     <tr v-for="purchase in purchases.data" :key="purchase.id" :class="{ 'purchases__row--cancelled': purchase.status === 'cancelled' }">
                         <td>
                             <Link :href="purchase.url" class="purchases__link">{{ purchase.number }}</Link>
                             <small>
                                 {{ dateFormat.format(new Date(purchase.purchase_date)) }}
-                                <template v-if="purchase.supplier_document_number"> Â· {{ purchase.supplier_document_number }}</template>
+                                <template v-if="purchase.supplier_document_number"> · {{ purchase.supplier_document_number }}</template>
                             </small>
                         </td>
                         <td>{{ purchase.supplier_name }}</td>
+                        <td>
+                            {{ purchase.carrier_name ?? '—' }}
+                            <small v-if="purchase.expected_date">tiba {{ dateFormat.format(new Date(purchase.expected_date)) }}</small>
+                        </td>
                         <td class="purchases__right">
                             {{ purchase.items_count }}
                             <q-icon v-if="purchase.attachments_count > 0" name="attach_file" size="14px" color="grey-6" :title="`${purchase.attachments_count} lampiran`" />
                         </td>
                         <td class="purchases__right">{{ formatRupiah(purchase.total_amount) }}</td>
-                        <td><span class="chip" :class="purchaseStatusChipClass[purchase.status]">{{ purchase.status_label }}</span></td>
+                        <td>
+                            <span class="chip" :class="purchaseStatusChipClass[purchase.status]">{{ purchase.status_label }}</span>
+                            <span v-if="purchase.is_paid" class="chip chip--ok q-ml-xs">Dibayar</span>
+                        </td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
         <div v-if="purchases.total > 0" class="pager">
-            <span class="purchases__muted">{{ purchases.from }}â€“{{ purchases.to }} dari {{ purchases.total }} nota</span>
+            <span class="purchases__muted">{{ purchases.from }}–{{ purchases.to }} dari {{ purchases.total }} nota</span>
             <q-pagination
                 v-if="purchases.last_page > 1"
                 :model-value="purchases.current_page"

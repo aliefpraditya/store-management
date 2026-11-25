@@ -19,6 +19,16 @@ class PurchaseException extends Exception
         return new self('Hanya nota draft yang bisa dikonfirmasi.');
     }
 
+    public static function paymentRequired(): self
+    {
+        return new self('Nota ini harus dibayar saat dikonfirmasi. Pakai Konfirmasi & Bayar.');
+    }
+
+    public static function nothingToPay(): self
+    {
+        return new self('Nota ini tidak punya tagihan, jadi tidak ada yang dibayar. Cukup konfirmasi.');
+    }
+
     public static function withoutItems(): self
     {
         return new self('Nota belum punya barang. Tambahkan barang dulu.');
@@ -26,7 +36,7 @@ class PurchaseException extends Exception
 
     public static function notCancellable(): self
     {
-        return new self('Nota ini tidak bisa dibatalkan lagi karena sudah ada barang yang diterima atau notanya sudah selesai.');
+        return new self('Nota ini tidak bisa dibatalkan lagi karena barangnya sudah dikirim atau notanya sudah selesai.');
     }
 
     public static function supplierInactive(): self

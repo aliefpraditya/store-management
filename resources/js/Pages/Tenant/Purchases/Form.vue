@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import DateInput from '../../../Components/DateInput.vue';
 import MoneyInput from '../../../Components/MoneyInput.vue';
@@ -13,6 +13,7 @@ const props = defineProps({
     /** The draft being changed, or null for a new nota. */
     purchase: { type: Object, default: null },
     suppliers: { type: Array, required: true },
+    carriers: { type: Array, required: true },
     warehouses: { type: Array, required: true },
     search_url: { type: String, required: true },
     store_url: { type: String, required: true },
@@ -38,10 +39,45 @@ const form = useForm({
     supplier_document_number: props.purchase?.supplier_document_number ?? '',
     purchase_date: props.purchase?.purchase_date ?? new Date().toLocaleDateString('sv-SE'),
     expected_date: props.purchase?.expected_date ?? '',
+    carrier_id: props.purchase?.carrier_id ?? null,
     warehouse_id: props.purchase?.warehouse_id ?? props.warehouses[0]?.id ?? null,
     notes: props.purchase?.notes ?? '',
     attachments: [],
 });
+
+const isSameCity = (first, second) => !!first && !!second && first.trim().toLowerCase() === second.trim().toLowerCase();
+
+const supplierCity = computed(() => props.suppliers.find((supplier) => supplier.id === form.supplier_id)?.city ?? null);
+
+/** The carriers with their city, those in the supplier's city first so the usual one is on top. */
+const carrierOptions = computed(() =>
+    props.carriers
+        .map((carrier) => ({ ...carrier, name: carrier.city ? `${carrier.name} (${carrier.city})` : carrier.name }))
+        .sort((first, second) => Number(isSameCity(second.city, supplierCity.value)) - Number(isSameCity(first.city, supplierCity.value))),
+);
+
+/** Once the carrier is picked by hand (or the nota already had one), choosing another supplier no longer changes it. */
+const isCarrierPickedByHand = ref(props.purchase?.carrier_id != null);
+
+function pickCarrier(carrierId) {
+    isCarrierPickedByHand.value = true;
+    form.carrier_id = carrierId;
+}
+
+/**
+ * Choosing a supplier suggests the carrier in the supplier's city, when exactly one carrier is there. With none or several
+ * the carrier stays as it is, and the carriers of that city are listed first to pick from.
+ */
+watch(
+    () => form.supplier_id,
+    () => {
+        const carriersInCity = props.carriers.filter((carrier) => isSameCity(carrier.city, supplierCity.value));
+
+        if (!isCarrierPickedByHand.value && carriersInCity.length === 1) {
+            form.carrier_id = carriersInCity[0].id;
+        }
+    },
+);
 
 const lines = ref(
     props.purchase
@@ -85,7 +121,8 @@ const attachmentLimitText = computed(() => `Foto (JPG, PNG, WebP) atau PDF, pali
 
 /**
  * Sends the nota. A new one is a POST; a draft being changed is a PUT, which PHP does not read with files in it, so it goes as
- * a POST that says it is a PUT. Lines left empty are dropped.
+ * a POST that says it is a PUT. Lines left empty are dropped. Form data turns `undefined` and `null` into an empty string, so
+ * a field with nothing to send is left out rather than set to either (an empty `attachments` would fail as "not a list").
  */
 function submit() {
     const items = lines.value
@@ -93,12 +130,13 @@ function submit() {
         .map((line) => ({ product_id: line.product.id, unit_code: line.unit_code, quantity: line.quantity, unit_cost: line.unit_cost, notes: line.notes || null }));
 
     form
-        .transform((submittedForm) => ({
-            ...submittedForm,
-            expected_date: submittedForm.expected_date || null,
-            attachments: submittedForm.attachments.length > 0 ? submittedForm.attachments : undefined,
+        .transform(({ attachments, carrier_id: carrierId, client_uuid: clientUuid, ...fields }) => ({
+            ...fields,
+            expected_date: fields.expected_date || null,
             items,
-            ...(isEditing.value ? { client_uuid: undefined, _method: 'put' } : {}),
+            ...(carrierId ? { carrier_id: carrierId } : {}),
+            ...(attachments.length > 0 ? { attachments } : {}),
+            ...(isEditing.value ? { _method: 'put' } : { client_uuid: clientUuid }),
         }))
         .post(isEditing.value ? props.purchase.urls.update : props.store_url, { forceFormData: true });
 }
@@ -134,9 +172,20 @@ function submit() {
                         :error="!!form.errors.warehouse_id"
                         :error-message="form.errors.warehouse_id"
                     />
-                    <DateInput v-model="form.expected_date" label="Perkiraan tiba (opsional)" outlined clearable :error="!!form.errors.expected_date" :error-message="form.errors.expected_date" />
-                    <q-input v-model="form.notes" outlined label="Catatan (opsional)" maxlength="1000" :error="!!form.errors.notes" :error-message="form.errors.notes" />
+                    <SearchableSelect
+                        :model-value="form.carrier_id"
+                        :options="carrierOptions"
+                        label="Dikirim lewat ekspedisi (opsional)"
+                        hint="Ekspedisi di kota yang sama dengan supplier dipilih otomatis; ganti bila perlu."
+                        clearable
+                        :error="!!form.errors.carrier_id"
+                        :error-message="form.errors.carrier_id"
+                        @update:model-value="pickCarrier"
+                    />
+                    <DateInput v-model="form.expected_date" label="Perkiraan tiba di ekspedisi (opsional)" outlined clearable :error="!!form.errors.expected_date" :error-message="form.errors.expected_date" />
                 </div>
+
+                <q-input v-model="form.notes" outlined label="Catatan (opsional)" maxlength="1000" :error="!!form.errors.notes" :error-message="form.errors.notes" />
             </section>
 
             <section class="card">

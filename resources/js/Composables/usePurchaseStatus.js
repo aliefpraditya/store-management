@@ -5,8 +5,7 @@
 export const purchaseStatusChipClass = {
     draft: 'chip--off',
     ordered: 'chip--warn',
-    partially_received: 'chip--warn',
-    received: 'chip--ok',
-    closed: 'chip--off',
+    shipped: 'chip--warn',
+    completed: 'chip--ok',
     cancelled: 'chip--bad',
 };

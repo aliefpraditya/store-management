@@ -25,8 +25,8 @@ use Illuminate\Support\Facades\DB;
  * `client_uuid` makes a double submit return the first purchase instead of making a second.
  *
  * @phpstan-type PurchaseItemInput array{product_id: int, unit_code: string, quantity: numeric-string|float|int, unit_cost: numeric-string|float|int, notes?: string|null}
- * @phpstan-type PurchaseInput array{client_uuid?: string, supplier_id: int, supplier_document_number?: string|null, purchase_date: string, expected_date?: string|null, warehouse_id: int, notes?: string|null, items: list<PurchaseItemInput>}
- * @phpstan-type PurchaseFilters array{search: string|null, supplier: int|null, status: string|null, from: string|null, to: string|null}
+ * @phpstan-type PurchaseInput array{client_uuid?: string, supplier_id: int, supplier_document_number?: string|null, purchase_date: string, expected_date?: string|null, carrier_id?: int|null, warehouse_id: int, notes?: string|null, items: list<PurchaseItemInput>}
+ * @phpstan-type PurchaseFilters array{search: string|null, supplier: int|null, carrier: int|null, status: string|null, from: string|null, to: string|null}
  */
 class PurchaseService
 {
@@ -39,7 +39,7 @@ class PurchaseService
 
     /**
      * Newest first, narrowed by a search on the number, the supplier's nota number or the supplier's name, by supplier,
-     * status and the day of the purchase.
+     * carrier, status and the day of the purchase.
      *
      * @param  PurchaseFilters  $filters
      * @return LengthAwarePaginator<int, Purchase>
@@ -47,13 +47,14 @@ class PurchaseService
     public function paginate(array $filters, int $perPage): LengthAwarePaginator
     {
         return Purchase::query()
-            ->with('supplier')
+            ->with(['supplier', 'carrier'])
             ->withCount(['items', 'attachments'])
             ->when(filled($filters['search']), fn (Builder $query) => $query->where(fn (Builder $query) => $query
                 ->where('number', 'like', "%{$filters['search']}%")
                 ->orWhere('supplier_document_number', 'like', "%{$filters['search']}%")
                 ->orWhereHas('supplier', fn (Builder $supplier) => $supplier->where('name', 'like', "%{$filters['search']}%"))))
             ->when($filters['supplier'], fn (Builder $query, int $supplierId) => $query->where('supplier_id', $supplierId))
+            ->when($filters['carrier'], fn (Builder $query, int $carrierId) => $query->where('carrier_id', $carrierId))
             ->when(PurchaseStatus::tryFrom((string) $filters['status']), fn (Builder $query, PurchaseStatus $status) => $query->where('status', $status))
             ->when($filters['from'], fn (Builder $query, string $from) => $query->where('purchase_date', '>=', $from))
             ->when($filters['to'], fn (Builder $query, string $to) => $query->where('purchase_date', '<=', $to))
@@ -122,36 +123,94 @@ class PurchaseService
     }
 
     /**
-     * Turns a draft into an order. From then on its lines and prices are locked.
+     * Turns a draft with nothing to pay (every line free, as on a supplier's replacement nota) into an order. Any other nota
+     * is paid in advance, so it is confirmed with `confirmAndPay()` instead. From then on its lines and prices are locked.
      *
      * @throws PurchaseException
      */
     public function confirm(Purchase $purchase, User $confirmer): Purchase
     {
         return DB::transaction(function () use ($purchase, $confirmer): Purchase {
-            $lockedPurchase = Purchase::query()->with('supplier')->lockForUpdate()->findOrFail($purchase->id);
+            $lockedPurchase = $this->lockedConfirmable($purchase);
 
-            if ($lockedPurchase->status !== PurchaseStatus::Draft) {
-                throw PurchaseException::notConfirmable();
+            if ($this->hasAmountToPay($lockedPurchase)) {
+                throw PurchaseException::paymentRequired();
             }
 
-            if (! $lockedPurchase->items()->exists()) {
-                throw PurchaseException::withoutItems();
-            }
-
-            if (! $lockedPurchase->supplier->is_active) {
-                throw PurchaseException::supplierInactive();
-            }
-
-            $lockedPurchase->forceFill([
-                'status' => PurchaseStatus::Ordered,
-                'confirmed_by' => $confirmer->id,
-                'confirmed_by_name' => $confirmer->name,
-                'confirmed_at' => now(),
-            ])->save();
-
-            return $lockedPurchase;
+            return $this->markOrdered($lockedPurchase, $confirmer);
         });
+    }
+
+    /**
+     * Turns a draft into an order and records that the whole nota was paid, in one step ("Konfirmasi & Bayar").
+     *
+     * @param  array{payment_method: string, paid_date: string, payment_notes?: string|null}  $paymentInput
+     *
+     * @throws PurchaseException
+     */
+    public function confirmAndPay(Purchase $purchase, User $payer, array $paymentInput): Purchase
+    {
+        return DB::transaction(function () use ($purchase, $payer, $paymentInput): Purchase {
+            $lockedPurchase = $this->lockedConfirmable($purchase);
+
+            if (! $this->hasAmountToPay($lockedPurchase)) {
+                throw PurchaseException::nothingToPay();
+            }
+
+            return $this->markOrdered($lockedPurchase, $payer, [
+                'paid_date' => $paymentInput['paid_date'],
+                'paid_amount' => $lockedPurchase->total_amount,
+                'payment_method' => $paymentInput['payment_method'],
+                'payment_notes' => filled($paymentInput['payment_notes'] ?? null) ? trim($paymentInput['payment_notes']) : null,
+                'paid_by' => $payer->id,
+                'paid_by_name' => $payer->name,
+            ]);
+        });
+    }
+
+    /**
+     * The draft purchase, locked for the rest of the transaction, once it is fit to be confirmed.
+     *
+     * @throws PurchaseException
+     */
+    private function lockedConfirmable(Purchase $purchase): Purchase
+    {
+        $lockedPurchase = Purchase::query()->with('supplier')->lockForUpdate()->findOrFail($purchase->id);
+
+        if ($lockedPurchase->status !== PurchaseStatus::Draft) {
+            throw PurchaseException::notConfirmable();
+        }
+
+        if (! $lockedPurchase->items()->exists()) {
+            throw PurchaseException::withoutItems();
+        }
+
+        if (! $lockedPurchase->supplier->is_active) {
+            throw PurchaseException::supplierInactive();
+        }
+
+        return $lockedPurchase;
+    }
+
+    private function hasAmountToPay(Purchase $purchase): bool
+    {
+        return BigDecimal::of((string) $purchase->total_amount)->isPositive();
+    }
+
+    /**
+     * @param  array<string, mixed>  $payment  the payment columns, when the nota is paid as it is confirmed
+     */
+    private function markOrdered(Purchase $purchase, User $confirmer, array $payment = []): Purchase
+    {
+        $purchase->forceFill([
+            ...$payment,
+            'status' => PurchaseStatus::Ordered,
+            'confirmed_by' => $confirmer->id,
+            'confirmed_by_name' => $confirmer->name,
+            'confirmed_at' => now(),
+        ])->save();
+
+        return $purchase;
     }
 
     /**
@@ -222,6 +281,7 @@ class PurchaseService
             'supplier_document_number' => filled($purchaseInput['supplier_document_number'] ?? null) ? trim($purchaseInput['supplier_document_number']) : null,
             'purchase_date' => $purchaseInput['purchase_date'],
             'expected_date' => filled($purchaseInput['expected_date'] ?? null) ? $purchaseInput['expected_date'] : null,
+            'carrier_id' => $purchaseInput['carrier_id'] ?? null,
             'warehouse_id' => $purchaseInput['warehouse_id'],
             'notes' => filled($purchaseInput['notes'] ?? null) ? trim($purchaseInput['notes']) : null,
         ];

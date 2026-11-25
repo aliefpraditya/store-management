@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\SaveSupplierRequest;
 use App\Http\Resources\SupplierResource;
 use App\Models\Supplier;
+use App\Services\RegionSuggestions;
 use App\Services\SupplierService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,7 +20,10 @@ class SupplierController extends Controller
 {
     private const LIST_PER_PAGE = 25;
 
-    public function __construct(private readonly SupplierService $supplierService) {}
+    public function __construct(
+        private readonly SupplierService $supplierService,
+        private readonly RegionSuggestions $regionSuggestions,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -32,6 +36,7 @@ class SupplierController extends Controller
             'suppliers' => $this->supplierService->paginate($filters['search'], $filters['status'], self::LIST_PER_PAGE)
                 ->through(fn (Supplier $supplier): array => SupplierResource::make($supplier)->resolve()),
             'filters' => $filters,
+            'regions' => $this->regionSuggestions->all(),
             'urls' => ['store' => route('tenant.suppliers.store', ['tenant' => tenant('code')])],
         ]);
     }

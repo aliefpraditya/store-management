@@ -14,7 +14,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * Lives in the store database: who a store buys from. A supplier is never deleted, only switched off, so the purchases made
  * from it keep their supplier.
  */
-#[Fillable(['name', 'phone', 'notes', 'is_active'])]
+#[Fillable(['name', 'phone', 'address', 'province', 'city', 'email', 'tax_number', 'notes', 'is_active'])]
 class Supplier extends Model implements AuditableContract
 {
     /** @use HasFactory<SupplierFactory> */
@@ -26,6 +26,14 @@ class Supplier extends Model implements AuditableContract
     protected function casts(): array
     {
         return ['is_active' => 'boolean'];
+    }
+
+    /**
+     * @return HasMany<SupplierContact, $this>
+     */
+    public function contacts(): HasMany
+    {
+        return $this->hasMany(SupplierContact::class)->orderBy('id');
     }
 
     /**

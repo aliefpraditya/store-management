@@ -1,7 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
+import PurchasePayDialog from '../../../Components/PurchasePayDialog.vue';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import { purchaseStatusChipClass } from '../../../Composables/usePurchaseStatus';
@@ -11,9 +12,18 @@ import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
     purchase: { type: Object, required: true },
+    paymentMethods: { type: Array, required: true },
 });
 
 const $q = useQuasar();
+const page = usePage();
+
+const isPayDialogOpen = ref(false);
+
+/** A nota with a bill is paid in advance as it is confirmed; one with nothing to pay (all lines free) is only confirmed. */
+const hasAmountToPay = computed(() => Number(props.purchase.total_amount) > 0);
+
+const canPay = computed(() => page.props.auth.permissions.includes('purchases.pay'));
 
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' });
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
@@ -29,8 +39,8 @@ const isCancelled = computed(() => props.purchase.status === 'cancelled');
 const steps = [
     { status: 'draft', label: 'Draft' },
     { status: 'ordered', label: 'Dipesan' },
-    { status: 'partially_received', label: 'Diterima sebagian' },
-    { status: 'received', label: 'Diterima' },
+    { status: 'shipped', label: 'Dikirim' },
+    { status: 'completed', label: 'Selesai' },
 ];
 
 const currentStepIndex = computed(() => steps.findIndex((step) => step.status === props.purchase.status));
@@ -48,7 +58,7 @@ function confirmPurchase() {
 function cancelPurchase() {
     $q.dialog({
         title: 'Batalkan nota?',
-        message: `${props.purchase.number} tetap ada di daftar sebagai dibatalkan. Isi alasannya.`,
+        message: `${props.purchase.number} tetap ada di daftar sebagai dibatalkan. Isi alasannya.${props.purchase.is_paid ? ' Nota ini sudah dibayar; pengembalian uang dari supplier diurus di luar sistem.' : ''}`,
         prompt: { model: '', type: 'text', label: 'Alasan pembatalan', outlined: true, dense: true, isValid: (reason) => reason.trim() !== '' },
         cancel: { label: 'Kembali', flat: true, noCaps: true },
         ok: { label: 'Batalkan Nota', color: 'negative', unelevated: true, noCaps: true },
@@ -93,7 +103,8 @@ function deleteAttachment(attachment) {
             <q-btn flat no-caps label="Daftar nota" class="q-mr-sm" :href="purchase.urls.index" @click="visitUnlessNewTab($event, purchase.urls.index)" />
             <q-btn v-if="purchase.is_editable" flat no-caps icon="edit" label="Ubah" class="q-mr-sm" :href="purchase.urls.edit" @click="visitUnlessNewTab($event, purchase.urls.edit)" />
             <q-btn v-if="purchase.is_cancellable" flat no-caps color="negative" label="Batalkan" class="q-mr-sm" @click="cancelPurchase" />
-            <q-btn v-if="purchase.is_editable" color="primary" unelevated no-caps icon="check" label="Konfirmasi" @click="confirmPurchase" />
+            <q-btn v-if="purchase.is_editable && !hasAmountToPay" color="primary" unelevated no-caps icon="check" label="Konfirmasi" @click="confirmPurchase" />
+            <q-btn v-if="purchase.is_editable && hasAmountToPay && canPay" color="primary" unelevated no-caps icon="payments" label="Konfirmasi & Bayar" @click="isPayDialogOpen = true" />
         </template>
 
         <p v-if="isCancelled" class="notice notice--bad">
@@ -106,15 +117,27 @@ function deleteAttachment(attachment) {
         <section class="card">
             <div class="card__head">
                 <h2>Nota</h2>
-                <span class="chip" :class="purchaseStatusChipClass[purchase.status]">{{ purchase.status_label }}</span>
+                <span>
+                    <span v-if="purchase.is_paid" class="chip chip--ok q-mr-xs">Dibayar</span>
+                    <span class="chip" :class="purchaseStatusChipClass[purchase.status]">{{ purchase.status_label }}</span>
+                </span>
             </div>
 
             <dl class="facts">
                 <div><dt>Supplier</dt><dd>{{ purchase.supplier_name }}</dd></div>
-                <div><dt>Nomor nota supplier</dt><dd>{{ purchase.supplier_document_number ?? 'â€”' }}</dd></div>
+                <div><dt>Nomor nota supplier</dt><dd>{{ purchase.supplier_document_number ?? '—' }}</dd></div>
                 <div><dt>Tanggal nota</dt><dd>{{ dateFormat.format(new Date(purchase.purchase_date)) }}</dd></div>
-                <div><dt>Perkiraan tiba</dt><dd>{{ purchase.expected_date ? dateFormat.format(new Date(purchase.expected_date)) : 'â€”' }}</dd></div>
+                <div><dt>Ekspedisi</dt><dd>{{ purchase.carrier_name ?? '—' }}</dd></div>
+                <div><dt>Perkiraan tiba di ekspedisi</dt><dd>{{ purchase.expected_date ? dateFormat.format(new Date(purchase.expected_date)) : '—' }}</dd></div>
                 <div><dt>Gudang tujuan</dt><dd>{{ purchase.warehouse_name }}</dd></div>
+                <div v-if="purchase.is_paid">
+                    <dt>Pembayaran</dt>
+                    <dd>
+                        {{ formatRupiah(purchase.paid_amount) }} · {{ purchase.payment_method_label }} · {{ dateFormat.format(new Date(purchase.paid_date)) }}
+                        <small v-if="purchase.paid_by_name">oleh {{ purchase.paid_by_name }}</small>
+                        <small v-if="purchase.payment_notes">{{ purchase.payment_notes }}</small>
+                    </dd>
+                </div>
                 <div><dt>Dibuat oleh</dt><dd>{{ purchase.created_by_name }}</dd></div>
                 <div v-if="purchase.confirmed_by_name"><dt>Dikonfirmasi oleh</dt><dd>{{ purchase.confirmed_by_name }}</dd></div>
             </dl>
@@ -131,14 +154,13 @@ function deleteAttachment(attachment) {
                             <th class="table__right">Jumlah</th>
                             <th class="table__right">Harga satuan</th>
                             <th class="table__right">Subtotal</th>
-                            <th class="table__right">Sudah diterima</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="item in purchase.items" :key="item.id">
                             <td>
                                 <b>{{ item.product.name }}</b>
-                                <small>{{ [item.product.sku, item.notes].filter(Boolean).join(' Â· ') }}</small>
+                                <small>{{ [item.product.sku, item.notes].filter(Boolean).join(' · ') }}</small>
                             </td>
                             <td class="table__right">
                                 {{ formatQuantity(item.quantity) }} {{ item.unit_code }}
@@ -146,14 +168,12 @@ function deleteAttachment(attachment) {
                             </td>
                             <td class="table__right">{{ formatRupiah(item.unit_cost) }}</td>
                             <td class="table__right">{{ formatRupiah(item.subtotal) }}</td>
-                            <td class="table__right">{{ formatQuantity(item.received_base_quantity) }} {{ item.product.base_unit }}</td>
                         </tr>
                     </tbody>
                     <tfoot>
                         <tr>
                             <td colspan="3" class="table__right">Total</td>
                             <td class="table__right"><b>{{ formatRupiah(purchase.total_amount) }}</b></td>
-                            <td></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -180,6 +200,8 @@ function deleteAttachment(attachment) {
                 <q-btn color="primary" unelevated no-caps label="Unggah" :disable="newFiles.length === 0" :loading="isUploading" @click="uploadFiles" />
             </div>
         </section>
+
+        <PurchasePayDialog v-model="isPayDialogOpen" :purchase="purchase" :payment-methods="paymentMethods" />
     </StoreLayout>
 </template>
 

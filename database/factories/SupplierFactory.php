@@ -18,6 +18,11 @@ class SupplierFactory extends Factory
         return [
             'name' => fake()->unique()->company(),
             'phone' => fake()->numerify('08##########'),
+            'address' => null,
+            'province' => null,
+            'city' => null,
+            'email' => null,
+            'tax_number' => null,
             'notes' => null,
             'is_active' => true,
         ];

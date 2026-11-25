@@ -1,16 +1,19 @@
 <script setup>
-import { onBeforeUnmount, ref, watch } from 'vue';
-import { router, usePage } from '@inertiajs/vue3';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import SupplierFormDialog from '../../../Components/SupplierFormDialog.vue';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
     suppliers: { type: Object, required: true },
     filters: { type: Object, required: true },
+    regions: { type: Object, required: true },
     urls: { type: Object, required: true },
 });
 
 const page = usePage();
+
+const canViewPurchases = computed(() => page.props.auth.permissions.includes('purchases.manage'));
 
 const search = ref(props.filters.search ?? '');
 const statusFilter = ref(props.filters.status ?? '');
@@ -52,13 +55,28 @@ function openForm(supplier) {
 
 /**
  * Switches a supplier on or off from the list. A switched-off supplier stays on the purchases already made from it; it just
- * is not offered for new ones.
+ * is not offered for new ones. The update overwrites every detail it carries, so all of them are sent back as they are;
+ * `contacts` is left out on purpose, which keeps the salespeople untouched.
  *
- * @param {{name: string, phone: string|null, notes: string|null, update_url: string}} supplier
+ * @param {{name: string, phone: string|null, address: string|null, province: string|null, city: string|null, email: string|null, tax_number: string|null, notes: string|null, update_url: string}} supplier
  * @param {boolean} isActive
  */
 function setActive(supplier, isActive) {
-    router.put(supplier.update_url, { name: supplier.name, phone: supplier.phone, notes: supplier.notes, is_active: isActive }, { preserveScroll: true, preserveState: true });
+    router.put(
+        supplier.update_url,
+        {
+            name: supplier.name,
+            phone: supplier.phone,
+            address: supplier.address,
+            province: supplier.province,
+            city: supplier.city,
+            email: supplier.email,
+            tax_number: supplier.tax_number,
+            notes: supplier.notes,
+            is_active: isActive,
+        },
+        { preserveScroll: true, preserveState: true },
+    );
 }
 </script>
 
@@ -69,7 +87,7 @@ function setActive(supplier, isActive) {
         </template>
 
         <div class="filters">
-            <q-input v-model="search" outlined dense clearable placeholder="Cari nama atau telepon" class="filters__search">
+            <q-input v-model="search" outlined dense clearable placeholder="Cari nama, telepon, atau kota" class="filters__search">
                 <template #prepend><q-icon name="search" /></template>
             </q-input>
             <q-select v-model="statusFilter" :options="statusOptions" option-value="value" option-label="label" emit-value map-options behavior="menu" outlined dense class="filters__select" />
@@ -81,6 +99,7 @@ function setActive(supplier, isActive) {
                     <tr>
                         <th>Supplier</th>
                         <th>Telepon</th>
+                        <th>Sales</th>
                         <th class="suppliers__right">Nota</th>
                         <th>Aktif</th>
                         <th></th>
@@ -88,15 +107,33 @@ function setActive(supplier, isActive) {
                 </thead>
                 <tbody>
                     <tr v-if="suppliers.data.length === 0">
-                        <td colspan="5" class="suppliers__empty">Belum ada supplier. Tambahkan supplier dulu sebelum membuat nota pembelian.</td>
+                        <td colspan="6" class="suppliers__empty">Belum ada supplier. Tambahkan supplier dulu sebelum membuat nota pembelian.</td>
                     </tr>
                     <tr v-for="supplier in suppliers.data" :key="supplier.id" :class="{ 'suppliers__row--off': !supplier.is_active }">
                         <td>
                             <b>{{ supplier.name }}</b>
+                            <small v-if="supplier.address">{{ supplier.address }}</small>
+                            <small v-if="supplier.city || supplier.province">{{ [supplier.city, supplier.province].filter(Boolean).join(', ') }}</small>
+                            <small v-if="supplier.tax_number">NPWP {{ supplier.tax_number }}</small>
                             <small v-if="supplier.notes">{{ supplier.notes }}</small>
                         </td>
-                        <td>{{ supplier.phone ?? '—' }}</td>
-                        <td class="suppliers__right">{{ supplier.purchases_count }}</td>
+                        <td>
+                            {{ supplier.phone ?? '—' }}
+                            <small v-if="supplier.email">{{ supplier.email }}</small>
+                        </td>
+                        <td>
+                            <template v-if="supplier.contacts.length > 0">
+                                <small v-for="contact in supplier.contacts" :key="contact.id" class="suppliers__contact">
+                                    <b>{{ contact.name }}</b>
+                                    <template v-if="contact.phone"> · {{ contact.phone }}</template>
+                                </small>
+                            </template>
+                            <template v-else>—</template>
+                        </td>
+                        <td class="suppliers__right">
+                            <Link v-if="canViewPurchases && supplier.purchases_count > 0" :href="supplier.purchases_url" class="suppliers__link">{{ supplier.purchases_count }}</Link>
+                            <template v-else>{{ supplier.purchases_count }}</template>
+                        </td>
                         <td><q-toggle :model-value="supplier.is_active" :aria-label="`Aktifkan ${supplier.name}`" @update:model-value="setActive(supplier, $event)" /></td>
                         <td class="suppliers__actions"><q-btn flat dense no-caps icon="edit" label="Ubah" @click="openForm(supplier)" /></td>
                     </tr>
@@ -118,7 +155,7 @@ function setActive(supplier, isActive) {
             />
         </div>
 
-        <SupplierFormDialog v-model="isFormOpen" :supplier="editedSupplier" :store-url="urls.store" />
+        <SupplierFormDialog v-model="isFormOpen" :supplier="editedSupplier" :regions="regions" :store-url="urls.store" />
     </StoreLayout>
 </template>
 
@@ -172,6 +209,10 @@ function setActive(supplier, isActive) {
     font-size: 12px;
 }
 
+.suppliers__table td small.suppliers__contact b {
+    font-weight: 600;
+}
+
 .suppliers__table tr:last-child td {
     border-bottom: 0;
 }
@@ -188,6 +229,12 @@ function setActive(supplier, isActive) {
 .suppliers__actions {
     text-align: right;
     white-space: nowrap;
+}
+
+.suppliers__link {
+    color: var(--app-brand);
+    font-weight: 600;
+    text-decoration: none;
 }
 
 .suppliers__muted {

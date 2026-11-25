@@ -8,6 +8,7 @@ use App\Models\Purchase;
 use App\Services\PurchaseAttachmentService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\Rules\Unique;
 
 /**
@@ -44,17 +45,29 @@ class SavePurchaseRequest extends FormRequest
             'supplier_document_number' => ['nullable', 'string', 'max:100', $this->documentNumberIsFreeRule($editedPurchase instanceof Purchase ? $editedPurchase : null)],
             'purchase_date' => ['required', 'date_format:'.self::DATE_FORMAT],
             'expected_date' => ['nullable', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:purchase_date'],
+            'carrier_id' => ['nullable', 'integer', $this->carrierIsSelectableRule($editedPurchase instanceof Purchase ? $editedPurchase : null)],
             'warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where('type', WarehouseType::Sellable->value)->where('is_active', true)],
             'notes' => ['nullable', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1', 'max:'.self::MAX_ITEMS],
             'items.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->whereNull('deleted_at')],
             'items.*.unit_code' => ['required', 'string', 'max:20'],
             'items.*.quantity' => ['required', 'numeric', 'gt:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'],
-            'items.*.unit_cost' => ['required', 'numeric', 'gt:0', 'max:'.self::MAX_UNIT_COST, 'decimal:0,2'],
+            'items.*.unit_cost' => ['required', 'numeric', 'min:0', 'max:'.self::MAX_UNIT_COST, 'decimal:0,2'],
             'items.*.notes' => ['nullable', 'string', 'max:255'],
-            'attachments' => ['sometimes', 'array', 'max:'.PurchaseAttachmentService::MAX_PER_PURCHASE],
+            'attachments' => ['nullable', 'array', 'max:'.PurchaseAttachmentService::MAX_PER_PURCHASE],
             'attachments.*' => ['file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:'.self::MAX_FILE_KILOBYTES],
         ];
+    }
+
+    /**
+     * An active carrier, or the one the edited purchase already has even if it was switched off since, so saving that
+     * purchase again does not fail on a carrier nobody changed.
+     */
+    private function carrierIsSelectableRule(?Purchase $editedPurchase): Exists
+    {
+        return Rule::exists('carriers', 'id')->where(fn ($carriers) => $carriers
+            ->where('is_active', true)
+            ->orWhere('id', $editedPurchase?->carrier_id));
     }
 
     /**
@@ -88,8 +101,9 @@ class SavePurchaseRequest extends FormRequest
             'supplier_document_number.unique' => 'Nomor nota supplier ini sudah dipakai di nota lain dari supplier yang sama.',
             'purchase_date.required' => 'Isi tanggal nota.',
             'purchase_date.date_format' => 'Tanggal nota tidak valid.',
-            'expected_date.date_format' => 'Perkiraan tanggal tiba tidak valid.',
-            'expected_date.after_or_equal' => 'Perkiraan tiba tidak boleh sebelum tanggal nota.',
+            'expected_date.date_format' => 'Perkiraan tanggal tiba di ekspedisi tidak valid.',
+            'expected_date.after_or_equal' => 'Perkiraan tiba di ekspedisi tidak boleh sebelum tanggal nota.',
+            'carrier_id.exists' => 'Ekspedisi tidak ditemukan atau sudah nonaktif.',
             'warehouse_id.required' => 'Pilih gudang tujuan.',
             'warehouse_id.exists' => 'Gudang tujuan harus gudang jual yang aktif.',
             'items.required' => 'Tambahkan minimal satu barang.',
@@ -104,7 +118,7 @@ class SavePurchaseRequest extends FormRequest
             'items.*.quantity.decimal' => 'Jumlah maksimal 3 angka desimal.',
             'items.*.unit_cost.required' => 'Isi harga tiap barang.',
             'items.*.unit_cost.numeric' => 'Harga harus berupa angka.',
-            'items.*.unit_cost.gt' => 'Harga harus lebih dari nol.',
+            'items.*.unit_cost.min' => 'Harga tidak boleh negatif.',
             'items.*.unit_cost.decimal' => 'Harga maksimal 2 angka desimal.',
             'attachments.max' => 'Satu nota paling banyak '.PurchaseAttachmentService::MAX_PER_PURCHASE.' lampiran.',
             'attachments.*.mimes' => 'Lampiran harus berupa foto (JPG, PNG, WebP) atau PDF.',

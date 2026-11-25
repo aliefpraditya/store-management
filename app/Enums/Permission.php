@@ -15,7 +15,9 @@ enum Permission: string
     case StockOpnamesPost = 'stock_opnames.post';
     case StockHistoryView = 'stock_history.view';
     case SuppliersManage = 'suppliers.manage';
+    case CarriersManage = 'carriers.manage';
     case PurchasesManage = 'purchases.manage';
+    case PurchasesPay = 'purchases.pay';
     case SalesView = 'sales.view';
     case SalesVoid = 'sales.void';
     case DeliveryNotesView = 'delivery_notes.view';
@@ -39,7 +41,9 @@ enum Permission: string
             self::StockOpnamesPost => 'Stok opname: review selisih dan posting',
             self::StockHistoryView => 'Lihat histori stok',
             self::SuppliersManage => 'Kelola supplier',
+            self::CarriersManage => 'Kelola ekspedisi',
             self::PurchasesManage => 'Kelola nota pembelian (buat, ubah, konfirmasi, batalkan)',
+            self::PurchasesPay => 'Bayar nota pembelian (konfirmasi & bayar)',
             self::SalesView => 'Lihat riwayat nota semua kasir',
             self::SalesVoid => 'Void nota',
             self::DeliveryNotesView => 'Lihat dan cetak surat jalan',
@@ -60,7 +64,8 @@ enum Permission: string
         return match ($this) {
             self::DashboardView => 'Umum',
             self::ProductsManage, self::StockOpnamesCount, self::StockOpnamesPost, self::StockHistoryView => 'Barang & Stok',
-            self::SuppliersManage, self::PurchasesManage => 'Pembelian',
+            self::SuppliersManage, self::CarriersManage => 'Data Master',
+            self::PurchasesManage, self::PurchasesPay => 'Pembelian',
             self::CashierUse, self::SalesView, self::SalesVoid, self::DeliveryNotesView, self::DeliveryNotesManage, self::ReturnsManage, self::CodReceive, self::CodApprove => 'Penjualan',
             self::ShiftsReview, self::ExpensesManage, self::DailyClosingsManage => 'Kas & Harian',
             self::ReportsView, self::SettingsManage => 'Laporan & Pengaturan',
@@ -79,7 +84,8 @@ enum Permission: string
             self::StockOpnamesCount, self::StockOpnamesPost => 'tenant.stock-opnames.index',
             self::StockHistoryView => 'tenant.stock-history.index',
             self::SuppliersManage => 'tenant.suppliers.index',
-            self::PurchasesManage => 'tenant.purchases.index',
+            self::CarriersManage => 'tenant.carriers.index',
+            self::PurchasesManage, self::PurchasesPay => 'tenant.purchases.index',
             self::SalesView, self::SalesVoid => 'tenant.sales.index',
             self::DeliveryNotesView, self::DeliveryNotesManage => 'tenant.delivery-notes.index',
             self::ReturnsManage => 'tenant.returns.index',
