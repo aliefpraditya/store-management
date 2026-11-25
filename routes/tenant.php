@@ -19,6 +19,8 @@ use App\Http\Controllers\Tenant\ExpenseController;
 use App\Http\Controllers\Tenant\PriceLabelController;
 use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\ProductSearchController;
+use App\Http\Controllers\Tenant\PurchaseAttachmentController;
+use App\Http\Controllers\Tenant\PurchaseController;
 use App\Http\Controllers\Tenant\ReportController;
 use App\Http\Controllers\Tenant\SaleController;
 use App\Http\Controllers\Tenant\SaleHistoryController;
@@ -29,6 +31,7 @@ use App\Http\Controllers\Tenant\ShiftReceiptController;
 use App\Http\Controllers\Tenant\StockHistoryController;
 use App\Http\Controllers\Tenant\StockOpnameController;
 use App\Http\Controllers\Tenant\StoreSettingController;
+use App\Http\Controllers\Tenant\SupplierController;
 use App\Http\Controllers\Tenant\UnitController;
 use Illuminate\Support\Facades\Route;
 use Stancl\Tenancy\Middleware\InitializeTenancyByPath;
@@ -149,6 +152,26 @@ Route::prefix('t/{tenant}')
             Route::get('{date}/sheet', [DailyClosingController::class, 'sheet'])->where('date', '\d{4}-\d{2}-\d{2}')->name('sheet');
         });
 
+        Route::prefix('suppliers')->name('tenant.suppliers.')->middleware('permission:suppliers.manage')->group(function () {
+            Route::get('/', [SupplierController::class, 'index'])->name('index');
+            Route::post('/', [SupplierController::class, 'store'])->name('store');
+            Route::put('{supplier}', [SupplierController::class, 'update'])->name('update');
+        });
+
+        Route::prefix('purchases')->name('tenant.purchases.')->middleware('permission:purchases.manage')->scopeBindings()->group(function () {
+            Route::get('/', [PurchaseController::class, 'index'])->name('index');
+            Route::get('create', [PurchaseController::class, 'create'])->name('create');
+            Route::post('/', [PurchaseController::class, 'store'])->name('store');
+            Route::get('{purchase}', [PurchaseController::class, 'show'])->name('show');
+            Route::get('{purchase}/edit', [PurchaseController::class, 'edit'])->name('edit');
+            Route::put('{purchase}', [PurchaseController::class, 'update'])->name('update');
+            Route::post('{purchase}/confirmations', [PurchaseController::class, 'confirm'])->name('confirm');
+            Route::post('{purchase}/cancellations', [PurchaseController::class, 'cancel'])->name('cancel');
+            Route::post('{purchase}/attachments', [PurchaseAttachmentController::class, 'store'])->name('attachments.store');
+            Route::get('{purchase}/attachments/{attachment}', [PurchaseAttachmentController::class, 'show'])->name('attachments.show');
+            Route::delete('{purchase}/attachments/{attachment}', [PurchaseAttachmentController::class, 'destroy'])->name('attachments.destroy');
+        });
+
         Route::prefix('expenses')->name('tenant.expenses.')->middleware('permission:expenses.manage')->group(function () {
             Route::get('/', [ExpenseController::class, 'index'])->name('index');
             Route::post('/', [ExpenseController::class, 'store'])->name('store');
@@ -163,7 +186,7 @@ Route::prefix('t/{tenant}')
         Route::post('sales/{sale}/delivery-mode', [SaleHistoryController::class, 'changeToDelivery'])->middleware('permission:delivery_notes.manage')->name('tenant.sales.delivery-mode');
         Route::post('sales/{sale}/cod-settlement/approval', [SaleHistoryController::class, 'approveCodSettlement'])->middleware('permission:cod.approve')->name('tenant.sales.cod-settlement.approve');
 
-        Route::get('products/search', ProductSearchController::class)->middleware('permission:stock_opnames.count,stock_opnames.post,stock_history.view')->name('tenant.products.search');
+        Route::get('products/search', ProductSearchController::class)->middleware('permission:stock_opnames.count,stock_opnames.post,stock_history.view,purchases.manage')->name('tenant.products.search');
 
         Route::middleware('permission:products.manage')->group(function () {
             Route::post('products/bulk-prices/units', [BulkPriceController::class, 'units'])->name('tenant.bulk-prices.units');

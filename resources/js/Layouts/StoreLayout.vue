@@ -35,6 +35,13 @@ const menuGroups = computed(() => {
             ],
         },
         {
+            label: 'Pembelian',
+            items: [
+                { label: 'Supplier', icon: 'storefront', href: store.value.suppliers_url, can: ['suppliers.manage'] },
+                { label: 'Nota Pembelian', icon: 'request_quote', href: store.value.purchases_url, can: ['purchases.manage'] },
+            ],
+        },
+        {
             label: 'Penjualan',
             items: [
                 { label: 'Kasir', icon: 'shopping_cart', href: store.value.cashier_url, can: ['cashier.use'] },
