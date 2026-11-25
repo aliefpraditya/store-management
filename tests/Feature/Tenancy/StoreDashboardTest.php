@@ -7,6 +7,7 @@ use App\Enums\UserRole;
 use App\Models\CashShift;
 use App\Models\DeliveryNote;
 use App\Models\Product;
+use App\Models\ProductUnit;
 use App\Models\Register;
 use App\Models\Role;
 use App\Models\Sale;
@@ -147,6 +148,23 @@ class StoreDashboardTest extends TestCase
         });
 
         $this->adminDashboard()->assertInertia(fn (Assert $page) => $page->where('summary.low_stock_count', 3));
+    }
+
+    public function test_units_whose_conversion_is_not_confirmed_are_counted_with_their_items(): void
+    {
+        $this->store->run(function (): void {
+            $twoUnits = Product::factory()->create();
+            ProductUnit::factory()->unconfirmed()->count(2)->create(['product_id' => $twoUnits->id]);
+
+            $oneUnit = Product::factory()->create();
+            ProductUnit::factory()->unconfirmed()->create(['product_id' => $oneUnit->id]);
+
+            ProductUnit::factory()->create(['product_id' => Product::factory()->create()->id]);
+        });
+
+        $this->adminDashboard()->assertInertia(fn (Assert $page) => $page
+            ->where('summary.unconfirmed_units', ['units_count' => 3, 'products_count' => 2])
+        );
     }
 
     public function test_pending_work_is_counted_and_listed(): void

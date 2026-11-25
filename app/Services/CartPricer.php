@@ -51,6 +51,10 @@ class CartPricer
                 throw SaleException::notSellable($product->name);
             }
 
+            if (! $productUnit->is_conversion_confirmed) {
+                throw SaleException::conversionNotConfirmed($product->name, $productUnit->unit_code);
+            }
+
             $quantity = BigDecimal::of((string) $cartLine['quantity']);
 
             if ($productUnit->is_sealed_pack && ! $quantity->isEqualTo($quantity->toScale(0, RoundingMode::Down))) {

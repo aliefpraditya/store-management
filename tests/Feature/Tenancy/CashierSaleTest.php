@@ -228,6 +228,19 @@ class CashierSaleTest extends TestCase
         $this->assertSame(0, $this->salesCount());
     }
 
+    public function test_a_unit_whose_conversion_is_not_confirmed_cannot_be_sold(): void
+    {
+        $brush = $this->sellableProduct('Kuas', '100');
+        $dozen = $this->unitOf($brush, 'DUS');
+        $this->store->run(fn () => $dozen->update(['is_conversion_confirmed' => false]));
+
+        $this->sell([[$dozen, 1]], [['cash', 110000]])
+            ->assertSessionHas('error', 'Satuan DUS untuk Kuas tidak valid (isinya belum dikonfirmasi), jadi belum bisa dijual. Minta admin memperbaikinya di data barang.');
+
+        $this->assertSame(0, $this->salesCount());
+        $this->assertSame('100.000', $this->stockInPieces($brush));
+    }
+
     public function test_selling_needs_an_open_shift_of_your_own(): void
     {
         $unit = $this->unitOf($this->sellableProduct(), 'PCS');

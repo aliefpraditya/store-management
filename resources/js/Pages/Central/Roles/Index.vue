@@ -1,6 +1,7 @@
 <script setup>
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
+import { visitUnlessNewTab } from '../../../Composables/useVisitLink';
 import CentralLayout from '../../../Layouts/CentralLayout.vue';
 
 defineProps({
@@ -28,7 +29,7 @@ function confirmDelete(role) {
 <template>
     <CentralLayout title="Peran & Izin">
         <template #actions>
-            <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Peran" @click="router.visit(create_url)" />
+            <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Peran" :href="create_url" @click="visitUnlessNewTab($event, create_url)" />
         </template>
 
         <div class="roles">
@@ -50,7 +51,7 @@ function confirmDelete(role) {
                         <td>{{ role.permission_names.length }} dari {{ permission_count }}</td>
                         <td class="roles__center">{{ role.users_count }}</td>
                         <td class="roles__actions">
-                            <q-btn flat round dense icon="edit" color="grey-7" :aria-label="`Edit ${role.label}`" @click="router.visit(role.edit_url)" />
+                            <q-btn flat round dense icon="edit" color="grey-7" :aria-label="`Edit ${role.label}`" :href="role.edit_url" @click="visitUnlessNewTab($event, role.edit_url)" />
                             <q-btn
                                 v-if="!role.is_system"
                                 flat

@@ -96,6 +96,17 @@ class CashierProductLookupTest extends TestCase
             ->assertJsonCount(1, 'data.0.units');
     }
 
+    public function test_a_unit_whose_conversion_is_not_confirmed_is_not_offered(): void
+    {
+        $brush = $this->sellableProduct('Kuas');
+        $this->store->run(fn () => $this->unitOf($brush, 'DUS')->update(['is_conversion_confirmed' => false]));
+
+        $this->lookup('kuas')->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonCount(1, 'data.0.units')
+            ->assertJsonPath('data.0.units.0.code', 'PCS');
+    }
+
     public function test_an_item_with_no_unit_for_sale_is_left_out(): void
     {
         $brush = $this->sellableProduct('Kuas');

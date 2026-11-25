@@ -605,6 +605,19 @@ class StockOpnameTest extends TestCase
         $this->assertSame('4.500', $item->fresh()->counted_quantity);
     }
 
+    public function test_a_unit_whose_conversion_is_not_confirmed_cannot_be_counted(): void
+    {
+        $opname = $this->opnameInStatus(StockOpnameStatus::Counting);
+        $product = $this->makeProduct('Cat');
+        $item = $this->addItem($opname, $product);
+        $this->inStore(fn () => ProductUnit::query()->where('product_id', $product->id)->where('unit_code', 'DUS')->update(['is_conversion_confirmed' => false]));
+
+        $this->saveCount($opname, $item, [['unit_code' => 'DUS', 'quantity' => '1']])->assertSessionHasErrors('counts.0.parts.0.unit_code');
+        $this->saveCount($opname, $item, [['unit_code' => 'PAIL', 'quantity' => '1']])->assertSessionHasNoErrors();
+
+        $this->assertSame('1.000', $item->fresh()->counted_quantity);
+    }
+
     public function test_count_input_is_validated(): void
     {
         $opname = $this->opnameInStatus(StockOpnameStatus::Counting);

@@ -50,6 +50,7 @@ const cashDifferenceApprovals = computed(() => props.summary.approvals.filter((a
 const codSettlementApprovals = computed(() => props.summary.approvals.filter((approval) => approval.kind === 'cod_settlement'));
 const pendingReturnsUrl = computed(() => `${store.value.returns_url}?status=pending`);
 const pendingCashDifferencesUrl = computed(() => `${store.value.shifts_url}?difference=pending_approval`);
+const unconfirmedUnitsUrl = computed(() => `${store.value.products_url}?condition=unconfirmed_units`);
 
 const formatTime = (isoDate) =>
     new Date(isoDate).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace('.', ':');
@@ -71,6 +72,18 @@ const formatTime = (isoDate) =>
                 <small>Stok di bawah minimum</small>
                 <b>{{ summary.low_stock_count }} barang</b>
                 <em>{{ summary.low_stock_count > 0 ? 'Perlu restock' : 'Semua stok aman' }}</em>
+            </Link>
+
+            <Link :href="unconfirmedUnitsUrl" class="card card--link" :class="{ 'card--warn': summary.unconfirmed_units.units_count > 0 }">
+                <small>Satuan tidak valid</small>
+                <b>{{ summary.unconfirmed_units.units_count }} satuan</b>
+                <em>
+                    {{
+                        summary.unconfirmed_units.units_count > 0
+                            ? `${summary.unconfirmed_units.products_count} barang · belum bisa dijual atau diopname`
+                            : 'Semua satuan valid'
+                    }}
+                </em>
             </Link>
         </div>
 
@@ -204,6 +217,15 @@ const formatTime = (isoDate) =>
 .card--link:hover {
     border-color: var(--app-brand);
     box-shadow: 0 1px 6px rgb(0 0 0 / 8%);
+}
+
+.card--warn {
+    border-color: #f0c78a;
+    background: #fff8ee;
+}
+
+.card--warn b {
+    color: #c2710c;
 }
 
 .card small {

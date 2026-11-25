@@ -8,6 +8,7 @@ import PriceLabelDialog from '../../../Components/PriceLabelDialog.vue';
 import SearchableSelect from '../../../Components/SearchableSelect.vue';
 import { useConfirmDelete } from '../../../Composables/useConfirmDelete';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
+import { visitUnlessNewTab } from '../../../Composables/useVisitLink';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -181,7 +182,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
             <q-btn v-if="selectedIds.length > 0" outline no-caps color="primary" icon="qr_code_2" :label="`Cetak Barcode (${selectedIds.length})`" class="q-mr-sm" @click="isBarcodeOpen = true" />
             <q-btn v-if="selectedIds.length > 0" outline no-caps color="primary" icon="sell" :label="`Cetak Label Harga (${selectedIds.length})`" class="q-mr-sm" @click="isPriceLabelOpen = true" />
             <q-btn v-if="selectedIds.length > 0" outline no-caps color="primary" icon="price_change" :label="`Ubah Harga (${selectedIds.length})`" class="q-mr-sm" @click="isBulkOpen = true" />
-            <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Barang" @click="router.visit(create_url)" />
+            <q-btn color="primary" unelevated no-caps icon="add" label="Tambah Barang" :href="create_url" @click="visitUnlessNewTab($event, create_url)" />
         </template>
 
         <div class="filters">
@@ -229,12 +230,15 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                         </td>
                         <td class="items__nowrap">{{ product.sku }}</td>
                         <td>
-                            <b>{{ product.name }}<span v-if="product.is_damaged_goods" class="chip chip--warn items__dg">DG</span></b>
+                            <b
+                                >{{ product.name }}<span v-if="product.is_damaged_goods" class="chip chip--warn items__dg">DG</span
+                                ><span v-if="product.has_unconfirmed_units" class="chip chip--warn items__dg" title="Ada satuan yang isinya belum dikonfirmasi, belum bisa dijual atau diopname">Satuan tidak valid</span></b
+                            >
                         </td>
                         <td>{{ product.category }}</td>
                         <td>
                             <template v-if="product.brand">{{ product.brand }}</template>
-                            <span v-else class="items__muted">—</span>
+                            <span v-else class="items__muted">â€”</span>
                         </td>
                         <td class="items__right">
                             <span :class="{ 'chip chip--bad': product.is_below_minimum }">
@@ -246,19 +250,19 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             <span v-if="Number(product.dead_stock) > 0" class="chip chip--warn">
                                 {{ formatStock(product.dead_stock, product.units, product.base_unit, product.sealed_pack?.dead_intact ?? null) }}
                             </span>
-                            <span v-else class="items__muted">—</span>
+                            <span v-else class="items__muted">â€”</span>
                             <small v-if="Number(product.returns_stock) > 0" class="items__muted items__returns">+ {{ formatStock(product.returns_stock, product.units, product.base_unit, null) }} retur menunggu</small>
                         </td>
                         <td class="items__right">{{ priceFormat.format(product.cost_price) }}</td>
                         <td class="items__right">
                             <template v-if="product.default_sale">{{ product.default_sale.unit }} {{ priceFormat.format(product.default_sale.price) }}</template>
-                            <span v-else class="items__muted">—</span>
+                            <span v-else class="items__muted">â€”</span>
                         </td>
                         <td>
                             <span class="chip" :class="product.is_active ? 'chip--ok' : 'chip--off'">{{ product.is_active ? 'Aktif' : 'Nonaktif' }}</span>
                         </td>
                         <td class="items__right items__actions">
-                            <q-btn flat round dense icon="edit" color="grey-7" :aria-label="`Edit ${product.name}`" @click="router.visit(product.edit_url)" />
+                            <q-btn flat round dense icon="edit" color="grey-7" :aria-label="`Edit ${product.name}`" :href="product.edit_url" @click="visitUnlessNewTab($event, product.edit_url)" />
                             <q-btn
                                 v-if="product.can_delete"
                                 flat
@@ -290,7 +294,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
         />
 
         <div v-if="products.total > 0" class="pager">
-            <span class="items__muted">{{ products.from }}–{{ products.to }} dari {{ products.total }} barang</span>
+            <span class="items__muted">{{ products.from }}â€“{{ products.to }} dari {{ products.total }} barang</span>
             <q-pagination
                 v-if="products.last_page > 1"
                 :model-value="products.current_page"

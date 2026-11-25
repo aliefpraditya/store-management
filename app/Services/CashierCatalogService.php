@@ -56,7 +56,7 @@ class CashierCatalogService
 
         $products = Product::query()
             ->where('is_active', true)
-            ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)])
+            ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)->confirmed()])
             ->search($term)
             ->orderByRaw(self::IN_STOCK_FIRST_SQL.' desc', [$warehouseId])
             ->orderBy('name')
@@ -92,7 +92,7 @@ class CashierCatalogService
         $products = Product::query()
             ->where('is_active', true)
             ->whereKey($rankedProductIds)
-            ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)])
+            ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)->confirmed()])
             ->get()
             ->filter(fn (Product $product): bool => $product->productUnits->isNotEmpty())
             ->sortBy(fn (Product $product): int|false => array_search($product->id, $rankedProductIds, true));
@@ -117,12 +117,12 @@ class CashierCatalogService
      */
     public function forUnits(int $warehouseId, array $productUnitIds): array
     {
-        $productIds = ProductUnit::query()->whereIn('id', $productUnitIds)->where('is_sellable', true)->pluck('product_id')->unique();
+        $productIds = ProductUnit::query()->whereIn('id', $productUnitIds)->where('is_sellable', true)->confirmed()->pluck('product_id')->unique();
 
         $products = Product::query()
             ->where('is_active', true)
             ->whereKey($productIds)
-            ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)])
+            ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)->confirmed()])
             ->orderBy('name')
             ->get()
             ->filter(fn (Product $product): bool => $product->productUnits->isNotEmpty());

@@ -631,6 +631,98 @@ class ProductManagementTest extends TestCase
     }
 
     /**
+     * An item with stock whose DUS came from the old system with a conversion of 1 nobody checked.
+     *
+     * @return array{0: Product, 1: ProductUnit, 2: ProductUnit}
+     */
+    private function itemWithUnconfirmedBox(): array
+    {
+        [$product, $base, $box] = $this->itemWithStock();
+        $this->inStore(fn () => $box->update(['conversion_factor' => 1, 'is_conversion_confirmed' => false]));
+
+        return [$product, $base, $box];
+    }
+
+    public function test_a_unit_whose_conversion_is_not_confirmed_stays_editable_on_a_locked_item_and_is_confirmed_by_a_conversion_other_than_one(): void
+    {
+        [$product, $base, $box] = $this->itemWithUnconfirmedBox();
+
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, [
+            'units' => [
+                $this->unitRow('PAIL', 1, '116600', isDefault: true, id: $base->id),
+                $this->unitRow('DUS', 6, '437250', id: $box->id),
+            ],
+        ]))->assertSessionHasNoErrors();
+
+        $savedBox = $this->savedProduct()->productUnits[1];
+
+        $this->assertSame('6.000', $savedBox->conversion_factor);
+        $this->assertTrue($savedBox->is_conversion_confirmed);
+    }
+
+    public function test_a_unit_saved_with_a_conversion_of_one_stays_unconfirmed(): void
+    {
+        [$product, $base, $box] = $this->itemWithUnconfirmedBox();
+
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, [
+            'units' => [
+                $this->unitRow('PAIL', 1, '130000', isDefault: true, id: $base->id),
+                $this->unitRow('DUS', 1, '437250', id: $box->id),
+            ],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertFalse($this->savedProduct()->productUnits[1]->is_conversion_confirmed);
+    }
+
+    public function test_a_unit_whose_conversion_is_not_confirmed_can_be_removed_from_a_locked_item(): void
+    {
+        [$product, $base] = $this->itemWithUnconfirmedBox();
+
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, [
+            'units' => [$this->unitRow('PAIL', 1, '116600', isDefault: true, id: $base->id)],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertCount(1, $this->savedProduct()->productUnits);
+    }
+
+    public function test_the_default_unit_for_the_cashier_cannot_be_one_that_is_still_unconfirmed(): void
+    {
+        [$product, $base, $box] = $this->itemWithUnconfirmedBox();
+
+        $this->actingAs($this->admin)->put($this->url('update', ['product' => $product->id]), $this->editPayload($product, [
+            'units' => [
+                $this->unitRow('PAIL', 1, '116600', id: $base->id),
+                $this->unitRow('DUS', 1, '437250', isDefault: true, id: $box->id),
+            ],
+        ]))->assertSessionHasErrors('units.1.is_default_sale');
+
+        $this->assertTrue($this->savedProduct()->productUnits[0]->is_default_sale);
+    }
+
+    public function test_the_list_marks_items_with_unconfirmed_units_and_can_be_narrowed_to_them(): void
+    {
+        $this->inStore(function (): void {
+            $plain = Product::factory()->create(['name' => 'Biasa']);
+            ProductUnit::factory()->create(['product_id' => $plain->id]);
+
+            $flagged = Product::factory()->create(['name' => 'Perlu dicek']);
+            ProductUnit::factory()->create(['product_id' => $flagged->id]);
+            ProductUnit::factory()->unconfirmed()->create(['product_id' => $flagged->id]);
+        });
+
+        $this->actingAs($this->admin)->get($this->url('index'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('products.data', 2)
+                ->where('products.data.0.has_unconfirmed_units', false)
+                ->where('products.data.1.has_unconfirmed_units', true));
+
+        $this->actingAs($this->admin)->get($this->url('index', ['condition' => 'unconfirmed_units']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->has('products.data', 1)
+                ->where('products.data.0.name', 'Perlu dicek'));
+    }
+
+    /**
      * @param  list<array{name: string, sku: string, category?: string, active?: bool}>  $items
      */
     private function seedItems(array $items): void

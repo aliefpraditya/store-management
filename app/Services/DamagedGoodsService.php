@@ -198,6 +198,7 @@ class DamagedGoodsService
                 'selling_price' => 0,
                 'is_default_sale' => $unit->is_default_sale,
                 'is_sealed_pack' => $unit->is_sealed_pack,
+                'is_conversion_confirmed' => $unit->is_conversion_confirmed,
             ]);
         }
 

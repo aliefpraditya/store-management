@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
+import { visitUnlessNewTab } from '../../../Composables/useVisitLink';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
@@ -69,14 +70,14 @@ watch(status, () => applyFilters());
                         <td colspan="7" class="opnames__empty">Belum ada opname. Buat opname baru untuk memasukkan stok awal, barang datang, atau koreksi stok.</td>
                     </tr>
                     <tr v-for="opname in opnames.data" :key="opname.id" class="opnames__row" @click="router.visit(opname.show_url)">
-                        <td><b>{{ opname.number }}</b></td>
+                        <td><a :href="opname.show_url" class="row-link" @click.stop="visitUnlessNewTab($event, opname.show_url)"><b>{{ opname.number }}</b></a></td>
                         <td>{{ dateFormat.format(new Date(opname.opname_date)) }}</td>
                         <td>{{ opname.warehouse }}</td>
                         <td>{{ opname.scope_label }}</td>
-                        <td>{{ opname.reason_label ?? '—' }}</td>
+                        <td>{{ opname.reason_label ?? 'â€”' }}</td>
                         <td>
                             <template v-if="opname.items_count > 0">{{ opname.counted_items_count }} / {{ opname.items_count }}</template>
-                            <span v-else class="opnames__muted">—</span>
+                            <span v-else class="opnames__muted">â€”</span>
                         </td>
                         <td><span class="chip" :class="statusChipClass[opname.status]">{{ opname.status_label }}</span></td>
                     </tr>
@@ -85,7 +86,7 @@ watch(status, () => applyFilters());
         </div>
 
         <div v-if="opnames.total > 0" class="pager">
-            <span class="opnames__muted">{{ opnames.from }}–{{ opnames.to }} dari {{ opnames.total }} opname</span>
+            <span class="opnames__muted">{{ opnames.from }}â€“{{ opnames.to }} dari {{ opnames.total }} opname</span>
             <q-pagination
                 v-if="opnames.last_page > 1"
                 :model-value="opnames.current_page"

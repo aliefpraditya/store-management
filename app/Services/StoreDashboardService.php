@@ -13,6 +13,7 @@ use App\Models\CashShift;
 use App\Models\CodSettlement;
 use App\Models\DeliveryNote;
 use App\Models\Product;
+use App\Models\ProductUnit;
 use App\Models\Sale;
 use App\Models\SaleReturn;
 use Brick\Math\BigDecimal;
@@ -25,6 +26,7 @@ use Carbon\CarbonInterface;
  * @phpstan-type Summary array{
  *     sales: array{gross_total: string, returns_total: string, net_total: string, receipt_count: int},
  *     low_stock_count: int,
+ *     unconfirmed_units: array{units_count: int, products_count: int},
  *     pending: array{returns: int, cash_differences: int, cod_approvals: int, delivery_notes: int, total: int},
  *     approvals: list<array{kind: string, reference: string, amount: string, show_url?: string}>,
  *     unfinished_delivery_notes: list<array{reference: string, recipient_name: string, status_label: string, show_url: string}>,
@@ -54,6 +56,7 @@ class StoreDashboardService
         return [
             'sales' => $this->salesOf($today),
             'low_stock_count' => Product::query()->belowMinimumStock()->count(),
+            'unconfirmed_units' => $this->unconfirmedUnits(),
             'pending' => [...$pending, 'total' => array_sum($pending)],
             'approvals' => [
                 ...$this->pendingReturnApprovals(),
@@ -62,6 +65,22 @@ class StoreDashboardService
             ],
             'unfinished_delivery_notes' => $this->unfinishedDeliveryNotes(),
             'open_shifts' => $this->openShifts(),
+        ];
+    }
+
+    /**
+     * Units whose conversion nobody confirmed yet (brought over from the old system), and the items they belong to.
+     * Those units cannot be sold or counted until they are confirmed.
+     *
+     * @return array{units_count: int, products_count: int}
+     */
+    private function unconfirmedUnits(): array
+    {
+        $unconfirmedUnits = ProductUnit::query()->unconfirmed()->whereHas('product');
+
+        return [
+            'units_count' => $unconfirmedUnits->count(),
+            'products_count' => $unconfirmedUnits->distinct()->count('product_units.product_id'),
         ];
     }
 
