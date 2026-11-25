@@ -86,6 +86,7 @@ class PriceLabelService
             ->join('products', 'products.id', '=', 'product_units.product_id')
             ->whereNull('products.deleted_at')
             ->where('product_units.is_sellable', true)
+            ->confirmed()
             ->with('product:id,sku,name')
             ->orderBy('products.name')
             ->orderBy('products.id')

@@ -42,6 +42,7 @@ class ProductFormResource extends JsonResource
                 'selling_price' => $productUnit->selling_price,
                 'is_default_sale' => $productUnit->is_default_sale,
                 'is_sealed_pack' => $productUnit->is_sealed_pack,
+                'is_conversion_confirmed' => $productUnit->is_conversion_confirmed,
             ])->values()->all(),
         ];
     }

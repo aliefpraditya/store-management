@@ -81,10 +81,13 @@ class SaveStockOpnameCountsRequest extends FormRequest
                     }
 
                     $unitCodes = $item->product->productUnits->pluck('unit_code')->all();
+                    $unconfirmedUnitCodes = $item->product->productUnits->where('is_conversion_confirmed', false)->pluck('unit_code')->all();
 
                     foreach ($row['parts'] as $partIndex => $part) {
                         if (! in_array($part['unit_code'], $unitCodes, true)) {
                             $validator->errors()->add("counts.{$index}.parts.{$partIndex}.unit_code", 'Satuan tidak dipakai barang ini.');
+                        } elseif (in_array($part['unit_code'], $unconfirmedUnitCodes, true)) {
+                            $validator->errors()->add("counts.{$index}.parts.{$partIndex}.unit_code", 'Satuan ini tidak valid (isinya belum dikonfirmasi), jadi belum bisa dipakai untuk menghitung. Perbaiki dulu di data barang.');
                         }
                     }
                 }

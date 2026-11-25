@@ -42,6 +42,7 @@ class ProductListResource extends JsonResource
                 'unit' => $defaultSaleUnit->unit_code,
                 'price' => $defaultSaleUnit->selling_price,
             ],
+            'has_unconfirmed_units' => $this->productUnits->contains('is_conversion_confirmed', false),
             'can_delete' => ! (bool) $this->getAttribute('has_transactions'),
             'edit_url' => route('tenant.products.edit', ['tenant' => tenant('code'), 'product' => $this->id]),
             'delete_url' => route('tenant.products.destroy', ['tenant' => tenant('code'), 'product' => $this->id]),
@@ -60,7 +61,7 @@ class ProductListResource extends JsonResource
         $sealedPackUnit = $product->sealedPackUnit();
 
         return [
-            'units' => $product->productUnits->map(fn ($productUnit): array => [
+            'units' => $product->productUnits->where('is_conversion_confirmed', true)->map(fn ($productUnit): array => [
                 'code' => $productUnit->unit_code,
                 'conversion_factor' => $productUnit->conversion_factor,
                 'is_sealed_pack' => $productUnit->is_sealed_pack,

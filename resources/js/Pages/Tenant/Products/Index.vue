@@ -230,7 +230,10 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                         </td>
                         <td class="items__nowrap">{{ product.sku }}</td>
                         <td>
-                            <b>{{ product.name }}<span v-if="product.is_damaged_goods" class="chip chip--warn items__dg">DG</span></b>
+                            <b
+                                >{{ product.name }}<span v-if="product.is_damaged_goods" class="chip chip--warn items__dg">DG</span
+                                ><span v-if="product.has_unconfirmed_units" class="chip chip--warn items__dg" title="Ada satuan yang isinya belum dikonfirmasi, belum bisa dijual atau diopname">Satuan tidak valid</span></b
+                            >
                         </td>
                         <td>{{ product.category }}</td>
                         <td>

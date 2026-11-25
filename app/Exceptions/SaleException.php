@@ -21,6 +21,11 @@ class SaleException extends Exception
         return new self("{$productName} tidak bisa dijual dengan satuan itu. Pilih satuan lain.");
     }
 
+    public static function conversionNotConfirmed(string $productName, string $unitCode): self
+    {
+        return new self("Satuan {$unitCode} untuk {$productName} tidak valid (isinya belum dikonfirmasi), jadi belum bisa dijual. Minta admin memperbaikinya di data barang.");
+    }
+
     public static function productUnavailable(string $productName): self
     {
         return new self("{$productName} sudah tidak aktif atau dihapus. Hapus dari keranjang.");

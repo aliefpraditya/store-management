@@ -83,7 +83,7 @@ class ProductService
             ->when($categoryId, fn (Builder $query, int $categoryId) => $query->where('products.category_id', $categoryId))
             ->when($brandId, fn (Builder $query, int $brandId) => $query->where('products.brand_id', $brandId))
             ->when($status, fn (Builder $query, ProductStatusFilter $status) => $query->where('products.is_active', $status->isActive()))
-            ->when($condition, fn (Builder $query, ProductConditionFilter $condition) => $query->where('products.is_damaged_goods', $condition->isDamagedGoods()));
+            ->when($condition, fn (Builder $query, ProductConditionFilter $condition) => $condition->applyTo($query));
     }
 
     /**
@@ -192,7 +192,7 @@ class ProductService
             }
         }
 
-        $problems = [...$problems, ...$this->unitSwapProblems($existingUnitsById, $unitRows)];
+        $problems = [...$problems, ...$this->unitSwapProblems($existingUnitsById, $unitRows), ...$this->unconfirmedDefaultSaleProblems($existingUnitsById, $unitRows)];
 
         if (! $product->hasTransactions()) {
             return $problems;
@@ -235,7 +235,9 @@ class ProductService
 
     /**
      * After stock or transactions exist, existing units keep their identity and conversion and cannot be
-     * removed; the base unit stays first. New units can still be added.
+     * removed; the base unit stays first. New units can still be added. A unit whose conversion is not confirmed yet
+     * is the exception: it could never be sold or counted, so it has no history of its own and stays free to be
+     * corrected, confirmed or removed.
      *
      * @param  Collection<int, ProductUnit>  $existingUnitsById
      * @param  list<array<string, mixed>>  $unitRows
@@ -246,7 +248,9 @@ class ProductService
         $problems = [];
         $submittedIds = collect($unitRows)->pluck('id')->filter()->map(fn ($id): int => (int) $id);
 
-        if ($existingUnitsById->keys()->diff($submittedIds)->isNotEmpty()) {
+        $removableIds = $existingUnitsById->where('is_conversion_confirmed', false)->keys();
+
+        if ($existingUnitsById->keys()->diff($submittedIds)->diff($removableIds)->isNotEmpty()) {
             $problems[] = ['field' => 'units', 'message' => 'Satuan yang sudah dipakai tidak bisa dihapus.'];
         }
 
@@ -257,7 +261,7 @@ class ProductService
         foreach ($unitRows as $index => $row) {
             $currentUnit = $existingUnitsById->get($row['id'] ?? null);
 
-            if ($currentUnit === null) {
+            if ($currentUnit === null || ! $currentUnit->is_conversion_confirmed) {
                 continue;
             }
 
@@ -324,10 +328,57 @@ class ProductService
                 'selling_price' => $row['selling_price'],
                 'is_default_sale' => $row['is_default_sale'],
                 'is_sealed_pack' => $index !== 0 && ($row['is_sealed_pack'] ?? false),
+                'is_conversion_confirmed' => $this->isConfirmedAfterSave($productUnit, $row, $index),
             ])->save();
         }
 
         $this->startOrStopCountingPacks($product, $previousPackUnit);
+    }
+
+    /**
+     * A unit brought over with a conversion of 1 that nobody checked is confirmed as soon as it is saved with a conversion
+     * other than 1, that is, once the real content was filled in; as long as it stays 1 it stays unconfirmed. A new unit and
+     * the base unit are always confirmed.
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function isConfirmedAfterSave(ProductUnit $productUnit, array $row, int $index): bool
+    {
+        if ($index === 0 || ! $productUnit->exists || $productUnit->is_conversion_confirmed) {
+            return true;
+        }
+
+        return $this->isConversionFilledIn($row);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function isConversionFilledIn(array $row): bool
+    {
+        return BigDecimal::of((string) $row['conversion_factor'])->compareTo(1) !== 0;
+    }
+
+    /**
+     * The cashier opens an item in its default unit, so a unit that stays unconfirmed cannot be that one.
+     *
+     * @param  Collection<int, ProductUnit>  $existingUnitsById
+     * @param  list<array<string, mixed>>  $unitRows
+     * @return list<UnitProblem>
+     */
+    private function unconfirmedDefaultSaleProblems(Collection $existingUnitsById, array $unitRows): array
+    {
+        $problems = [];
+
+        foreach ($unitRows as $index => $row) {
+            $currentUnit = $existingUnitsById->get($row['id'] ?? null);
+
+            if ($currentUnit !== null && ! $currentUnit->is_conversion_confirmed && (bool) $row['is_default_sale'] && ! $this->isConversionFilledIn($row)) {
+                $problems[] = ['field' => "units.{$index}.is_default_sale", 'message' => 'Satuan ini tidak valid (isinya belum dikonfirmasi), jadi belum bisa jadi satuan default kasir. Isi konversinya dulu.'];
+            }
+        }
+
+        return $problems;
     }
 
     /**

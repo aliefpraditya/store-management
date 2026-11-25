@@ -42,15 +42,19 @@ const emptyUnitRow = (isDefaultSale = false) => ({
     margin_percent: '',
     is_default_sale: isDefaultSale,
     is_sealed_pack: false,
+    was_unconfirmed: false,
 });
 
 /**
  * The server sends decimals as strings ("116600.00"); the inputs show them as plain numbers. A unit whose cost
  * differs from base cost times conversion was priced by hand, so it stops following the base cost. The margin is not
  * stored: it is worked out from the cost and the selling price, and only lives here to be typed into.
+ * `was_unconfirmed` remembers that the unit came with a conversion nobody confirmed, so its row stays editable; it becomes
+ * confirmed when it is saved with a conversion other than 1.
  */
 const toNumericRow = (row, index, rows) => ({
     ...row,
+    was_unconfirmed: row.is_conversion_confirmed === false,
     conversion_factor: Number(row.conversion_factor),
     cost_price: Number(row.cost_price),
     cost_is_manual: index > 0 && Math.abs(Number(row.cost_price) - costFromBase(rows[0].cost_price, row.conversion_factor)) > 0.005,
@@ -71,8 +75,13 @@ const form = useForm({
     units: props.product?.units.map(toNumericRow) ?? [emptyUnitRow(true)],
 });
 
-/** Rows that already exist keep their unit and conversion once the product has stock or transactions. */
-const isRowLocked = (row) => isLocked && row.id !== null;
+/** Rows that already exist keep their unit and conversion once the product has stock or transactions, except a unit whose conversion is not confirmed yet. */
+const isRowLocked = (row) => isLocked && row.id !== null && !row.was_unconfirmed;
+
+/** An unconfirmed unit stays so until its conversion is filled in with something other than 1. */
+const isStillUnconfirmed = (row) => row.was_unconfirmed && Number(row.conversion_factor) === 1;
+
+const hasUnconfirmedRow = computed(() => form.units.some(isStillUnconfirmed));
 
 /** Which unit select asked for "Tambah satuan baru", so the new unit can be filled into that row. */
 const unitDialog = ref({ isOpen: false, rowIndex: 0 });
@@ -348,6 +357,11 @@ function submit() {
 
                 <p v-if="isLocked" class="note">Satuan dan konversi terkunci karena barang ini sudah punya stok atau transaksi. Satuan baru tetap bisa ditambah.</p>
 
+                <p v-if="hasUnconfirmedRow" class="note note--warn">
+                    Satuan bertanda kuning dibawa dari sistem lama dengan konversi yang belum diperiksa. Isi konversi yang benar lalu simpan: selama isinya bukan 1,
+                    satuan itu bisa dijual dan dipakai saat opname.
+                </p>
+
                 <div class="grid grid--base">
                     <UnitSelect
                         v-model="form.units[0].unit"
@@ -381,7 +395,7 @@ function submit() {
                         </thead>
                         <tbody>
                             <template v-for="(row, index) in form.units" :key="index">
-                                <tr>
+                                <tr :class="{ 'units__row--unconfirmed': isStillUnconfirmed(row) }">
                                     <td class="units__unit">
                                         <template v-if="index === 0">
                                             <b>{{ row.unit?.code ?? '—' }}</b>
@@ -425,6 +439,7 @@ function submit() {
                                                 @click="openCalculator(index)"
                                             />
                                         </div>
+                                        <small v-if="isStillUnconfirmed(row)" class="conversion__hint">Satuan tidak valid: isinya belum dipastikan, belum bisa dijual atau diopname.</small>
                                     </td>
                                     <td class="units__price">
                                         <q-input
@@ -472,7 +487,7 @@ function submit() {
                                         <q-checkbox v-model="row.is_sellable" dense @update:model-value="ensureDefaultIsSellable" />
                                     </td>
                                     <td class="units__center">
-                                        <q-radio :model-value="defaultRowIndex" :val="index" dense :disable="!row.is_sellable" @update:model-value="makeDefault(index)" />
+                                        <q-radio :model-value="defaultRowIndex" :val="index" dense :disable="!row.is_sellable || isStillUnconfirmed(row)" @update:model-value="makeDefault(index)" />
                                     </td>
                                     <td class="units__center">
                                         <q-checkbox
@@ -589,6 +604,21 @@ function submit() {
     background: #fdf1e0;
     color: #c2710c;
     font-size: 13px;
+}
+
+.note--warn {
+    border: 1px solid #f0c78a;
+}
+
+.units__row--unconfirmed td {
+    background: #fff8ee;
+}
+
+.conversion__hint {
+    display: block;
+    margin-top: 4px;
+    color: #c2710c;
+    font-size: 12px;
 }
 
 .table-wrap {

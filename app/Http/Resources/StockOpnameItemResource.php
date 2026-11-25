@@ -34,7 +34,7 @@ class StockOpnameItemResource extends JsonResource
             'id' => $this->id,
             'product' => ['id' => $this->product->id, 'sku' => $this->product->sku, 'name' => $this->product->name, 'brand' => $this->product->brand?->name],
             'base_unit' => $this->product->baseUnit->code,
-            'units' => $this->product->productUnits->map(fn ($productUnit): array => [
+            'units' => $this->product->productUnits->where('is_conversion_confirmed', true)->map(fn ($productUnit): array => [
                 'code' => $productUnit->unit_code,
                 'conversion_factor' => $productUnit->conversion_factor,
                 'is_sealed_pack' => $productUnit->is_sealed_pack,
