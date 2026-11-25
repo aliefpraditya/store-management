@@ -15,6 +15,16 @@ const props = defineProps({
     menuGroups: { type: Array, required: true },
     brand: { type: Object, required: true },
     roleLabel: { type: String, required: true },
+    /**
+     * The one feature the sidebar keeps in reach at all times, shown as a large button in the pinned top section.
+     * @type {{label: string, icon: string, href: string}|null}
+     */
+    primaryAction: { type: Object, default: null },
+    /**
+     * A way out of the current area (e.g. a super admin back to the central dashboard), pinned under the primary action.
+     * @type {{label: string, icon: string, href: string}|null}
+     */
+    backAction: { type: Object, default: null },
 });
 
 const page = usePage();
@@ -142,12 +152,37 @@ function signOut() {
 
         <q-drawer v-model="isDrawerOpen" show-if-above :width="248" :mini="isMiniActive" :mini-width="68" class="shell__drawer">
             <div class="shell__nav">
-                <div class="shell__brand">
-                    <div class="shell__logo">{{ brand.initial }}</div>
-                    <div v-if="!isMiniActive">
-                        <b>{{ brand.name }}</b>
-                        <small>{{ brand.sub }}</small>
+                <div class="shell__top">
+                    <div class="shell__brand">
+                        <div class="shell__logo">{{ brand.initial }}</div>
+                        <div v-if="!isMiniActive">
+                            <b>{{ brand.name }}</b>
+                            <small>{{ brand.sub }}</small>
+                        </div>
                     </div>
+
+                    <q-btn
+                        v-if="primaryAction"
+                        color="positive"
+                        unelevated
+                        no-caps
+                        :icon="primaryAction.icon"
+                        :label="isMiniActive ? undefined : primaryAction.label"
+                        :aria-label="primaryAction.label"
+                        class="shell__primary"
+                        :href="primaryAction.href"
+                        @click="visitUnlessNewTab($event, primaryAction.href)"
+                    >
+                        <q-tooltip v-if="isMiniActive" anchor="center right" self="center left" :offset="[10, 0]">{{ primaryAction.label }}</q-tooltip>
+                    </q-btn>
+
+                    <q-item v-if="backAction" clickable :href="backAction.href" class="shell__item" @click="visitUnlessNewTab($event, backAction.href)">
+                        <q-item-section avatar class="shell__item-icon">
+                            <q-icon :name="backAction.icon" size="20px" />
+                        </q-item-section>
+                        <q-item-section v-if="!isMiniActive">{{ backAction.label }}</q-item-section>
+                        <q-tooltip v-if="isMiniActive" anchor="center right" self="center left" :offset="[10, 0]">{{ backAction.label }}</q-tooltip>
+                    </q-item>
                 </div>
 
                 <template v-for="group in menuGroups" :key="group.label ?? 'main'">
@@ -239,7 +274,7 @@ function signOut() {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 2px 8px 14px;
+    padding: 2px 8px 12px;
 }
 
 .shell__brand b {
@@ -307,6 +342,29 @@ function signOut() {
     font-weight: 700;
 }
 
+.shell__top {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: -16px -12px 0;
+    padding: 16px 12px 10px;
+    border-bottom: 1px solid var(--app-dark-line);
+    background: var(--app-dark);
+}
+
+.shell__primary {
+    width: 100%;
+    min-height: 56px;
+    margin-bottom: 6px;
+    border-radius: 14px;
+    font-size: 17px;
+    font-weight: 700;
+}
+
+.shell__primary :deep(.q-icon) {
+    font-size: 26px;
+}
+
 .shell__me {
     position: sticky;
     bottom: 0;
@@ -357,7 +415,7 @@ function signOut() {
 
 .q-drawer--mini .shell__brand {
     justify-content: center;
-    padding: 2px 0 14px;
+    padding: 2px 0 12px;
 }
 
 .q-drawer--mini .shell__item {
@@ -371,6 +429,20 @@ function signOut() {
 
 .q-drawer--mini .shell__item.shell__item--on {
     box-shadow: inset 3px 0 0 var(--app-brand);
+}
+
+.q-drawer--mini .shell__top {
+    display: flex;
+    flex-direction: column;
+}
+
+.q-drawer--mini .shell__primary {
+    flex: none;
+    align-self: center;
+    width: 44px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0;
 }
 
 .q-drawer--mini .shell__me {
