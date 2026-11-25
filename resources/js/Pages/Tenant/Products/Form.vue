@@ -425,7 +425,13 @@ function submit() {
                                                 class="conversion__input"
                                                 :disable="isRowLocked(row)"
                                                 :aria-label="`Konversi ${row.unit?.code ?? ''}`"
-                                            />
+                                            >
+                                                <template v-if="isStillUnconfirmed(row)" #append>
+                                                    <q-icon name="warning_amber" color="warning" size="20px" aria-label="Satuan tidak valid">
+                                                        <q-tooltip>Satuan tidak valid: isinya belum dipastikan, belum bisa dijual atau diopname.</q-tooltip>
+                                                    </q-icon>
+                                                </template>
+                                            </q-input>
                                             <q-btn
                                                 outline
                                                 dense
@@ -439,7 +445,6 @@ function submit() {
                                                 @click="openCalculator(index)"
                                             />
                                         </div>
-                                        <small v-if="isStillUnconfirmed(row)" class="conversion__hint">Satuan tidak valid: isinya belum dipastikan, belum bisa dijual atau diopname.</small>
                                     </td>
                                     <td class="units__price">
                                         <q-input
@@ -612,13 +617,6 @@ function submit() {
 
 .units__row--unconfirmed td {
     background: #fff8ee;
-}
-
-.conversion__hint {
-    display: block;
-    margin-top: 4px;
-    color: #c2710c;
-    font-size: 12px;
 }
 
 .table-wrap {
