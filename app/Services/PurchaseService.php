@@ -221,10 +221,14 @@ class PurchaseService
     public function cancel(Purchase $purchase, string $reason): Purchase
     {
         return DB::transaction(function () use ($purchase, $reason): Purchase {
-            $lockedPurchase = Purchase::query()->lockForUpdate()->findOrFail($purchase->id);
+            $lockedPurchase = Purchase::query()->with('shipment')->lockForUpdate()->findOrFail($purchase->id);
 
             if (! $lockedPurchase->status->isCancellable()) {
                 throw PurchaseException::notCancellable();
+            }
+
+            if ($lockedPurchase->shipment !== null) {
+                throw PurchaseException::inShipment($lockedPurchase->shipment->number);
             }
 
             $lockedPurchase->forceFill([

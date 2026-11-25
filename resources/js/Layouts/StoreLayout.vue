@@ -54,6 +54,7 @@ const menuGroups = computed(() => {
             label: 'Pembelian',
             items: [
                 { label: 'Nota Pembelian', icon: 'request_quote', href: store.value.purchases_url, can: ['purchases.manage'] },
+                { label: 'Pengiriman', icon: 'sailing', href: store.value.shipments_url, can: ['shipments.manage'] },
             ],
         },
         {

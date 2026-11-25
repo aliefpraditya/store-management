@@ -68,7 +68,7 @@ class StoreRouteAccessTest extends TestCase
     {
         $cashierRoutes = array_filter($this->storeRoutes(), fn (RoutingRoute $route): bool => $this->isOpenToCashiers($route));
 
-        $this->assertCount(27, $cashierRoutes);
+        $this->assertCount(31, $cashierRoutes);
 
         foreach ($cashierRoutes as $route) {
             $middleware = app('router')->gatherRouteMiddleware($route);
@@ -101,19 +101,24 @@ class StoreRouteAccessTest extends TestCase
 
         $this->assertCount(7, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.products.')));
         $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.units.')));
-        $this->assertCount(13, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-opnames.')));
+        $this->assertCount(14, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-opnames.')));
         $this->assertCount(1, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.stock-history.')));
-        $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.sales.')));
-        $this->assertCount(10, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.delivery-notes.')));
+        $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.suppliers.')));
+        $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.carriers.')));
+        $this->assertCount(12, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.purchases.')));
+        $this->assertCount(7, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.shipments.')));
+        $this->assertCount(5, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.sales.')));
+        $this->assertCount(12, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.delivery-notes.')));
         $this->assertCount(8, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.returns.')));
         $this->assertCount(5, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.shifts.')));
         $this->assertCount(5, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.expenses.')));
         $this->assertCount(5, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.daily-closings.')));
         $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.settings.')));
-        $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.reports.')));
+        $this->assertCount(14, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.reports.')));
         $this->assertCount(3, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.bulk-prices.')));
         $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.barcode-labels.')));
-        $this->assertCount(71, $adminRoutes);
+        $this->assertCount(2, array_filter($names, fn (string $name): bool => str_starts_with($name, 'tenant.price-labels.')));
+        $this->assertCount(113, $adminRoutes);
 
         foreach ($adminRoutes as $route) {
             $permissionMiddleware = array_filter(

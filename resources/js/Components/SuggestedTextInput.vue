@@ -3,7 +3,7 @@ import { ref, watch } from 'vue';
 
 const props = defineProps({
     modelValue: { type: String, default: '' },
-    /** Spellings already used elsewhere, offered while typing; anything else typed is kept as it is. */
+    /** Values already used elsewhere (a city, a container number), offered while typing; anything else typed is kept as it is. */
     options: { type: Array, default: () => [] },
 });
 

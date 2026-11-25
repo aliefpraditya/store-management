@@ -764,7 +764,7 @@ flowchart TD
     subgraph ADM["Admin Toko"]
         A1(["Buat pembelian: supplier, no. nota supplier, tanggal, ekspedisi pengantar (opsional), perkiraan tiba di ekspedisi"]) --> A2["Isi barang: satuan (hanya yang boleh dibeli), qty, harga beli"]
         A3["Konfirmasi & Bayar: nota dikunci dan dibayar penuh di muka, cara bayar + tanggal + catatan (status ordered, Dipesan, tanda Dibayar). Nota tanpa tagihan (semua baris harga 0) cukup Konfirmasi"]
-        A4["Container berangkat: catat pengiriman container (ekspedisi wajib, no. kontainer, nomor resi, tanggal berangkat); pembelian di dalamnya otomatis berstatus shipped, Dikirim, tanpa tombol manual"]
+        A4["Buat pengiriman (7.1c): pilih ekspedisi, scan nota, isi packing list dari ekspedisi (no. container, jumlah, biaya per baris), lalu isi tanggal berangkat; semua nota di dalamnya otomatis berstatus shipped, Dikirim, tanpa tombol manual"]
         A9["Catat nota baru dari supplier untuk barang kirim ulang: harga 0 (gratis)"]
     end
     subgraph GD["Petugas Gudang"]
@@ -1281,7 +1281,12 @@ erDiagram
     suppliers ||--o{ purchases : "supplies"
     carriers ||--o{ carrier_contacts : "people to call"
     carriers ||--o{ purchases : "carries (optional)"
-    carriers ||--o{ goods_receipts : "delivers (required)"
+    carriers ||--o{ shipments : "carries (required)"
+    shipments ||--o{ purchases : "holds whole purchases"
+    shipments ||--|{ shipment_containers : "our containers"
+    shipment_containers ||--|{ shipment_lines : "packing list"
+    purchase_items ||--o{ shipment_lines : "split over containers"
+    shipment_containers ||--o| goods_receipts : "received as"
     purchases ||--|{ purchase_items : "lines"
     products ||--o{ purchase_items : ""
     product_units ||--o{ purchase_items : "purchase unit"
@@ -1327,6 +1332,7 @@ erDiagram
         date purchase_date
         date expected_date "ETA at the carrier, not at the store"
         bigint carrier_id FK "optional"
+        bigint shipment_id FK "in at most one shipment"
         bigint warehouse_id FK "default destination"
         enum status "draft, ordered, shipped, completed, cancelled"
         decimal total_amount
@@ -1354,13 +1360,36 @@ erDiagram
         decimal subtotal
         string notes
     }
+    shipments {
+        bigint id PK
+        uuid client_uuid UK
+        string number UK "PG/MU/2610/0001"
+        bigint carrier_id FK "required"
+        string vessel_name
+        date departure_date "filling it ships the purchases"
+        enum status "draft, shipped, cancelled"
+        text notes
+        bigint created_by
+        datetime shipped_at
+        string cancel_reason
+    }
+    shipment_containers {
+        bigint id PK
+        bigint shipment_id FK
+        string number "unique within the shipment"
+    }
+    shipment_lines {
+        bigint id PK
+        bigint shipment_container_id FK
+        bigint purchase_item_id FK
+        decimal quantity "in the purchase unit"
+        decimal base_quantity
+        decimal freight_cost "carrier price for this line"
+    }
     goods_receipts {
         bigint id PK
         string number UK
-        string container_number
-        bigint carrier_id FK "required"
-        string tracking_number "resi from the carrier"
-        date shipped_date "container departure; sets the purchases to shipped"
+        bigint shipment_container_id FK "one receipt per container"
         date arrival_date
         datetime unloading_started_at
         datetime unloading_finished_at
@@ -1791,7 +1820,7 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 **Aturan bisnis**
 1. Draft boleh diubah bebas; **`ordered`** (Dipesan) = pembelian dikonfirmasi (Admin), barang dan harga terkunci. Nota berisi tagihan **selalu dibayar penuh di muka** lewat satu tombol **Konfirmasi & Bayar** (tanpa pembayaran, nota tidak bisa dikonfirmasi); nota yang semua barisnya berharga 0 (kirim ulang gratis, butir 6) cukup **Konfirmasi** dan tidak pernah berstatus dibayar.
 2. Pembelian **tidak mengubah stok, `cost_price`, maupun layer FIFO** — itu terjadi saat **penerimaan diposting** (stok baru ada ketika barang benar-benar datang).
-3. **`shipped`** (Dikirim): barang sudah dibawa ekspedisi menuju toko (di jalan). Statusnya **terisi otomatis ketika container yang memuat nota itu berangkat** (pengiriman container, 7.2: ekspedisi wajib, nomor resi, tanggal berangkat); **tidak ada tombol "tandai dikirim"**. Ini terjadi setelah barang sampai di ekspedisi (perkiraan tiba di ekspedisi, 7.1b header), bukan saat supplier menyerahkannya. **`completed`** (Selesai): terisi saat penerimaan nota ini diposting oleh gudang.
+3. **`shipped`** (Dikirim): barang sudah dibawa ekspedisi menuju toko (di jalan). Statusnya **terisi otomatis ketika tanggal berangkat pengiriman yang memuat nota itu diisi** (7.1c); **tidak ada tombol "tandai dikirim"**. Ini terjadi setelah barang sampai di ekspedisi (perkiraan tiba di ekspedisi, 7.1b header), bukan saat supplier menyerahkannya. **`completed`** (Selesai): terisi saat semua container yang memuat barang nota ini sudah diterima dan diposting oleh gudang (7.2 butir 8 dan 9).
 4. Penerimaan merujuk **baris pembelian** (`goods_receipt_items.purchase_item_id`) dan **menerima seluruh nota sekali**: tidak ada diterima sebagian, tidak ada tutup sisa. Qty kurang atau rusak dicatat sebagai selisih di penerimaan (7.2 butir 12).
 5. **Batal** hanya bila barang belum dikirim (`draft` atau `ordered`); sesudah `shipped` nota tidak bisa dibatalkan.
 6. **Kirim ulang:** bila barang kurang dan diputuskan **kirim ulang**, supplier menerbitkan **nota baru untuk kita** berisi barang itu dengan **harga 0 (gratis)**; Admin mencatatnya sebagai pembelian biasa (nomor nota supplier sendiri), terpisah dari nota asal. Harga baris boleh 0 (tidak boleh negatif). Barang gratis itu datang dengan kontainer/pengiriman sendiri yang **tetap dibayar toko**, jadi biaya kontainernya dicatat pada penerimaannya (7.2 butir 13).
@@ -1802,11 +1831,34 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 
 ---
 
-### 7.2 F2a — Penerimaan Barang (Kontainer, Multi-Supplier, merujuk Pembelian) — **R2 (R1 memakai opname)**
+### 7.1c F2-0b — Pengiriman Ekspedisi — **R2**
+
+**Tujuan:** mencatat satu kali pengiriman beberapa nota pembelian lewat satu ekspedisi, beserta **packing list dari ekspedisi** (container, barang, dan biaya). Pengiriman tidak mengubah stok; barang diterima gudang per container (7.2).
+
+**Layar:** Daftar Pengiriman (filter ekspedisi dan status; cari nomor, kapal, no. container) · Form Pengiriman · Detail (packing list per container dengan sub total, total biaya).
+
+**Header:** nomor (`PG/{prefiks}/{YYMM}/{seq}`), **ekspedisi (wajib)**, kapal (opsional), **tanggal berangkat**, catatan. Perkiraan tiba di toko = tanggal berangkat + `transit_days` ekspedisi (hanya ditampilkan).
+**Nota:** satu atau lebih nota pembelian berstatus `ordered` (sudah dipesan dan dibayar). **Satu nota hanya masuk satu pengiriman** (`purchases.shipment_id`). Nota dimuat dengan scan atau ketik nomor nota (atau nomor nota supplier); semua barang nota langsung muncul.
+**Packing list:** satu baris per container dan per baris nota: **no. container**, **jumlah** (dalam satuan nota), dan **biaya** dari ekspedisi (harga kubikasi per baris, boleh 0). Satu baris nota bisa **terbagi ke beberapa container** (contoh: semen 1000 sak dengan 100 sak per container menjadi 10 baris). Isian awal tiap barang adalah seluruh jumlahnya di container terakhir yang dipakai, jadi tinggal mengisi no. container dan biaya.
+**Status:** `draft → shipped` (+ `cancelled`).
+
+**Aturan bisnis**
+1. Pengiriman draft boleh diubah bebas (nota ditambah atau dikeluarkan, packing list diganti). Packing list diisi setelah dokumen dari ekspedisi ada; selama belum berangkat disimpan sebagai draft.
+2. **Mengisi tanggal berangkat = berangkat:** pengiriman menjadi `shipped`, semua nota di dalamnya otomatis `shipped` (Dikirim) dan mengikuti ekspedisi pengiriman. Tidak ada tombol "tandai dikirim". Tanggal berangkat tidak boleh di masa depan.
+3. **Syarat berangkat:** packing list terisi dan **seluruh jumlah tiap barang nota sudah masuk container** (jumlah di container sama dengan jumlah di nota, tidak lebih dan tidak kurang). Tiap baris wajib no. container dan biaya (boleh 0). Jumlah di container tidak boleh melebihi nota, juga saat masih draft.
+4. Nomor container disimpan seragam (huruf besar, spasi dirapikan); baris dengan container dan barang yang sama dijumlahkan.
+5. Setelah berangkat, pengiriman terkunci dan tidak bisa dibatalkan. Pengiriman draft bisa dibatalkan (alasan wajib) dan notanya bebas lagi. Nota yang sudah masuk pengiriman tidak bisa dibatalkan; keluarkan dulu dari pengiriman.
+6. Biaya per baris (`shipment_lines.freight_cost`) disimpan sebagai dasar pembagian ongkir ke modal barang (arah di 7.2 butir 13): ekspedisi sudah menghitungnya per baris menurut volume.
+7. Izin: `shipments.manage`, Admin Toko saja.
+8. **Belum dikerjakan:** koli, ukuran, dan volume (m³) per baris; lampiran file packing list; penerimaan per container.
+
+---
+
+### 7.2 F2a — Penerimaan Barang (per Container, Multi-Supplier, merujuk Pembelian) — **R2 (R1 memakai opname)**
 
 **Layar:** Daftar Penerimaan (kolom ref. pembelian) · Form Penerimaan · Detail (read-only + riwayat status).
 
-**Header:** nomor, **no. kontainer**, **ekspedisi pengantar (wajib, dari master ekspedisi 7.1b)**, **nomor resi ekspedisi**, **tanggal kirim** (tanggal container berangkat; menyimpannya mengubah pembelian di dalamnya jadi `shipped`; perkiraan tiba di toko dihitung dari `transit_days` ekspedisi), **tanggal sampai**, **bongkar mulai/selesai**, **gudang tujuan**, catatan.
+**Header:** nomor, **container** (dipilih dari container pengiriman yang sudah `shipped`, 7.1c; no. container, ekspedisi, kapal, dan tanggal berangkat ikut pengirimannya), **tanggal sampai**, **bongkar mulai/selesai**, **gudang tujuan**, catatan.
 **Blok supplier (≥ 1):** supplier (PT), no. dokumen, tanggal dokumen; tombol **Ambil dari pembelian** memuat baris pembelian berstatus `shipped` untuk supplier itu.
 **Item per blok:** dua jenis baris: (a) **dari pembelian** — barang/satuan/harga ikut baris pembelian, kolom *dipesan · diterima · rusak · selisih*; (b) **tanpa pembelian** — pilih barang sendiri dan isi harga manual. Keduanya punya qty dokumen (packing list), qty diterima, qty rusak → qty dasar, harga beli dasar, selisih vs dokumen.
 **Biaya kontainer:** `freight`, `customs`, `handling`, `other` + vendor, nominal, tanggal bayar. **Sementara hanya dicatat; arah berikutnya biaya ini (ongkir) masuk ke modal barang sehingga memengaruhi harga jual** (D5, butir 13).
@@ -1817,18 +1869,18 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 1. Satu kontainer banyak supplier; barang yang sama dari supplier berbeda = baris terpisah, digabung per barang saat posting.
 2. Stok bertambah **hanya saat posting** ke gudang tujuan (`goods_receipt`); qty rusak tidak masuk stok. Posting membuat **satu layer FIFO per item** (`stock_layers`, modal = `base_unit_cost`, `entered_at` = waktu posting).
 3. Harga beli dasar berbeda dari `cost_price` → update `cost_price` + `price_histories` (sumber `goods_receipt`) + hitung ulang harga persen; ringkasan "N barang berubah harga" tampil sebelum posting. **Ditunda sampai FIFO dan alokasi biaya kontainer dikerjakan:** apakah baris berharga 0 (kirim ulang gratis, 7.1b butir 6) boleh menurunkan `cost_price` menjadi 0. Usulan: tidak memperbarui `cost_price` sampai ongkir terbagi ke modal.
-4. Validasi tanggal: `shipped_date ≤ arrival_date ≤ unloading_started_at ≤ unloading_finished_at`.
+4. Validasi tanggal: `shipments.departure_date ≤ arrival_date ≤ unloading_started_at ≤ unloading_finished_at`.
 5. Setelah `received` dokumen terkunci; koreksi = `cancelled` + alasan (mutasi balik). **Ditolak bila layer penerimaan itu sudah terpakai sebagian/seluruhnya** (barang sudah terjual/dipindah); gunakan opname/koreksi.
 6. Approval Admin opsional (pengaturan).
 7. Total nilai barang per supplier dan total biaya kontainer ditampilkan terpisah (informasi).
-8. **Merujuk pembelian:** satu blok supplier boleh memuat beberapa pembelian dari supplier yang sama; **satu pembelian diterima di satu penerimaan** (tidak ada penerimaan sebagian). Harga/modal diambil dari baris pembelian (tidak bisa diubah di penerimaan; koreksi harga lewat pembelian baru sebelum dikirim).
-9. Posting mengubah status pembelian terkait menjadi `completed` (7.1b); pembatalan penerimaan mengembalikannya ke `shipped`.
+8. **Penerimaan per container:** gudang menerima container satu per satu sesuai urutan bongkar, tidak harus bersamaan. Barang yang diterima adalah baris packing list container itu (nota, barang, jumlah), jadi satu baris nota yang terbagi ke beberapa container diterima bertahap. Harga/modal diambil dari baris pembelian (tidak bisa diubah di penerimaan; koreksi harga lewat pembelian baru sebelum dikirim).
+9. **Nota tidak punya status diterima sebagian:** nota tetap `shipped` selama masih ada container yang memuat barangnya yang belum diterima, dan menjadi `completed` saat container terakhirnya diposting (7.1b). Pembatalan penerimaan mengembalikan nota ke `shipped`.
 10. Bila `receiving_requires_purchase` aktif, baris tanpa pembelian ditolak.
-11. **Ekspedisi wajib diisi** pada setiap penerimaan kontainer (`goods_receipts.carrier_id`), berbeda dengan pembelian yang boleh tanpa ekspedisi sampai ditandai dikirim. Hanya ekspedisi aktif yang bisa dipilih.
+11. **Ekspedisi wajib** ada di pengiriman (7.1c, `shipments.carrier_id`) dan penerimaan container mengikutinya; nota pembelian sendiri boleh tanpa ekspedisi sampai masuk pengiriman.
 12. **Pengecekan gudang:** gudang membandingkan barang yang datang dengan nota: qty diterima dan qty rusak per baris. Bila jumlah atau kondisinya tidak sesuai, selisih dicatat per baris dengan tindak lanjut **refund** (nilai barang + ongkirnya; nominal ikut dicatat) atau **kirim ulang**. Kirim ulang = supplier menerbitkan nota baru berharga 0 yang dicatat sebagai pembelian baru (7.1b butir 6). Barang rusak tidak masuk stok (butir 2).
-13. **Biaya kontainer ke harga jual (arah, belum dikerjakan):** biaya kontainer (ongkir) akan dibagi ke modal tiap barang pada penerimaan itu, lalu masuk `cost_price` dan memengaruhi harga jual lewat rumus margin. Cara pembagian (per nilai barang, per qty, atau per volume/berat) **belum diputuskan**. Barang kirim ulang berharga 0 (7.1b butir 6) tetap ikut menerima alokasi ini karena **kita yang membayar kontainernya**; modalnya jadi biaya kontainer yang terbagi ke barang itu, bukan 0.
+13. **Biaya kontainer ke harga jual (arah, belum dikerjakan):** biaya kontainer (ongkir) akan dibagi ke modal tiap barang pada penerimaan itu, lalu masuk `cost_price` dan memengaruhi harga jual lewat rumus margin. Dasar pembagian yang paling dekat adalah **biaya per baris dari packing list** (`shipment_lines.freight_cost`, 7.1c butir 6) karena ekspedisi sudah menghitungnya per baris menurut volume; keputusan akhir (termasuk ongkir yang direfund) **belum diambil**. Barang kirim ulang berharga 0 (7.1b butir 6) tetap ikut menerima alokasi ini karena **kita yang membayar kontainernya**; modalnya jadi biaya kontainer yang terbagi ke barang itu, bukan 0.
 
-**Edge case:** barang belum ada → "Tambah barang cepat" langsung dari form (membuat barang di toko ini); kontainer dibongkar bertahap → no. kontainer boleh muncul di >1 penerimaan (peringatan informatif); draft menggantung → filter "draft > 7 hari".
+**Edge case:** barang belum ada → "Tambah barang cepat" langsung dari form (membuat barang di toko ini); draft menggantung → filter "draft > 7 hari".
 
 ---
 

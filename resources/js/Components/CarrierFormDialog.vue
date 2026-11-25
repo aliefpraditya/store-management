@@ -2,7 +2,7 @@
 import { watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import ContactListEditor from './ContactListEditor.vue';
-import RegionInput from './RegionInput.vue';
+import SuggestedTextInput from './SuggestedTextInput.vue';
 
 const props = defineProps({
     modelValue: { type: Boolean, required: true },
@@ -65,8 +65,8 @@ function submit() {
                     <q-input v-model="form.phone" outlined label="Telepon (opsional)" maxlength="50" :error="!!form.errors.phone" :error-message="form.errors.phone" />
                     <q-input v-model="form.address" outlined type="textarea" autogrow label="Alamat (opsional)" maxlength="500" :error="!!form.errors.address" :error-message="form.errors.address" />
                     <div class="carrier-dialog__pair">
-                        <RegionInput v-model="form.province" :options="regions.provinces" label="Provinsi tempat barang diterima (opsional)" :error="!!form.errors.province" :error-message="form.errors.province" />
-                        <RegionInput v-model="form.city" :options="regions.cities" label="Kota tempat barang diterima (opsional)" :error="!!form.errors.city" :error-message="form.errors.city" />
+                        <SuggestedTextInput v-model="form.province" :options="regions.provinces" label="Provinsi tempat barang diterima (opsional)" :error="!!form.errors.province" :error-message="form.errors.province" />
+                        <SuggestedTextInput v-model="form.city" :options="regions.cities" label="Kota tempat barang diterima (opsional)" :error="!!form.errors.city" :error-message="form.errors.city" />
                     </div>
                     <q-input
                         v-model="form.transit_days"

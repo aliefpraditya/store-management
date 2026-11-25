@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * A purchase for its detail and edit screens. Expects `supplier`, `carrier`, `warehouse`, `items.product.productUnits`,
+ * A purchase for its detail and edit screens. Expects `supplier`, `carrier`, `shipment`, `warehouse`, `items.product.productUnits`,
  * `items.product.baseUnit` and `attachments` loaded.
  *
  * @mixin Purchase
@@ -33,6 +33,8 @@ class PurchaseResource extends JsonResource
             'expected_date' => $this->expected_date?->toDateString(),
             'carrier_id' => $this->carrier_id,
             'carrier_name' => $this->carrier?->name,
+            'shipment_number' => $this->shipment?->number,
+            'shipment_url' => $this->shipment_id === null ? null : route('tenant.shipments.show', ['tenant' => tenant('code'), 'shipment' => $this->shipment_id]),
             'warehouse_id' => $this->warehouse_id,
             'warehouse_name' => $this->warehouse->name,
             'status' => $this->status->value,
@@ -51,7 +53,7 @@ class PurchaseResource extends JsonResource
             'cancel_reason' => $this->cancel_reason,
             'cancelled_at' => $this->cancelled_at?->toIso8601String(),
             'is_editable' => $this->status->isEditable(),
-            'is_cancellable' => $this->status->isCancellable(),
+            'is_cancellable' => $this->status->isCancellable() && $this->shipment_id === null,
             'items' => $this->items->map(fn (PurchaseItem $item): array => [
                 'id' => $item->id,
                 'product' => [

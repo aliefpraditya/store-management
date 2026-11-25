@@ -29,6 +29,7 @@ use App\Http\Controllers\Tenant\SaleReturnController;
 use App\Http\Controllers\Tenant\ShiftController;
 use App\Http\Controllers\Tenant\ShiftRecapController;
 use App\Http\Controllers\Tenant\ShiftReceiptController;
+use App\Http\Controllers\Tenant\ShipmentController;
 use App\Http\Controllers\Tenant\StockHistoryController;
 use App\Http\Controllers\Tenant\StockOpnameController;
 use App\Http\Controllers\Tenant\StoreSettingController;
@@ -178,6 +179,16 @@ Route::prefix('t/{tenant}')
             Route::post('{purchase}/attachments', [PurchaseAttachmentController::class, 'store'])->name('attachments.store');
             Route::get('{purchase}/attachments/{attachment}', [PurchaseAttachmentController::class, 'show'])->name('attachments.show');
             Route::delete('{purchase}/attachments/{attachment}', [PurchaseAttachmentController::class, 'destroy'])->name('attachments.destroy');
+        });
+
+        Route::prefix('shipments')->name('tenant.shipments.')->middleware('permission:shipments.manage')->scopeBindings()->group(function () {
+            Route::get('/', [ShipmentController::class, 'index'])->name('index');
+            Route::get('create', [ShipmentController::class, 'create'])->name('create');
+            Route::post('/', [ShipmentController::class, 'store'])->name('store');
+            Route::get('{shipment}', [ShipmentController::class, 'show'])->name('show');
+            Route::get('{shipment}/edit', [ShipmentController::class, 'edit'])->name('edit');
+            Route::put('{shipment}', [ShipmentController::class, 'update'])->name('update');
+            Route::post('{shipment}/cancellations', [ShipmentController::class, 'cancel'])->name('cancel');
         });
 
         Route::prefix('expenses')->name('tenant.expenses.')->middleware('permission:expenses.manage')->group(function () {

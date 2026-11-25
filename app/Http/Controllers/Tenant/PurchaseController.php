@@ -156,7 +156,7 @@ class PurchaseController extends Controller
      */
     private function resourceOf(Purchase $purchase): array
     {
-        return PurchaseResource::make($purchase->load(['supplier', 'carrier', 'warehouse', 'items.product.productUnits', 'attachments']))->resolve();
+        return PurchaseResource::make($purchase->load(['supplier', 'carrier', 'shipment', 'warehouse', 'items.product.productUnits', 'attachments']))->resolve();
     }
 
     /**

@@ -128,6 +128,10 @@ function deleteAttachment(attachment) {
                 <div><dt>Nomor nota supplier</dt><dd>{{ purchase.supplier_document_number ?? '—' }}</dd></div>
                 <div><dt>Tanggal nota</dt><dd>{{ dateFormat.format(new Date(purchase.purchase_date)) }}</dd></div>
                 <div><dt>Ekspedisi</dt><dd>{{ purchase.carrier_name ?? '—' }}</dd></div>
+                <div v-if="purchase.shipment_number">
+                    <dt>Pengiriman</dt>
+                    <dd><a :href="purchase.shipment_url" @click="visitUnlessNewTab($event, purchase.shipment_url)">{{ purchase.shipment_number }}</a></dd>
+                </div>
                 <div><dt>Perkiraan tiba di ekspedisi</dt><dd>{{ purchase.expected_date ? dateFormat.format(new Date(purchase.expected_date)) : '—' }}</dd></div>
                 <div><dt>Gudang tujuan</dt><dd>{{ purchase.warehouse_name }}</dd></div>
                 <div v-if="purchase.is_paid">
@@ -257,6 +261,9 @@ function deleteAttachment(attachment) {
 .card h2 {
     margin: 0 0 12px;
     font-size: 15px;
+    font-weight: 700;
+    letter-spacing: normal;
+    line-height: 1.4;
 }
 
 .card__head {

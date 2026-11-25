@@ -249,6 +249,9 @@ function submit() {
 .card h2 {
     margin: 0 0 12px;
     font-size: 15px;
+    font-weight: 700;
+    letter-spacing: normal;
+    line-height: 1.4;
 }
 
 .grid {

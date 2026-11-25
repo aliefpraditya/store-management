@@ -149,6 +149,7 @@ class HandleInertiaRequests extends Middleware
             'suppliers_url' => route('tenant.suppliers.index', ['tenant' => $store->code]),
             'carriers_url' => route('tenant.carriers.index', ['tenant' => $store->code]),
             'purchases_url' => route('tenant.purchases.index', ['tenant' => $store->code]),
+            'shipments_url' => route('tenant.shipments.index', ['tenant' => $store->code]),
             'expenses_url' => route('tenant.expenses.index', ['tenant' => $store->code]),
             'daily_closings_url' => route('tenant.daily-closings.index', ['tenant' => $store->code]),
             'settings_url' => route('tenant.settings.index', ['tenant' => $store->code]),

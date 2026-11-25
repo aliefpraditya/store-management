@@ -2,7 +2,7 @@
 import { watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import ContactListEditor from './ContactListEditor.vue';
-import RegionInput from './RegionInput.vue';
+import SuggestedTextInput from './SuggestedTextInput.vue';
 
 const props = defineProps({
     modelValue: { type: Boolean, required: true },
@@ -67,8 +67,8 @@ function submit() {
                     <q-input v-model="form.email" outlined type="email" label="Email (opsional)" maxlength="255" :error="!!form.errors.email" :error-message="form.errors.email" />
                     <q-input v-model="form.address" outlined type="textarea" autogrow label="Alamat (opsional)" maxlength="500" :error="!!form.errors.address" :error-message="form.errors.address" />
                     <div class="supplier-dialog__pair">
-                        <RegionInput v-model="form.province" :options="regions.provinces" label="Provinsi (opsional)" :error="!!form.errors.province" :error-message="form.errors.province" />
-                        <RegionInput v-model="form.city" :options="regions.cities" label="Kota (opsional)" :error="!!form.errors.city" :error-message="form.errors.city" />
+                        <SuggestedTextInput v-model="form.province" :options="regions.provinces" label="Provinsi (opsional)" :error="!!form.errors.province" :error-message="form.errors.province" />
+                        <SuggestedTextInput v-model="form.city" :options="regions.cities" label="Kota (opsional)" :error="!!form.errors.city" :error-message="form.errors.city" />
                     </div>
                     <q-input v-model="form.tax_number" outlined label="NPWP (opsional)" maxlength="30" :error="!!form.errors.tax_number" :error-message="form.errors.tax_number" />
                     <ContactListEditor v-model="form.contacts" title="Kontak sales" add-label="Tambah kontak sales" :errors="form.errors" />

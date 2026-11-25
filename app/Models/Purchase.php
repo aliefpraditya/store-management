@@ -20,7 +20,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * `confirmed_by` and `paid_by` are central user ids (no foreign key across databases). The payment (always in full, in
  * advance, when the nota is confirmed) is recorded on the nota only; it is not tied to the store's cash.
  */
-#[Fillable(['client_uuid', 'number', 'supplier_id', 'supplier_document_number', 'purchase_date', 'expected_date', 'carrier_id', 'warehouse_id', 'status', 'total_amount', 'notes', 'created_by', 'created_by_name', 'confirmed_by', 'confirmed_by_name', 'confirmed_at', 'paid_date', 'paid_amount', 'payment_method', 'payment_notes', 'paid_by', 'paid_by_name', 'cancel_reason', 'cancelled_at'])]
+#[Fillable(['client_uuid', 'number', 'supplier_id', 'supplier_document_number', 'purchase_date', 'expected_date', 'carrier_id', 'shipment_id', 'warehouse_id', 'status', 'total_amount', 'notes', 'created_by', 'created_by_name', 'confirmed_by', 'confirmed_by_name', 'confirmed_at', 'paid_date', 'paid_amount', 'payment_method', 'payment_notes', 'paid_by', 'paid_by_name', 'cancel_reason', 'cancelled_at'])]
 class Purchase extends Model implements AuditableContract
 {
     /** @use HasFactory<PurchaseFactory> */
@@ -64,6 +64,16 @@ class Purchase extends Model implements AuditableContract
     public function carrier(): BelongsTo
     {
         return $this->belongsTo(Carrier::class);
+    }
+
+    /**
+     * The shipment this purchase travels in, once it was put in one; a purchase is in at most one.
+     *
+     * @return BelongsTo<Shipment, $this>
+     */
+    public function shipment(): BelongsTo
+    {
+        return $this->belongsTo(Shipment::class);
     }
 
     /**

@@ -39,6 +39,11 @@ class PurchaseException extends Exception
         return new self('Nota ini tidak bisa dibatalkan lagi karena barangnya sudah dikirim atau notanya sudah selesai.');
     }
 
+    public static function inShipment(string $shipmentNumber): self
+    {
+        return new self("Nota ini sudah masuk pengiriman {$shipmentNumber}. Keluarkan dulu dari pengiriman itu sebelum dibatalkan.");
+    }
+
     public static function supplierInactive(): self
     {
         return new self('Supplier ini sudah dinonaktifkan. Pilih supplier lain atau aktifkan kembali.');
