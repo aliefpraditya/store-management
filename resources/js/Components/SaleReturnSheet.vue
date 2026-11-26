@@ -74,7 +74,7 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
 <style>
 .return-print {
     box-sizing: border-box;
-    padding: 4mm;
+    padding: 4mm var(--thermal-padding-right, 4mm) 4mm var(--thermal-padding-left, 4mm);
     font-family: 'Courier New', monospace;
     font-size: 11px;
     line-height: 1.35;
