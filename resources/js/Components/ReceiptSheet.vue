@@ -100,11 +100,17 @@ const rule = '- '.repeat(60);
     color: #000;
 }
 
+/*
+ * Text blocks are plain blocks with an explicit alignment, not flex columns: the printer's renderer does not align the
+ * items of a flex column the way a browser does, which put left-aligned lines in the middle and the letterhead off centre.
+ */
 .receipt-print header {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
     text-align: center;
+}
+
+.receipt-print header span,
+.receipt-print header b {
+    display: block;
 }
 
 .receipt-print header b {
@@ -133,21 +139,27 @@ const rule = '- '.repeat(60);
 }
 
 .receipt-print__meta {
-    display: flex;
-    flex-direction: column;
     margin: 10px 0 12px;
+    text-align: left;
+}
+
+.receipt-print__meta span {
+    display: block;
 }
 
 .receipt-print__items {
     margin: 0;
     padding: 0;
     list-style: none;
+    text-align: left;
 }
 
 .receipt-print__items li {
-    display: flex;
-    flex-direction: column;
     margin-bottom: 4px;
+}
+
+.receipt-print__items li > span:first-child {
+    display: block;
 }
 
 .receipt-print__line {
@@ -168,9 +180,13 @@ const rule = '- '.repeat(60);
 }
 
 .receipt-print__order {
-    display: flex;
-    flex-direction: column;
     margin-bottom: 8px;
+    text-align: left;
+}
+
+.receipt-print__order > span,
+.receipt-print__order > b {
+    display: block;
 }
 
 .receipt-print__barcode {
@@ -178,9 +194,12 @@ const rule = '- '.repeat(60);
 }
 
 .receipt-print__totals {
-    display: flex;
-    flex-direction: column;
     margin: 0 0 8px;
     text-align: right;
+}
+
+.receipt-print__totals > span,
+.receipt-print__totals > b {
+    display: block;
 }
 </style>
