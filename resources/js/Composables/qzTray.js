@@ -104,93 +104,15 @@ function stylesOf(document) {
         .join('\n');
 }
 
-/** Canvas pixels drawn per CSS pixel, so the text of a sheet is sharp enough for the dots of a receipt printer. */
-const IMAGE_SCALE = 2;
-
-/** Blank paper after the last line of a roll, so the printer feeds it past the tear-off edge. */
-const ROLL_TAIL_MM = 4;
-
 /**
- * Draws what a sheet shows, laid out as wide as the roll, onto a PNG.
- *
- * The browser does the layout, so the picture is what the screen shows; QZ Tray's own HTML renderer aligns text
- * differently and put the letterhead and the left-aligned lines in the wrong place.
- *
- * @param {HTMLElement} sheet the element holding the sheet
- * @param {number} widthMm the width of the roll
- * @returns {Promise<{base64: string, heightMm: number}>} the picture without its `data:` prefix and how tall it is on paper
- * @throws {Error} when the browser cannot draw the sheet
- */
-async function renderSheetAsPng(sheet, widthMm) {
-    const document = sheet.ownerDocument;
-    const widthPx = Math.round(widthMm * PX_PER_MM);
-
-    const probe = document.createElement('div');
-    probe.style.cssText = `position: fixed; left: -10000px; top: 0; width: ${widthMm}mm; visibility: hidden;`;
-    probe.innerHTML = sheet.innerHTML;
-    document.body.append(probe);
-    const heightPx = probe.offsetHeight + Math.ceil(ROLL_TAIL_MM * PX_PER_MM);
-    probe.remove();
-
-    const page = document.createElement('div');
-    page.style.cssText = `width: ${widthMm}mm; background: #fff;`;
-    const style = document.createElement('style');
-    style.textContent = stylesOf(document);
-    page.append(style);
-    page.insertAdjacentHTML('beforeend', sheet.innerHTML);
-
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${widthPx}" height="${heightPx}"><foreignObject width="100%" height="100%">${new XMLSerializer().serializeToString(page)}</foreignObject></svg>`;
-    const image = new Image();
-    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-    await image.decode();
-
-    const canvas = document.createElement('canvas');
-    canvas.width = widthPx * IMAGE_SCALE;
-    canvas.height = heightPx * IMAGE_SCALE;
-    const context = canvas.getContext('2d');
-    context.fillStyle = '#fff';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-
-    return { base64: canvas.toDataURL('image/png').split(',')[1], heightMm: heightPx / PX_PER_MM };
-}
-
-/**
- * Prints a roll sheet as a picture on a printer without opening the print dialog.
- *
- * @param {{name: string, width_mm: number}} target
- * @param {HTMLElement} sheet the element holding the sheet
- * @throws {Error} when the sheet cannot be drawn, QZ Tray cannot be reached or it does not know the printer
- */
-async function printSheetAsImage(target, sheet) {
-    const { base64, heightMm } = await renderSheetAsPng(sheet, target.width_mm);
-    const qz = await connectedQz();
-    const config = qz.configs.create(target.name, {
-        units: 'mm',
-        size: { width: target.width_mm, height: heightMm },
-        margins: 0,
-        colorType: 'blackwhite',
-    });
-
-    await qz.print(config, [{ type: 'pixel', format: 'image', flavor: 'base64', data: base64 }]);
-}
-
-/**
- * Prints what a print page shows (without the grey surround of the screen) on a printer. A roll goes as a picture; a
- * continuous form (a target with a height) goes as HTML, because it can run over more than one form and QZ Tray's page break handles that.
+ * Prints what a print page shows (without the grey surround of the screen) on a printer.
  *
  * @param {{name: string, width_mm: number, height_mm: number|null}} target
  * @param {HTMLElement} sheet the element holding the sheet
  * @throws {Error} when QZ Tray cannot be reached or does not know the printer
  */
 export async function printSheetElement(target, sheet) {
-    if (target.height_mm === null) {
-        await printSheetAsImage(target, sheet);
-
-        return;
-    }
-
-    const html =`<!doctype html><html><head><meta charset="utf-8"><style>${stylesOf(sheet.ownerDocument)}\nbody { margin: 0; width: ${target.width_mm}mm; background: #fff; }</style></head><body>${sheet.innerHTML}</body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>${stylesOf(sheet.ownerDocument)}\nbody { margin: 0; width: ${target.width_mm}mm; background: #fff; }</style></head><body>${sheet.innerHTML}</body></html>`;
 
     await printHtml(target, html, sheet.scrollHeight);
 }
