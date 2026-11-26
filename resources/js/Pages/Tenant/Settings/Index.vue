@@ -170,7 +170,7 @@ function confirmDeleteUnit(unit) {
                 <PrinterNameField
                     v-model="form.receipt_printer"
                     label="Printer struk"
-                    hint="Nama persis seperti di Windows, mis. EPSON TM-U220 Receipt. Kertasnya mengikuti lebar kertas nota di atas."
+                    hint="Nama persis seperti di Windows, mis. EPSON TM-U220 Receipt. Kertasnya mengikuti lebar kertas nota di atas. Struk di kertas 76 mm dicetak sebagai teks printer (ESC/POS); lebar lain dicetak dari halaman."
                     :detected-printers="detectedPrinters"
                     :is-qz-enabled="form.is_qz_tray_enabled"
                     :page="{ width_mm: form.paper_width, height_mm: null, label: `Roll ${form.paper_width} mm` }"

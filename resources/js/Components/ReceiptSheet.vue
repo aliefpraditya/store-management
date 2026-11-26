@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { formatReceiptDateTime } from '../Composables/receiptDateTime';
 import { formatFigure as figure } from '../Composables/useMoneyFormat';
 import { formatQuantity } from '../Composables/useQuantityFormat';
 import { thermalLayoutOf } from '../Composables/thermalLayout';
@@ -11,9 +12,6 @@ const props = defineProps({
     /** `order` is the customer order made in the same checkout, printed on the same paper (null when there is none). The server has named the payments as they are printed. The receipt shows plain figures ("1.280.000"); only a unit price carries "Rp.". @type {{order: object|null, number: string, sold_at: string, cashier_name: string, customer_name: string|null, status: string, is_copy: boolean, store: {name: string, address: string|null, phone: string|null}, footer: string, paper_width: number, items: object[], payments: object[], total: string, change_amount: string}} */
     receipt: { type: Object, required: true },
 });
-
-const dateFormat = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
-const timeFormat = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit' });
 
 /** Width of one character of the 12px monospace font, in millimetres (7.2 px at 96 px per inch). */
 const CHARACTER_WIDTH_MM = 7.2 / (96 / 25.4);
@@ -46,7 +44,7 @@ const rule = computed(() => {
 
         <div class="receipt-print__meta">
             <ReceiptRow>No : {{ receipt.number }}</ReceiptRow>
-            <ReceiptRow>Tanggal : {{ dateFormat.format(new Date(receipt.sold_at)) }} {{ timeFormat.format(new Date(receipt.sold_at)) }}</ReceiptRow>
+            <ReceiptRow>Tanggal : {{ formatReceiptDateTime(receipt.sold_at) }}</ReceiptRow>
             <ReceiptRow>Kasir : {{ receipt.cashier_name }}</ReceiptRow>
             <ReceiptRow v-if="receipt.customer_name">Pelanggan : {{ receipt.customer_name }}</ReceiptRow>
             <ReceiptRow v-if="receipt.order?.customer_phone">Telepon : {{ receipt.order.customer_phone }}</ReceiptRow>

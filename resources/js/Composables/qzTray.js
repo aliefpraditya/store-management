@@ -4,7 +4,7 @@
  * downloads it. The page is not signed: QZ Tray asks once on the computer to trust it (tick "Remember this decision").
  */
 
-import { thermalLayoutOf } from './thermalLayout';
+import { sampleReceiptEscPos } from './receiptEscPos';
 
 /** @type {Promise<object>|null} */
 let qzClient = null;
@@ -150,82 +150,39 @@ export async function printSheetElement(target, sheet) {
     await printHtml(target, html, sheet.scrollHeight);
 }
 
-/** How many characters of the 11pt test font fit the text area of a 76 mm roll, for the trial of a line filled out to the full width. */
-const TEST_LINE_CHARACTERS = 26;
-
 /**
- * The ways of putting a line at the left edge of the text area, one line each, so a printed test shows which of them the
- * renderer of QZ Tray follows. Each line names its own way; the one a line is at the left edge for is the one that works.
- */
-const LEFT_ALIGNMENT_TRIALS = [
-    '<div style="display:flex;justify-content:space-between"><span>Q blanko tak tampak</span><span style="visibility:hidden;color:#fff">.</span></div>',
-    '<div style="display:flex;justify-content:space-between"><span>N blanko nbsp</span><span>&nbsp;</span></div>',
-    '<div style="display:flex;justify-content:space-between"><span>O blanko titik</span><span>.</span></div>',
-    `<div style="white-space:pre">${'P diisi penuh'.padEnd(TEST_LINE_CHARACTERS, ' ')}</div>`,
-    '<div style="display:flex;justify-content:space-between"><span>REF kiri</span><span>kanan</span></div>',
-    '<div style="text-align:left">A text-align left</div>',
-    '<table width="100%" cellspacing="0" cellpadding="0"><tr><td align="left">B td align left</td></tr></table>',
-    '<table cellspacing="0" cellpadding="0"><tr><td>C tabel sempit</td></tr></table>',
-    '<table align="left" cellspacing="0" cellpadding="0"><tr><td>D tabel align</td></tr></table><br clear="all">',
-    '<div style="float:left">E float left</div><div style="clear:both"></div>',
-    '<div style="display:flex;justify-content:flex-start"><span>F flex-start</span></div>',
-    '<div style="display:flex;justify-content:space-between"><span>G flex antara</span><span></span></div>',
-    '<div style="width:40mm">H kotak 40mm</div>',
-    '<pre style="margin:0;font:inherit">I pre</pre>',
-    '<div style="position:relative;height:1.4em"><span style="position:absolute;left:0">J absolute</span></div>',
-    '<div>K div biasa</div>',
-    '<div style="text-align:center">M text-align tengah</div>',
-];
-
-/** Height on screen of one line of the test page, to size a roll page. */
-const TEST_LINE_HEIGHT_PX = 26;
-
-/**
- * A few lines sent as ESC/POS commands, the text of the printer itself instead of a picture, to see whether the printer's
- * driver passes raw data through and how clean such text prints and how it aligns. The ruler is 33 characters, the width of
- * the standard font of a 76 mm roll printer such as the Epson TM-U220.
+ * Sends text to the printer as it is, without the print dialog and without a picture: the commands and characters of the
+ * printer itself (ESC/POS for an Epson TM-U220).
  *
- * @param {string} printerName
+ * @param {{name: string}} target
+ * @param {string} text what to print, in one piece: a zero byte cuts the rest off on its way to the printer
  * @throws {Error} when QZ Tray cannot be reached or does not know the printer
  */
-async function printEscPosProbe(printerName) {
+export async function printEscPos(target, text) {
     const qz = await connectedQz();
-    const escape = '\x1B';
-    const alignLeft = `${escape}a\x00`;
-    const alignCenter = `${escape}a\x01`;
-    const alignRight = `${escape}a\x02`;
 
-    await qz.print(qz.configs.create(printerName), [
-        `${escape}@`,
-        `${alignCenter}TES TEKS MENTAH\n`,
-        `${alignLeft}123456789012345678901234567890123\n`,
-        'KIRI Tanggal gypq Kuprik\n',
-        `${alignCenter}TENGAH\n`,
-        `${alignRight}KANAN 12.000\n`,
-        `${alignLeft}\n\n\n\n`,
-    ]);
+    await qz.print(qz.configs.create(target.name), [text]);
 }
 
 /**
  * A short test page, to see that the name given to a printer is the one the computer knows and that the paper is right. A
- * roll also prints the ways of aligning a line to the left, laid out within the same space a receipt is.
+ * roll whose receipts are sent as text prints a made-up receipt the way a real one is sent, so that can be tried before it is used.
  *
  * @param {{name: string, width_mm: number, height_mm: number|null}} target
  * @param {string} paperLabel
  * @throws {Error} when QZ Tray cannot be reached or does not know the printer
  */
 export async function printTestPage(target, paperLabel) {
-    const escape = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const isRoll = target.height_mm === null;
-    const trials = isRoll ? LEFT_ALIGNMENT_TRIALS : [];
-    const layout = thermalLayoutOf(target.width_mm);
-    const padding = isRoll ? `4mm ${layout.right}mm 4mm ${layout.left}mm` : '4mm';
-    const trialsHtml = isRoll ? `<br><br>${trials.join('')}` : '';
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>body { margin: 0; width: ${target.width_mm}mm; padding: ${padding}; box-sizing: border-box; background: #fff; font: 700 11pt 'Courier New', monospace; color: #000; }</style></head><body>TES CETAK<br>${escape(target.name)}<br>${escape(paperLabel)}<br>${new Date().toLocaleString('id-ID')}${trialsHtml}</body></html>`;
+    const sampleReceipt = target.height_mm === null ? sampleReceiptEscPos(target.width_mm) : null;
 
-    await printHtml(target, html, 120 + trials.length * TEST_LINE_HEIGHT_PX);
+    if (sampleReceipt !== null) {
+        await printEscPos(target, sampleReceipt);
 
-    if (isRoll) {
-        await printEscPosProbe(target.name);
+        return;
     }
+
+    const escape = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>body { margin: 0; width: ${target.width_mm}mm; padding: 4mm; box-sizing: border-box; background: #fff; font: 700 11pt 'Courier New', monospace; color: #000; }</style></head><body>TES CETAK<br>${escape(target.name)}<br>${escape(paperLabel)}<br>${new Date().toLocaleString('id-ID')}</body></html>`;
+
+    await printHtml(target, html, 120);
 }

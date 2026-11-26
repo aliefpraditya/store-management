@@ -1,6 +1,6 @@
 <script setup>
 import { nextTick, onMounted, ref } from 'vue';
-import { printSheetElement } from '../Composables/qzTray';
+import { printEscPos, printSheetElement } from '../Composables/qzTray';
 import { SHEET_QZ_FALLBACK_MESSAGE } from '../Composables/printSheet';
 import { usePrintTargets } from '../Composables/usePrintTargets';
 
@@ -9,6 +9,8 @@ const props = defineProps({
     paperWidth: { type: String, required: true },
     /** Which of the store's printers prints this sheet (`receipt` or `delivery_note`); null for a sheet that always goes through the print dialog. */
     printerKind: { type: String, default: null },
+    /** The sheet as the text the printer prints itself, sent through QZ Tray instead of the page; null for a sheet that has none (or a roll whose columns are not known). */
+    escposText: { type: String, default: null },
 });
 
 const { isQzTrayEnabled, targetOf } = usePrintTargets();
@@ -17,8 +19,9 @@ const paper = ref(null);
 
 /**
  * Prints the sheet. When the store prints through QZ Tray and has chosen a printer for this kind of sheet, it goes straight
- * to that printer; the page it is in then reports the print as done, as the print dialog does when it closes. If QZ Tray
- * cannot be used, the page that asked is told and the print dialog opens instead, so a print is never lost.
+ * to that printer, as text when the sheet has a text, else as the page; the page it is in
+ * then reports the print as done, as the print dialog does when it closes. If QZ Tray cannot be used, the page that asked
+ * is told and the print dialog opens instead, so a print is never lost.
  */
 async function print() {
     const target = props.printerKind !== null && isQzTrayEnabled.value ? targetOf(props.printerKind) : null;
@@ -30,7 +33,12 @@ async function print() {
     }
 
     try {
-        await printSheetElement(target, paper.value);
+        if (props.escposText !== null) {
+            await printEscPos(target, props.escposText);
+        } else {
+            await printSheetElement(target, paper.value);
+        }
+
         window.dispatchEvent(new Event('afterprint'));
     } catch (error) {
         window.parent.postMessage({ type: SHEET_QZ_FALLBACK_MESSAGE, message: error?.message ?? String(error) }, window.location.origin);
