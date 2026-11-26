@@ -230,7 +230,7 @@ class SealedPackStockTest extends TestCase
 
         $opname = $this->store->run(function () {
             $opnames = app(StockOpnameService::class);
-            $opname = $opnames->create([
+            ['opname' => $opname] = $opnames->create([
                 'warehouse_id' => $this->returnsWarehouse()->id,
                 'opname_date' => now()->toDateString(),
                 'scope' => StockOpnameScope::Selected->value,
@@ -238,7 +238,6 @@ class SealedPackStockTest extends TestCase
             ], $this->admin->id);
             $itemId = StockOpnameItem::query()->where('stock_opname_id', $opname->id)->value('id');
 
-            $opnames->start($opname);
             $opnames->saveCounts($opname, [['item_id' => $itemId, 'reason_id' => null, 'note' => null, 'parts' => [['unit_code' => 'ROL', 'quantity' => '1'], ['unit_code' => 'MTR', 'quantity' => '30']]]]);
             $opnames->finishCounting($opname);
             $opnames->saveReview($opname, $this->admin->id, [['item_id' => $itemId, 'reason_id' => null, 'note' => null, 'is_reviewed' => true, 'dead_stock_quantity' => '0', 'damaged_goods_quantity' => '0', 'full_price_quantity' => '130', 'damaged_goods_price' => null]]);
@@ -560,7 +559,7 @@ class SealedPackStockTest extends TestCase
 
         $this->store->run(function () use ($decision, $countedParts): void {
             $opnames = app(StockOpnameService::class);
-            $opname = $opnames->create([
+            ['opname' => $opname] = $opnames->create([
                 'warehouse_id' => $this->returnsWarehouse()->id,
                 'opname_date' => now()->toDateString(),
                 'scope' => StockOpnameScope::Selected->value,
@@ -568,7 +567,6 @@ class SealedPackStockTest extends TestCase
             ], $this->admin->id);
             $itemId = StockOpnameItem::query()->where('stock_opname_id', $opname->id)->value('id');
 
-            $opnames->start($opname);
             $opnames->saveCounts($opname, [['item_id' => $itemId, 'reason_id' => null, 'note' => null, 'parts' => $countedParts]]);
             $opnames->finishCounting($opname);
             $opnames->saveReview($opname, $this->admin->id, [['item_id' => $itemId, 'reason_id' => null, 'note' => null, 'is_reviewed' => true, 'damaged_goods_price' => null, ...$decision]]);
@@ -631,7 +629,7 @@ class SealedPackStockTest extends TestCase
 
         return $this->store->run(function () use ($parts, $product, $reason) {
             $opnames = app(StockOpnameService::class);
-            $opname = $opnames->create([
+            ['opname' => $opname] = $opnames->create([
                 'warehouse_id' => $this->mainWarehouse()->id,
                 'opname_date' => now()->toDateString(),
                 'scope' => StockOpnameScope::Selected->value,
@@ -639,7 +637,6 @@ class SealedPackStockTest extends TestCase
             ], $this->admin->id);
 
             $opnames->addProduct($opname, $product);
-            $opnames->start($opname);
             $opnames->saveCounts($opname, [[
                 'item_id' => StockOpnameItem::query()->where('stock_opname_id', $opname->id)->value('id'),
                 'parts' => collect($parts)->map(fn (string $quantity, string $unitCode): array => ['unit_code' => $unitCode, 'quantity' => $quantity])->values()->all(),
