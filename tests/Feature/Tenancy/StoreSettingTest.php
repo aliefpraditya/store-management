@@ -464,7 +464,7 @@ class StoreSettingTest extends TestCase
         $this->save(['receipt_name' => 'Toko Baru 2', 'paper_width' => 80]);
 
         $this->store->run(function (): void {
-            $this->assertSame(11, StoreSetting::query()->count());
+            $this->assertSame(count(app(StoreSettingService::class)->all()), StoreSetting::query()->count());
             $this->assertSame(1, StoreSetting::query()->where('key', 'paper_width')->count());
             $this->assertSame('80', StoreSetting::query()->where('key', 'paper_width')->value('value'));
             $this->assertSame('Toko Baru 2', StoreSetting::query()->where('key', 'receipt_name')->value('value'));
