@@ -1,3 +1,4 @@
+import { TextLines } from './escPosText';
 import { formatReceiptDateTime } from './receiptDateTime';
 import { formatFigure as figure } from './useMoneyFormat';
 import { formatQuantity } from './useQuantityFormat';
@@ -44,142 +45,20 @@ const CUT_PAPER = `${ESC}i`;
  */
 const OPEN_DRAWER = `${ESC}p02z`;
 
-/** The accents that NFD splits off a letter (U+0300 to U+036F), built from their codes so the source stays plain ASCII. */
-const COMBINING_MARKS = new RegExp(`[${String.fromCharCode(0x300)}-${String.fromCharCode(0x36f)}]`, 'g');
-
 /**
- * The standard font holds plain ASCII; an accent is dropped and any other character becomes a question mark.
+ * The commands and the lines of a receipt as one piece for the printer: reset and font, the lines, the blank lines that push
+ * the last one past the cutter, the cut, and the drawer pulse when the print closes a sale.
  *
- * @param {string} text
+ * @param {string[]} lines
+ * @param {boolean} isDrawerOpened
+ * @returns {string}
  */
-function printable(text) {
-    return String(text)
-        .normalize('NFD')
-        .replace(COMBINING_MARKS, '')
-        .replace(/[^\x20-\x7E\n]/g, '?');
+function printerTextOf(lines, isDrawerOpened) {
+    return `${INITIALIZE}${lines.join('\n')}\n${'\n'.repeat(BLANK_LINES_AFTER)}${CUT_PAPER}${isDrawerOpened ? OPEN_DRAWER : ''}`;
 }
 
 /**
- * Breaks a text into lines of at most `columns` characters at its spaces; a word longer than a line is cut. A line break in
- * the text stays one.
- *
- * @param {string} text
- * @param {number} columns
- * @returns {string[]}
- */
-function wrap(text, columns) {
-    const lines = [];
-
-    for (const paragraph of printable(text).split('\n')) {
-        let line = '';
-
-        for (let word of paragraph.split(/\s+/).filter(Boolean)) {
-            while (word.length > columns) {
-                if (line !== '') {
-                    lines.push(line);
-                    line = '';
-                }
-
-                lines.push(word.slice(0, columns));
-                word = word.slice(columns);
-            }
-
-            if (line === '') {
-                line = word;
-            } else if (line.length + 1 + word.length <= columns) {
-                line += ` ${word}`;
-            } else {
-                lines.push(line);
-                line = word;
-            }
-        }
-
-        lines.push(line);
-    }
-
-    return lines;
-}
-
-/** The lines of a receipt, each placed at the left, the middle or the right of the printer's columns. */
-class ReceiptText {
-    /** @param {number} columns */
-    constructor(columns) {
-        this.columns = columns;
-        /** @type {string[]} */
-        this.lines = [];
-    }
-
-    /**
-     * @param {string} text
-     * @param {{isBold?: boolean}} [options]
-     */
-    left(text, { isBold = false } = {}) {
-        this.#push(wrap(text, this.columns), isBold);
-    }
-
-    /**
-     * @param {string} text
-     * @param {{isBold?: boolean}} [options]
-     */
-    center(text, { isBold = false } = {}) {
-        this.#push(wrap(text, this.columns).map((line) => ' '.repeat(Math.floor((this.columns - line.length) / 2)) + line), isBold);
-    }
-
-    /**
-     * @param {string} text
-     * @param {{isBold?: boolean}} [options]
-     */
-    right(text, { isBold = false } = {}) {
-        this.#push(wrap(text, this.columns).map((line) => line.padStart(this.columns)), isBold);
-    }
-
-    /**
-     * A line with one text at the left edge and another at the right; when both do not fit, the second goes on its own line.
-     *
-     * @param {string} leftText
-     * @param {string} rightText
-     */
-    spread(leftText, rightText) {
-        const leftLine = printable(leftText);
-        const rightLine = printable(rightText);
-
-        if (leftLine.length + 1 + rightLine.length <= this.columns) {
-            this.lines.push(leftLine + ' '.repeat(this.columns - leftLine.length - rightLine.length) + rightLine);
-
-            return;
-        }
-
-        this.left(leftLine);
-        this.right(rightLine);
-    }
-
-    rule() {
-        this.lines.push('-'.repeat(this.columns));
-    }
-
-    blank() {
-        this.lines.push('');
-    }
-
-    /**
-     * @param {{isDrawerOpened?: boolean}} [options] whether the cash drawer is opened once the receipt is cut
-     * @returns {string} the lines, ready to send to the printer
-     */
-    toString({ isDrawerOpened = false } = {}) {
-        return `${INITIALIZE}${this.lines.join('\n')}\n${'\n'.repeat(BLANK_LINES_AFTER)}${CUT_PAPER}${isDrawerOpened ? OPEN_DRAWER : ''}`;
-    }
-
-    /**
-     * @param {string[]} lines
-     * @param {boolean} isBold
-     */
-    #push(lines, isBold) {
-        this.lines.push(...lines.map((line) => (isBold ? `${BOLD_ON}${line}${BOLD_OFF}` : line)));
-    }
-}
-
-/**
- * @param {ReceiptText} text
+ * @param {TextLines} text
  * @param {{name: string, quantity: string|number, unit: string, unit_price: string|number, subtotal: string|number}[]} items
  */
 function addItems(text, items) {
@@ -190,7 +69,7 @@ function addItems(text, items) {
 }
 
 /**
- * @param {ReceiptText} text
+ * @param {TextLines} text
  * @param {{method: string, amount: string|number}[]} payments
  * @param {string|number} changeAmount
  */
@@ -216,7 +95,7 @@ export function receiptEscPosOf(receipt, { isDrawerOpened = false } = {}) {
         return null;
     }
 
-    const text = new ReceiptText(columns);
+    const text = new TextLines(columns, { on: BOLD_ON, off: BOLD_OFF });
     const order = receipt.order;
 
     text.center(receipt.store.name, { isBold: true });
@@ -273,7 +152,7 @@ export function receiptEscPosOf(receipt, { isDrawerOpened = false } = {}) {
     text.center(receipt.footer);
     text.center(receipt.number);
 
-    return text.toString({ isDrawerOpened });
+    return printerTextOf(text.lines, isDrawerOpened);
 }
 
 /**

@@ -4,6 +4,7 @@
  * downloads it. The page is not signed: QZ Tray asks once on the computer to trust it (tick "Remember this decision").
  */
 
+import { sampleDeliveryNoteEscP } from './deliveryNoteEscP';
 import { sampleReceiptEscPos } from './receiptEscPos';
 
 /** @type {Promise<object>|null} */
@@ -166,17 +167,18 @@ export async function printEscPos(target, text) {
 
 /**
  * A short test page, to see that the name given to a printer is the one the computer knows and that the paper is right. A
- * roll whose receipts are sent as text prints a made-up receipt the way a real one is sent, so that can be tried before it is used.
+ * printer whose documents are sent as text prints a made-up one the way a real one is sent (a receipt on a roll, a delivery note
+ * on a continuous form), so that can be tried before it is used.
  *
  * @param {{name: string, width_mm: number, height_mm: number|null}} target
  * @param {string} paperLabel
  * @throws {Error} when QZ Tray cannot be reached or does not know the printer
  */
 export async function printTestPage(target, paperLabel) {
-    const sampleReceipt = target.height_mm === null ? sampleReceiptEscPos(target.width_mm) : null;
+    const sampleText = target.height_mm === null ? sampleReceiptEscPos(target.width_mm) : sampleDeliveryNoteEscP();
 
-    if (sampleReceipt !== null) {
-        await printEscPos(target, sampleReceipt);
+    if (sampleText !== null) {
+        await printEscPos(target, sampleText);
 
         return;
     }
