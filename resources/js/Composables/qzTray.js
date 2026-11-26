@@ -4,6 +4,8 @@
  * downloads it. The page is not signed: QZ Tray asks once on the computer to trust it (tick "Remember this decision").
  */
 
+import { thermalLayoutOf } from './thermalLayout';
+
 /** @type {Promise<object>|null} */
 let qzClient = null;
 
@@ -118,7 +120,31 @@ export async function printSheetElement(target, sheet) {
 }
 
 /**
- * A short test page, to see that the name given to a printer is the one the computer knows and that the paper is right.
+ * The ways of putting a line at the left edge of the text area, one line each, so a printed test shows which of them the
+ * renderer of QZ Tray follows. Each line names its own way; the one a line is at the left edge for is the one that works.
+ */
+const LEFT_ALIGNMENT_TRIALS = [
+    '<div style="display:flex;justify-content:space-between"><span>REF kiri</span><span>kanan</span></div>',
+    '<div style="text-align:left">A text-align left</div>',
+    '<table width="100%" cellspacing="0" cellpadding="0"><tr><td align="left">B td align left</td></tr></table>',
+    '<table cellspacing="0" cellpadding="0"><tr><td>C tabel sempit</td></tr></table>',
+    '<table align="left" cellspacing="0" cellpadding="0"><tr><td>D tabel align</td></tr></table><br clear="all">',
+    '<div style="float:left">E float left</div><div style="clear:both"></div>',
+    '<div style="display:flex;justify-content:flex-start"><span>F flex-start</span></div>',
+    '<div style="display:flex;justify-content:space-between"><span>G flex antara</span><span></span></div>',
+    '<div style="width:40mm">H kotak 40mm</div>',
+    '<pre style="margin:0;font:inherit">I pre</pre>',
+    '<div style="position:relative;height:1.4em"><span style="position:absolute;left:0">J absolute</span></div>',
+    '<div>K div biasa</div>',
+    '<div style="text-align:center">M text-align tengah</div>',
+];
+
+/** Height on screen of one line of the test page, to size a roll page. */
+const TEST_LINE_HEIGHT_PX = 26;
+
+/**
+ * A short test page, to see that the name given to a printer is the one the computer knows and that the paper is right. A
+ * roll also prints the ways of aligning a line to the left, laid out within the same space a receipt is.
  *
  * @param {{name: string, width_mm: number, height_mm: number|null}} target
  * @param {string} paperLabel
@@ -126,7 +152,12 @@ export async function printSheetElement(target, sheet) {
  */
 export async function printTestPage(target, paperLabel) {
     const escape = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>body { margin: 0; width: ${target.width_mm}mm; padding: 4mm; box-sizing: border-box; background: #fff; font: 700 11pt 'Courier New', monospace; color: #000; }</style></head><body>TES CETAK<br>${escape(target.name)}<br>${escape(paperLabel)}<br>${new Date().toLocaleString('id-ID')}</body></html>`;
+    const isRoll = target.height_mm === null;
+    const trials = isRoll ? LEFT_ALIGNMENT_TRIALS : [];
+    const layout = thermalLayoutOf(target.width_mm);
+    const padding = isRoll ? `4mm ${layout.right}mm 4mm ${layout.left}mm` : '4mm';
+    const trialsHtml = isRoll ? `<br><br>${trials.join('')}` : '';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>body { margin: 0; width: ${target.width_mm}mm; padding: ${padding}; box-sizing: border-box; background: #fff; font: 700 11pt 'Courier New', monospace; color: #000; }</style></head><body>TES CETAK<br>${escape(target.name)}<br>${escape(paperLabel)}<br>${new Date().toLocaleString('id-ID')}${trialsHtml}</body></html>`;
 
-    await printHtml(target, html, 120);
+    await printHtml(target, html, 120 + trials.length * TEST_LINE_HEIGHT_PX);
 }
