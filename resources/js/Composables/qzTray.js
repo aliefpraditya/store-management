@@ -107,14 +107,45 @@ function stylesOf(document) {
 }
 
 /**
- * Prints what a print page shows (without the grey surround of the screen) on a printer.
+ * The styles of the rules that belong to a sheet alone: those whose selector names the class of the sheet's root element
+ * (`receipt-print`, `receipt-print__row`, ...). The rest of the page's styles, Quasar's above all, are left out, because the
+ * web renderer of QZ Tray is an old one and a large modern stylesheet may be read wrongly by it.
+ *
+ * @param {HTMLElement} sheet the element holding the sheet
+ */
+function stylesOfSheetAlone(sheet) {
+    const sheetClass = sheet.firstElementChild?.classList[0];
+
+    if (sheetClass === undefined) {
+        return stylesOf(sheet.ownerDocument);
+    }
+
+    return [...sheet.ownerDocument.styleSheets]
+        .flatMap((styleSheet) => {
+            try {
+                return [...styleSheet.cssRules];
+            } catch {
+                return [];
+            }
+        })
+        .filter((rule) => rule instanceof CSSStyleRule && rule.selectorText.includes(sheetClass))
+        .map((rule) => rule.cssText)
+        .join('\n');
+}
+
+/**
+ * Prints what a print page shows (without the grey surround of the screen) on a printer. A roll gets the styles of its own
+ * sheet and no `@page` rule, which only the browser's print dialog needs; a continuous form keeps the styles of the whole page.
  *
  * @param {{name: string, width_mm: number, height_mm: number|null}} target
  * @param {HTMLElement} sheet the element holding the sheet
  * @throws {Error} when QZ Tray cannot be reached or does not know the printer
  */
 export async function printSheetElement(target, sheet) {
-    const html = `<!doctype html><html><head><meta charset="utf-8"><style>${stylesOf(sheet.ownerDocument)}\nbody { margin: 0; width: ${target.width_mm}mm; background: #fff; }</style></head><body>${sheet.innerHTML}</body></html>`;
+    const isRoll = target.height_mm === null;
+    const styles = isRoll ? stylesOfSheetAlone(sheet) : stylesOf(sheet.ownerDocument);
+    const markup = isRoll ? sheet.innerHTML.replace(/@page\s*\{[^}]*\}/g, '') : sheet.innerHTML;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>${styles}\nbody { margin: 0; width: ${target.width_mm}mm; background: #fff; }</style></head><body>${markup}</body></html>`;
 
     await printHtml(target, html, sheet.scrollHeight);
 }
