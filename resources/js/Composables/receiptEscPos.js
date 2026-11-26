@@ -3,7 +3,7 @@ import { formatFigure as figure } from './useMoneyFormat';
 import { formatQuantity } from './useQuantityFormat';
 
 /**
- * A receipt as the text the printer itself prints (ESC/POS), for a store that prints through QZ Tray in its text mode.
+ * A receipt as the text the printer itself prints (ESC/POS), for a store that prints through QZ Tray.
  *
  * The page of a receipt is sent to a dot matrix printer as a picture, which the renderer of QZ Tray lays out by its own rules
  * (it centres every line narrower than the paper) and the printer draws with dropped dots. Text is laid out here, one line of
@@ -14,7 +14,13 @@ import { formatQuantity } from './useQuantityFormat';
 const COLUMNS_BY_WIDTH = { 76: 33 };
 
 const ESC = '\x1B';
-const INITIALIZE = `${ESC}@`;
+
+/**
+ * Resets the printer and picks font A (ESC M n: the characters "0" and "1" choose font A and B without a control byte). Left
+ * to its default the TM-U220 printed the narrower font B, so 33 columns filled two thirds of the roll; font A is the font the
+ * 33 columns are counted in, and fills the printable width.
+ */
+const INITIALIZE = `${ESC}@${ESC}M0`;
 
 /**
  * ESC E n turns bold on or off by the lowest bit of n, so the characters "1" and "0" do it without a control byte: a zero byte
@@ -23,8 +29,23 @@ const INITIALIZE = `${ESC}@`;
 const BOLD_ON = `${ESC}E1`;
 const BOLD_OFF = `${ESC}E0`;
 
-/** Blank lines after the last line, to push it out past the tear-off bar of the printer. */
-const BLANK_LINES_AFTER = 6;
+/**
+ * Blank lines after the last line, to push it out past the tear-off bar of the printer. Six left the last two lines of a
+ * receipt behind the bar, where the tear cut through the footer and the rest went on the next receipt; nine clears them.
+ */
+const BLANK_LINES_AFTER = 9;
+
+/** ESC i cuts the paper; the cutter sits about eight lines past the print head, which is why the blank lines come first. A printer without a cutter ignores it. */
+const CUT_PAPER = `${ESC}i`;
+
+/**
+ * ESC p m t1 t2 pulses the cash drawer: m "0" is the first drawer pin, t1 and t2 are the on and off times in steps of 2 ms
+ * ("2" and "z" are 100 ms and 244 ms). All plain characters, so no zero byte is sent.
+ */
+const OPEN_DRAWER = `${ESC}p02z`;
+
+/** The accents that NFD splits off a letter (U+0300 to U+036F), built from their codes so the source stays plain ASCII. */
+const COMBINING_MARKS = new RegExp(`[${String.fromCharCode(0x300)}-${String.fromCharCode(0x36f)}]`, 'g');
 
 /**
  * The standard font holds plain ASCII; an accent is dropped and any other character becomes a question mark.
@@ -34,7 +55,7 @@ const BLANK_LINES_AFTER = 6;
 function printable(text) {
     return String(text)
         .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
+        .replace(COMBINING_MARKS, '')
         .replace(/[^\x20-\x7E\n]/g, '?');
 }
 
@@ -140,9 +161,12 @@ class ReceiptText {
         this.lines.push('');
     }
 
-    /** @returns {string} the lines, ready to send to the printer */
-    toString() {
-        return `${INITIALIZE}${this.lines.join('\n')}\n${'\n'.repeat(BLANK_LINES_AFTER)}`;
+    /**
+     * @param {{isDrawerOpened?: boolean}} [options] whether the cash drawer is opened once the receipt is cut
+     * @returns {string} the lines, ready to send to the printer
+     */
+    toString({ isDrawerOpened = false } = {}) {
+        return `${INITIALIZE}${this.lines.join('\n')}\n${'\n'.repeat(BLANK_LINES_AFTER)}${CUT_PAPER}${isDrawerOpened ? OPEN_DRAWER : ''}`;
     }
 
     /**
@@ -182,9 +206,10 @@ function addPayments(text, payments, changeAmount) {
  * The receipt page's props as the text to print, with the same lines and the same order as the page.
  *
  * @param {{order: object|null, number: string, sold_at: string, cashier_name: string, customer_name: string|null, status: string, is_copy: boolean, store: {name: string, address: string|null, phone: string|null}, footer: string, paper_width: number, items: object[], payments: object[], total: string, change_amount: string}} receipt
+ * @param {{isDrawerOpened?: boolean}} [options] true for the print that closes a sale, which opens the cash drawer; a copy printed again does not
  * @returns {string|null} null when the roll is of a width whose columns are not known, so the page is printed instead
  */
-export function receiptEscPosOf(receipt) {
+export function receiptEscPosOf(receipt, { isDrawerOpened = false } = {}) {
     const columns = COLUMNS_BY_WIDTH[receipt.paper_width];
 
     if (columns === undefined) {
@@ -248,7 +273,7 @@ export function receiptEscPosOf(receipt) {
     text.center(receipt.footer);
     text.center(receipt.number);
 
-    return text.toString();
+    return text.toString({ isDrawerOpened });
 }
 
 /**

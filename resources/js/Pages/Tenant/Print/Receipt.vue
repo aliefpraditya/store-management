@@ -8,8 +8,11 @@ const props = defineProps({
     receipt: { type: Object, required: true },
 });
 
-/** The receipt as text, for a store that prints it in text mode; null for a roll whose width has no known columns. */
-const escposText = receiptEscPosOf(props.receipt);
+/**
+ * The receipt as text, for QZ Tray; null for a roll whose width has no known columns. The print that closes a sale (not a
+ * copy, not a void) also opens the cash drawer, which a copy printed again must not.
+ */
+const escposText = receiptEscPosOf(props.receipt, { isDrawerOpened: !props.receipt.is_copy && props.receipt.status !== 'voided' });
 </script>
 
 <template>
