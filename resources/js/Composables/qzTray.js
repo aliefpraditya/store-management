@@ -50,6 +50,23 @@ export async function listPrinters() {
 }
 
 /**
+ * The paper of a print. A continuous form (a target with a height) is wider than it is tall, so QZ Tray, left to guess,
+ * turns it to landscape and the content lands off the page, which prints blank; its orientation is therefore fixed to
+ * portrait and its size marked custom because the driver may not list it. A roll has no fixed height and keeps QZ Tray's own choices.
+ *
+ * @param {{width_mm: number, height_mm: number|null}} target
+ * @param {number} heightMm
+ */
+function paperOf(target, heightMm) {
+    const isContinuousForm = target.height_mm !== null;
+
+    return {
+        size: { width: target.width_mm, height: heightMm, ...(isContinuousForm ? { custom: true } : {}) },
+        ...(isContinuousForm ? { orientation: 'portrait' } : {}),
+    };
+}
+
+/**
  * Prints an HTML page on a printer without opening the print dialog.
  *
  * @param {{name: string, width_mm: number, height_mm: number|null}} target the printer and the page it is loaded with; a roll has no height
@@ -62,7 +79,7 @@ export async function printHtml(target, html, contentHeightPx) {
     const heightMm = target.height_mm ?? Math.ceil(contentHeightPx / PX_PER_MM) + 4;
     const config = qz.configs.create(target.name, {
         units: 'mm',
-        size: { width: target.width_mm, height: heightMm },
+        ...paperOf(target, heightMm),
         margins: 0,
         colorType: 'blackwhite',
     });
