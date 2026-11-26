@@ -181,7 +181,8 @@ class SaleHistoryTest extends TestCase
             ->where('sale.items.0.subtotal', '100000.00')
             ->has('sale.payments', 1)
             ->where('sale.payments.0.method', 'Tunai')
-            ->where('urls.index', $this->url('tenant.sales.index')));
+            ->where('urls.index', $this->url('tenant.sales.index'))
+            ->where('urls.print', $this->url('tenant.sales.print', ['sale' => $sale->id])));
     }
 
     public function test_a_cashier_can_open_neither_the_history_nor_a_receipt_not_even_their_own(): void
@@ -190,6 +191,34 @@ class SaleHistoryTest extends TestCase
 
         $this->actingAs($this->cashier)->get($this->url('tenant.sales.index'))->assertForbidden();
         $this->actingAs($this->cashier)->get($this->url('tenant.sales.show', ['sale' => $mine->id]))->assertForbidden();
+    }
+
+    public function test_an_admin_can_print_a_receipt_of_an_older_day_and_the_later_prints_are_copies(): void
+    {
+        $sale = $this->makeSale($this->cashier, ['number' => 'INV/1', 'sold_at' => now()->subDays(40)]);
+        $printUrl = $this->url('tenant.sales.print', ['sale' => $sale->id]);
+
+        $firstSheetUrl = $this->actingAs($this->admin)->postJson($printUrl)
+            ->assertOk()->assertJsonPath('data.is_copy', false)->assertJsonPath('data.print_count', 1)->json('data.sheet_url');
+        $this->actingAs($this->admin)->get($firstSheetUrl)->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Tenant/Print/Receipt')
+            ->where('receipt.number', 'INV/1')
+            ->where('receipt.is_copy', false)
+            ->where('receipt.items.0.name', 'Kuas'));
+
+        $secondSheetUrl = $this->actingAs($this->admin)->postJson($printUrl)
+            ->assertOk()->assertJsonPath('data.is_copy', true)->assertJsonPath('data.print_count', 2)->json('data.sheet_url');
+        $this->actingAs($this->admin)->get($secondSheetUrl)->assertInertia(fn (Assert $page) => $page->where('receipt.is_copy', true));
+        $this->assertSame(2, $this->store->run(fn () => Sale::query()->findOrFail($sale->id)->print_count));
+    }
+
+    public function test_the_history_sheet_needs_the_address_a_print_gave_and_a_cashier_cannot_print_from_the_history(): void
+    {
+        $sale = $this->makeSale($this->cashier);
+
+        $this->actingAs($this->admin)->get($this->url('tenant.sales.sheet', ['sale' => $sale->id]))->assertForbidden();
+        $this->actingAs($this->cashier)->postJson($this->url('tenant.sales.print', ['sale' => $sale->id]))->assertForbidden();
+        $this->assertSame(0, $this->store->run(fn () => Sale::query()->findOrFail($sale->id)->print_count));
     }
 
     public function test_the_history_stays_open_for_an_admin_while_a_shift_is_open(): void

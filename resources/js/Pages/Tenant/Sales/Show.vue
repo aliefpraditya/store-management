@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
+import { postJson } from '../../../Composables/postJson';
+import { printSheet } from '../../../Composables/printSheet';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -16,6 +18,30 @@ const props = defineProps({
 const $q = useQuasar();
 
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+
+const isPrinting = ref(false);
+const printCount = ref(props.sale.print_count);
+
+/**
+ * Counts the print on the server, then prints the receipt from a hidden frame, so this page stays where it is. The receipt
+ * says SALINAN from the second print on.
+ */
+async function printReceipt() {
+    isPrinting.value = true;
+
+    try {
+        await printSheet(async () => {
+            const { print_count: newPrintCount, sheet_url: sheetUrl } = await postJson(props.urls.print);
+            printCount.value = newPrintCount;
+
+            return sheetUrl;
+        });
+    } catch (error) {
+        $q.notify({ type: 'negative', message: error.message, position: 'top' });
+    } finally {
+        isPrinting.value = false;
+    }
+}
 
 const isVoidOpen = ref(false);
 const voidReason = ref('');
@@ -80,6 +106,7 @@ function submitVoid() {
         </template>
 
         <template #actions>
+            <q-btn outline no-caps dense color="primary" icon="print" :label="printCount > 0 ? 'Cetak Ulang' : 'Cetak'" :loading="isPrinting" class="q-mr-sm" @click="printReceipt" />
             <q-btn v-if="canVoid" outline no-caps dense color="negative" icon="block" label="Void Nota COD" class="q-mr-sm" @click="openVoid" />
             <q-btn v-if="sale.status === 'completed'" outline no-caps dense color="primary" icon="undo" label="Buat Retur" class="q-mr-sm" @click="router.visit(urls.new_return)" />
             <template v-if="sale.status === 'completed' && canManageDelivery">

@@ -159,6 +159,8 @@ Route::prefix('t/{tenant}')
 
         Route::get('sales', [SaleHistoryController::class, 'index'])->middleware('permission:sales.view')->name('tenant.sales.index');
         Route::get('sales/{sale}', [SaleHistoryController::class, 'show'])->middleware('permission:sales.view')->name('tenant.sales.show');
+        Route::post('sales/{sale}/print', [SaleHistoryController::class, 'print'])->middleware('permission:sales.view')->name('tenant.sales.print');
+        Route::get('sales/{sale}/sheet', [SaleHistoryController::class, 'sheet'])->middleware(['permission:sales.view', 'signed'])->name('tenant.sales.sheet');
         Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->middleware('permission:sales.void')->name('tenant.sales.void');
         Route::post('sales/{sale}/delivery-mode', [SaleHistoryController::class, 'changeToDelivery'])->middleware('permission:delivery_notes.manage')->name('tenant.sales.delivery-mode');
         Route::post('sales/{sale}/cod-settlement/approval', [SaleHistoryController::class, 'approveCodSettlement'])->middleware('permission:cod.approve')->name('tenant.sales.cod-settlement.approve');

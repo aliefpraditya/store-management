@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Tenant;
 use App\Enums\SaleStatus;
 use App\Exceptions\CodSaleException;
 use App\Exceptions\DeliveryNoteException;
+use App\Http\Controllers\Concerns\AnswersPrints;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\DateRangeRequest;
 use App\Http\Requests\Tenant\VoidSaleRequest;
@@ -14,8 +15,11 @@ use App\Models\Sale;
 use App\Models\Store;
 use App\Services\CodSettlementService;
 use App\Services\DeliveryNoteService;
+use App\Services\PrintCounter;
+use App\Services\ReceiptSheetService;
 use App\Services\SaleHistoryService;
 use App\Services\SaleVoidService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -27,6 +31,8 @@ use Inertia\Response;
  */
 class SaleHistoryController extends Controller
 {
+    use AnswersPrints;
+
     private const PER_PAGE = 25;
 
     public function __construct(
@@ -34,6 +40,8 @@ class SaleHistoryController extends Controller
         private readonly SaleVoidService $saleVoids,
         private readonly CodSettlementService $codSettlements,
         private readonly DeliveryNoteService $deliveryNotes,
+        private readonly PrintCounter $printCounter,
+        private readonly ReceiptSheetService $receiptSheets,
     ) {}
 
     public function index(DateRangeRequest $request): Response
@@ -73,7 +81,27 @@ class SaleHistoryController extends Controller
                 'delivery_mode' => route('tenant.sales.delivery-mode', ['tenant' => $store->code, 'sale' => $sale->id]),
                 'new_return' => route('tenant.returns.create', ['tenant' => $store->code, 'sale' => $sale->id]),
                 'void' => route('tenant.sales.void', ['tenant' => $store->code, 'sale' => $sale->id]),
+                'print' => route('tenant.sales.print', ['tenant' => $store->code, 'sale' => $sale->id]),
             ],
+        ]);
+    }
+
+    /**
+     * Notes one more print of a receipt and answers the signed address of its sheet. Whoever may see the history may print
+     * any receipt in it, whichever day it was made and whoever sold it.
+     */
+    public function print(Sale $sale): JsonResponse
+    {
+        return $this->recordPrintAnswer($this->printCounter, $sale, 'tenant.sales.sheet', 'sale');
+    }
+
+    /**
+     * The printable receipt, opened in the hidden frame that prints it. From the second print on it says SALINAN.
+     */
+    public function sheet(Request $request, Sale $sale): Response
+    {
+        return Inertia::render('Tenant/Print/Receipt', [
+            'receipt' => $this->receiptSheets->forSale($sale, $this->printNumberOf($request) > 1),
         ]);
     }
 

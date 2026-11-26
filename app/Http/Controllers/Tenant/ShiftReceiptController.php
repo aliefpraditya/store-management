@@ -3,21 +3,18 @@
 namespace App\Http\Controllers\Tenant;
 
 use App\Enums\ApiErrorCode;
-use App\Enums\OrderStatus;
 use App\Enums\Permission;
 use App\Exceptions\ShiftException;
 use App\Http\Controllers\Concerns\AnswersPrints;
 use App\Http\Controllers\Controller;
-use App\Http\Resources\PrintableSaleResource;
 use App\Http\Resources\SaleDetailResource;
-use App\Models\CustomerOrder;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Services\PrintCounter;
+use App\Services\ReceiptSheetService;
 use App\Services\SaleHistoryService;
 use App\Services\SaleReturnService;
 use App\Services\ShiftService;
-use App\Services\StoreSettingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -38,7 +35,7 @@ class ShiftReceiptController extends Controller
         private readonly SaleHistoryService $saleHistoryService,
         private readonly PrintCounter $printCounter,
         private readonly SaleReturnService $returnService,
-        private readonly StoreSettingService $settings,
+        private readonly ReceiptSheetService $receiptSheets,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -86,28 +83,8 @@ class ShiftReceiptController extends Controller
         abort_unless($this->canHandle($request, $sale), Response::HTTP_FORBIDDEN);
 
         return Inertia::render('Tenant/Print/Receipt', [
-            'receipt' => PrintableSaleResource::make(
-                $sale->load(['items', 'payments']),
-                $this->printNumberOf($request) > 1,
-                $this->settings->letterhead(),
-                $this->settings->receiptFooter(),
-                $this->settings->paperWidth(),
-                $this->orderMadeWith($sale),
-            )->resolve(),
+            'receipt' => $this->receiptSheets->forSale($sale, $this->printNumberOf($request) > 1),
         ]);
-    }
-
-    /**
-     * The customer order made in the same checkout as the receipt, unless it was cancelled. It is printed on the receipt
-     * itself, so the customer holds one paper for what was paid and what was ordered.
-     */
-    private function orderMadeWith(Sale $sale): ?CustomerOrder
-    {
-        return CustomerOrder::query()
-            ->with(['items', 'payments'])
-            ->where('origin_sale_id', $sale->id)
-            ->where('status', '!=', OrderStatus::Cancelled)
-            ->first();
     }
 
     private function canHandle(Request $request, Sale $sale): bool
