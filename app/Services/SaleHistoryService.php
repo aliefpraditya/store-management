@@ -158,6 +158,20 @@ class SaleHistoryService
     }
 
     /**
+     * The newest completed receipt of a shift that was made at or after a moment, or null when there is none.
+     */
+    public function latestSince(CashShift $shift, CarbonImmutable $since): ?Sale
+    {
+        return Sale::query()
+            ->where('cash_shift_id', $shift->id)
+            ->where('status', SaleStatus::Completed)
+            ->where('sold_at', '>=', $since)
+            ->orderByDesc('sold_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
      * How many completed receipts to be delivered have not reached the customer yet, of the whole store or of one shift.
      */
     public function pendingDeliveryCount(?CashShift $shift = null): int

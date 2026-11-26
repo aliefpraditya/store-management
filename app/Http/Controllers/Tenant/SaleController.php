@@ -11,6 +11,7 @@ use App\Http\Resources\SaleReceiptResource;
 use App\Services\CheckoutService;
 use App\Services\ShiftService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Arr;
 
 class SaleController extends Controller
 {
@@ -27,8 +28,22 @@ class SaleController extends Controller
             return back()->with('error', SaleException::shiftNotOpen()->getMessage());
         }
 
+        $checkoutInput = Arr::except($request->validated(), 'confirm_repeat');
+
+        if (! $request->boolean('confirm_repeat')) {
+            $repeatedSale = $this->checkoutService->recentRepeatOf($shift, $request->user(), $checkoutInput);
+
+            if ($repeatedSale !== null) {
+                return back()->withErrors(['repeated_sale' => sprintf(
+                    'Nota %s dengan isi yang sama baru dibuat %d detik lalu. Kalau itu nota yang sama, jangan dibuat lagi: cek Riwayat Nota. Buat lagi hanya kalau pelanggan memang membeli dua kali.',
+                    $repeatedSale->number,
+                    abs($repeatedSale->sold_at->diffInSeconds(now())),
+                )]);
+            }
+        }
+
         try {
-            ['sale' => $sale, 'order' => $order] = $this->checkoutService->checkout($shift, $request->user(), $request->validated());
+            ['sale' => $sale, 'order' => $order] = $this->checkoutService->checkout($shift, $request->user(), $checkoutInput);
         } catch (SaleException|CustomerOrderException $exception) {
             return back()->with('error', $exception->getMessage());
         }

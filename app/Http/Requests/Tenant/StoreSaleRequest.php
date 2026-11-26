@@ -11,7 +11,8 @@ use Illuminate\Validation\Rule;
  * What one press of "Bayar" sends: the cart and the payments of the receipt, and optionally an `order` (a customer
  * order for the part of the cart that is not in stock) or a `customer_order_id` (collecting an earlier order, whose lines
  * and prices come from the order itself). Only the product unit and the quantity of each line are used: prices come
- * from the database.
+ * from the database. `confirm_repeat` is the cashier saying "yes, sell it again" to the warning that the same cart was just
+ * sold.
  */
 class StoreSaleRequest extends FormRequest
 {
@@ -31,6 +32,7 @@ class StoreSaleRequest extends FormRequest
     {
         return [
             'client_uuid' => ['required', 'uuid'],
+            'confirm_repeat' => ['nullable', 'boolean'],
             'customer_name' => ['nullable', 'string', 'max:255'],
             'customer_order_id' => ['nullable', 'integer', 'prohibits:items,order', Rule::exists('customer_orders', 'id')],
             'items' => ['nullable', 'array', 'required_without_all:order,customer_order_id'],

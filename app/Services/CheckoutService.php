@@ -2,13 +2,16 @@
 
 namespace App\Services;
 
+use App\Enums\SaleStatus;
 use App\Exceptions\CustomerOrderException;
 use App\Exceptions\SaleException;
 use App\Models\CashShift;
 use App\Models\CustomerOrder;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Models\User;
 use Brick\Math\BigDecimal;
+use Brick\Math\RoundingMode;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
@@ -28,6 +31,9 @@ use Illuminate\Support\Facades\DB;
  */
 class CheckoutService
 {
+    /** A cart rung up again within this many seconds of the same cart is asked about before it is sold twice. */
+    public const REPEAT_WINDOW_SECONDS = 60;
+
     public function __construct(
         private readonly SaleService $sales,
         private readonly CustomerOrderService $customerOrders,
@@ -69,6 +75,59 @@ class CheckoutService
 
             return ['sale' => $sale, 'order' => $order];
         }, StockService::DEADLOCK_ATTEMPTS);
+    }
+
+    /**
+     * The receipt this checkout would repeat: one the same cashier made on the same shift in the last
+     * {@see self::REPEAT_WINDOW_SECONDS} seconds with the same lines (the same units in the same quantities). A cashier who
+     * did not see a receipt get made, or whose screen was reloaded, rings the cart up again; this is how the till tells
+     * them before a second receipt is made. A cart that was already recorded under its own `client_uuid` is a resubmit, not a
+     * repeat, and the collection of an order has no cart to compare.
+     *
+     * @param  CheckoutData  $checkoutInput
+     */
+    public function recentRepeatOf(CashShift $shift, User $cashier, array $checkoutInput): ?Sale
+    {
+        if (! filled($checkoutInput['items'] ?? null) || filled($checkoutInput['customer_order_id'] ?? null)) {
+            return null;
+        }
+
+        if (Sale::query()->where('client_uuid', $checkoutInput['client_uuid'])->exists()) {
+            return null;
+        }
+
+        $wantedLines = $this->quantityByUnit($checkoutInput['items']);
+
+        return Sale::query()
+            ->where('cash_shift_id', $shift->id)
+            ->where('cashier_id', $cashier->id)
+            ->where('status', SaleStatus::Completed)
+            ->where('sold_at', '>=', now()->subSeconds(self::REPEAT_WINDOW_SECONDS))
+            ->with('items')
+            ->orderByDesc('id')
+            ->get()
+            ->first(fn (Sale $sale): bool => $this->quantityByUnit($sale->items->map(fn (SaleItem $item): array => ['product_unit_id' => $item->product_unit_id, 'quantity' => $item->quantity])->all()) === $wantedLines);
+    }
+
+    /**
+     * The quantity of each unit in a list of lines, so two lists are the same when they hold the same units in the same
+     * quantities whatever their order or how a unit is split over lines.
+     *
+     * @param  list<array{product_unit_id: int|string, quantity: numeric-string|float|int}>  $lines
+     * @return array<int, string> quantity by product unit id, in the order of the ids
+     */
+    private function quantityByUnit(array $lines): array
+    {
+        $totals = [];
+
+        foreach ($lines as $line) {
+            $unitId = (int) $line['product_unit_id'];
+            $totals[$unitId] = ($totals[$unitId] ?? BigDecimal::zero())->plus((string) $line['quantity']);
+        }
+
+        ksort($totals);
+
+        return array_map(fn (BigDecimal $quantity): string => (string) $quantity->toScale(3, RoundingMode::HalfUp), $totals);
     }
 
     /**

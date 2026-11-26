@@ -21,6 +21,7 @@ use App\Services\CustomerOrderService;
 use App\Services\SaleHistoryService;
 use App\Services\ShiftService;
 use App\Services\StoreSettingService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -30,6 +31,9 @@ use Inertia\Response;
  */
 class CashierController extends Controller
 {
+    /** How long a receipt counts as "just made" for the notice on a reloaded till. */
+    private const RECENT_SALE_MINUTES = 5;
+
     public function __construct(
         private readonly ShiftService $shiftService,
         private readonly CustomerOrderService $customerOrders,
@@ -57,6 +61,19 @@ class CashierController extends Controller
         ];
     }
 
+    /**
+     * The receipt of the running shift made in the last few minutes, so a screen that was reloaded can tell the cashier it
+     * went through: the "receipt done" dialog is a one-time flash and is lost when the answer never reaches the screen.
+     *
+     * @return array{number: string, total: string, sold_at: string}|null
+     */
+    private function recentSale(CashShift $shift): ?array
+    {
+        $sale = $this->saleHistory->latestSince($shift, CarbonImmutable::now()->subMinutes(self::RECENT_SALE_MINUTES));
+
+        return $sale === null ? null : ['number' => $sale->number, 'total' => (string) $sale->total, 'sold_at' => $sale->sold_at->toIso8601String()];
+    }
+
     public function index(Request $request): Response
     {
         /** @var Store $store */
@@ -72,6 +89,7 @@ class CashierController extends Controller
             'fulfillment_options' => SaleFulfillment::options(),
             'last_sale' => fn () => $request->session()->pull('last_sale'),
             'last_order' => fn () => $request->session()->pull('last_order'),
+            'recent_sale' => fn () => $shift === null ? null : $this->recentSale($shift),
             'best_sellers' => fn () => $shift === null ? [] : $this->catalog->bestSellers($shift->register->warehouse_id),
             'is_receipt_printed_automatically' => $this->settings->isReceiptPrintedAutomatically(),
             'order_counts' => fn () => $this->customerOrders->badgeCounts(),

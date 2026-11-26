@@ -126,7 +126,7 @@ class CashierSaleTest extends TestCase
         $unit = $this->unitOf($this->sellableProduct(), 'PCS');
 
         $this->sell([[$unit, 1]], [['cash', 10000]]);
-        $this->sell([[$unit, 1]], [['cash', 10000]]);
+        $this->sell([[$unit, 2]], [['cash', 20000]]);
 
         $this->assertSame(
             ['INV/TCS/K1/'.now()->format('ym').'/0001', 'INV/TCS/K1/'.now()->format('ym').'/0002'],
@@ -265,6 +265,60 @@ class CashierSaleTest extends TestCase
         $this->assertSame(1, $this->salesCount());
         $this->assertSame('97.000', $this->stockInPieces($brush));
         $this->assertSame(1, $this->store->run(fn () => StockMovement::query()->where('type', StockMovementType::Sale)->count()));
+    }
+
+    public function test_the_same_cart_rung_up_again_within_a_minute_is_asked_about_and_sold_only_when_confirmed(): void
+    {
+        $this->freezeTime();
+        $piece = $this->unitOf($this->sellableProduct(), 'PCS');
+
+        $this->sell([[$piece, 3]], [['cash', 30000]])->assertSessionHas('last_sale');
+
+        $repeated = $this->sell([[$piece, 3]], [['cash', 30000]])->assertSessionHasErrors('repeated_sale')->assertSessionMissing('last_sale');
+        $this->assertSame(
+            'Nota INV/TCS/K1/'.now()->format('ym').'/0001 dengan isi yang sama baru dibuat 0 detik lalu. Kalau itu nota yang sama, jangan dibuat lagi: cek Riwayat Nota. Buat lagi hanya kalau pelanggan memang membeli dua kali.',
+            $repeated->baseResponse->getSession()->get('errors')->first('repeated_sale'),
+        );
+        $this->assertSame(1, $this->salesCount());
+
+        $this->sell([[$piece, 3]], [['cash', 30000]], ['confirm_repeat' => true])->assertSessionHas('last_sale');
+        $this->assertSame(2, $this->salesCount());
+    }
+
+    public function test_another_cart_or_the_same_cart_after_a_minute_is_not_asked_about(): void
+    {
+        $this->freezeTime();
+        $piece = $this->unitOf($this->sellableProduct(), 'PCS');
+        $paintPiece = $this->unitOf($this->sellableProduct('Cat', '100'), 'PCS');
+
+        $this->sell([[$piece, 3]], [['cash', 30000]])->assertSessionHas('last_sale');
+        $this->sell([[$paintPiece, 3]], [['cash', 30000]])->assertSessionHas('last_sale');
+        $this->sell([[$piece, 2]], [['cash', 20000]])->assertSessionHas('last_sale');
+
+        $this->travel(61)->seconds();
+        $this->sell([[$piece, 3]], [['cash', 30000]])->assertSessionHas('last_sale');
+
+        $this->assertSame(4, $this->salesCount());
+    }
+
+    public function test_the_till_tells_a_reloaded_screen_about_a_receipt_made_in_the_last_minutes(): void
+    {
+        $this->freezeTime();
+        $piece = $this->unitOf($this->sellableProduct(), 'PCS');
+        $screen = fn (): TestResponse => $this->actingAs($this->cashier)->get($this->url('index'));
+
+        $screen()->assertInertia(fn (Assert $page) => $page->where('recent_sale', null));
+
+        $this->sell([[$piece, 3]], [['cash', 30000]])->assertSessionHas('last_sale');
+        $this->app['session']->forget('last_sale');
+
+        $screen()->assertInertia(fn (Assert $page) => $page
+            ->where('recent_sale.number', 'INV/TCS/K1/'.now()->format('ym').'/0001')
+            ->where('recent_sale.total', '30000.00')
+            ->where('recent_sale.sold_at', now()->toIso8601String()));
+
+        $this->travel(6)->minutes();
+        $screen()->assertInertia(fn (Assert $page) => $page->where('recent_sale', null));
     }
 
     public function test_sending_the_same_receipt_again_after_the_shift_closed_still_returns_the_first_receipt(): void

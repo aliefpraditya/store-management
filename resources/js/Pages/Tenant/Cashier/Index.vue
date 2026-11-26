@@ -16,7 +16,8 @@ import ExpenseDialog from '../../../Components/Cashier/ExpenseDialog.vue';
 import HeldCartsDialog from '../../../Components/Cashier/HeldCartsDialog.vue';
 import ReceiptHistoryDialog from '../../../Components/Cashier/ReceiptHistoryDialog.vue';
 import ShiftOpenPanel from '../../../Components/Cashier/ShiftOpenPanel.vue';
-import { newUuid, useCart } from '../../../Composables/useCart';
+import { useCart } from '../../../Composables/useCart';
+import { useCheckoutKeys } from '../../../Composables/useCheckoutKeys';
 import { useFlashMessages } from '../../../Composables/useFlashMessages';
 import { useHeldCarts } from '../../../Composables/useHeldCarts';
 import { printSheet, SHEET_PRINTED_EVENT } from '../../../Composables/printSheet';
@@ -33,6 +34,8 @@ const props = defineProps({
     last_sale: { type: Object, default: null },
     /** The customer order made by the last checkout, alone or together with `last_sale`. */
     last_order: { type: Object, default: null },
+    /** The receipt of this shift made in the last few minutes (number, total, time), so a till opened again can say it went through. */
+    recent_sale: { type: Object, default: null },
     /** Open orders, orders ready to be collected, and waiting orders whose goods are already in stock (they only need marking). */
     order_counts: { type: Object, default: () => ({ open: 0, ready: 0, arrived: 0 }) },
     /** Returns of this shift that wait for an Admin's approval. */
@@ -57,6 +60,7 @@ useFlashMessages();
 
 const cart = useCart(toRef(() => props.shift?.id ?? null));
 const heldCarts = useHeldCarts(toRef(() => props.shift?.id ?? null));
+const checkoutKeys = useCheckoutKeys(toRef(() => props.shift?.id ?? null));
 
 const SEARCH_DELAY_MS = 200;
 const LOOKUP_FAILED_MESSAGE = 'Pencarian barang gagal. Periksa koneksi, lalu coba lagi.';
@@ -98,9 +102,6 @@ const isAnyDialogOpen = computed(
 
 /** The customer order whose goods the customer is collecting; the payment dialog then pays what is left of it. */
 const collectingOrder = ref(null);
-
-let saleUuid = newUuid();
-let orderUuid = newUuid();
 
 /** What the payment dialog charges now: what is left of the order being collected, or the part of the cart that is in stock. */
 const paymentTotal = computed(() => (collectingOrder.value ? Number(collectingOrder.value.remaining) : cart.split.value.saleTotal));
@@ -423,28 +424,50 @@ function clearCart() {
 
 /**
  * What "Bayar" sends: the order being collected, or the cart divided into the receipt for what is in stock and the order
- * for what is short. The server makes both in one transaction.
+ * for what is short. The server makes both in one transaction. The codes that make a second send of the same checkout sell
+ * once are kept with the cart (see {@see useCheckoutKeys}), so they survive a reloaded screen.
+ *
+ * @param {object} checkout what the payment dialog collected
+ * @param {boolean} isRepeatConfirmed the cashier has said the same cart is to be sold again
  */
-function checkoutBody({ customer_name, payments, delivery_note, order, hold_delivery }) {
-    const body = { client_uuid: saleUuid, customer_name, payments, delivery_note, hold_delivery };
+function checkoutBody({ customer_name, payments, delivery_note, order, hold_delivery }, isRepeatConfirmed) {
+    const inStockItems = collectingOrder.value ? [] : cart.inStockItemsPayload.value;
+    const shortItems = collectingOrder.value ? [] : cart.shortItemsPayload.value;
+    const keys = checkoutKeys.keysFor(JSON.stringify({ collect: collectingOrder.value?.id ?? null, items: inStockItems, short: shortItems }));
+    const body = { client_uuid: keys.saleUuid, customer_name, payments, delivery_note, hold_delivery, ...(isRepeatConfirmed ? { confirm_repeat: true } : {}) };
 
     if (collectingOrder.value) {
         return { ...body, customer_order_id: collectingOrder.value.id };
     }
 
-    const inStockItems = cart.inStockItemsPayload.value;
-
     return {
         ...body,
         ...(inStockItems.length > 0 ? { items: inStockItems } : {}),
-        ...(order ? { order: { ...order, client_uuid: orderUuid, items: cart.shortItemsPayload.value } } : {}),
+        ...(order ? { order: { ...order, client_uuid: keys.orderUuid, items: shortItems } } : {}),
     };
 }
 
-function submitSale(checkout) {
+/**
+ * The server found a receipt with the same goods made a moment ago, which is what a cashier who did not see their receipt get
+ * made would do again. Selling it again needs a yes.
+ *
+ * @param {string} message
+ * @param {object} checkout what the payment dialog collected, sent again when the answer is yes
+ */
+function confirmRepeatedSale(message, checkout) {
+    $q.dialog({
+        title: 'Nota dengan isi sama baru saja dibuat',
+        message,
+        cancel: { label: 'Jangan buat lagi', flat: true, noCaps: true },
+        ok: { label: 'Tetap buat nota baru', color: 'primary', unelevated: true, noCaps: true },
+        persistent: true,
+    }).onOk(() => submitSale(checkout, true));
+}
+
+function submitSale(checkout, isRepeatConfirmed = false) {
     const isCollecting = collectingOrder.value !== null;
 
-    router.post(props.urls.sales, checkoutBody(checkout), {
+    router.post(props.urls.sales, checkoutBody(checkout, isRepeatConfirmed), {
         preserveScroll: true,
         onStart: () => (isPaying.value = true),
         onFinish: () => {
@@ -461,11 +484,40 @@ function submitSale(checkout) {
                 }
 
                 isPaymentOpen.value = false;
-                saleUuid = newUuid();
-                orderUuid = newUuid();
+                checkoutKeys.forget();
             }
         },
-        onError: (errors) => $q.notify({ type: 'negative', message: Object.values(errors)[0], position: 'top' }),
+        onError: (errors) => {
+            if (errors.repeated_sale) {
+                confirmRepeatedSale(errors.repeated_sale, checkout);
+
+                return;
+            }
+
+            $q.notify({ type: 'negative', message: Object.values(errors)[0], position: 'top' });
+        },
+    });
+}
+
+/**
+ * A till opened again with goods still in the cart right after a receipt was made: the "receipt done" window is a one-time
+ * message that a reloaded screen never shows, so the cashier may think the sale did not go through and ring it up again. They
+ * are told that it did, and where to see it.
+ */
+function tellAboutRecentSale() {
+    if (!props.recent_sale || props.last_sale || props.last_order || cart.isEmpty.value) {
+        return;
+    }
+
+    const minutesAgo = Math.floor((Date.now() - new Date(props.recent_sale.sold_at).getTime()) / 60000);
+
+    $q.notify({
+        type: 'info',
+        position: 'top',
+        timeout: 0,
+        closeBtn: 'Tutup',
+        message: `Nota ${props.recent_sale.number} (${formatRupiah(props.recent_sale.total)}) sudah tercatat ${minutesAgo < 1 ? 'kurang dari semenit' : `${minutesAgo} menit`} lalu, sementara keranjang masih berisi. Cek Riwayat Nota sebelum membuat lagi.`,
+        actions: [{ label: 'Lihat Riwayat Nota', color: 'white', handler: () => (isReceiptsOpen.value = true) }],
     });
 }
 
@@ -688,6 +740,7 @@ onMounted(() => {
 
     if (props.shift) {
         refreshCart();
+        tellAboutRecentSale();
         startReviewWatch();
         badgeTimer = setInterval(() => {
             if (!isPaying.value) {
