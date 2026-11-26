@@ -29,6 +29,7 @@ use App\Http\Controllers\Tenant\SaleReturnController;
 use App\Http\Controllers\Tenant\ShiftController;
 use App\Http\Controllers\Tenant\ShiftRecapController;
 use App\Http\Controllers\Tenant\ShiftReceiptController;
+use App\Http\Controllers\Tenant\ShipmentAttachmentController;
 use App\Http\Controllers\Tenant\ShipmentController;
 use App\Http\Controllers\Tenant\StockHistoryController;
 use App\Http\Controllers\Tenant\StockOpnameController;
@@ -189,6 +190,9 @@ Route::prefix('t/{tenant}')
             Route::get('{shipment}/edit', [ShipmentController::class, 'edit'])->name('edit');
             Route::put('{shipment}', [ShipmentController::class, 'update'])->name('update');
             Route::post('{shipment}/cancellations', [ShipmentController::class, 'cancel'])->name('cancel');
+            Route::post('{shipment}/attachments', [ShipmentAttachmentController::class, 'store'])->name('attachments.store');
+            Route::get('{shipment}/attachments/{attachment}', [ShipmentAttachmentController::class, 'show'])->name('attachments.show');
+            Route::delete('{shipment}/attachments/{attachment}', [ShipmentAttachmentController::class, 'destroy'])->name('attachments.destroy');
         });
 
         Route::prefix('expenses')->name('tenant.expenses.')->middleware('permission:expenses.manage')->group(function () {

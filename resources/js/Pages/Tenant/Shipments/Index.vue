@@ -90,6 +90,7 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             <small>
                                 <template v-if="shipment.vessel_name">{{ shipment.vessel_name }}</template>
                                 <template v-if="shipment.departure_date"> · berangkat {{ dateFormat.format(new Date(shipment.departure_date)) }}</template>
+                                <template v-if="shipment.expected_arrival_date"> · tiba {{ dateFormat.format(new Date(shipment.expected_arrival_date)) }}</template>
                             </small>
                         </td>
                         <td>{{ shipment.carrier_name }}</td>

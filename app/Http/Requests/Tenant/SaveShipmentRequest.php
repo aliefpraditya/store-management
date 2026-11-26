@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Tenant;
 
+use App\Http\Requests\Concerns\ValidatesPackingListFiles;
 use App\Models\Shipment;
+use App\Services\ShipmentAttachmentService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -13,6 +15,8 @@ use Illuminate\Validation\Rule;
  */
 class SaveShipmentRequest extends FormRequest
 {
+    use ValidatesPackingListFiles;
+
     private const DATE_FORMAT = 'Y-m-d';
 
     private const MAX_PURCHASES = 50;
@@ -37,7 +41,8 @@ class SaveShipmentRequest extends FormRequest
             'client_uuid' => [$this->route('shipment') instanceof Shipment ? 'prohibited' : 'required', 'uuid'],
             'carrier_id' => ['required', 'integer', Rule::exists('carriers', 'id')],
             'vessel_name' => ['nullable', 'string', 'max:100'],
-            'departure_date' => ['nullable', 'date_format:'.self::DATE_FORMAT, 'before_or_equal:today'],
+            'departure_date' => ['nullable', 'date_format:'.self::DATE_FORMAT],
+            'estimated_arrival_date' => ['nullable', 'date_format:'.self::DATE_FORMAT, 'after_or_equal:departure_date'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'purchase_ids' => ['required', 'array', 'min:1', 'max:'.self::MAX_PURCHASES],
             'purchase_ids.*' => ['integer', 'distinct', Rule::exists('purchases', 'id')],
@@ -46,6 +51,8 @@ class SaveShipmentRequest extends FormRequest
             'allocations.*.container_number' => ['required', 'string', 'max:50'],
             'allocations.*.quantity' => ['required', 'numeric', 'gt:0', 'max:'.self::MAX_QUANTITY, 'decimal:0,3'],
             'allocations.*.freight_cost' => ['required', 'numeric', 'min:0', 'max:'.self::MAX_FREIGHT_COST, 'decimal:0,2'],
+            'attachments' => ['nullable', 'array', 'max:'.ShipmentAttachmentService::MAX_PER_SHIPMENT],
+            'attachments.*' => $this->packingListFileRules(),
         ];
     }
 
@@ -61,7 +68,8 @@ class SaveShipmentRequest extends FormRequest
             'carrier_id.exists' => 'Ekspedisi tidak ditemukan.',
             'vessel_name.max' => 'Nama kapal terlalu panjang.',
             'departure_date.date_format' => 'Tanggal berangkat tidak valid.',
-            'departure_date.before_or_equal' => 'Tanggal berangkat tidak boleh di masa depan. Kosongkan sampai barangnya benar-benar berangkat.',
+            'estimated_arrival_date.date_format' => 'Estimasi sampai tidak valid.',
+            'estimated_arrival_date.after_or_equal' => 'Estimasi sampai tidak boleh sebelum tanggal berangkat.',
             'purchase_ids.required' => 'Tambahkan minimal satu nota.',
             'purchase_ids.min' => 'Tambahkan minimal satu nota.',
             'purchase_ids.max' => 'Satu pengiriman paling banyak '.self::MAX_PURCHASES.' nota.',
@@ -77,6 +85,7 @@ class SaveShipmentRequest extends FormRequest
             'allocations.*.freight_cost.numeric' => 'Biaya harus berupa angka.',
             'allocations.*.freight_cost.min' => 'Biaya tidak boleh negatif.',
             'allocations.*.freight_cost.decimal' => 'Biaya maksimal 2 angka desimal.',
+            ...$this->packingListFileMessages(),
         ];
     }
 }

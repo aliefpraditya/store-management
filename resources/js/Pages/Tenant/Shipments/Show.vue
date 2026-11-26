@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { useQuasar } from 'quasar';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
@@ -18,6 +18,41 @@ const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' });
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 
 const isCancelled = computed(() => props.shipment.status === 'cancelled');
+
+const readableSize = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+
+const newFiles = ref([]);
+const isUploading = ref(false);
+
+function uploadFiles() {
+    if (newFiles.value.length === 0) {
+        return;
+    }
+
+    router.post(
+        props.shipment.urls.attachments,
+        { attachments: newFiles.value },
+        {
+            forceFormData: true,
+            preserveScroll: true,
+            onStart: () => (isUploading.value = true),
+            onFinish: () => (isUploading.value = false),
+            onSuccess: () => (newFiles.value = []),
+            onError: (errors) => $q.notify({ type: 'negative', position: 'top', message: Object.values(errors)[0] ?? 'File gagal diunggah.' }),
+        },
+    );
+}
+
+/** @param {{name: string, delete_url: string}} attachment */
+function deleteAttachment(attachment) {
+    $q.dialog({
+        title: 'Hapus file?',
+        message: `${attachment.name} dihapus dari pengiriman ini.`,
+        cancel: { label: 'Kembali', flat: true, noCaps: true },
+        ok: { label: 'Hapus', color: 'negative', unelevated: true, noCaps: true },
+        persistent: true,
+    }).onOk(() => router.delete(attachment.delete_url, { preserveScroll: true }));
+}
 
 function cancelShipment() {
     $q.dialog({
@@ -53,7 +88,13 @@ function cancelShipment() {
                 <div><dt>Ekspedisi</dt><dd>{{ shipment.carrier_name }}</dd></div>
                 <div><dt>Kapal</dt><dd>{{ shipment.vessel_name ?? '—' }}</dd></div>
                 <div><dt>Tanggal berangkat</dt><dd>{{ shipment.departure_date ? dateFormat.format(new Date(shipment.departure_date)) : 'Belum berangkat' }}</dd></div>
-                <div v-if="shipment.expected_arrival_date"><dt>Perkiraan tiba di toko</dt><dd>{{ dateFormat.format(new Date(shipment.expected_arrival_date)) }}</dd></div>
+                <div v-if="shipment.expected_arrival_date">
+                    <dt>Estimasi sampai di toko</dt>
+                    <dd>
+                        {{ dateFormat.format(new Date(shipment.expected_arrival_date)) }}
+                        <small v-if="!shipment.estimated_arrival_date">dari lama kirim ekspedisi</small>
+                    </dd>
+                </div>
                 <div><dt>Dibuat oleh</dt><dd>{{ shipment.created_by_name }}</dd></div>
                 <div><dt>Total biaya</dt><dd>{{ formatRupiah(shipment.total_freight_cost) }}</dd></div>
             </dl>
@@ -68,6 +109,27 @@ function cancelShipment() {
                     <span>{{ purchase.supplier_name }}<template v-if="purchase.supplier_document_number"> · nota {{ purchase.supplier_document_number }}</template></span>
                 </li>
             </ul>
+        </section>
+
+        <section class="card">
+            <h2>File packing list</h2>
+
+            <p v-if="shipment.attachments.length === 0" class="empty">Belum ada file dari ekspedisi.</p>
+            <ul v-else class="files">
+                <li v-for="attachment in shipment.attachments" :key="attachment.id">
+                    <q-icon name="description" color="grey-7" size="20px" />
+                    <a :href="attachment.url" target="_blank" rel="noopener" class="files__name">{{ attachment.name }}</a>
+                    <small>{{ readableSize(attachment.size) }}</small>
+                    <q-btn v-if="!isCancelled" flat round dense icon="delete_outline" color="negative" :aria-label="`Hapus ${attachment.name}`" @click="deleteAttachment(attachment)" />
+                </li>
+            </ul>
+
+            <div v-if="!isCancelled" class="upload">
+                <q-file v-model="newFiles" outlined dense multiple append use-chips label="Tambah file packing list" accept=".pdf,.xls,.xlsx,.csv,.doc,.docx,.jpg,.jpeg,.png,.webp" class="upload__field">
+                    <template #prepend><q-icon name="attach_file" /></template>
+                </q-file>
+                <q-btn color="primary" unelevated no-caps label="Unggah" :disable="newFiles.length === 0" :loading="isUploading" @click="uploadFiles" />
+            </div>
         </section>
 
         <section class="card">
@@ -162,6 +224,12 @@ function cancelShipment() {
     font-weight: 600;
 }
 
+.facts dd small {
+    display: block;
+    color: var(--app-mute);
+    font-weight: 400;
+}
+
 .notes {
     margin: 12px 0 0;
     color: var(--app-mute);
@@ -237,7 +305,45 @@ function cancelShipment() {
 }
 
 .empty {
-    margin: 0;
+    margin: 0 0 12px;
     color: var(--app-mute);
+}
+
+.files {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0 0 12px;
+    padding: 0;
+    list-style: none;
+}
+
+.files li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.files__name {
+    flex: 1;
+    overflow: hidden;
+    color: var(--q-primary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.files small {
+    color: var(--app-mute);
+}
+
+.upload {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.upload__field {
+    flex: 1 1 260px;
 }
 </style>

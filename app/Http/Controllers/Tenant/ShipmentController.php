@@ -14,6 +14,7 @@ use App\Models\Carrier;
 use App\Models\Purchase;
 use App\Models\Shipment;
 use App\Services\CarrierService;
+use App\Services\ShipmentAttachmentService;
 use App\Services\ShipmentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -62,7 +63,7 @@ class ShipmentController extends Controller
     public function store(SaveShipmentRequest $request): RedirectResponse
     {
         try {
-            $shipment = $this->shipmentService->create($request->user(), $request->validated());
+            $shipment = $this->shipmentService->create($request->user(), $request->safe()->except('attachments'), $request->file('attachments', []));
         } catch (ShipmentException $exception) {
             return back()->withInput()->with('error', $exception->getMessage());
         }
@@ -94,7 +95,7 @@ class ShipmentController extends Controller
     public function update(SaveShipmentRequest $request, Shipment $shipment): RedirectResponse
     {
         try {
-            $updatedShipment = $this->shipmentService->update($shipment, $request->validated());
+            $updatedShipment = $this->shipmentService->update($shipment, $request->user(), $request->safe()->except('attachments'), $request->file('attachments', []));
         } catch (ShipmentException $exception) {
             return back()->withInput()->with('error', $exception->getMessage());
         }
@@ -124,6 +125,7 @@ class ShipmentController extends Controller
             'carrier',
             'purchases.supplier',
             'purchases.items.product',
+            'attachments',
             'containers.lines.purchaseItem.purchase.supplier',
             'containers.lines.purchaseItem.product',
         ]))->resolve();
@@ -138,12 +140,13 @@ class ShipmentController extends Controller
     private function formOptions(?Shipment $editedShipment = null): array
     {
         return [
-            'carriers' => $this->carrierService->selectable($editedShipment?->carrier_id)->map(fn (Carrier $carrier): array => ['id' => $carrier->id, 'name' => $carrier->name])->values(),
+            'carriers' => $this->carrierService->selectable($editedShipment?->carrier_id)->map(fn (Carrier $carrier): array => ['id' => $carrier->id, 'name' => $carrier->name, 'transit_days' => $carrier->transit_days])->values(),
             'available_purchases' => $this->shipmentService->availablePurchases($editedShipment)
                 ->map(fn (Purchase $purchase): array => ShipmentPurchaseResource::make($purchase)->resolve())
                 ->values(),
             'store_url' => route('tenant.shipments.store', ['tenant' => tenant('code')]),
             'index_url' => route('tenant.shipments.index', ['tenant' => tenant('code')]),
+            'max_attachments' => ShipmentAttachmentService::MAX_PER_SHIPMENT,
         ];
     }
 }

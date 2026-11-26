@@ -24,6 +24,7 @@ class ShipmentListResource extends JsonResource
             'carrier_name' => $this->carrier->name,
             'vessel_name' => $this->vessel_name,
             'departure_date' => $this->departure_date?->toDateString(),
+            'expected_arrival_date' => $this->expectedArrivalDate()?->toDateString(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
             'purchases_count' => $this->purchases_count,

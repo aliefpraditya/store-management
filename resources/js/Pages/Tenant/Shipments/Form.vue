@@ -19,6 +19,7 @@ const props = defineProps({
     available_purchases: { type: Array, required: true },
     store_url: { type: String, required: true },
     index_url: { type: String, required: true },
+    max_attachments: { type: Number, required: true },
 });
 
 const $q = useQuasar();
@@ -30,8 +31,19 @@ const form = useForm({
     carrier_id: props.shipment?.carrier_id ?? null,
     vessel_name: props.shipment?.vessel_name ?? '',
     departure_date: props.shipment?.departure_date ?? '',
+    estimated_arrival_date: props.shipment?.estimated_arrival_date ?? '',
     notes: props.shipment?.notes ?? '',
+    attachments: [],
 });
+
+/** Without a typed estimate the arrival is worked out from the carrier's usual transit days, so say what that would be. */
+const estimatedArrivalHint = computed(() => {
+    const transitDays = props.carriers.find((carrier) => carrier.id === form.carrier_id)?.transit_days;
+
+    return transitDays ? `Kosong = tanggal berangkat + ${transitDays} hari (lama kirim ekspedisi).` : 'Kosong = tidak diketahui.';
+});
+
+const attachmentHint = computed(() => `PDF, Excel, Word, atau foto, paling besar 10 MB, maksimal ${props.max_attachments} file. File yang sudah tersimpan dikelola di halaman detail.`);
 
 let nextRowKey = 0;
 
@@ -213,8 +225,9 @@ function isSimpleLine(entry, item) {
 const errorMessages = computed(() => [...new Set(Object.values(form.errors))]);
 
 /**
- * Sends the shipment. A new one is a POST, a draft being changed a PUT. Rows left completely empty are dropped; a row with
- * something missing is sent so the server says what.
+ * Sends the shipment. A new one is a POST; a draft being changed is a PUT, which PHP does not read with files in it, so it goes
+ * as a POST that says it is a PUT. Rows left completely empty are dropped; a row with something missing is sent so the server
+ * says what. Form data turns `null` into an empty string, so `attachments` is left out when there are no files.
  */
 function submit() {
     const allocations = entries.value.flatMap((entry) =>
@@ -225,20 +238,18 @@ function submit() {
         ),
     );
 
-    form.transform((submittedForm) => ({
-        ...submittedForm,
-        vessel_name: submittedForm.vessel_name || null,
-        departure_date: submittedForm.departure_date || null,
+    form.transform(({ attachments, client_uuid: clientUuid, ...fields }) => ({
+        ...fields,
+        vessel_name: fields.vessel_name || null,
+        departure_date: fields.departure_date || null,
+        estimated_arrival_date: fields.estimated_arrival_date || null,
         purchase_ids: entries.value.map((entry) => entry.purchase.id),
         allocations,
-        ...(isEditing.value ? { client_uuid: undefined } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+        ...(isEditing.value ? { _method: 'put' } : { client_uuid: clientUuid }),
     }));
 
-    if (isEditing.value) {
-        form.put(props.shipment.urls.update);
-    } else {
-        form.post(props.store_url);
-    }
+    form.post(isEditing.value ? props.shipment.urls.update : props.store_url, { forceFormData: true });
 }
 </script>
 
@@ -268,13 +279,41 @@ function submit() {
                         label="Tanggal berangkat"
                         outlined
                         clearable
-                        hint="Isi saat barangnya sudah berangkat. Menyimpan dengan tanggal ini mengubah semua nota di sini jadi Dikirim."
+                        hint="Sesuai packing list (boleh tanggal rencana). Menyimpan dengan tanggal ini mengubah semua nota di sini jadi Dikirim."
                         :error="!!form.errors.departure_date"
                         :error-message="form.errors.departure_date"
+                    />
+                    <DateInput
+                        v-model="form.estimated_arrival_date"
+                        label="Estimasi sampai di toko (opsional)"
+                        outlined
+                        clearable
+                        :hint="estimatedArrivalHint"
+                        :error="!!form.errors.estimated_arrival_date"
+                        :error-message="form.errors.estimated_arrival_date"
                     />
                 </div>
 
                 <q-input v-model="form.notes" outlined label="Catatan (opsional)" maxlength="1000" :error="!!form.errors.notes" :error-message="form.errors.notes" />
+            </section>
+
+            <section class="card">
+                <h2>File packing list</h2>
+                <q-file
+                    v-model="form.attachments"
+                    outlined
+                    multiple
+                    append
+                    use-chips
+                    label="Pilih file dari ekspedisi (opsional)"
+                    accept=".pdf,.xls,.xlsx,.csv,.doc,.docx,.jpg,.jpeg,.png,.webp"
+                    :max-files="max_attachments"
+                    :error="!!form.errors.attachments"
+                    :error-message="form.errors.attachments"
+                >
+                    <template #prepend><q-icon name="attach_file" /></template>
+                </q-file>
+                <p class="hint">{{ attachmentHint }}</p>
             </section>
 
             <section class="card">

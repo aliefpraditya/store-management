@@ -125,7 +125,7 @@ Toko
 | D2 | Gudang | Multi-gudang per toko; otomatis **Main Warehouse** (`sellable`) dan **Dead Stock** (`dead_stock`) | ✔ |
 | D3 | Transfer stok | Antar-gudang: MVP. Antar-toko: **Fase 2**; jembatan = opname parsial berkode alasan | ✔ Anda |
 | D4 | Master barang | **Per toko** (kategori, merek, satuan, supplier, barang, harga, kebijakan satuan). Tanpa katalog pusat/publish (D27). Pusat hanya menyimpan toko, user, akses | ✔ Anda |
-| D5 | Biaya kontainer | Sementara dicatat saja, tidak masuk modal. **Direvisi (arah):** biaya kontainer (ongkir) nanti masuk ke modal barang dan memengaruhi harga jual; cara pembagiannya belum diputuskan (7.2 butir 13) | ✔ |
+| D5 | Biaya kontainer | Sementara dicatat saja, tidak masuk modal. **Direvisi (diputuskan):** ongkir masuk ke modal barang dan memengaruhi harga jual. Dasarnya **biaya per baris di packing list ekspedisi ÷ qty barisnya**, ditambahkan ke modal per satuan dasar (7.2 butir 13). Karena modal tiap penerimaan jadi berbeda, ini **mengharuskan FIFO per layer (D22)**, bukan harga beli terakhir | ✔ |
 | D6 | Harga beli | **Harga beli terakhir** (`products.cost_price`) dipakai untuk **basis harga jual persen** dan peringatan harga di bawah modal. **HPP & nilai persediaan memakai FIFO per layer** (D22). Tanpa moving average | ✔ (diperjelas v0.3.2) |
 | D7 | Pajak | Tanpa PPN | ✔ |
 | D8 | Stok minus | Dilarang (online only, D34); bisa diizinkan per toko lewat pengaturan. ~~Offline: peringatan + `sync_issues`~~ dibatalkan | ✔ + usul |
@@ -1366,7 +1366,8 @@ erDiagram
         string number UK "PG/MU/2610/0001"
         bigint carrier_id FK "required"
         string vessel_name
-        date departure_date "filling it ships the purchases"
+        date departure_date "from the packing list, may be ahead; filling it ships the purchases"
+        date estimated_arrival_date "optional; else departure plus carrier transit_days"
         enum status "draft, shipped, cancelled"
         text notes
         bigint created_by
@@ -1837,20 +1838,21 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 
 **Layar:** Daftar Pengiriman (filter ekspedisi dan status; cari nomor, kapal, no. container) · Form Pengiriman · Detail (packing list per container dengan sub total, total biaya).
 
-**Header:** nomor (`PG/{prefiks}/{YYMM}/{seq}`), **ekspedisi (wajib)**, kapal (opsional), **tanggal berangkat**, catatan. Perkiraan tiba di toko = tanggal berangkat + `transit_days` ekspedisi (hanya ditampilkan).
+**Header:** nomor (`PG/{prefiks}/{YYMM}/{seq}`), **ekspedisi (wajib)**, kapal (opsional), **tanggal berangkat** (sesuai packing list), **estimasi sampai di toko** (opsional, diketik dari packing list atau ekspedisi; tidak boleh sebelum tanggal berangkat), catatan. Bila estimasi tidak diisi, perkiraan tiba di toko = tanggal berangkat + `transit_days` ekspedisi (hanya ditampilkan).
 **Nota:** satu atau lebih nota pembelian berstatus `ordered` (sudah dipesan dan dibayar). **Satu nota hanya masuk satu pengiriman** (`purchases.shipment_id`). Nota dimuat dengan scan atau ketik nomor nota (atau nomor nota supplier); semua barang nota langsung muncul.
 **Packing list:** satu baris per container dan per baris nota: **no. container**, **jumlah** (dalam satuan nota), dan **biaya** dari ekspedisi (harga kubikasi per baris, boleh 0). Satu baris nota bisa **terbagi ke beberapa container** (contoh: semen 1000 sak dengan 100 sak per container menjadi 10 baris). Isian awal tiap barang adalah seluruh jumlahnya di container terakhir yang dipakai, jadi tinggal mengisi no. container dan biaya.
 **Status:** `draft → shipped` (+ `cancelled`).
 
 **Aturan bisnis**
 1. Pengiriman draft boleh diubah bebas (nota ditambah atau dikeluarkan, packing list diganti). Packing list diisi setelah dokumen dari ekspedisi ada; selama belum berangkat disimpan sebagai draft.
-2. **Mengisi tanggal berangkat = berangkat:** pengiriman menjadi `shipped`, semua nota di dalamnya otomatis `shipped` (Dikirim) dan mengikuti ekspedisi pengiriman. Tidak ada tombol "tandai dikirim". Tanggal berangkat tidak boleh di masa depan.
+2. **Mengisi tanggal berangkat = berangkat:** pengiriman menjadi `shipped`, semua nota di dalamnya otomatis `shipped` (Dikirim) dan mengikuti ekspedisi pengiriman. Tidak ada tombol "tandai dikirim". Tanggal berangkat adalah yang tertera di packing list dan **boleh tanggal rencana di masa depan**, karena packing list terbit sebelum kapal berangkat.
 3. **Syarat berangkat:** packing list terisi dan **seluruh jumlah tiap barang nota sudah masuk container** (jumlah di container sama dengan jumlah di nota, tidak lebih dan tidak kurang). Tiap baris wajib no. container dan biaya (boleh 0). Jumlah di container tidak boleh melebihi nota, juga saat masih draft.
 4. Nomor container disimpan seragam (huruf besar, spasi dirapikan); baris dengan container dan barang yang sama dijumlahkan.
 5. Setelah berangkat, pengiriman terkunci dan tidak bisa dibatalkan. Pengiriman draft bisa dibatalkan (alasan wajib) dan notanya bebas lagi. Nota yang sudah masuk pengiriman tidak bisa dibatalkan; keluarkan dulu dari pengiriman.
-6. Biaya per baris (`shipment_lines.freight_cost`) disimpan sebagai dasar pembagian ongkir ke modal barang (arah di 7.2 butir 13): ekspedisi sudah menghitungnya per baris menurut volume.
-7. Izin: `shipments.manage`, Admin Toko saja.
-8. **Belum dikerjakan:** koli, ukuran, dan volume (m³) per baris; lampiran file packing list; penerimaan per container.
+6. Biaya per baris (`shipment_lines.freight_cost`) adalah **dasar pembagian ongkir ke modal barang** (diputuskan, 7.2 butir 13): ekspedisi sudah menghitungnya per baris menurut volume, jadi tidak ada rumus pembagian sendiri.
+7. **File packing list** (PDF, Excel, Word, atau foto; maksimal 10 MB per file dan 10 file per pengiriman) dilampirkan di pengiriman: saat membuat atau mengubah draft, atau kapan saja sesudahnya selama pengiriman belum dibatalkan. File disimpan di penyimpanan privat dan dibuka lewat rute yang memeriksa izin.
+8. Izin: `shipments.manage`, Admin Toko saja.
+9. **Sengaja tidak dicatat:** koli, ukuran, dan volume (m³) per baris; semuanya dilihat dari file packing list. **Belum dikerjakan:** penerimaan per container.
 
 ---
 
@@ -1868,7 +1870,7 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 **Aturan bisnis**
 1. Satu kontainer banyak supplier; barang yang sama dari supplier berbeda = baris terpisah, digabung per barang saat posting.
 2. Stok bertambah **hanya saat posting** ke gudang tujuan (`goods_receipt`); qty rusak tidak masuk stok. Posting membuat **satu layer FIFO per item** (`stock_layers`, modal = `base_unit_cost`, `entered_at` = waktu posting).
-3. Harga beli dasar berbeda dari `cost_price` → update `cost_price` + `price_histories` (sumber `goods_receipt`) + hitung ulang harga persen; ringkasan "N barang berubah harga" tampil sebelum posting. **Ditunda sampai FIFO dan alokasi biaya kontainer dikerjakan:** apakah baris berharga 0 (kirim ulang gratis, 7.1b butir 6) boleh menurunkan `cost_price` menjadi 0. Usulan: tidak memperbarui `cost_price` sampai ongkir terbagi ke modal.
+3. Harga beli dasar berbeda dari `cost_price` → update `cost_price` + `price_histories` (sumber `goods_receipt`) + hitung ulang harga persen; ringkasan "N barang berubah harga" tampil sebelum posting. Baris berharga 0 (kirim ulang gratis, 7.1b butir 6) tidak lagi bermasalah: modalnya ongkir ÷ qty (butir 13), bukan 0.
 4. Validasi tanggal: `shipments.departure_date ≤ arrival_date ≤ unloading_started_at ≤ unloading_finished_at`.
 5. Setelah `received` dokumen terkunci; koreksi = `cancelled` + alasan (mutasi balik). **Ditolak bila layer penerimaan itu sudah terpakai sebagian/seluruhnya** (barang sudah terjual/dipindah); gunakan opname/koreksi.
 6. Approval Admin opsional (pengaturan).
@@ -1878,7 +1880,7 @@ Aturan 2, 3, dan 5 di bawah (mode margin tersimpan, persen untung per satuan di 
 10. Bila `receiving_requires_purchase` aktif, baris tanpa pembelian ditolak.
 11. **Ekspedisi wajib** ada di pengiriman (7.1c, `shipments.carrier_id`) dan penerimaan container mengikutinya; nota pembelian sendiri boleh tanpa ekspedisi sampai masuk pengiriman.
 12. **Pengecekan gudang:** gudang membandingkan barang yang datang dengan nota: qty diterima dan qty rusak per baris. Bila jumlah atau kondisinya tidak sesuai, selisih dicatat per baris dengan tindak lanjut **refund** (nilai barang + ongkirnya; nominal ikut dicatat) atau **kirim ulang**. Kirim ulang = supplier menerbitkan nota baru berharga 0 yang dicatat sebagai pembelian baru (7.1b butir 6). Barang rusak tidak masuk stok (butir 2).
-13. **Biaya kontainer ke harga jual (arah, belum dikerjakan):** biaya kontainer (ongkir) akan dibagi ke modal tiap barang pada penerimaan itu, lalu masuk `cost_price` dan memengaruhi harga jual lewat rumus margin. Dasar pembagian yang paling dekat adalah **biaya per baris dari packing list** (`shipment_lines.freight_cost`, 7.1c butir 6) karena ekspedisi sudah menghitungnya per baris menurut volume; keputusan akhir (termasuk ongkir yang direfund) **belum diambil**. Barang kirim ulang berharga 0 (7.1b butir 6) tetap ikut menerima alokasi ini karena **kita yang membayar kontainernya**; modalnya jadi biaya kontainer yang terbagi ke barang itu, bukan 0.
+13. **Ongkir masuk modal (diputuskan, belum dikerjakan):** modal per satuan dasar pada layer penerimaan = `base_unit_cost` pembelian + (`shipment_lines.freight_cost` baris itu ÷ qty dasar barisnya). Biaya per baris diambil apa adanya dari packing list (7.1c butir 6), tanpa rumus pembagian lain. Modal baru ini yang masuk layer FIFO, `cost_price`, dan rumus harga jual margin. Karena tiap penerimaan punya ongkir berbeda, modal tidak lagi bisa memakai "harga beli terakhir" saja: **FIFO per layer (D22) harus dibuat lebih dulu atau bersamaan**. Barang kirim ulang berharga 0 (7.1b butir 6) tetap menerima ongkirnya karena **kita yang membayar kontainernya**, jadi modalnya ongkir ÷ qty, bukan 0. **Belum diputuskan:** ongkir untuk barang rusak yang tidak masuk stok (dibebankan ke barang yang baik atau dicatat sebagai kerugian) dan ongkir yang ikut direfund.
 
 **Edge case:** barang belum ada → "Tambah barang cepat" langsung dari form (membuat barang di toko ini); draft menggantung → filter "draft > 7 hari".
 

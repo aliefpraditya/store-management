@@ -49,6 +49,16 @@ class ShipmentException extends Exception
         return new self('Pengiriman ini sudah dibuat oleh orang lain. Muat ulang layar lalu coba lagi.');
     }
 
+    public static function tooManyAttachments(int $maximum): self
+    {
+        return new self("Satu pengiriman paling banyak punya {$maximum} file.");
+    }
+
+    public static function attachmentsLocked(): self
+    {
+        return new self('Pengiriman yang dibatalkan tidak bisa diubah file-nya.');
+    }
+
     public static function notCancellable(): self
     {
         return new self('Hanya pengiriman yang belum berangkat yang bisa dibatalkan.');

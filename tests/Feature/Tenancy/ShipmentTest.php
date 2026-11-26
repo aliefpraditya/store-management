@@ -9,11 +9,14 @@ use App\Models\Carrier;
 use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\Shipment;
+use App\Models\ShipmentAttachment;
 use App\Models\ShipmentLine;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsCashierFixtures;
@@ -205,9 +208,46 @@ class ShipmentTest extends TestCase
                 'allocations.0.quantity' => 'Jumlah harus lebih dari nol.',
                 'allocations.0.freight_cost' => 'Biaya tidak boleh negatif.',
             ]);
-        $this->actingAs($this->admin)->post($this->url('store'), $this->body([$purchase], [], ['departure_date' => today()->addDay()->toDateString()]))
-            ->assertSessionHasErrors(['departure_date']);
+        $this->actingAs($this->admin)->post($this->url('store'), $this->body([$purchase], [], ['departure_date' => 'kemarin']))
+            ->assertSessionHasErrors(['departure_date' => 'Tanggal berangkat tidak valid.']);
         $this->actingAs($this->admin)->post($this->url('store'), $this->body([], []))->assertSessionHasErrors(['purchase_ids' => 'Tambahkan minimal satu nota.']);
+    }
+
+    public function test_the_departure_date_on_the_packing_list_may_still_be_ahead_and_still_ships_the_notas(): void
+    {
+        $purchase = $this->orderedPurchase('10');
+        $plannedDeparture = today()->addDays(3)->toDateString();
+
+        $shipment = $this->draft([$purchase], [$this->row($purchase, 'SPNU 1', '10')], ['departure_date' => $plannedDeparture]);
+
+        $this->assertSame(ShipmentStatus::Shipped, $shipment->status);
+        $this->assertSame($plannedDeparture, $shipment->departure_date->toDateString());
+        $this->assertSame(PurchaseStatus::Shipped, $this->statusOf($purchase));
+    }
+
+    public function test_the_estimated_arrival_is_optional_and_otherwise_comes_from_the_carriers_usual_days(): void
+    {
+        $first = $this->orderedPurchase('10', 'INV-A');
+        $second = $this->orderedPurchase('10', 'INV-B');
+        $typed = today()->addDays(25)->toDateString();
+        $withoutEstimate = $this->draft([$first], [$this->row($first, 'SPNU 1', '10')], ['departure_date' => today()->toDateString()]);
+        $withEstimate = $this->draft([$second], [], ['estimated_arrival_date' => $typed]);
+        $show = fn (Shipment $shipment) => $this->actingAs($this->admin)->get($this->url('show', ['shipment' => $shipment->id]));
+
+        $show($withoutEstimate)->assertInertia(fn (Assert $page) => $page
+            ->where('shipment.estimated_arrival_date', null)
+            ->where('shipment.expected_arrival_date', today()->addDays(10)->toDateString()));
+        $show($withEstimate)->assertInertia(fn (Assert $page) => $page
+            ->where('shipment.estimated_arrival_date', $typed)
+            ->where('shipment.expected_arrival_date', $typed));
+    }
+
+    public function test_the_estimated_arrival_cannot_be_before_the_departure(): void
+    {
+        $purchase = $this->orderedPurchase('10');
+
+        $this->actingAs($this->admin)->post($this->url('store'), $this->body([$purchase], [], ['departure_date' => today()->toDateString(), 'estimated_arrival_date' => today()->subDay()->toDateString()]))
+            ->assertSessionHasErrors(['estimated_arrival_date' => 'Estimasi sampai tidak boleh sebelum tanggal berangkat.']);
     }
 
     public function test_only_ordered_notas_that_are_in_no_other_shipment_can_be_loaded(): void
@@ -345,6 +385,98 @@ class ShipmentTest extends TestCase
         $this->actingAs($this->admin)->get($this->url('index', ['search' => '111']))->assertInertia(fn (Assert $page) => $page->has('shipments.data', 1)->where('shipments.data.0.total_freight_cost', '70000.00'));
         $this->actingAs($this->admin)->get($this->url('index', ['status' => 'shipped']))->assertInertia($numbers([1]));
         $this->actingAs($this->admin)->get($this->url('index', ['carrier' => $this->carrier->id]))->assertInertia(fn (Assert $page) => $page->has('shipments.data', 2));
+    }
+
+    public function test_packing_list_files_sent_with_a_shipment_are_kept_on_the_private_disk_and_opened_through_the_route(): void
+    {
+        Storage::fake('local');
+        $purchase = $this->orderedPurchase('10');
+
+        $shipment = $this->draft([$purchase], [], ['attachments' => [UploadedFile::fake()->create('packing-list.pdf', 100, 'application/pdf'), UploadedFile::fake()->create('packing-list.xlsx', 50, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')]]);
+
+        $attachments = $this->store->run(fn () => $shipment->attachments()->orderBy('id')->get());
+
+        $this->assertSame(['packing-list.pdf', 'packing-list.xlsx'], $attachments->pluck('original_name')->all());
+        $this->assertStringStartsWith('shipments/test_shipments/'.$shipment->id.'/', $attachments[0]->path);
+        Storage::disk('local')->assertExists($attachments[0]->path);
+
+        $this->actingAs($this->admin)->get($this->url('attachments.show', ['shipment' => $shipment->id, 'attachment' => $attachments[0]->id]))->assertOk();
+        $this->actingAs($this->cashier)->get($this->url('attachments.show', ['shipment' => $shipment->id, 'attachment' => $attachments[0]->id]))->assertForbidden();
+        $this->actingAs($this->admin)->get($this->url('show', ['shipment' => $shipment->id]))->assertInertia(fn (Assert $page) => $page
+            ->where('shipment.attachments.0.name', 'packing-list.pdf')
+            ->where('shipment.attachments.1.name', 'packing-list.xlsx'));
+    }
+
+    public function test_only_pdf_excel_word_and_photo_files_up_to_ten_megabytes_are_taken(): void
+    {
+        Storage::fake('local');
+        $purchase = $this->orderedPurchase('10');
+
+        $this->actingAs($this->admin)->post($this->url('store'), $this->body([$purchase], [], ['attachments' => [UploadedFile::fake()->create('virus.exe', 10, 'application/octet-stream')]]))
+            ->assertSessionHasErrors(['attachments.0' => 'File harus berupa PDF, Excel, Word, atau foto (JPG, PNG, WebP).']);
+        $this->actingAs($this->admin)->post($this->url('store'), $this->body([$purchase], [], ['attachments' => [UploadedFile::fake()->create('besar.pdf', 11000, 'application/pdf')]]))
+            ->assertSessionHasErrors(['attachments.0' => 'Satu file paling besar 10 MB.']);
+
+        $this->assertSame(0, $this->store->run(fn (): int => Shipment::query()->count()));
+    }
+
+    public function test_files_can_be_added_after_departure_and_removed_but_a_shipment_has_at_most_ten(): void
+    {
+        Storage::fake('local');
+        $purchase = $this->orderedPurchase('10');
+        $shipment = $this->draft([$purchase], [$this->row($purchase, 'SPNU 1', '10')], ['departure_date' => today()->toDateString()]);
+
+        $this->actingAs($this->admin)->post($this->url('attachments.store', ['shipment' => $shipment->id]), ['attachments' => [UploadedFile::fake()->create('pl.pdf', 10, 'application/pdf')]])->assertSessionHasNoErrors();
+
+        $attachment = $this->store->run(fn (): ShipmentAttachment => ShipmentAttachment::query()->sole());
+        $this->actingAs($this->admin)->delete($this->url('attachments.destroy', ['shipment' => $shipment->id, 'attachment' => $attachment->id]))->assertSessionHasNoErrors();
+        Storage::disk('local')->assertMissing($attachment->path);
+
+        $files = fn (int $count) => array_map(fn (int $number) => UploadedFile::fake()->create("pl{$number}.pdf", 10, 'application/pdf'), range(1, $count));
+        $this->actingAs($this->admin)->post($this->url('attachments.store', ['shipment' => $shipment->id]), ['attachments' => $files(10)])->assertSessionHasNoErrors();
+        $this->actingAs($this->admin)->post($this->url('attachments.store', ['shipment' => $shipment->id]), ['attachments' => $files(1)])
+            ->assertSessionHas('error', 'Satu pengiriman paling banyak punya 10 file.');
+
+        $this->assertSame(10, $this->store->run(fn (): int => ShipmentAttachment::query()->count()));
+    }
+
+    public function test_the_files_of_another_shipment_cannot_be_opened_through_this_one(): void
+    {
+        Storage::fake('local');
+        $first = $this->orderedPurchase('10', 'INV-A');
+        $second = $this->orderedPurchase('10', 'INV-B');
+        $firstShipment = $this->draft([$first]);
+        $secondShipment = $this->draft([$second]);
+
+        $this->actingAs($this->admin)->post($this->url('attachments.store', ['shipment' => $firstShipment->id]), ['attachments' => [UploadedFile::fake()->create('pl.pdf', 10, 'application/pdf')]]);
+        $attachment = $this->store->run(fn (): ShipmentAttachment => ShipmentAttachment::query()->sole());
+
+        $this->actingAs($this->admin)->get($this->url('attachments.show', ['shipment' => $secondShipment->id, 'attachment' => $attachment->id]))->assertNotFound();
+    }
+
+    public function test_a_cancelled_shipment_keeps_its_files_as_they_are(): void
+    {
+        Storage::fake('local');
+        $shipment = $this->draft([$this->orderedPurchase('10')]);
+        $this->actingAs($this->admin)->post($this->url('attachments.store', ['shipment' => $shipment->id]), ['attachments' => [UploadedFile::fake()->create('pl.pdf', 10, 'application/pdf')]]);
+        $attachment = $this->store->run(fn (): ShipmentAttachment => ShipmentAttachment::query()->sole());
+        $this->actingAs($this->admin)->post($this->url('cancel', ['shipment' => $shipment->id]), ['reason' => 'Salah']);
+
+        $this->actingAs($this->admin)->post($this->url('attachments.store', ['shipment' => $shipment->id]), ['attachments' => [UploadedFile::fake()->create('b.pdf', 10, 'application/pdf')]])
+            ->assertSessionHas('error', 'Pengiriman yang dibatalkan tidak bisa diubah file-nya.');
+        $this->actingAs($this->admin)->delete($this->url('attachments.destroy', ['shipment' => $shipment->id, 'attachment' => $attachment->id]))
+            ->assertSessionHas('error', 'Pengiriman yang dibatalkan tidak bisa diubah file-nya.');
+
+        $this->assertSame(1, $this->store->run(fn (): int => ShipmentAttachment::query()->count()));
+    }
+
+    public function test_a_shipment_saves_when_the_browser_sends_an_empty_attachments_field(): void
+    {
+        $purchase = $this->orderedPurchase('10');
+
+        $this->actingAs($this->admin)->post($this->url('store'), $this->body([$purchase], [], ['attachments' => '', 'vessel_name' => '', 'departure_date' => '']))->assertSessionHasNoErrors();
+
+        $this->assertSame(1, $this->store->run(fn (): int => Shipment::query()->count()));
     }
 
     public function test_a_double_submit_returns_the_first_shipment(): void

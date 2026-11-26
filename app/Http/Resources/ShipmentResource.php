@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Shipment;
+use App\Models\ShipmentAttachment;
 use App\Models\ShipmentContainer;
 use App\Models\ShipmentLine;
 use Brick\Math\BigDecimal;
@@ -10,7 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * A shipment for its detail and edit screens. Expects `carrier`, `purchases.supplier`, `purchases.items.product` and
+ * A shipment for its detail and edit screens. Expects `carrier`, `attachments`, `purchases.supplier`, `purchases.items.product` and
  * `containers.lines.purchaseItem.purchase.supplier` plus `containers.lines.purchaseItem.product` loaded.
  *
  * @mixin Shipment
@@ -31,7 +32,8 @@ class ShipmentResource extends JsonResource
             'carrier_name' => $this->carrier->name,
             'vessel_name' => $this->vessel_name,
             'departure_date' => $this->departure_date?->toDateString(),
-            'expected_arrival_date' => $this->expectedArrivalDate(),
+            'estimated_arrival_date' => $this->estimated_arrival_date?->toDateString(),
+            'expected_arrival_date' => $this->expectedArrivalDate()?->toDateString(),
             'status' => $this->status->value,
             'status_label' => $this->status->label(),
             'notes' => $this->notes,
@@ -62,24 +64,22 @@ class ShipmentResource extends JsonResource
                 'quantity' => $line->quantity,
                 'freight_cost' => $line->freight_cost,
             ]))->values(),
+            'attachments' => $this->attachments->map(fn (ShipmentAttachment $attachment): array => [
+                'id' => $attachment->id,
+                'name' => $attachment->original_name,
+                'size' => $attachment->size,
+                'url' => route('tenant.shipments.attachments.show', [...$routeParameters, 'attachment' => $attachment->id]),
+                'delete_url' => route('tenant.shipments.attachments.destroy', [...$routeParameters, 'attachment' => $attachment->id]),
+            ])->values(),
             'total_freight_cost' => $this->sumOfFreight($this->containers->flatMap(fn (ShipmentContainer $container) => $container->lines)->all()),
             'urls' => [
                 'index' => route('tenant.shipments.index', ['tenant' => tenant('code')]),
                 'edit' => route('tenant.shipments.edit', $routeParameters),
                 'update' => route('tenant.shipments.update', $routeParameters),
                 'cancel' => route('tenant.shipments.cancel', $routeParameters),
+                'attachments' => route('tenant.shipments.attachments.store', $routeParameters),
             ],
         ];
-    }
-
-    /** The departure date plus the days the carrier usually takes; empty until both are known. */
-    private function expectedArrivalDate(): ?string
-    {
-        if ($this->departure_date === null || $this->carrier->transit_days === null) {
-            return null;
-        }
-
-        return $this->departure_date->copy()->addDays($this->carrier->transit_days)->toDateString();
     }
 
     /**

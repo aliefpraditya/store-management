@@ -17,6 +17,7 @@ use Brick\Math\RoundingMode;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,12 +26,13 @@ use Illuminate\Support\Str;
  * Shipments: whole purchases sent with one carrier, and the carrier's packing list written down as containers and lines. A
  * line says how much of a purchase line is in which container and what the carrier charged for it, so one purchase line can be
  * split over several containers. A shipment is a draft while the packing list is being written; filling in the departure date
- * ships it, which turns every purchase in it into shipped. A purchase is in at most one shipment.
+ * (the one on the carrier's packing list, which may still be ahead) ships it, which turns every purchase in it into shipped. A
+ * purchase is in at most one shipment.
  *
  * `client_uuid` makes a double submit return the first shipment instead of making a second.
  *
  * @phpstan-type PackingListRow array{purchase_item_id: int, container_number: string, quantity: numeric-string|float|int, freight_cost: numeric-string|float|int}
- * @phpstan-type ShipmentInput array{client_uuid?: string, carrier_id: int, vessel_name?: string|null, departure_date?: string|null, notes?: string|null, purchase_ids: list<int>, allocations?: list<PackingListRow>}
+ * @phpstan-type ShipmentInput array{client_uuid?: string, carrier_id: int, vessel_name?: string|null, departure_date?: string|null, estimated_arrival_date?: string|null, notes?: string|null, purchase_ids: list<int>, allocations?: list<PackingListRow>}
  * @phpstan-type ShipmentFilters array{search: string|null, carrier: int|null, status: string|null}
  * @phpstan-type Allocation array{container: string, item: PurchaseItem, quantity: BigDecimal, freight_cost: BigDecimal}
  */
@@ -38,7 +40,10 @@ class ShipmentService
 {
     private const NUMBER_TYPE = 'PG';
 
-    public function __construct(private readonly DocumentNumberGenerator $documentNumbers) {}
+    public function __construct(
+        private readonly DocumentNumberGenerator $documentNumbers,
+        private readonly ShipmentAttachmentService $attachments,
+    ) {}
 
     /**
      * Newest first, narrowed by a search on the number, the vessel or a container number, by carrier and by status. Each row
@@ -84,13 +89,15 @@ class ShipmentService
     }
 
     /**
-     * Makes a draft shipment with its purchases and packing list, and ships it when it has a departure date.
+     * Makes a draft shipment with its purchases and packing list, keeps the packing list files that came with it, and ships it
+     * when it has a departure date.
      *
      * @param  ShipmentInput  $shipmentInput
+     * @param  list<UploadedFile>  $files
      *
      * @throws ShipmentException
      */
-    public function create(User $creator, array $shipmentInput): Shipment
+    public function create(User $creator, array $shipmentInput, array $files = []): Shipment
     {
         $alreadyCreated = $this->alreadyCreated($shipmentInput['client_uuid'] ?? '', $creator);
 
@@ -99,7 +106,7 @@ class ShipmentService
         }
 
         try {
-            return DB::transaction(function () use ($creator, $shipmentInput): Shipment {
+            $shipment = DB::transaction(function () use ($creator, $shipmentInput): Shipment {
                 $shipment = Shipment::query()->create([
                     'client_uuid' => $shipmentInput['client_uuid'],
                     'number' => $this->documentNumbers->next(self::NUMBER_TYPE, now()),
@@ -114,19 +121,24 @@ class ShipmentService
         } catch (UniqueConstraintViolationException $exception) {
             return $this->alreadyCreated($shipmentInput['client_uuid'] ?? '', $creator) ?? throw $exception;
         }
+
+        $this->attachments->storeMany($shipment, $files, $creator);
+
+        return $shipment;
     }
 
     /**
-     * Changes a draft: its header, its purchases and its whole packing list, which is replaced by the one sent. A shipment that
-     * has departed is locked.
+     * Changes a draft: its header, its purchases and its whole packing list, which is replaced by the one sent, and keeps any
+     * new packing list files. A shipment that has departed is locked.
      *
      * @param  ShipmentInput  $shipmentInput
+     * @param  list<UploadedFile>  $files
      *
      * @throws ShipmentException
      */
-    public function update(Shipment $shipment, array $shipmentInput): Shipment
+    public function update(Shipment $shipment, User $editor, array $shipmentInput, array $files = []): Shipment
     {
-        return DB::transaction(function () use ($shipment, $shipmentInput): Shipment {
+        $updatedShipment = DB::transaction(function () use ($shipment, $shipmentInput): Shipment {
             $lockedShipment = Shipment::query()->lockForUpdate()->findOrFail($shipment->id);
 
             if (! $lockedShipment->status->isEditable()) {
@@ -135,6 +147,10 @@ class ShipmentService
 
             return $this->fill($lockedShipment, $shipmentInput, currentCarrierId: $lockedShipment->carrier_id);
         });
+
+        $this->attachments->storeMany($updatedShipment, $files, $editor);
+
+        return $updatedShipment;
     }
 
     /**
@@ -181,6 +197,7 @@ class ShipmentService
             'carrier_id' => $carrier->id,
             'vessel_name' => filled($shipmentInput['vessel_name'] ?? null) ? trim($shipmentInput['vessel_name']) : null,
             'departure_date' => filled($shipmentInput['departure_date'] ?? null) ? $shipmentInput['departure_date'] : null,
+            'estimated_arrival_date' => filled($shipmentInput['estimated_arrival_date'] ?? null) ? $shipmentInput['estimated_arrival_date'] : null,
             'notes' => filled($shipmentInput['notes'] ?? null) ? trim($shipmentInput['notes']) : null,
         ])->save();
 
