@@ -139,11 +139,15 @@ class SaleReturnService
     /**
      * The receipt lines with how much of each can still be returned.
      *
-     * @return list<array{id: int, name: string, unit: string, quantity: string, returned: string, remaining: string, unit_price: string}>
+     * `subtotal` is what the customer paid for the line and `refunded` what was already given back for it, which the
+     * screen needs to value a return the way {@see self::refundOf()} does.
+     *
+     * @return list<array{id: int, name: string, unit: string, quantity: string, returned: string, remaining: string, unit_price: string, subtotal: string, refunded: string}>
      */
     public function returnableLines(Sale $sale): array
     {
         $returnedQuantityBySaleItemId = $this->returnedQuantities($sale, self::GOODS_HOLDING_STATUSES);
+        $refundedBySaleItemId = $this->refundedAmounts($sale, self::GOODS_HOLDING_STATUSES);
 
         return $sale->items->map(fn (SaleItem $saleItem): array => [
             'id' => $saleItem->id,
@@ -153,6 +157,8 @@ class SaleReturnService
             'returned' => (string) BigDecimal::of((string) ($returnedQuantityBySaleItemId[$saleItem->id] ?? 0))->toScale(3),
             'remaining' => (string) $this->remainingQuantity($saleItem, $returnedQuantityBySaleItemId),
             'unit_price' => $saleItem->unit_price,
+            'subtotal' => $saleItem->subtotal,
+            'refunded' => (string) BigDecimal::of((string) ($refundedBySaleItemId[$saleItem->id] ?? 0))->toScale(2),
         ])->values()->all();
     }
 
@@ -532,9 +538,10 @@ class SaleReturnService
 
         $saleItems = $sale->items->keyBy('id');
         $returnedQuantityBySaleItemId = $this->returnedQuantities($sale, self::GOODS_HOLDING_STATUSES);
+        $refundedBySaleItemId = $this->refundedAmounts($sale, self::GOODS_HOLDING_STATUSES);
         $returnsWarehouseId = $this->returnsWarehouseFor($sale);
 
-        return $requestedLines->map(function (array $line) use ($saleItems, $returnedQuantityBySaleItemId, $returnsWarehouseId): array {
+        return $requestedLines->map(function (array $line) use ($saleItems, $returnedQuantityBySaleItemId, $refundedBySaleItemId, $returnsWarehouseId): array {
             $saleItem = $saleItems->get($line['sale_item_id']) ?? throw SaleReturnException::lineNotOnSale();
             $remaining = $this->remainingQuantity($saleItem, $returnedQuantityBySaleItemId);
 
@@ -550,10 +557,33 @@ class SaleReturnService
                 'base_quantity' => (string) $line['quantity']->multipliedBy($saleItem->conversion_snapshot)->toScale(3, RoundingMode::HalfUp),
                 'unit_price' => $saleItem->unit_price,
                 'cost_total' => (string) BigDecimal::of($saleItem->cost_total)->multipliedBy($line['quantity'])->dividedBy($saleItem->quantity, 2, RoundingMode::HalfUp),
-                'refund_subtotal' => (string) $line['quantity']->multipliedBy($saleItem->unit_price)->toScale(2, RoundingMode::HalfUp),
+                'refund_subtotal' => (string) $this->refundOf($saleItem, $line['quantity'], $remaining, BigDecimal::of((string) ($refundedBySaleItemId[$saleItem->id] ?? 0))),
                 'destination_warehouse_id' => $returnsWarehouseId,
             ];
         })->values();
+    }
+
+    /**
+     * What returning `$quantity` of a receipt line gives back. Normally that is quantity times price. A line sold in a
+     * decimal quantity may have been rounded up to the store's selling price step, though, and then the customer paid more
+     * than quantity times price: what comes back is the returned share of what was paid, and returning the last of the
+     * line gives back what is left of it, so the refunds of a line add up to exactly what the customer paid.
+     * `useLineAmounts.js` values a return the same way on the screen.
+     */
+    private function refundOf(SaleItem $saleItem, BigDecimal $quantity, BigDecimal $remaining, BigDecimal $refundedSoFar): BigDecimal
+    {
+        $paid = BigDecimal::of($saleItem->subtotal);
+        $isRoundedLine = ! $paid->isEqualTo(BigDecimal::of($saleItem->quantity)->multipliedBy($saleItem->unit_price)->toScale(2, RoundingMode::HalfUp));
+
+        if (! $isRoundedLine) {
+            return $quantity->multipliedBy($saleItem->unit_price)->toScale(2, RoundingMode::HalfUp);
+        }
+
+        if ($quantity->isEqualTo($remaining)) {
+            return $paid->minus($refundedSoFar)->toScale(2);
+        }
+
+        return $paid->multipliedBy($quantity)->dividedBy($saleItem->quantity, 2, RoundingMode::HalfUp);
     }
 
     /**
@@ -581,13 +611,35 @@ class SaleReturnService
      */
     private function returnedQuantities(Sale $sale, array $statuses): Collection
     {
+        return $this->returnItemsOf($sale, $statuses)
+            ->selectRaw('sale_return_items.sale_item_id as sale_item_id, sum(sale_return_items.quantity) as quantity')
+            ->pluck('quantity', 'sale_item_id');
+    }
+
+    /**
+     * @param  list<SaleReturnStatus>  $statuses
+     * @return Collection<int|string, mixed> value already given back by receipt line id
+     */
+    private function refundedAmounts(Sale $sale, array $statuses): Collection
+    {
+        return $this->returnItemsOf($sale, $statuses)
+            ->selectRaw('sale_return_items.sale_item_id as sale_item_id, sum(sale_return_items.refund_subtotal) as refunded')
+            ->pluck('refunded', 'sale_item_id');
+    }
+
+    /**
+     * The return lines of a receipt, in the given statuses, grouped by the receipt line they return.
+     *
+     * @param  list<SaleReturnStatus>  $statuses
+     * @return Builder<SaleReturnItem>
+     */
+    private function returnItemsOf(Sale $sale, array $statuses): Builder
+    {
         return SaleReturnItem::query()
             ->join('sale_returns', 'sale_returns.id', '=', 'sale_return_items.sale_return_id')
             ->where('sale_returns.sale_id', $sale->id)
             ->whereIn('sale_returns.status', array_map(fn (SaleReturnStatus $status): string => $status->value, $statuses))
-            ->groupBy('sale_return_items.sale_item_id')
-            ->selectRaw('sale_return_items.sale_item_id as sale_item_id, sum(sale_return_items.quantity) as quantity')
-            ->pluck('quantity', 'sale_item_id');
+            ->groupBy('sale_return_items.sale_item_id');
     }
 
     /**

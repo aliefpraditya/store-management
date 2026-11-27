@@ -16,11 +16,17 @@ use Illuminate\Support\Collection;
  * A line may carry a `unit_price` of its own, which only the server sets: a customer order keeps the price agreed when it
  * was made, and the receipt made when the goods are collected uses that price.
  *
+ * A line sold in a decimal quantity (0.37 kg) is rounded up to the store's selling price step, so the amount on the
+ * receipt, the order and every report is the one the customer pays. A whole quantity is never rounded: its price is what
+ * the item form says. The screen works the same out in `useLineAmounts.js`; keep the two in step.
+ *
  * @phpstan-type CartLine array{product_unit_id: int, quantity: numeric-string|float|int, unit_price?: numeric-string|null}
  * @phpstan-type PricedLine array{product: Product, product_id: int, product_name: string, base_unit_code: string, base_quantity: string, is_sealed_pack: bool, subtotal: BigDecimal, attributes: array<string, mixed>}
  */
 class CartPricer
 {
+    public function __construct(private readonly StoreSettingService $settings) {}
+
     /**
      * @param  list<CartLine>  $items
      * @return Collection<int, PricedLine>
@@ -63,7 +69,7 @@ class CartPricer
 
             $unitPrice = BigDecimal::of((string) ($cartLine['unit_price'] ?? $productUnit->selling_price))->toScale(2, RoundingMode::HalfUp);
             $baseQuantity = $quantity->multipliedBy($productUnit->conversion_factor)->toScale(3, RoundingMode::HalfUp);
-            $subtotal = $quantity->multipliedBy($unitPrice)->toScale(2, RoundingMode::HalfUp);
+            $subtotal = $this->subtotalOf($quantity, $unitPrice);
 
             return [
                 'product' => $product,
@@ -90,6 +96,23 @@ class CartPricer
                 ],
             ];
         });
+    }
+
+    /**
+     * What a line costs: quantity times price to the sen, and, when the quantity is not a whole number, rounded up to a
+     * multiple of the store's selling price step (no step, no rounding).
+     */
+    private function subtotalOf(BigDecimal $quantity, BigDecimal $unitPrice): BigDecimal
+    {
+        $subtotal = $quantity->multipliedBy($unitPrice)->toScale(2, RoundingMode::HalfUp);
+        $step = $this->settings->sellingPriceStep();
+        $isWholeQuantity = $quantity->isEqualTo($quantity->toScale(0, RoundingMode::Down));
+
+        if ($step <= 0 || $isWholeQuantity) {
+            return $subtotal;
+        }
+
+        return $subtotal->dividedBy($step, 0, RoundingMode::Ceiling)->multipliedBy($step)->toScale(2);
     }
 
     /**

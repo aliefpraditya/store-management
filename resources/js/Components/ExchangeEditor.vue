@@ -1,5 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { usePage } from '@inertiajs/vue3';
+import { lineSubtotal } from '../Composables/useLineAmounts';
 import { formatRupiah } from '../Composables/useMoneyFormat';
 import { formatQuantity } from '../Composables/useQuantityFormat';
 
@@ -72,7 +74,10 @@ function addItem(item) {
 
 const unitOf = (line) => line.units.find((unit) => unit.id === line.unitId);
 
-const subtotalOf = (line) => Math.round((Number(line.quantity) || 0) * Number(unitOf(line).price) * 100) / 100;
+const page = usePage();
+
+/** The replacement is priced like a sale: a decimal quantity is rounded up to the store's step, as the server does. */
+const subtotalOf = (line) => lineSubtotal(line.quantity, unitOf(line).price, page.props.store?.selling_price_step);
 
 const total = computed(() => lines.value.reduce((sum, line) => sum + subtotalOf(line), 0));
 

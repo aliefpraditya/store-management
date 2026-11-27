@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { router, useForm } from '@inertiajs/vue3';
 import ExchangeEditor from '../../../Components/ExchangeEditor.vue';
 import { newUuid, roundMoney } from '../../../Composables/useCart';
+import { refundOfLine } from '../../../Composables/useLineAmounts';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
@@ -102,7 +103,7 @@ const lines = computed(() => chosenSale.value?.lines ?? []);
 const hasAnythingToReturn = computed(() => form.items.some((item) => Number(item.quantity) > 0));
 
 /** What the customer gets back: the receipt's price for each returned quantity. */
-const refundTotal = computed(() => form.items.reduce((sum, item, index) => sum + (Number(item.quantity) || 0) * Number(lines.value[index].unit_price), 0));
+const refundTotal = computed(() => roundMoney(form.items.reduce((sum, item, index) => sum + refundOfLine(lines.value[index], item.quantity), 0)));
 
 watch(
     () => form.items,

@@ -121,7 +121,10 @@ class HandleInertiaRequests extends Middleware
     /**
      * The store of the current page, for every page under /t/{code}; null on central pages.
      *
-     * @return array{code: string, name: string, receipt_prefix: string, dashboard_url: string, products_url: string, unit_create_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string, expenses_url: string, daily_closings_url: string, settings_url: string, reports_url: string, sales_receipts_url: string, sales_products_url: string, sales_busy_url: string, sales_returns_url: string, stock_report_url: string, stock_positions_url: string, restock_url: string, idle_stock_url: string, stock_movements_url: string, stock_variances_url: string}|null
+     * `selling_price_step` is the rupiah step a decimal-quantity line is rounded up to (0 for none), which the till, the
+     * exchange and the return windows need to show the same amount the server will charge.
+     *
+     * @return array{code: string, name: string, receipt_prefix: string, selling_price_step: int, dashboard_url: string, products_url: string, unit_create_url: string, stock_opnames_url: string, stock_history_url: string, cashier_url: string, sales_url: string, delivery_notes_url: string, returns_url: string, shifts_url: string, expenses_url: string, daily_closings_url: string, settings_url: string, reports_url: string, sales_receipts_url: string, sales_products_url: string, sales_busy_url: string, sales_returns_url: string, stock_report_url: string, stock_positions_url: string, restock_url: string, idle_stock_url: string, stock_movements_url: string, stock_variances_url: string}|null
      */
     private function currentStore(): ?array
     {
@@ -136,6 +139,7 @@ class HandleInertiaRequests extends Middleware
             'code' => $store->code,
             'name' => $store->name,
             'receipt_prefix' => $store->receipt_prefix,
+            'selling_price_step' => app(StoreSettingService::class)->sellingPriceStep(),
             'dashboard_url' => route('tenant.dashboard', ['tenant' => $store->code]),
             'products_url' => route('tenant.products.index', ['tenant' => $store->code]),
             'unit_create_url' => route('tenant.units.store', ['tenant' => $store->code]),

@@ -137,8 +137,9 @@ class StoreSettingService
 
     /**
      * The multiple, in rupiah, that a selling price worked out from a rule is rounded up to: a margin typed on the item
-     * form, and a percent or margin rule of a bulk price change. 0 means no rounding, which is also what a blank
-     * setting gives.
+     * form, and a percent or margin rule of a bulk price change. It also rounds up the subtotal of a receipt or order
+     * line sold in a decimal quantity (see {@see CartPricer}). 0 means no rounding, which is also what a blank setting
+     * gives.
      */
     public function sellingPriceStep(): int
     {

@@ -1,4 +1,6 @@
 import { computed, ref, watch } from 'vue';
+import { usePage } from '@inertiajs/vue3';
+import { lineSubtotal } from './useLineAmounts';
 
 /**
  * Rounds money to cents the way the server does (half up), so the screen total matches the receipt.
@@ -61,7 +63,11 @@ export function useCart(shiftId) {
 
     const priceOf = (line) => Number(unitOf(line).price);
 
-    const subtotalOf = (line) => roundMoney(quantityOf(line) * priceOf(line));
+    /** The store's rounding step: a line in a decimal quantity is rounded up to a multiple of it, as the server does. */
+    const page = usePage();
+    const sellingPriceStep = computed(() => Number(page.props.store?.selling_price_step) || 0);
+
+    const subtotalOf = (line) => lineSubtotal(quantityOf(line), priceOf(line), sellingPriceStep.value);
 
     const total = computed(() => roundMoney(lines.value.reduce((sum, line) => sum + subtotalOf(line), 0)));
 
@@ -215,11 +221,11 @@ export function useCart(shiftId) {
             const short = roundQuantity(quantityOf(line) - inStock);
 
             if (inStock > 0) {
-                saleLines.push({ line, quantity: inStock, subtotal: roundMoney(inStock * priceOf(line)) });
+                saleLines.push({ line, quantity: inStock, subtotal: lineSubtotal(inStock, priceOf(line), sellingPriceStep.value) });
             }
 
             if (short > 0) {
-                orderLines.push({ line, quantity: short, subtotal: roundMoney(short * priceOf(line)) });
+                orderLines.push({ line, quantity: short, subtotal: lineSubtotal(short, priceOf(line), sellingPriceStep.value) });
             }
         }
 

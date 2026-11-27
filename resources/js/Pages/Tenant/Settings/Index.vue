@@ -199,7 +199,7 @@ function confirmDeleteUnit(unit) {
                     dense
                     prefix="Rp"
                     label="Kelipatan pembulatan harga jual"
-                    hint="Harga jual hasil hitungan dibulatkan ke atas ke kelipatan ini: margin yang diketik di form barang, serta persen, atur margin, dan pertahankan margin di Ubah Harga Massal. Margin atau persen ikut menyesuaikan. Isi 0 (bawaan) untuk tanpa pembulatan. Harga yang diketik sendiri tidak dibulatkan."
+                    hint="Harga jual hasil hitungan dibulatkan ke atas ke kelipatan ini: margin yang diketik di form barang, serta persen, atur margin, dan pertahankan margin di Ubah Harga Massal. Margin atau persen ikut menyesuaikan. Di kasir, subtotal baris yang jumlahnya desimal (mis. 0,37 kg) juga dibulatkan ke atas ke kelipatan ini, dan angka bulatnya yang tercatat di nota dan laporan; jumlah bulat tidak dibulatkan. Isi 0 (bawaan) untuk tanpa pembulatan. Harga yang diketik sendiri tidak dibulatkan."
                     :error="!!form.errors.selling_price_step"
                     :error-message="form.errors.selling_price_step"
                 />

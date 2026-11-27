@@ -5,6 +5,7 @@ import ExchangeEditor from '../ExchangeEditor.vue';
 import { postJson } from '../../Composables/postJson';
 import { printSheet } from '../../Composables/printSheet';
 import { newUuid, roundMoney } from '../../Composables/useCart';
+import { refundOfLine } from '../../Composables/useLineAmounts';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
 import { returnStatusChipClass } from '../../Composables/useReturnStatus';
@@ -56,7 +57,7 @@ const hasAnythingLeft = computed(() => receiptReturnContext.value.lines.some((li
 
 const hasAnythingToReturn = computed(() => receiptReturnContext.value.lines.some((line) => Number(quantities.value[line.id]) > 0));
 
-const refundTotal = computed(() => receiptReturnContext.value.lines.reduce((sum, line) => sum + (Number(quantities.value[line.id]) || 0) * Number(line.unit_price), 0));
+const refundTotal = computed(() => roundMoney(receiptReturnContext.value.lines.reduce((sum, line) => sum + refundOfLine(line, quantities.value[line.id]), 0)));
 
 /**
  * The part of a refund that cuts the COD still owed on the receipt instead of paying money out: the customer has not
