@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { roundMoney } from '../../Composables/useCart';
 import { formatRupiah } from '../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../Composables/useQuantityFormat';
@@ -35,6 +35,20 @@ const AMOUNT_STEP = 50000;
 
 const METHOD_ICONS = { cash: 'payments', transfer: 'account_balance', qris: 'qr_code_2', edc: 'credit_card', cod: 'local_shipping' };
 
+/**
+ * The keys that choose a payment method, in the order of the buttons (the top row of the left hand). Letters can do this because
+ * the amount field only takes digits; in the other text fields they are typed.
+ */
+const METHOD_KEYS = ['q', 'w', 'e', 'r'];
+
+const ADD_LINE_KEY = 'm';
+const IN_STORE_KEY = 'a';
+const DELIVERY_KEY = 'd';
+const COD_KEY = 'c';
+
+/** What the Tab key skips: the choices above have keys of their own, so Tab only visits what is typed and the way out. */
+const SKIPPED_BY_TAB = -1;
+
 const blankLine = (method) => ({ method, amount: '', reference: '' });
 
 /** The order being collected already knows who to deliver to and where, so the delivery note starts from that. */
@@ -44,6 +58,13 @@ const blankOrderForm = () => ({ phone: '', address: '', isPayingNow: false });
 
 const customerName = ref(props.collectingOrder?.customer_name ?? '');
 const lines = ref([blankLine('cash')]);
+
+/** The payment line the cashier last worked in, which the method keys change. */
+const focusedLine = ref(null);
+
+/** The amount field of each money line, to hand the keyboard back to after a key chose its method. */
+const amountFields = new Map();
+
 const delivery = ref(deliveryOf(props.collectingOrder));
 const orderForm = ref(blankOrderForm());
 
@@ -59,6 +80,7 @@ watch(
         if (isOpen) {
             customerName.value = props.collectingOrder?.customer_name ?? '';
             lines.value = [blankLine('cash')];
+            focusedLine.value = null;
             delivery.value = deliveryOf(props.collectingOrder);
             orderForm.value = blankOrderForm();
             fulfillment.value = IN_STORE;
@@ -184,6 +206,8 @@ const fulfillmentChoices = computed(() => props.fulfillmentOptions.map((option) 
     ...option,
     icon: FULFILLMENT_ICONS[option.value],
     disable: option.value === IN_STORE && isCod.value,
+    slot: option.value,
+    attrs: { tabindex: SKIPPED_BY_TAB },
 })));
 
 /** COD can be chosen only when there is a receipt to pay, and not while the order takes a deposit. */
@@ -264,10 +288,131 @@ function confirm() {
         order: isOrderMade.value ? orderInput() : null,
     });
 }
+
+/** The line the method keys act on: the one last worked in, else the first money line. */
+const activeMoneyLine = computed(() => (moneyLines.value.includes(focusedLine.value) ? focusedLine.value : moneyLines.value[0]));
+
+/** Keeps hold of the amount field of a line while it is on screen (called by the template ref, with null when it goes). */
+function setAmountField(line, component) {
+    if (component) {
+        amountFields.set(line, component);
+    } else {
+        amountFields.delete(line);
+    }
+}
+
+/** Hands the keyboard back to the amount of a line, selected so what is typed replaces it; that line is then the one the method keys act on. */
+function focusAmountOf(line) {
+    focusedLine.value = line;
+
+    nextTick(() => {
+        amountFields.get(line)?.focus();
+        amountFields.get(line)?.select();
+    });
+}
+
+/** Whether the key lands in a field where letters are typed; the amount field does not count, it only takes digits. */
+function isTypingText(target) {
+    return ['INPUT', 'TEXTAREA'].includes(target.tagName) && target.closest('.payment__amount-field') === null;
+}
+
+/** Enter pays, except in the address, where it starts a new line. */
+function onEnter(event) {
+    if (event.target.tagName === 'TEXTAREA') {
+        return;
+    }
+
+    event.preventDefault();
+
+    if (canConfirm.value) {
+        confirm();
+    }
+}
+
+/** Escape leaves a text field for the amount, one step back; from anywhere else it cancels the payment, unless it is being saved. */
+function onEscape(event) {
+    event.preventDefault();
+
+    if (isTypingText(event.target) && activeMoneyLine.value && isPaymentNeeded.value) {
+        focusAmountOf(activeMoneyLine.value);
+
+        return;
+    }
+
+    if (!props.isProcessing) {
+        emit('update:modelValue', false);
+    }
+}
+
+/** @returns {(() => void)|undefined} what a letter does in this payment, if anything */
+function actionOfKey(key) {
+    const method = moneyMethods.value[METHOD_KEYS.indexOf(key)];
+
+    if (method && isPaymentNeeded.value && activeMoneyLine.value) {
+        const line = activeMoneyLine.value;
+
+        return () => {
+            chooseMethod(line, method.value);
+            focusAmountOf(line);
+        };
+    }
+
+    if (key === ADD_LINE_KEY && isPaymentNeeded.value) {
+        return () => {
+            addLine();
+            focusAmountOf(lines.value[lines.value.length - 1]);
+        };
+    }
+
+    if (key === IN_STORE_KEY && props.total > 0 && !isCod.value) {
+        return () => (fulfillment.value = IN_STORE);
+    }
+
+    if (key === DELIVERY_KEY && props.total > 0) {
+        return () => (fulfillment.value = DELIVERY);
+    }
+
+    if (key === COD_KEY && isPaymentNeeded.value && isCodOffered.value && !isCodChoiceDisabled.value) {
+        return toggleCod;
+    }
+
+    return undefined;
+}
+
+/**
+ * The keys of the payment window: Enter pays, Escape steps back or cancels, and a plain letter picks a method (Q W E R),
+ * adds a payment (M), chooses taking the goods (A) or delivery (D), or puts the rest on COD (C). Letters are left alone
+ * while a text field is being typed in, and with Ctrl, Alt or the system key held, so the browser's own shortcuts work.
+ * @param {KeyboardEvent} event
+ */
+function onKeydown(event) {
+    if (event.key === 'Enter') {
+        onEnter(event);
+
+        return;
+    }
+
+    if (event.key === 'Escape') {
+        onEscape(event);
+
+        return;
+    }
+
+    if (event.ctrlKey || event.altKey || event.metaKey || event.repeat || isTypingText(event.target)) {
+        return;
+    }
+
+    const action = actionOfKey(event.key.toLowerCase());
+
+    if (action) {
+        event.preventDefault();
+        action();
+    }
+}
 </script>
 
 <template>
-    <q-dialog :model-value="modelValue" persistent @update:model-value="emit('update:modelValue', $event)" @keydown.enter.prevent="canConfirm && confirm()">
+    <q-dialog :model-value="modelValue" persistent no-shake @update:model-value="emit('update:modelValue', $event)" @keydown="onKeydown">
         <q-card class="payment" :class="{ 'payment--wide': isOrderMade }">
             <q-card-section class="payment__head">
                 <span v-if="collectingOrder">{{ isCod ? 'Sisa tagihan pesanan, dibayar saat barang diantar' : 'Sisa tagihan pesanan' }}</span>
@@ -304,21 +449,25 @@ function confirm() {
                         color="grey-3"
                         text-color="grey-8"
                         aria-label="Barang diambil di toko atau diantar"
-                    />
+                    >
+                        <template #[IN_STORE]><kbd class="payment__key">{{ IN_STORE_KEY.toUpperCase() }}</kbd></template>
+                        <template #[DELIVERY]><kbd class="payment__key">{{ DELIVERY_KEY.toUpperCase() }}</kbd></template>
+                    </q-btn-toggle>
                     <small v-if="isCod">COD hanya untuk nota yang diantar.</small>
                     <small v-else-if="!isDelivery">Barang dibawa pelanggan sekarang. Tidak ada surat jalan.</small>
                 </div>
 
                 <template v-if="isPaymentNeeded">
-                <div v-for="(line, index) in moneyLines" :key="index" class="payment__line">
+                <div v-for="(line, index) in moneyLines" :key="index" class="payment__line" @focusin="focusedLine = line">
                     <div v-if="lines.length > 1" class="payment__line-head">
                         <b class="payment__line-title">Pembayaran {{ index + 1 }}</b>
-                        <q-btn flat round dense size="sm" icon="close" color="grey-7" class="payment__remove" :aria-label="`Hapus pembayaran ${index + 1}`" @click="removeLine(line)" />
+                        <q-btn flat round dense size="sm" icon="close" color="grey-7" class="payment__remove" :tabindex="SKIPPED_BY_TAB" :aria-label="`Hapus pembayaran ${index + 1}`" @click="removeLine(line)" />
                     </div>
                     <div class="payment__methods" role="group" aria-label="Metode pembayaran">
                         <q-btn
-                            v-for="method in moneyMethods"
+                            v-for="(method, methodIndex) in moneyMethods"
                             :key="method.value"
+                            :tabindex="SKIPPED_BY_TAB"
                             no-caps
                             :unelevated="line.method === method.value"
                             :outline="line.method !== method.value"
@@ -328,10 +477,13 @@ function confirm() {
                             :aria-pressed="line.method === method.value"
                             class="payment__method"
                             @click="chooseMethod(line, method.value)"
-                        />
+                        >
+                            <kbd v-if="METHOD_KEYS[methodIndex]" class="payment__key">{{ METHOD_KEYS[methodIndex].toUpperCase() }}</kbd>
+                        </q-btn>
                     </div>
                     <div class="payment__amount">
                         <MoneyInput
+                            :ref="(component) => setAmountField(line, component)"
                             v-model="line.amount"
                             allow-decimal
                             :step="AMOUNT_STEP"
@@ -357,7 +509,7 @@ function confirm() {
                 <div v-if="codLine" class="payment__line payment__line--cod">
                     <div class="payment__line-head">
                         <b class="payment__line-title"><q-icon name="local_shipping" /> Bayar saat diantar (COD)</b>
-                        <q-btn flat round dense size="sm" icon="close" color="grey-7" class="payment__remove" aria-label="Batalkan bayar saat diantar" @click="toggleCod" />
+                        <q-btn flat round dense size="sm" icon="close" color="grey-7" class="payment__remove" :tabindex="SKIPPED_BY_TAB" aria-label="Batalkan bayar saat diantar" @click="toggleCod" />
                     </div>
                     <div class="payment__cod-amount">
                         <b>{{ formatRupiah(codLine.amount) }}</b>
@@ -366,10 +518,12 @@ function confirm() {
                 </div>
 
                 <div class="payment__split">
-                    <q-btn flat dense no-caps size="sm" color="grey-8" icon="add" label="Metode bayar lain" @click="addLine">
+                    <q-btn flat dense no-caps size="sm" color="grey-8" icon="add" label="Metode bayar lain" :tabindex="SKIPPED_BY_TAB" @click="addLine">
+                        <kbd class="payment__key">{{ ADD_LINE_KEY.toUpperCase() }}</kbd>
                         <q-tooltip>Bayar campur, mis. sebagian tunai, sisanya transfer</q-tooltip>
                     </q-btn>
-                    <q-btn v-if="isCodOffered && !codLine" flat dense no-caps size="sm" color="grey-8" icon="local_shipping" label="Bayar saat diantar (COD)" :disable="isCodChoiceDisabled" @click="toggleCod">
+                    <q-btn v-if="isCodOffered && !codLine" flat dense no-caps size="sm" color="grey-8" icon="local_shipping" label="Bayar saat diantar (COD)" :tabindex="SKIPPED_BY_TAB" :disable="isCodChoiceDisabled" @click="toggleCod">
+                        <kbd class="payment__key">{{ COD_KEY.toUpperCase() }}</kbd>
                         <q-tooltip>Sisa tagihan dibayar saat barang tiba. Surat jalan dibuat bersama nota ini.</q-tooltip>
                     </q-btn>
                 </div>
@@ -430,7 +584,9 @@ function confirm() {
             <q-card-section v-else-if="isDelivery && !isDeliveryComplete" class="payment__warning">Isi nama pelanggan dan alamat pengantaran.</q-card-section>
 
             <q-card-actions align="right" class="payment__actions">
-                <q-btn flat no-caps label="Batal" :disable="isProcessing" @click="emit('update:modelValue', false)" />
+                <q-btn flat no-caps label="Batal" :tabindex="SKIPPED_BY_TAB" :disable="isProcessing" @click="emit('update:modelValue', false)">
+                    <kbd class="payment__key">Esc</kbd>
+                </q-btn>
                 <q-btn color="primary" unelevated no-caps :label="confirmLabel" :loading="isProcessing" :disable="!canConfirm" @click="confirm" />
             </q-card-actions>
         </q-card>
@@ -588,6 +744,19 @@ function confirm() {
 .payment__method :deep(.q-btn__content) {
     flex-wrap: nowrap;
     white-space: nowrap;
+}
+
+.payment__key {
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid var(--app-line);
+    border-radius: 4px;
+    background: #f3f4f6;
+    color: var(--app-ink-soft);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 16px;
 }
 
 .payment__held {
