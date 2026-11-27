@@ -79,7 +79,8 @@ const SHORTCUT_GROUPS = [
     {
         title: 'Baris keranjang',
         shortcuts: [
-            ['Tab', 'pilih baris (Shift+Tab mundur)'],
+            ['Tab', 'jumlah barang terakhir'],
+            ['Shift+Tab', 'pilih baris'],
             ['Enter', 'ubah jumlah dan satuan'],
             ['Esc', 'kembali'],
             ['+ −', 'jumlah'],
@@ -296,7 +297,10 @@ function moveLineSelection(step) {
     scrollSelectedLineIntoView();
 }
 
-/** Tab from the search box takes hold of the line already pointed at (the one just added), else the first line, or the last with Shift. */
+/** Whether a line is pointed at (the one just added, or the last one worked on) and still in the cart. */
+const isSelectedLineInCart = () => cart.lines.value.some((line) => line.key === selectedLineKey.value);
+
+/** Shift+Tab, or Tab with no line pointed at, starts walking the lines: from the line pointed at, else the first, or the last with Shift. */
 function enterLines(isBackward) {
     const lines = cart.lines.value;
 
@@ -304,7 +308,7 @@ function enterLines(isBackward) {
         return;
     }
 
-    if (!lines.some((line) => line.key === selectedLineKey.value)) {
+    if (!isSelectedLineInCart()) {
         selectedLineKey.value = (isBackward ? lines[lines.length - 1] : lines[0]).key;
     }
 
@@ -442,9 +446,10 @@ function onLineFieldKeydown(event, line, field) {
 
 /**
  * The keys of the search box. With results: up and down choose an item, left and right its unit, Enter adds it. With the
- * box empty: Tab (Shift+Tab back) and up and down choose a cart line, Enter then edits its quantity and unit, + and -
- * change its quantity, left and right its unit, Delete removes it. Escape lets go of the line. Tab never leaves the
- * box for the buttons around it: they have their own keys.
+ * box empty: Tab goes straight to the quantity of the line just added (the last one worked on), or, with no such line,
+ * walks the lines; Shift+Tab and up and down walk them too, and Enter then edits the highlighted line's quantity and
+ * unit, + and - change its quantity, left and right its unit, Delete removes it. Escape lets go of the line. Tab never
+ * leaves the box for the buttons around it: they have their own keys.
  */
 function onSearchKeydown(event) {
     const isSearching = lookupTerm.value !== '' && searchResults.value.length > 0;
@@ -465,6 +470,9 @@ function onSearchKeydown(event) {
 
         if (isBrowsingLines.value) {
             stepLines(event.shiftKey ? -1 : 1);
+        } else if (!event.shiftKey && isSelectedLineInCart()) {
+            isBrowsingLines.value = true;
+            editSelectedLineQuantity();
         } else {
             enterLines(event.shiftKey);
         }

@@ -924,7 +924,8 @@ Pintasan aktif hanya bila `isTillWorking` (ada shift dan tidak menunggu review) 
 | Alt+1 sampai Alt+9 | tambah tile akses cepat ke-n (satuan bawaan `is_default_sale`) |
 | awalan `12*` di kolom cari | jumlah yang ditambahkan oleh barang berikutnya (scan, Enter, klik satuan, tile); desimal boleh (`0,5*`); hanya tanda `*` (`splitQuantityPrefix`) |
 | di kolom cari: panah atas/bawah, kiri/kanan, Enter | sorot hasil, pilih satuan, tambah; Enter pada SKU persis atau satu hasil menambah langsung dalam satuan bawaan |
-| kolom cari kosong: Tab / Shift+Tab | masuk ke baris keranjang (baris yang sedang disorot, atau pertama / terakhir bila belum ada), lalu pindah baris; lewat ujung kembali ke kolom cari. Tab tidak pernah keluar ke tombol di sekitarnya |
+| kolom cari kosong: Tab | langsung ke jumlah baris yang baru ditambah (atau yang terakhir dikerjakan, `isSelectedLineInCart`); bila belum ada, mulai menyusuri baris dari yang pertama. Tab tidak pernah keluar ke tombol di sekitarnya |
+| kolom cari kosong: Shift+Tab, panah atas/bawah | menyusuri baris keranjang (mulai dari baris terpilih, atau terakhir / pertama bila belum ada); Tab / Shift+Tab pindah baris, lewat ujung kembali ke kolom cari |
 | baris disorot: Enter | masuk ke jumlah; di jumlah Tab ke satuan, Tab lagi kembali ke baris; Esc kembali ke baris; Enter selesai dan kembali ke kolom cari |
 | di satuan: kiri/kanan, atas/bawah | ganti satuan langsung, atau buka daftar satuan (Enter memilih lalu kembali ke kolom cari) |
 | kolom cari kosong: panah atas/bawah, `+`/`-`, kiri/kanan, Delete, Esc | panah atas/bawah memilih baris keranjang; `+`/`-` (jumlah, minimal 1), kiri/kanan (satuan), dan Delete (hapus baris) hanya bekerja pada baris yang sedang disorot (`isBrowsingLines`); Esc melepas sorotan. Baris yang baru ditambah lewat scan tidak diberi garis tepi, tetapi Tab masuk ke baris itu lebih dulu |
