@@ -68,13 +68,40 @@ class CashierCatalogService
     }
 
     /**
+     * The tiles of the empty till: the items the store put in quick access, in their order (Alt and 1 to 9 add the first
+     * nine), or, while it has put none (or none of them can be sold), the warehouse's best sellers. A quick access item
+     * stays on the till when it is sold out, because the shortfall can still be taken as an order, so the tiles do not
+     * move around with the stock; one being counted stays too, but cannot be added.
+     *
+     * @return array{is_pinned: bool, items: list<CatalogItem>}
+     */
+    public function quickAccess(int $warehouseId): array
+    {
+        $products = Product::query()
+            ->where('is_active', true)
+            ->whereNotNull('quick_access_position')
+            ->with(['productUnits' => fn ($units) => $units->where('is_sellable', true)->confirmed()])
+            ->orderBy('quick_access_position')
+            ->orderBy('id')
+            ->limit(Product::QUICK_ACCESS_LIMIT)
+            ->get()
+            ->filter(fn (Product $product): bool => $product->productUnits->isNotEmpty());
+
+        if ($products->isEmpty()) {
+            return ['is_pinned' => false, 'items' => $this->bestSellers($warehouseId)];
+        }
+
+        return ['is_pinned' => true, 'items' => $this->catalogItems($products, $warehouseId)];
+    }
+
+    /**
      * The items this warehouse sold most often (by number of receipt lines) in the last days, best seller first, for the
      * empty till: a cashier adds them without typing. Only items that can be sold right now are offered: sold-out ones,
      * ones whose stock is all kept for orders, and ones being counted are left out, as are items that cannot be sold any more.
      *
      * @return list<CatalogItem>
      */
-    public function bestSellers(int $warehouseId): array
+    private function bestSellers(int $warehouseId): array
     {
         $rankedProductIds = SaleItem::query()
             ->join('sales', 'sales.id', '=', 'sale_items.sale_id')

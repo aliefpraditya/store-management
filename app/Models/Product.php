@@ -19,11 +19,14 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
  * Lives in the store database. Quantities and `cost_price` are per base unit. A damaged-goods (DG) product is made by an
  * opname from the product it was damaged from (`damaged_from_product_id`), with its own SKU and price.
  */
-#[Fillable(['sku', 'barcode', 'name', 'category_id', 'brand_id', 'base_unit_code', 'cost_price', 'min_stock', 'is_active', 'is_damaged_goods', 'damaged_from_product_id'])]
+#[Fillable(['sku', 'barcode', 'name', 'category_id', 'brand_id', 'base_unit_code', 'cost_price', 'min_stock', 'is_active', 'is_damaged_goods', 'damaged_from_product_id', 'quick_access_position'])]
 class Product extends Model implements AuditableContract
 {
     /** @use HasFactory<ProductFactory> */
     use Auditable, HasFactory, SoftDeletes;
+
+    /** How many items a store can keep in quick access: the tiles the till has room for. */
+    public const QUICK_ACCESS_LIMIT = 20;
 
     /**
      * The save counter is bookkeeping for the edit form, not a change someone made.
@@ -42,8 +45,14 @@ class Product extends Model implements AuditableContract
             'min_stock' => 'decimal:3',
             'is_active' => 'boolean',
             'is_damaged_goods' => 'boolean',
+            'quick_access_position' => 'integer',
             'version' => 'integer',
         ];
+    }
+
+    public function isInQuickAccess(): bool
+    {
+        return $this->quick_access_position !== null;
     }
 
     /**

@@ -90,7 +90,7 @@ class CashierController extends Controller
             'last_sale' => fn () => $request->session()->pull('last_sale'),
             'last_order' => fn () => $request->session()->pull('last_order'),
             'recent_sale' => fn () => $shift === null ? null : $this->recentSale($shift),
-            'best_sellers' => fn () => $shift === null ? [] : $this->catalog->bestSellers($shift->register->warehouse_id),
+            'quick_access' => fn () => $shift === null ? ['is_pinned' => false, 'items' => []] : $this->catalog->quickAccess($shift->register->warehouse_id),
             'is_receipt_printed_automatically' => $this->settings->isReceiptPrintedAutomatically(),
             'order_counts' => fn () => $this->customerOrders->badgeCounts(),
             'pending_return_count' => fn () => $shift === null ? 0 : SaleReturn::query()->where('cash_shift_id', $shift->id)->where('status', SaleReturnStatus::Pending)->count(),

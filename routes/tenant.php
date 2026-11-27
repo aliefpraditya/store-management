@@ -175,6 +175,7 @@ Route::prefix('t/{tenant}')
             Route::get('products/barcode-labels/sheet', [BarcodeLabelController::class, 'sheet'])->name('tenant.barcode-labels.sheet');
             Route::post('products/price-labels/units', [PriceLabelController::class, 'units'])->name('tenant.price-labels.units');
             Route::get('products/price-labels/sheet', [PriceLabelController::class, 'sheet'])->name('tenant.price-labels.sheet');
+            Route::put('products/{product}/quick-access', [ProductController::class, 'setQuickAccess'])->name('tenant.products.quick-access');
             Route::resource('products', ProductController::class)->except(['show'])->names('tenant.products');
         });
 

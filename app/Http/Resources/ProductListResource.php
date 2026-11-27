@@ -44,6 +44,8 @@ class ProductListResource extends JsonResource
             ],
             'has_unconfirmed_units' => $this->productUnits->contains('is_conversion_confirmed', false),
             'can_delete' => ! (bool) $this->getAttribute('has_transactions'),
+            'is_in_quick_access' => $this->isInQuickAccess(),
+            'quick_access_url' => route('tenant.products.quick-access', ['tenant' => tenant('code'), 'product' => $this->id]),
             'edit_url' => route('tenant.products.edit', ['tenant' => tenant('code'), 'product' => $this->id]),
             'delete_url' => route('tenant.products.destroy', ['tenant' => tenant('code'), 'product' => $this->id]),
         ];

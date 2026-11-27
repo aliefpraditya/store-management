@@ -28,6 +28,8 @@ const props = defineProps({
     price_label: { type: Object, required: true },
     /** What the window that changes prices of many items at once needs. */
     bulk_price: { type: Object, required: true },
+    /** How many items the till's quick access holds, and how many it can hold. */
+    quick_access: { type: Object, required: true },
 });
 
 const page = usePage();
@@ -119,6 +121,11 @@ function confirmDelete(product) {
     });
 }
 
+/** The star puts the item in the till's quick access tiles, after the ones already there, or takes it out. */
+function toggleQuickAccess(product) {
+    router.put(product.quick_access_url, { is_in_quick_access: !product.is_in_quick_access }, { preserveScroll: true, preserveState: true });
+}
+
 /** Every column of the list, in order. `isRight` columns hold figures. */
 const columns = [
     { key: 'sku', label: 'SKU' },
@@ -195,6 +202,10 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
             <q-select v-model="condition" :options="conditionOptions" option-value="value" option-label="label" emit-value map-options outlined dense class="filters__select" aria-label="Kondisi barang" />
         </div>
 
+        <p class="items__muted quick-note">
+            <q-icon name="star" color="amber-8" size="16px" /> Akses cepat kasir: <b>{{ quick_access.count }}</b> dari {{ quick_access.limit }} barang. Klik bintang di baris barang untuk menambah atau melepas; sembilan pertama bisa dipanggil dengan Alt+1…9.
+        </p>
+
         <div v-if="products.total > 0" class="selection">
             <span>
                 <b>{{ selectedIds.length }}</b> barang dipilih
@@ -262,6 +273,18 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
                             <span class="chip" :class="product.is_active ? 'chip--ok' : 'chip--off'">{{ product.is_active ? 'Aktif' : 'Nonaktif' }}</span>
                         </td>
                         <td class="items__right items__actions">
+                            <q-btn
+                                flat
+                                round
+                                dense
+                                :icon="product.is_in_quick_access ? 'star' : 'star_outline'"
+                                :color="product.is_in_quick_access ? 'amber-8' : 'grey-6'"
+                                :aria-label="`${product.is_in_quick_access ? 'Lepas' : 'Tambahkan'} ${product.name} ${product.is_in_quick_access ? 'dari' : 'ke'} akses cepat`"
+                                :aria-pressed="product.is_in_quick_access"
+                                @click="toggleQuickAccess(product)"
+                            >
+                                <q-tooltip>{{ product.is_in_quick_access ? 'Lepas dari akses cepat kasir' : 'Tambahkan ke akses cepat kasir' }}</q-tooltip>
+                            </q-btn>
                             <q-btn flat round dense icon="edit" color="grey-7" :aria-label="`Edit ${product.name}`" :href="product.edit_url" @click="visitUnlessNewTab($event, product.edit_url)" />
                             <q-btn
                                 v-if="product.can_delete"
@@ -324,6 +347,10 @@ onBeforeUnmount(() => clearTimeout(searchTimer));
 .filters__select {
     flex: 1 1 170px;
     min-width: 170px;
+}
+
+.quick-note {
+    margin: 0 0 8px;
 }
 
 .selection {

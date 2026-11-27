@@ -231,21 +231,22 @@ export function useCart(shiftId) {
     const toPayload = (splitLines) => splitLines.map(({ line, quantity }) => ({ product_unit_id: line.unitId, quantity }));
 
     /**
-     * Adds one of the unit; the same item and unit already in the cart just gets one more.
+     * Adds the quantity of the unit (one unless told otherwise); the same item and unit already in the cart just grows by it.
      * @param {object} product an item from the lookup
      * @param {number} unitId
+     * @param {number} [quantity]
      * @returns {object} the line that was added or increased, so the screen can show which one it was
      */
-    function add(product, unitId) {
+    function add(product, unitId, quantity = 1) {
         const existingLine = lines.value.find((line) => line.product.id === product.id && line.unitId === unitId);
 
         if (existingLine) {
-            existingLine.quantity = quantityOf(existingLine) + 1;
+            existingLine.quantity = roundQuantity(quantityOf(existingLine) + quantity);
 
             return existingLine;
         }
 
-        lines.value.push({ key: newUuid(), product, unitId, quantity: 1 });
+        lines.value.push({ key: newUuid(), product, unitId, quantity });
 
         return lines.value[lines.value.length - 1];
     }

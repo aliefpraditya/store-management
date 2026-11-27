@@ -77,20 +77,20 @@ class CashierQuickAccessTest extends TestCase
         $this->sell($roller, 1);
 
         $this->cashierScreen()->assertInertia(fn (Assert $page) => $page
-            ->where('best_sellers.0.name', 'Cat')
-            ->where('best_sellers.1.name', 'Kuas')
-            ->where('best_sellers.2.name', 'Roll')
-            ->has('best_sellers.0.units.0.is_default_sale'));
+            ->where('quick_access.items.0.name', 'Cat')
+            ->where('quick_access.items.1.name', 'Kuas')
+            ->where('quick_access.items.2.name', 'Roll')
+            ->has('quick_access.items.0.units.0.is_default_sale'));
     }
 
     public function test_sales_older_than_a_month_do_not_count_and_a_new_store_has_no_best_sellers(): void
     {
-        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page->where('best_sellers', []));
+        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page->where('quick_access', ['is_pinned' => false, 'items' => []]));
 
         $brush = $this->sellableProduct('Kuas', '100');
         $this->sell($brush, 1, now()->subDays(40)->toDateTimeString());
 
-        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page->where('best_sellers', []));
+        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page->where('quick_access', ['is_pinned' => false, 'items' => []]));
     }
 
     public function test_only_items_in_stock_are_offered_even_when_a_sold_out_one_sold_best(): void
@@ -103,9 +103,9 @@ class CashierQuickAccessTest extends TestCase
         $this->sell($inStock, 1);
 
         $this->cashierScreen()->assertInertia(fn (Assert $page) => $page
-            ->has('best_sellers', 1)
-            ->where('best_sellers.0.name', 'Ada')
-            ->where('best_sellers.0.stock', '99.000'));
+            ->has('quick_access.items', 1)
+            ->where('quick_access.items.0.name', 'Ada')
+            ->where('quick_access.items.0.stock', '99.000'));
     }
 
     public function test_at_most_twenty_best_sellers_are_offered_most_sold_first(): void
@@ -119,9 +119,9 @@ class CashierQuickAccessTest extends TestCase
         }
 
         $this->cashierScreen()->assertInertia(fn (Assert $page) => $page
-            ->has('best_sellers', 20)
-            ->where('best_sellers.0.name', 'Barang 01')
-            ->where('best_sellers.19.name', 'Barang 20'));
+            ->has('quick_access.items', 20)
+            ->where('quick_access.items.0.name', 'Barang 01')
+            ->where('quick_access.items.19.name', 'Barang 20'));
     }
 
     public function test_an_item_that_cannot_be_sold_any_more_is_left_out(): void
@@ -130,7 +130,134 @@ class CashierQuickAccessTest extends TestCase
         $this->sell($brush, 1);
         $this->store->run(fn () => $brush->forceFill(['is_active' => false])->save());
 
-        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page->where('best_sellers', []));
+        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page->where('quick_access', ['is_pinned' => false, 'items' => []]));
+    }
+
+    private function setQuickAccess(User $user, Product $product, bool $isInQuickAccess): TestResponse
+    {
+        return $this->actingAs($user)->put(route('tenant.products.quick-access', ['tenant' => $this->store->code, 'product' => $product->id]), ['is_in_quick_access' => $isInQuickAccess]);
+    }
+
+    private function quickAccessPositionOf(Product $product): ?int
+    {
+        return $this->store->run(fn (): ?int => Product::query()->findOrFail($product->id)->quick_access_position);
+    }
+
+    public function test_quick_access_items_take_the_place_of_the_best_sellers_in_the_order_they_were_added(): void
+    {
+        $brush = $this->sellableProduct('Kuas', '100');
+        $paint = $this->sellableProduct('Cat', '100');
+        $roller = $this->sellableProduct('Roll', '100');
+
+        $this->sell($roller, 1);
+        $this->setQuickAccess($this->admin, $paint, true)->assertSessionHasNoErrors();
+        $this->setQuickAccess($this->admin, $brush, true)->assertSessionHasNoErrors();
+
+        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page
+            ->where('quick_access.is_pinned', true)
+            ->has('quick_access.items', 2)
+            ->where('quick_access.items.0.name', 'Cat')
+            ->where('quick_access.items.1.name', 'Kuas'));
+    }
+
+    public function test_a_sold_out_quick_access_item_stays_on_the_till_but_an_inactive_one_goes(): void
+    {
+        $soldOut = $this->sellableProduct('Habis', '0');
+        $inactive = $this->sellableProduct('Mati', '100');
+
+        $this->setQuickAccess($this->admin, $soldOut, true);
+        $this->setQuickAccess($this->admin, $inactive, true);
+        $this->store->run(fn () => $inactive->forceFill(['is_active' => false])->save());
+
+        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page
+            ->where('quick_access.is_pinned', true)
+            ->has('quick_access.items', 1)
+            ->where('quick_access.items.0.name', 'Habis')
+            ->where('quick_access.items.0.stock', '0.000'));
+    }
+
+    public function test_the_till_goes_back_to_the_best_sellers_when_no_quick_access_item_can_be_sold(): void
+    {
+        $inactive = $this->sellableProduct('Mati', '100');
+        $brush = $this->sellableProduct('Kuas', '100');
+        $this->sell($brush, 1);
+
+        $this->setQuickAccess($this->admin, $inactive, true);
+        $this->store->run(fn () => $inactive->forceFill(['is_active' => false])->save());
+
+        $this->cashierScreen()->assertInertia(fn (Assert $page) => $page
+            ->where('quick_access.is_pinned', false)
+            ->where('quick_access.items.0.name', 'Kuas'));
+    }
+
+    public function test_an_item_goes_in_after_the_others_comes_out_and_asking_twice_changes_nothing(): void
+    {
+        $brush = $this->sellableProduct('Kuas', '100');
+        $paint = $this->sellableProduct('Cat', '100');
+
+        $this->setQuickAccess($this->admin, $brush, true);
+        $this->setQuickAccess($this->admin, $brush, true);
+        $this->setQuickAccess($this->admin, $paint, true);
+
+        $this->assertSame(1, $this->quickAccessPositionOf($brush));
+        $this->assertSame(2, $this->quickAccessPositionOf($paint));
+
+        $this->setQuickAccess($this->admin, $brush, false);
+        $this->setQuickAccess($this->admin, $brush, false);
+
+        $this->assertNull($this->quickAccessPositionOf($brush));
+        $this->assertSame(2, $this->quickAccessPositionOf($paint));
+    }
+
+    public function test_quick_access_does_not_count_as_an_edit_of_the_item(): void
+    {
+        $brush = $this->sellableProduct('Kuas', '100');
+        $versionBefore = $this->store->run(fn (): int => Product::query()->findOrFail($brush->id)->version);
+
+        $this->setQuickAccess($this->admin, $brush, true);
+
+        $this->assertSame($versionBefore, $this->store->run(fn (): int => Product::query()->findOrFail($brush->id)->version));
+    }
+
+    public function test_quick_access_holds_at_most_twenty_items(): void
+    {
+        $products = collect(range(1, Product::QUICK_ACCESS_LIMIT + 1))->map(fn (int $number): Product => $this->sellableProduct(sprintf('Barang %02d', $number), '100'));
+
+        foreach ($products->take(Product::QUICK_ACCESS_LIMIT) as $product) {
+            $this->setQuickAccess($this->admin, $product, true)->assertSessionHasNoErrors();
+        }
+
+        $this->setQuickAccess($this->admin, $products->last(), true)->assertSessionHas('error');
+
+        $this->assertNull($this->quickAccessPositionOf($products->last()));
+
+        $this->setQuickAccess($this->admin, $products->first(), false);
+        $this->setQuickAccess($this->admin, $products->last(), true)->assertSessionHasNoErrors();
+
+        $this->assertNotNull($this->quickAccessPositionOf($products->last()));
+    }
+
+    public function test_only_who_may_manage_items_can_change_quick_access(): void
+    {
+        $brush = $this->sellableProduct('Kuas', '100');
+
+        $this->setQuickAccess($this->cashier, $brush, true)->assertForbidden();
+
+        $this->assertNull($this->quickAccessPositionOf($brush));
+    }
+
+    public function test_the_item_list_tells_which_items_are_in_quick_access(): void
+    {
+        $brush = $this->sellableProduct('Kuas', '100');
+        $this->sellableProduct('Cat', '100');
+        $this->setQuickAccess($this->admin, $brush, true);
+
+        $this->actingAs($this->admin)->get(route('tenant.products.index', ['tenant' => $this->store->code, 'sort' => 'name']))->assertInertia(fn (Assert $page) => $page
+            ->where('quick_access', ['count' => 1, 'limit' => Product::QUICK_ACCESS_LIMIT])
+            ->where('products.data.0.name', 'Cat')
+            ->where('products.data.0.is_in_quick_access', false)
+            ->where('products.data.1.name', 'Kuas')
+            ->where('products.data.1.is_in_quick_access', true));
     }
 
     public function test_the_same_method_can_be_paid_on_two_lines(): void

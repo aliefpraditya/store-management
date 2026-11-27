@@ -414,7 +414,7 @@ Tidak ada kunci `config/*.php` atau env khusus modul ini (Grep ke `config/` untu
 | `RECEIPT_TYPE` | `'INV'` | `SaleService` | tipe nomor nota |
 | `DEADLOCK_ATTEMPTS` | 3 | `StockService` | percobaan ulang transaksi yang kalah deadlock; dipakai `SaleService` dan `CheckoutService` |
 | `RESULT_LIMIT` | 20 | `CashierCatalogService` | hasil pencarian barang |
-| `BEST_SELLER_LIMIT` / `BEST_SELLER_CANDIDATES` / `BEST_SELLER_DAYS` | 20 / 60 / 30 | `CashierCatalogService` | barang sering dijual: kandidat 60 supaya masih penuh setelah yang disisihkan atau diopname gugur |
+| `BEST_SELLER_LIMIT` / `BEST_SELLER_CANDIDATES` / `BEST_SELLER_DAYS` | 20 / 60 / 30 | `CashierCatalogService` | barang sering dijual (cadangan akses cepat): kandidat 60 supaya masih penuh setelah yang disisihkan atau diopname gugur |
 | `RESULT_LIMIT` | 50 | `ShiftReceiptController` | nota shift di dialog kasir |
 | `PER_PAGE` | 25 | `SaleHistoryController` | riwayat nota admin |
 | masa berlaku URL sheet | 30 menit | `AnswersPrints::recordPrintAnswer` | `URL::temporarySignedRoute` |
@@ -578,7 +578,7 @@ Satu-satunya endpoint halaman layar kasir. Props:
 - `registers`: daftar register aktif untuk membuka shift, dengan `busy_with`/`busy_note` bila register dipegang shift `open` atau `pending_review`.
 - `payment_methods`: `PaymentMethod::saleOptions()` (tunai, transfer, QRIS, EDC, COD).
 - `last_sale`, `last_order`, `closed_shift`: dibaca dengan `session()->pull(...)` **di dalam closure**. Inertia hanya mengeksekusi closure bila prop diminta, jadi `router.reload({ only: ['order_counts', ...] })` (polling lencana tiap 60 detik) tidak "memakan" nota yang menunggu ditampilkan. Ini dikunci `CashierSaleTest::test_a_background_refresh_of_the_badges_does_not_eat_the_receipt_waiting_to_be_shown`.
-- `best_sellers`: `CashierCatalogService::bestSellers` untuk gudang register.
+- `quick_access`: `{is_pinned, items}` dari `CashierCatalogService::quickAccess` untuk gudang register (lihat 7.2).
 - `is_receipt_printed_automatically`, `order_counts`, `pending_return_count`, `can_leave_to_dashboard`, dan `urls` (semua tujuan `route()` yang dipakai layar).
 
 ### 7.2 `CashierProductController` dan `CashierCatalogService`
@@ -586,7 +586,8 @@ Satu-satunya endpoint halaman layar kasir. Props:
 Pencarian dibatasi gudang shift terbuka pemanggil. Jika `?units[]` ada, jawaban = keadaan terkini unit-unit itu (`forUnits`); selain itu pencarian teks (`search`).
 
 - **`search`**: produk `is_active`, hanya unit `is_sellable`, cocok `Product::scopeSearch` (nama atau SKU, `%` dan `_` yang diketik diperlakukan sebagai huruf biasa). Urutan: yang **stoknya > 0 dulu** (subquery `IN_STOCK_FIRST_SQL`), baru nama; batas 20. Alasannya: istilah luas seperti "cat" tidak boleh dibuka oleh rak kosong, sementara istilah spesifik yang semuanya habis tetap menampilkan hasilnya (agar bisa dijadikan pesanan). Produk tanpa unit yang dijual disaring.
-- **`bestSellers`**: join `sale_items` -> `sales` (status `completed`, gudang sama, 30 hari terakhir) -> `stocks` (quantity > 0), urut `count(*)` baris nota, 60 kandidat; hasil akhir membuang barang yang seluruh stoknya disisihkan untuk pesanan atau sedang diopname, lalu dipotong 20. Retur dan void tidak dikurangkan dari peringkat (void tersaring karena status; retur tidak).
+- **`quickAccess`**: tile layar kasir yang kosong. Bila toko menandai barang di Daftar Barang (`products.quick_access_position` tidak null; per toko, bukan per gudang), yang tampil adalah barang itu, `is_active` dan punya unit yang dijual, urut `quick_access_position` lalu `id`, paling banyak `Product::QUICK_ACCESS_LIMIT` (20), `is_pinned = true`. Barang stok habis tetap tampil (supaya tile tidak berpindah mengikuti stok; kekurangannya jadi pesanan) dan barang yang sedang diopname tampil tapi tidak bisa ditambahkan. Bila tidak ada satu pun yang bisa dijual, jatuh ke `bestSellers` dengan `is_pinned = false`. Menandai dan melepas lewat `PUT products/{product}/quick-access` (izin `products.manage`, `ProductService::setQuickAccess`): barang baru ditaruh paling akhir, meminta keadaan yang sudah berlaku tidak mengubah apa-apa, `version` barang tidak bertambah, dan penuh (20) ditolak dengan pesan.
+- **`bestSellers`** (privat, cadangan `quickAccess`): join `sale_items` -> `sales` (status `completed`, gudang sama, 30 hari terakhir) -> `stocks` (quantity > 0), urut `count(*)` baris nota, 60 kandidat; hasil akhir membuang barang yang seluruh stoknya disisihkan untuk pesanan atau sedang diopname, lalu dipotong 20. Retur dan void tidak dikurangkan dari peringkat (void tersaring karena status; retur tidak).
 - **`catalogItems`**: `stock` yang ditampilkan = stok gudang **dikurangi** yang disisihkan untuk pesanan siap-ambil (`CustomerOrderItem::reservedQuantities`), minimal 0; `intact_packs` hanya untuk produk yang punya satuan kemasan utuh (null untuk lainnya), dipotong dengan jumlah yang muat (`stok x faktor`) supaya sisa eceran yang ditampilkan layar tidak pernah negatif; `is_being_counted` hanya bila pengaturan `lock_sales_during_opname` hidup.
 
 Katalog ini **tidak mengunci** apa pun: ia hanya petunjuk untuk layar. Kebenaran stok ditentukan ulang `SaleService` di bawah kunci.
@@ -909,22 +910,28 @@ Bagian Job/Jadwal, Mode Uji/Mock, dan i18n dari kerangka standar tidak berlaku u
 
 `Cashier/Index.vue` memegang `saleUuid` dan `orderUuid` sebagai variabel biasa. Keduanya **hanya diganti setelah sukses** (`onSuccess` dengan `last_sale` atau `last_order` terisi). Gagal (galat bisnis, koneksi putus, klik ganda) mengirim uuid yang sama lagi, sehingga server mengembalikan nota pertama bila nota itu sudah terlanjur dibuat. Tombol bayar juga `loading` selama `isPaying`.
 
-### 10.4 Pintasan keyboard dan barang sering dijual
+### 10.4 Pintasan keyboard dan akses cepat
 
 Pintasan aktif hanya bila `isTillWorking` (ada shift dan tidak menunggu review) dan tidak ada dialog terbuka:
 
 | Tombol | Aksi |
 |---|---|
-| F9 | buka layar bayar |
+| F9 atau End | buka layar bayar (End hanya dari kolom cari yang kosong atau di luar kolom isian, karena di kolom teks End memindah kursor) |
 | F8 | kosongkan keranjang (dengan konfirmasi) |
 | F4 | tahan keranjang yang terisi; bila keranjang kosong, buka daftar keranjang ditahan untuk dipanggil (`resumeHeldCart` menahan dulu keranjang yang sedang terisi bila ada, supaya tidak ada yang hilang, lalu memuat harga dan stok terbaru lewat `refreshCart`) |
 | F7 | buka dialog Pesanan |
 | F2 | fokus ke pencarian |
-| Alt+1 sampai Alt+9 | tambah barang sering dijual ke-n (satuan bawaan `is_default_sale`) |
+| Alt+1 sampai Alt+9 | tambah tile akses cepat ke-n (satuan bawaan `is_default_sale`) |
+| awalan `12*` di kolom cari | jumlah yang ditambahkan oleh barang berikutnya (scan, Enter, klik satuan, tile); desimal boleh (`0,5*`); hanya tanda `*` (`splitQuantityPrefix`) |
 | di kolom cari: panah atas/bawah, kiri/kanan, Enter | sorot hasil, pilih satuan, tambah; Enter pada SKU persis atau satu hasil menambah langsung dalam satuan bawaan |
-| kolom cari kosong: panah, `+`/`-`, Delete, Esc | pilih baris keranjang, ubah jumlah (minimal 1), hapus, lepas pilihan |
+| kolom cari kosong: Tab / Shift+Tab | masuk ke baris keranjang (baris yang sedang disorot, atau pertama / terakhir bila belum ada), lalu pindah baris; lewat ujung kembali ke kolom cari. Tab tidak pernah keluar ke tombol di sekitarnya |
+| baris disorot: Enter | masuk ke jumlah; di jumlah Tab ke satuan, Tab lagi kembali ke baris; Esc kembali ke baris; Enter selesai dan kembali ke kolom cari |
+| di satuan: kiri/kanan, atas/bawah | ganti satuan langsung, atau buka daftar satuan (Enter memilih lalu kembali ke kolom cari) |
+| kolom cari kosong: panah atas/bawah, `+`/`-`, kiri/kanan, Delete, Esc | panah atas/bawah memilih baris keranjang; `+`/`-` (jumlah, minimal 1), kiri/kanan (satuan), dan Delete (hapus baris) hanya bekerja pada baris yang sedang disorot (`isBrowsingLines`); Esc melepas sorotan. Baris yang baru ditambah lewat scan tidak diberi garis tepi, tetapi Tab masuk ke baris itu lebih dulu |
 
-Kolom "Barang sering dijual" muncul bila kolom cari kosong dan `best_sellers` tidak kosong. Barang yang sedang diopname (`is_being_counted`) tidak bisa ditambahkan; barang stok habis **boleh** (jadi pesanan).
+Legenda pintasan ada di kiri bawah layar (`SHORTCUT_GROUPS` di `Cashier/Index.vue`; ikut diperbarui bila tombol berubah).
+
+Tile muncul bila kolom cari kosong dan `quick_access.items` tidak kosong; judulnya "Akses cepat" bila `is_pinned`, selain itu "Barang sering dijual". Barang yang sedang diopname (`is_being_counted`) tidak bisa ditambahkan; barang stok habis **boleh** (jadi pesanan).
 
 Keranjang ditahan disimpan di `localStorage['mitra.held-carts.{shiftId}']` (`useHeldCarts`): `hold` menyalin dalam-dalam baris keranjang, `take` mengeluarkan dan mengembalikan barisnya, `discard` membuang. Hanya ada di browser itu: hilang bila storage dibersihkan dan tidak terlihat dari perangkat lain.
 

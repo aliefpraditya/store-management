@@ -14,6 +14,11 @@ class ProductSaveException extends Exception
         return new self('Barang ini diubah orang lain sejak halaman dibuka. Muat ulang halaman, lalu isi lagi perubahan Anda.');
     }
 
+    public static function quickAccessFull(int $limit): self
+    {
+        return new self("Akses cepat sudah penuh ({$limit} barang). Lepas salah satu barang dulu.");
+    }
+
     /**
      * The rules about units and conversions that hold once a product has stock or history, checked again under the
      * product's lock because a sale can land between the form's validation and the save.

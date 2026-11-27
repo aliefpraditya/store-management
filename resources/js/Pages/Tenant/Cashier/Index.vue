@@ -23,6 +23,7 @@ import { useHeldCarts } from '../../../Composables/useHeldCarts';
 import { printSheet, SHEET_PRINTED_EVENT } from '../../../Composables/printSheet';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity, formatStock } from '../../../Composables/useQuantityFormat';
+import { splitQuantityPrefix } from '../../../Composables/useQuantityPrefix';
 
 const props = defineProps({
     shift: { type: Object, default: null },
@@ -44,8 +45,8 @@ const props = defineProps({
     pending_delivery_count: { type: Number, default: 0 },
     /** Delivered receipts not delivered yet, and COD ones delivered whose money is not received yet (counted only for who may receive it). */
     cod_counts: { type: Object, default: () => ({ undelivered: 0, unreceived: 0 }) },
-    /** The items this warehouse sold most lately, offered when nothing is searched. */
-    best_sellers: { type: Array, default: () => [] },
+    /** The tiles offered when nothing is searched: the store's quick access items (`is_pinned`), or else what this warehouse sold most lately. */
+    quick_access: { type: Object, default: () => ({ is_pinned: false, items: [] }) },
     /** Whether the receipt opens for printing by itself once a sale is paid. */
     is_receipt_printed_automatically: { type: Boolean, default: false },
     closed_shift: { type: Object, default: null },
@@ -62,12 +63,51 @@ const cart = useCart(toRef(() => props.shift?.id ?? null));
 const heldCarts = useHeldCarts(toRef(() => props.shift?.id ?? null));
 const checkoutKeys = useCheckoutKeys(toRef(() => props.shift?.id ?? null));
 
+/** The legend at the bottom of the finder: each group lists its keys with what they do. Keep it in step with the key handlers below. */
+const SHORTCUT_GROUPS = [
+    {
+        title: 'Cari barang',
+        shortcuts: [
+            ['F2', 'ke kolom cari'],
+            ['12*', 'jumlah sebelum scan'],
+            ['↑ ↓', 'pilih barang'],
+            ['← →', 'pilih satuan'],
+            ['Enter', 'tambahkan'],
+            ['Alt+1…9', 'akses cepat'],
+        ],
+    },
+    {
+        title: 'Baris keranjang',
+        shortcuts: [
+            ['Tab', 'pilih baris (Shift+Tab mundur)'],
+            ['Enter', 'ubah jumlah dan satuan'],
+            ['Esc', 'kembali'],
+            ['+ −', 'jumlah'],
+            ['← →', 'satuan'],
+            ['Delete', 'hapus baris'],
+        ],
+    },
+    {
+        title: 'Transaksi',
+        shortcuts: [
+            ['F9 / End', 'bayar'],
+            ['F4', 'tahan / panggil'],
+            ['F8', 'kosongkan'],
+            ['F7', 'pesanan'],
+        ],
+    },
+];
+
 const SEARCH_DELAY_MS = 200;
 const LOOKUP_FAILED_MESSAGE = 'Pencarian barang gagal. Periksa koneksi, lalu coba lagi.';
 const LOOKUP_FAILED_NOTIFY_GROUP = 'lookup-failed';
 
 const searchInput = ref(null);
 const searchTerm = ref('');
+
+/** The box may start with "12*", the quantity of what is added next; everything looked up is the part after it. */
+const searchParts = computed(() => splitQuantityPrefix(searchTerm.value));
+const lookupTerm = computed(() => searchParts.value.lookupTerm.trim());
 const searchResults = ref([]);
 let latestSearchId = 0;
 let searchTimer;
@@ -95,6 +135,9 @@ const highlightedUnitIndex = ref(0);
 
 /** The cart line the arrow keys stand on while the search box is empty. */
 const selectedLineKey = ref(null);
+
+/** Whether Tab walks through the cart lines, with the focus still in the search box (so a scan or a typed letter ends it). */
+const isBrowsingLines = ref(false);
 
 const isAnyDialogOpen = computed(
     () => [isPaymentOpen, isCloseOpen, isReceiptsOpen, isDeliveryOpen, isReturnLookupOpen, isReturnOpen, isExpenseOpen, isCodOpen, isOrdersOpen, isHeldOpen, isSaleDoneOpen].some((isOpen) => isOpen.value),
@@ -181,10 +224,16 @@ function notifyLookupFailed(message) {
 }
 
 watch(searchTerm, (term) => {
+    if (term !== '') {
+        isBrowsingLines.value = false;
+    }
+});
+
+watch(lookupTerm, (term) => {
     clearTimeout(searchTimer);
     highlightedResultIndex.value = -1;
 
-    if (term.trim() === '') {
+    if (term === '') {
         latestSearchId++;
         searchResults.value = [];
 
@@ -192,7 +241,7 @@ watch(searchTerm, (term) => {
     }
 
     searchTimer = setTimeout(async () => {
-        const foundItems = await fetchResults(term.trim());
+        const foundItems = await fetchResults(term);
 
         if (foundItems !== null) {
             searchResults.value = foundItems;
@@ -227,6 +276,11 @@ function moveHighlightedUnit(step) {
     highlightedUnitIndex.value = Math.min(Math.max(highlightedUnitIndex.value + step, 0), unitCount - 1);
 }
 
+function scrollSelectedLineIntoView() {
+    nextTick(() => document.querySelector('.line--selected')?.scrollIntoView({ block: 'nearest' }));
+}
+
+/** Arrow up and down stop at the first and last line, unlike Tab, which goes back to the search box there. */
 function moveLineSelection(step) {
     const lines = cart.lines.value;
 
@@ -238,10 +292,59 @@ function moveLineSelection(step) {
     const nextIndex = currentIndex === -1 ? (step > 0 ? 0 : lines.length - 1) : Math.min(Math.max(currentIndex + step, 0), lines.length - 1);
 
     selectedLineKey.value = lines[nextIndex].key;
-    nextTick(() => document.querySelector('.line--selected')?.scrollIntoView({ block: 'nearest' }));
+    isBrowsingLines.value = true;
+    scrollSelectedLineIntoView();
 }
 
-/** + and - change the quantity of the selected line by one; Delete takes it out. Only while the search box is empty. */
+/** Tab from the search box takes hold of the line already pointed at (the one just added), else the first line, or the last with Shift. */
+function enterLines(isBackward) {
+    const lines = cart.lines.value;
+
+    if (lines.length === 0) {
+        return;
+    }
+
+    if (!lines.some((line) => line.key === selectedLineKey.value)) {
+        selectedLineKey.value = (isBackward ? lines[lines.length - 1] : lines[0]).key;
+    }
+
+    isBrowsingLines.value = true;
+    scrollSelectedLineIntoView();
+}
+
+/** Letting go of the lines drops the highlight, so the next Tab starts over from the top. */
+function leaveLines() {
+    isBrowsingLines.value = false;
+    selectedLineKey.value = null;
+}
+
+/** Tab and Shift+Tab step through the lines; past the first or the last they go back to the search box. */
+function stepLines(step) {
+    const lines = cart.lines.value;
+    const nextIndex = lines.findIndex((line) => line.key === selectedLineKey.value) + step;
+
+    if (nextIndex < 0 || nextIndex >= lines.length) {
+        leaveLines();
+
+        return;
+    }
+
+    selectedLineKey.value = lines[nextIndex].key;
+    scrollSelectedLineIntoView();
+}
+
+/** Arrow left and right move the line to the unit before or after its own, stopping at the first and last. */
+function moveLineUnit(line, step) {
+    const units = line.product.units;
+    const nextIndex = Math.min(Math.max(units.findIndex((unit) => unit.id === line.unitId) + step, 0), units.length - 1);
+
+    line.unitId = units[nextIndex].id;
+}
+
+/**
+ * + and - change the quantity of the highlighted line by one, left and right its unit; Delete takes it out. Only while the
+ * lines are being browsed, since a line that is not shown as highlighted must not be the one a key acts on.
+ */
 function changeSelectedLine(event) {
     const line = cart.lines.value.find((candidate) => candidate.key === selectedLineKey.value);
 
@@ -253,6 +356,8 @@ function changeSelectedLine(event) {
         line.quantity = cart.quantityOf(line) + 1;
     } else if (event.key === '-') {
         line.quantity = Math.max(1, cart.quantityOf(line) - 1);
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        moveLineUnit(line, event.key === 'ArrowRight' ? 1 : -1);
     } else if (event.key === 'Delete') {
         const index = cart.lines.value.indexOf(line);
 
@@ -267,16 +372,102 @@ function changeSelectedLine(event) {
     return true;
 }
 
+/** The quantity and unit fields of the highlighted line (the markup only has them on the line that is `.line--selected`). */
+const selectedLineField = (selector) => document.querySelector(`.line--selected ${selector}`);
+
+/** Enter on a highlighted line: the keyboard goes into its quantity, selected so a typed number replaces it. */
+function editSelectedLineQuantity() {
+    const quantityInput = selectedLineField('.line__quantity input');
+
+    quantityInput?.focus();
+    quantityInput?.select();
+}
+
+function focusSelectedLineUnit() {
+    selectedLineField('.line__unit [role="combobox"]')?.focus();
+}
+
+/** Back out of a line's fields to the highlighted line itself (the search box holds the focus while lines are walked). */
+function returnToLines() {
+    isBrowsingLines.value = true;
+    searchInput.value?.focus();
+}
+
+/** Done with a line: the keyboard goes back to the search box for the next item. */
+function returnToSearch() {
+    isBrowsingLines.value = false;
+    searchInput.value?.focus();
+}
+
+const handledLineFieldKeys = new WeakSet();
+
+/**
+ * The keys inside a line's quantity or unit. Enter finishes (search box), Escape backs out to the highlighted line, Tab goes
+ * quantity → unit → line and Shift+Tab the way back, left and right change the unit. An open unit list handles its own keys.
+ * A q-select hands this listener the same key twice (its own emit and the one on its field), so each key is handled once.
+ * @param {KeyboardEvent} event
+ * @param {object} line
+ * @param {'quantity'|'unit'} field the field the keyboard is in
+ */
+function onLineFieldKeydown(event, line, field) {
+    if (handledLineFieldKeys.has(event) || event.target.getAttribute('aria-expanded') === 'true') {
+        return;
+    }
+
+    handledLineFieldKeys.add(event);
+
+    const isInUnit = field === 'unit';
+
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        returnToSearch();
+    } else if (event.key === 'Escape') {
+        event.preventDefault();
+        returnToLines();
+    } else if (event.key === 'Tab') {
+        event.preventDefault();
+
+        if (!event.shiftKey && !isInUnit) {
+            focusSelectedLineUnit();
+        } else if (event.shiftKey && isInUnit) {
+            editSelectedLineQuantity();
+        } else {
+            returnToLines();
+        }
+    } else if (isInUnit && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        event.preventDefault();
+        moveLineUnit(line, event.key === 'ArrowRight' ? 1 : -1);
+    }
+}
+
 /**
  * The keys of the search box. With results: up and down choose an item, left and right its unit, Enter adds it. With the
- * box empty: up and down choose a cart line, + and - change its quantity, Delete removes it. Escape lets go of both.
+ * box empty: Tab (Shift+Tab back) and up and down choose a cart line, Enter then edits its quantity and unit, + and -
+ * change its quantity, left and right its unit, Delete removes it. Escape lets go of the line. Tab never leaves the
+ * box for the buttons around it: they have their own keys.
  */
 function onSearchKeydown(event) {
-    const isSearching = searchTerm.value.trim() !== '' && searchResults.value.length > 0;
+    const isSearching = lookupTerm.value !== '' && searchResults.value.length > 0;
 
     if (event.key === 'Escape') {
         highlightedResultIndex.value = -1;
-        selectedLineKey.value = null;
+        leaveLines();
+
+        return;
+    }
+
+    if (event.key === 'Tab') {
+        event.preventDefault();
+
+        if (searchTerm.value !== '') {
+            return;
+        }
+
+        if (isBrowsingLines.value) {
+            stepLines(event.shiftKey ? -1 : 1);
+        } else {
+            enterLines(event.shiftKey);
+        }
 
         return;
     }
@@ -300,7 +491,7 @@ function onSearchKeydown(event) {
         return;
     }
 
-    if (searchTerm.value === '') {
+    if (searchTerm.value === '' && isBrowsingLines.value) {
         changeSelectedLine(event);
     }
 }
@@ -310,9 +501,13 @@ function onSearchKeydown(event) {
  * the item in its default unit. Anything else leaves the results for the cashier to pick.
  */
 async function submitSearch() {
-    const term = searchTerm.value.trim();
+    const term = lookupTerm.value;
 
     if (term === '') {
+        if (isBrowsingLines.value) {
+            editSelectedLineQuantity();
+        }
+
         return;
     }
 
@@ -346,28 +541,31 @@ async function submitSearch() {
 }
 
 /**
- * Adds one of the item (the same item and unit already in the cart gets one more) and points at that line, so after a scan
- * the cashier sees which line grew and by how much.
+ * Adds the item in the quantity the search box asks for ("12*"), else one (the same item and unit already in the cart grows
+ * by it) and points at that line, so after a scan the cashier sees which line grew and by how much.
  */
 function addAndShow(item, unitId) {
-    selectedLineKey.value = cart.add(item, unitId).key;
+    selectedLineKey.value = cart.add(item, unitId, searchParts.value.quantity).key;
+    isBrowsingLines.value = false;
     resetSearch();
-    nextTick(() => document.querySelector('.line--selected')?.scrollIntoView({ block: 'nearest' }));
+    scrollSelectedLineIntoView();
 }
 
 function addToCart(item, unit) {
     addAndShow(item, unit.id);
 }
 
-/** The nth best seller of the empty till is added in its default unit (Alt and the number, or a click). */
-function addBestSeller(item) {
+/** The nth quick access tile of the empty till is added in its default unit (Alt and the number, or a click). */
+function addQuickAccessItem(item) {
     if (!isItemHeldBack(item)) {
         addToCart(item, defaultUnitOf(item));
     }
 }
 
+/** A unit picked from the line's list is the last thing to do on that line, so the keyboard goes back to the search box. */
 function setLineUnit(line, code) {
     line.unitId = line.product.units.find((unit) => unit.code === code).id;
+    nextTick(returnToSearch);
 }
 
 function stockTextOf(line) {
@@ -641,17 +839,38 @@ function collectPaidOrder(order) {
     submitSale({ customer_name: null, payments: [], delivery_note: null, order: null, hold_delivery: undefined });
 }
 
-/** F9 pays, F8 empties the cart, F4 holds or recalls a cart, F7 opens the orders, F2 goes to the search box, Alt and 1 to 9 add a best seller. */
+/**
+ * End is a second key for paying, but in a text box it moves the caret, so it pays only from the empty search box or from
+ * outside any box (not from a line's quantity).
+ */
+function isEndKeyForPayment(event) {
+    if (event.key !== 'End') {
+        return false;
+    }
+
+    const isInTextBox = ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName);
+
+    return !isInTextBox || (event.target === searchInput.value?.nativeEl && searchTerm.value === '');
+}
+
+/** F9 or End pays, F8 empties the cart, F4 holds or recalls a cart, F7 opens the orders, F2 goes to the search box, Alt and 1 to 9 add a best seller. */
 function onKeydown(event) {
     if (!isTillWorking.value || isAnyDialogOpen.value) {
         return;
     }
 
-    const bestSellerIndex = event.altKey && /^[1-9]$/.test(event.key) ? Number(event.key) - 1 : -1;
-
-    if (bestSellerIndex >= 0 && props.best_sellers[bestSellerIndex]) {
+    if (isEndKeyForPayment(event)) {
         event.preventDefault();
-        addBestSeller(props.best_sellers[bestSellerIndex]);
+        openPayment();
+
+        return;
+    }
+
+    const quickAccessIndex = event.altKey && /^[1-9]$/.test(event.key) ? Number(event.key) - 1 : -1;
+
+    if (quickAccessIndex >= 0 && props.quick_access.items[quickAccessIndex]) {
+        event.preventDefault();
+        addQuickAccessItem(props.quick_access.items[quickAccessIndex]);
 
         return;
     }
@@ -834,14 +1053,15 @@ onBeforeUnmount(() => {
                             <template #prepend><q-icon name="search" /></template>
                         </q-input>
 
-                        <p v-if="searchTerm.trim() === ''" class="finder__hint">Ketik atau scan barang. F2 cari, F4 tahan keranjang, F7 pesanan, F8 kosongkan, F9 bayar. Panah atas/bawah memilih baris keranjang, + dan - mengubah jumlah, Delete menghapus.</p>
+                        <p v-if="searchParts.isPrefixed && lookupTerm === ''" class="finder__hint">Akan menambah {{ formatQuantity(searchParts.quantity) }}. Scan atau ketik barangnya.</p>
+                        <p v-else-if="lookupTerm === ''" class="finder__hint">Ketik atau scan barang. Tulis 12* di depannya untuk jumlah 12.</p>
                         <p v-else-if="searchResults.length === 0" class="finder__hint">Tidak ada barang yang cocok.</p>
-                        <p v-else class="finder__hint">Panah atas/bawah memilih barang, kiri/kanan memilih satuan, Enter menambahkan.</p>
+                        <p v-else class="finder__hint">Panah atas/bawah memilih barang, kiri/kanan memilih satuan, Enter menambahkan<template v-if="searchParts.isPrefixed"> sebanyak {{ formatQuantity(searchParts.quantity) }}</template>.</p>
 
-                        <section v-if="searchTerm.trim() === '' && best_sellers.length > 0" class="best">
-                            <h3>Barang sering dijual</h3>
+                        <section v-if="lookupTerm === '' && quick_access.items.length > 0" class="best">
+                            <h3>{{ quick_access.is_pinned ? 'Akses cepat' : 'Barang sering dijual' }}</h3>
                             <div class="best__grid">
-                                <button v-for="(item, index) in best_sellers" :key="item.id" type="button" class="best__tile" :disabled="isItemHeldBack(item)" @click="addBestSeller(item)">
+                                <button v-for="(item, index) in quick_access.items" :key="item.id" type="button" class="best__tile" tabindex="-1" :disabled="isItemHeldBack(item)" @click="addQuickAccessItem(item)">
                                     <kbd v-if="index < 9" class="best__key">Alt+{{ index + 1 }}</kbd>
                                     <b>{{ item.name }}</b>
                                     <small>{{ formatRupiah(defaultUnitOf(item).price) }} / {{ defaultUnitOf(item).code }}</small>
@@ -866,6 +1086,7 @@ onBeforeUnmount(() => {
                                         dense
                                         color="primary"
                                         class="item__unit"
+                                        tabindex="-1"
                                         :disable="isItemHeldBack(item)"
                                         :aria-label="`Tambah ${item.name} ${unit.code}`"
                                         @click="addToCart(item, unit)"
@@ -876,13 +1097,27 @@ onBeforeUnmount(() => {
                                 </div>
                             </li>
                         </ul>
+
+                        <aside class="keys" aria-label="Pintasan keyboard">
+                            <section v-for="group in SHORTCUT_GROUPS" :key="group.title" class="keys__group">
+                                <h3>{{ group.title }}</h3>
+                                <dl>
+                                    <div v-for="[key, action] in group.shortcuts" :key="key">
+                                        <dt>
+                                            <kbd>{{ key }}</kbd>
+                                        </dt>
+                                        <dd>{{ action }}</dd>
+                                    </div>
+                                </dl>
+                            </section>
+                        </aside>
                     </section>
 
                     <section class="cart">
                         <div class="cart__lines">
                             <p v-if="cart.isEmpty.value" class="cart__empty">Keranjang kosong</p>
 
-                            <div v-for="line in cart.lines.value" :key="line.key" class="line" :class="{ 'line--over': cart.isOverStock(line), 'line--selected': line.key === selectedLineKey }">
+                            <div v-for="line in cart.lines.value" :key="line.key" class="line" :class="{ 'line--over': cart.isOverStock(line), 'line--selected': line.key === selectedLineKey, 'line--browsing': isBrowsingLines && line.key === selectedLineKey }">
                                 <div class="line__name">
                                     <b>{{ line.product.name }}</b>
                                     <small v-if="cart.isOverStock(line)" class="line__warning">{{ cart.stockWarningOf(line) }} {{ stockTextOf(line) }}. Kekurangannya jadi pesanan.</small>
@@ -898,6 +1133,7 @@ onBeforeUnmount(() => {
                                     hide-bottom-space
                                     class="line__quantity"
                                     :aria-label="`Jumlah ${line.product.name}`"
+                                    @keydown="onLineFieldKeydown($event, line, 'quantity')"
                                 />
                                 <q-select
                                     :model-value="cart.unitOf(line).code"
@@ -908,9 +1144,10 @@ onBeforeUnmount(() => {
                                     class="line__unit"
                                     :aria-label="`Satuan ${line.product.name}`"
                                     @update:model-value="setLineUnit(line, $event)"
+                                    @keydown="onLineFieldKeydown($event, line, 'unit')"
                                 />
                                 <b class="line__subtotal">{{ formatRupiah(cart.subtotalOf(line)) }}</b>
-                                <q-btn flat round dense icon="close" color="grey-7" :aria-label="`Hapus ${line.product.name}`" @click="cart.remove(line)" />
+                                <q-btn flat round dense icon="close" color="grey-7" tabindex="-1" :aria-label="`Hapus ${line.product.name}`" @click="cart.remove(line)" />
                             </div>
                         </div>
 
@@ -920,13 +1157,13 @@ onBeforeUnmount(() => {
                                 <b>{{ formatRupiah(cart.total.value) }}</b>
                             </div>
                             <div class="cart__buttons">
-                                <q-btn flat no-caps color="grey-8" label="Batal (F8)" :disable="cart.isEmpty.value" @click="clearCart" />
-                                <q-btn flat no-caps color="grey-8" icon="pause_circle" :disable="cart.isEmpty.value && heldCarts.held.value.length === 0" @click="holdOrRecallCart">
+                                <q-btn flat no-caps color="grey-8" tabindex="-1" label="Batal (F8)" :disable="cart.isEmpty.value" @click="clearCart" />
+                                <q-btn flat no-caps color="grey-8" icon="pause_circle" tabindex="-1" :disable="cart.isEmpty.value && heldCarts.held.value.length === 0" @click="holdOrRecallCart">
                                     <span>{{ cart.isEmpty.value ? 'Panggil' : 'Tahan' }} (F4)</span>
                                     <q-badge v-if="heldCarts.held.value.length > 0" color="orange" floating :label="heldCarts.held.value.length" />
                                     <q-tooltip>{{ cart.isEmpty.value ? 'Panggil keranjang yang ditahan' : 'Tahan keranjang ini supaya antrean jalan, panggil lagi dengan F4 saat keranjang kosong' }}</q-tooltip>
                                 </q-btn>
-                                <q-btn color="primary" unelevated no-caps size="lg" class="cart__pay" :label="cart.hasOverStock.value ? 'Bayar & Pesan (F9)' : 'Bayar (F9)'" :disable="cart.isEmpty.value" @click="openPayment" />
+                                <q-btn color="primary" unelevated no-caps size="lg" class="cart__pay" tabindex="-1" :label="cart.hasOverStock.value ? 'Bayar & Pesan (F9)' : 'Bayar (F9)'" :disable="cart.isEmpty.value" @click="openPayment" />
                             </div>
                         </footer>
                     </section>
@@ -1118,6 +1355,53 @@ onBeforeUnmount(() => {
     list-style: none;
 }
 
+.keys {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px 20px;
+    padding: 10px 0 12px;
+    border-top: 1px solid var(--app-line);
+}
+
+.keys__group h3 {
+    margin: 0 0 4px;
+    color: var(--app-ink-soft);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.keys__group dl {
+    margin: 0;
+}
+
+.keys__group dl > div {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 1px 0;
+}
+
+.keys__group dt {
+    flex: 0 0 74px;
+}
+
+.keys__group dd {
+    margin: 0;
+    color: var(--app-mute);
+    font-size: 12px;
+}
+
+.keys__group kbd {
+    padding: 1px 5px;
+    border: 1px solid var(--app-line);
+    border-radius: 4px;
+    background: #f3f4f6;
+    color: var(--app-ink-soft);
+    font-family: inherit;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
 .item {
     display: flex;
     flex-wrap: wrap;
@@ -1195,7 +1479,7 @@ onBeforeUnmount(() => {
     background: #fff5f6;
 }
 
-.line--selected {
+.line--browsing {
     outline: 2px solid var(--q-primary);
     outline-offset: -2px;
     background: #fff1f1;

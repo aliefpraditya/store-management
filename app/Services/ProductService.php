@@ -174,6 +174,31 @@ class ProductService
     }
 
     /**
+     * Puts the product in quick access, after the ones already there, or takes it out. Asking for what already holds
+     * changes nothing, so a double click is harmless. It leaves `version` alone: it is no edit of the item itself.
+     *
+     * @throws ProductSaveException when quick access is full
+     */
+    public function setQuickAccess(Product $product, bool $isInQuickAccess): void
+    {
+        if ($isInQuickAccess === $product->isInQuickAccess()) {
+            return;
+        }
+
+        if (! $isInQuickAccess) {
+            $product->forceFill(['quick_access_position' => null])->save();
+
+            return;
+        }
+
+        if (Product::query()->whereNotNull('quick_access_position')->count() >= Product::QUICK_ACCESS_LIMIT) {
+            throw ProductSaveException::quickAccessFull(Product::QUICK_ACCESS_LIMIT);
+        }
+
+        $product->forceFill(['quick_access_position' => (int) Product::query()->max('quick_access_position') + 1])->save();
+    }
+
+    /**
      * What is wrong with saving these unit rows onto this product, as the form field and the message to show. Read
      * by the form request for its field errors, and again by {@see self::update()} under the product's lock.
      *

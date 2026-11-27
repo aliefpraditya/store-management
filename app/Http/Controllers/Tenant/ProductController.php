@@ -12,6 +12,7 @@ use App\Exceptions\ProductSaveException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tenant\BarcodeLabelSheetRequest;
 use App\Http\Requests\Tenant\SaveProductRequest;
+use App\Http\Requests\Tenant\SetQuickAccessRequest;
 use App\Http\Resources\ProductFormResource;
 use App\Http\Resources\ProductListResource;
 use App\Models\Brand;
@@ -60,6 +61,7 @@ class ProductController extends Controller
             'categories' => Category::query()->orderBy('name')->get(['id', 'name']),
             'brands' => Brand::query()->orderBy('name')->get(['id', 'name']),
             'create_url' => route('tenant.products.create', ['tenant' => tenant('code')]),
+            'quick_access' => ['count' => Product::query()->whereNotNull('quick_access_position')->count(), 'limit' => Product::QUICK_ACCESS_LIMIT],
             'barcode_label' => [
                 'limits' => [
                     'max_copies_per_product' => BarcodeLabelService::MAX_COPIES_PER_PRODUCT,
@@ -147,6 +149,17 @@ class ProductController extends Controller
         }
 
         return redirect()->route('tenant.products.index', ['tenant' => tenant('code')])->with('success', 'Barang disimpan.');
+    }
+
+    public function setQuickAccess(SetQuickAccessRequest $request, Product $product): RedirectResponse
+    {
+        try {
+            $this->productService->setQuickAccess($product, $request->boolean('is_in_quick_access'));
+        } catch (ProductSaveException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return back();
     }
 
     public function destroy(Product $product): RedirectResponse
