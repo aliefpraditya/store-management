@@ -38,6 +38,7 @@ class DailyClosingResource extends JsonResource
             ],
             'show_url' => route('tenant.daily-closings.show', ['tenant' => tenant('code'), 'date' => $date]),
             'sheet_url' => route('tenant.daily-closings.sheet', ['tenant' => tenant('code'), 'date' => $date]),
+            'roll_sheet_url' => route('tenant.daily-closings.roll-sheet', ['tenant' => tenant('code'), 'date' => $date]),
         ];
     }
 }

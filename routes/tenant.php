@@ -148,6 +148,7 @@ Route::prefix('t/{tenant}')
             Route::post('{date}', [DailyClosingController::class, 'store'])->where('date', '\d{4}-\d{2}-\d{2}')->name('store');
             Route::post('{date}/reopenings', [DailyClosingController::class, 'reopen'])->where('date', '\d{4}-\d{2}-\d{2}')->name('reopen');
             Route::get('{date}/sheet', [DailyClosingController::class, 'sheet'])->where('date', '\d{4}-\d{2}-\d{2}')->name('sheet');
+            Route::get('{date}/roll-sheet', [DailyClosingController::class, 'rollSheet'])->where('date', '\d{4}-\d{2}-\d{2}')->name('roll-sheet');
         });
 
         Route::prefix('expenses')->name('tenant.expenses.')->middleware('permission:expenses.manage')->group(function () {
@@ -164,8 +165,8 @@ Route::prefix('t/{tenant}')
         Route::get('sales/{sale}/sheet', [SaleHistoryController::class, 'sheet'])->middleware(['permission:sales.view', 'signed'])->name('tenant.sales.sheet');
         Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->middleware('permission:sales.void')->name('tenant.sales.void');
         Route::post('sales/{sale}/delivery-mode', [SaleHistoryController::class, 'changeToDelivery'])->middleware('permission:delivery_notes.manage')->name('tenant.sales.delivery-mode');
-        Route::post('sales/{sale}/cod-settlement/approval', [SaleHistoryController::class, 'approveCodSettlement'])->middleware('permission:cod.approve')->name('tenant.sales.cod-settlement.approve');
         Route::post('sales/{sale}/cod-advances', [SaleHistoryController::class, 'receiveCodAdvance'])->middleware(['permission:sales.view', 'permission:cod.receive'])->name('tenant.sales.cod-advance');
+        Route::post('sales/{sale}/cod-settlement/approval', [SaleHistoryController::class, 'approveCodSettlement'])->middleware('permission:cod.approve')->name('tenant.sales.cod-settlement.approve');
 
         Route::get('products/search', ProductSearchController::class)->middleware('permission:stock_opnames.count,stock_opnames.post,stock_history.view')->name('tenant.products.search');
 

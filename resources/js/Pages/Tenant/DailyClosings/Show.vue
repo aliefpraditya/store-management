@@ -113,6 +113,9 @@ function confirmReopen() {
 
 /** The report prints itself from a hidden frame. */
 const printReport = () => printSheet(() => props.closing.sheet_url);
+
+/** The short form of the report, for the receipt printer. */
+const printRollReport = () => printSheet(() => props.closing.roll_sheet_url);
 </script>
 
 <template>
@@ -187,6 +190,9 @@ const printReport = () => printSheet(() => props.closing.sheet_url);
                     <p v-if="closing.notes" class="closed__notes"><small>Catatan penutupan</small>{{ closing.notes }}</p>
                     <div class="closed__actions">
                         <q-btn unelevated no-caps color="primary" icon="print" label="Cetak Laporan Harian" @click="printReport" />
+                        <q-btn outline no-caps color="primary" icon="receipt_long" label="Cetak Struk Ringkas" @click="printRollReport">
+                            <q-tooltip>Ringkasan untuk printer struk: angka hari itu, kas per shift, dan nota void, tanpa rincian semua nota.</q-tooltip>
+                        </q-btn>
                         <q-btn v-if="can_reopen" outline no-caps color="negative" icon="lock_open" label="Buka Kembali" @click="confirmReopen" />
                     </div>
                     <small v-if="!can_reopen" class="closed__hint">Hanya Super Admin yang bisa membuka hari yang sudah ditutup.</small>

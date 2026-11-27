@@ -12,7 +12,7 @@ import { formatQuantity } from './useQuantityFormat';
  */
 
 /** Characters in a line of the standard font, per roll width in millimetres. Known only for the 76 mm roll of the Epson TM-U220. */
-const COLUMNS_BY_WIDTH = { 76: 33 };
+export const COLUMNS_BY_WIDTH = { 76: 33 };
 
 const ESC = '\x1B';
 
@@ -27,8 +27,8 @@ const INITIALIZE = `${ESC}@${ESC}M0`;
  * ESC E n turns bold on or off by the lowest bit of n, so the characters "1" and "0" do it without a control byte: a zero byte
  * can be cut off on its way to the printer, and it would take the rest of the receipt with it.
  */
-const BOLD_ON = `${ESC}E1`;
-const BOLD_OFF = `${ESC}E0`;
+export const BOLD_ON = `${ESC}E1`;
+export const BOLD_OFF = `${ESC}E0`;
 
 /**
  * Blank lines after the last line, to push it out past the tear-off bar of the printer. Six left the last two lines of a
@@ -53,7 +53,7 @@ const OPEN_DRAWER = `${ESC}p02z`;
  * @param {boolean} isDrawerOpened
  * @returns {string}
  */
-function printerTextOf(lines, isDrawerOpened) {
+export function printerTextOf(lines, isDrawerOpened) {
     return `${INITIALIZE}${lines.join('\n')}\n${'\n'.repeat(BLANK_LINES_AFTER)}${CUT_PAPER}${isDrawerOpened ? OPEN_DRAWER : ''}`;
 }
 

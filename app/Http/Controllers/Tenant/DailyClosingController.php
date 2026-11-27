@@ -92,19 +92,54 @@ class DailyClosingController extends Controller
     public function sheet(string $date): Response
     {
         $day = $this->dayOf($date);
+
+        return Inertia::render('Tenant/Print/DailyReport', [
+            'report' => [
+                ...$this->reportOf($this->closedClosingOn($day)),
+                'receipts_of_day' => $this->salesDetail->forDay($day),
+            ],
+        ]);
+    }
+
+    /**
+     * The daily report for the receipt printer: the figures, the shifts, the voids and the signatures, without the list of
+     * every receipt of the day, which only fits the A4 report ({@see sheet()}).
+     */
+    public function rollSheet(string $date): Response
+    {
+        return Inertia::render('Tenant/Print/DailyReportRoll', [
+            'report' => [
+                ...$this->reportOf($this->closedClosingOn($this->dayOf($date))),
+                'paper_width' => $this->settings->paperWidth(),
+            ],
+        ]);
+    }
+
+    /**
+     * Only a closed day has a report.
+     */
+    private function closedClosingOn(CarbonImmutable $day): DailyClosing
+    {
         $closing = $this->closingService->find($day);
 
         abort_unless($closing?->status === DailyClosingStatus::Closed, 404);
 
-        return Inertia::render('Tenant/Print/DailyReport', [
-            'report' => [
-                ...DailyClosingResource::make($closing)->resolve(),
-                'store' => $this->settings->letterhead(),
-                'shifts' => $this->shiftRowsOf($closing),
-                'voids' => $this->closingService->voidsOf($closing->business_date),
-                'receipts_of_day' => $this->salesDetail->forDay($day),
-            ],
-        ]);
+        return $closing;
+    }
+
+    /**
+     * What both forms of the daily report hold.
+     *
+     * @return array<string, mixed>
+     */
+    private function reportOf(DailyClosing $closing): array
+    {
+        return [
+            ...DailyClosingResource::make($closing)->resolve(),
+            'store' => $this->settings->letterhead(),
+            'shifts' => $this->shiftRowsOf($closing),
+            'voids' => $this->closingService->voidsOf($closing->business_date),
+        ];
     }
 
     /**

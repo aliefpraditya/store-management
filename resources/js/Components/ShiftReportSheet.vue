@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue';
+import { codReceivedRowsOf, codRowsOf } from '../Composables/shiftReportRows';
 import { formatDeduction, formatRupiah } from '../Composables/useMoneyFormat';
 import ThermalPageSize from './ThermalPageSize.vue';
 
@@ -15,50 +16,7 @@ const props = defineProps({
 const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 const dateFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' });
 
-/**
- * The COD receipts of the shift, none when there were none. COD is not money in the drawer. The blind report counts them
- * (`delivered_count`), the full one adds what they are worth (`delivered.count` and `.amount`).
- */
-const codRows = computed(() => {
-    const { cod, is_blind: isBlind } = props.report;
-    const delivered = isBlind ? cod.delivered_count : cod.delivered.count;
-    const undelivered = isBlind ? cod.undelivered_count : cod.undelivered.count;
-
-    if (delivered + undelivered === 0) {
-        return [];
-    }
-
-    return isBlind
-        ? [{ label: 'Nota COD sudah diantar', value: String(delivered) }, { label: 'Nota COD belum diantar', value: String(undelivered) }]
-        : [
-            { label: `COD sudah diantar (${delivered} nota)`, value: formatRupiah(cod.delivered.amount) },
-            { label: `COD belum diantar (${undelivered} nota)`, value: formatRupiah(cod.undelivered.amount) },
-        ];
-});
-
-const CASH_RECEIVED_METHODS = [
-    { key: 'cash', label: 'Tunai' },
-    { key: 'transfer', label: 'Transfer' },
-    { key: 'qris', label: 'QRIS' },
-    { key: 'edc', label: 'EDC' },
-];
-
-/**
- * The COD money this shift received (the full report only; the blind one has no amounts), by method, none when nothing
- * was received. Received cash is in the drawer, the rest went to an account.
- */
-const codReceivedRows = computed(() => {
-    const received = props.report.cod_received;
-
-    if (props.report.is_blind || !(Number(received?.total) > 0)) {
-        return [];
-    }
-
-    return [
-        { label: 'Pelunasan COD diterima', value: formatRupiah(received.total) },
-        ...CASH_RECEIVED_METHODS.filter((method) => Number(received[method.key]) > 0).map((method) => ({ label: `· ${method.label}`, value: formatRupiah(received[method.key]) })),
-    ];
-});
+const codRows = computed(() => [...codRowsOf(props.report), ...codReceivedRowsOf(props.report)].map((row) => ({ label: row.label, value: row.isMoney ? formatRupiah(row.value) : String(row.value) })));
 </script>
 
 <template>
@@ -96,8 +54,8 @@ const codReceivedRows = computed(() => {
             <div><dt>Jumlah nota</dt><dd>{{ report.sale_count }}</dd></div>
         </dl>
 
-        <dl v-if="codRows.length > 0 || codReceivedRows.length > 0">
-            <div v-for="row in [...codRows, ...codReceivedRows]" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
+        <dl v-if="codRows.length > 0">
+            <div v-for="row in codRows" :key="row.label"><dt>{{ row.label }}</dt><dd>{{ row.value }}</dd></div>
         </dl>
 
         <template v-if="!report.is_blind">

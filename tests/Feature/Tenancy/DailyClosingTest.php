@@ -364,6 +364,27 @@ class DailyClosingTest extends TestCase
             ->where('report.shifts.0.expected_cash', '20000.00'));
     }
 
+    public function test_the_short_daily_report_for_the_receipt_printer_holds_the_figures_but_not_the_receipts(): void
+    {
+        $this->settledDay();
+        $this->closeToday($this->admin, 'Semua cocok');
+
+        $this->actingAs($this->admin)->get($this->url('roll-sheet', $this->today()))->assertOk()->assertInertia(fn (Assert $page) => $page
+            ->component('Tenant/Print/DailyReportRoll')
+            ->where('report.store.name', $this->store->name)
+            ->where('report.paper_width', 80)
+            ->where('report.notes', 'Semua cocok')
+            ->where('report.figures.total_sales', '50000.00')
+            ->has('report.shifts', 1)
+            ->has('report.voids')
+            ->missing('report.receipts_of_day'));
+    }
+
+    public function test_the_short_daily_report_exists_only_for_a_closed_day(): void
+    {
+        $this->actingAs($this->admin)->get($this->url('roll-sheet', $this->today()))->assertNotFound();
+    }
+
     public function test_the_daily_report_lists_the_receipts_voided_on_the_day_and_none_when_there_are_no_voids(): void
     {
         $this->settledDay();
