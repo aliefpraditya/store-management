@@ -7,7 +7,7 @@ import { newUuid, roundMoney } from '../Composables/useCart';
 const props = defineProps({
     /** What the form needs of a COD receipt: amount_due, methods, can_approve and the receive_url to post to. @type {object} */
     cod: { type: Object, required: true },
-    /** Part of the bill paid before the goods leave: it must stay below what is due, the rest is collected on delivery, and there is no difference to explain. @type {boolean} */
+    /** Money paid before the goods leave: it may be part of what is due or all of it, never more, and there is no difference to explain. @type {boolean} */
     isAdvance: { type: Boolean, default: false },
 });
 
@@ -33,7 +33,7 @@ const receivedAmount = computed(() => roundMoney(Number(amount.value) || 0));
 /** Whether the money received is not what is due, which asks for a reason (and, without the approval permission, for an admin). */
 const isDifferent = computed(() => !props.isAdvance && receivedAmount.value !== roundMoney(Number(props.cod.amount_due)));
 
-const isWithinBill = computed(() => !props.isAdvance || receivedAmount.value < roundMoney(Number(props.cod.amount_due)));
+const isWithinBill = computed(() => !props.isAdvance || receivedAmount.value <= roundMoney(Number(props.cod.amount_due)));
 
 const canSave = computed(() => receivedAmount.value > 0 && isWithinBill.value && (!isDifferent.value || differenceReason.value.trim() !== '') && !isWorking.value);
 
@@ -90,7 +90,7 @@ function receive() {
             prefix="Rp"
             label="Jumlah diterima"
             :error="isAdvance && receivedAmount > 0 && !isWithinBill"
-            error-message="Harus kurang dari sisa tagihan. Kalau lunas, nota ini bukan COD lagi."
+            error-message="Tidak boleh melebihi sisa tagihan."
         />
         <q-input v-if="method !== 'cash'" v-model="reference" outlined dense maxlength="255" label="Rekening atau nomor referensi (opsional)" />
         <q-input v-model="notes" outlined dense maxlength="255" label="Catatan (opsional)" placeholder="Mis. nama sopir yang menyerahkan uang" />

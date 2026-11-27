@@ -47,6 +47,9 @@ async function printReceipt() {
 }
 
 const isAdvanceOpen = ref(false);
+
+/** Whether what customers paid in advance covers the whole COD part, so nothing is left to collect on delivery. */
+const isCodPaidInAdvance = computed(() => props.sale.cod_advance_payments.reduce((sum, advance) => sum + Number(advance.amount), 0) >= Number(props.sale.cod_amount));
 const isVoidOpen = ref(false);
 const voidReason = ref('');
 const refundAccount = ref('');
@@ -145,7 +148,7 @@ function submitVoid() {
             </p>
 
             <section v-if="sale.is_cod" class="receipt__cod">
-                <b>COD: {{ formatRupiah(sale.cod_amount) }} ditagih saat diantar</b>
+                <b>COD: {{ formatRupiah(sale.cod_amount) }} {{ isCodPaidInAdvance ? 'sudah dibayar di muka' : 'ditagih saat diantar' }}</b>
                 <a v-for="note in sale.delivery_notes" :key="note.number" :href="note.show_url" @click.prevent="router.visit(note.show_url)">{{ note.number }} · {{ note.status_label }}</a>
                 <small v-if="sale.status === 'completed' && void_blocker" class="receipt__cod-blocked">Tidak bisa di-void: {{ void_blocker }}</small>
             </section>
@@ -203,7 +206,7 @@ function submitVoid() {
             <q-card class="payment-dialog">
                 <q-card-section>
                     <div class="void-dialog__title">Pembayaran di muka nota {{ sale.number }}</div>
-                    <small class="void-dialog__hint">Pelanggan membayar sebagian sebelum barang diantar. Sisanya tetap ditagih saat diantar. Setelah ada pembayaran di muka, nota tidak bisa di-void; barang yang tidak jadi diambil lewat Retur.</small>
+                    <small class="void-dialog__hint">Pelanggan membayar sebelum barang diantar, sebagian (sisanya ditagih saat diantar) atau penuh. Setelah ada pembayaran di muka, nota tidak bisa di-void; barang yang tidak jadi diambil lewat Retur.</small>
                 </q-card-section>
 
                 <q-card-section>

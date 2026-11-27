@@ -70,6 +70,18 @@ class CashierSaleTest extends TestCase
         return $this->store->run(fn () => Sale::query()->count());
     }
 
+    public function test_a_sale_without_a_customer_name_is_made_out_to_umum(): void
+    {
+        $piece = $this->unitOf($this->sellableProduct('Kuas', '100'), 'PCS');
+
+        $this->sell([[$piece, 1]], [['cash', 10000]])->assertRedirect($this->url('index'));
+        $this->sell([[$piece, 2]], [['cash', 20000]], ['customer_name' => '   '])->assertRedirect($this->url('index'));
+
+        $names = $this->store->run(fn (): array => Sale::query()->orderBy('id')->pluck('customer_name')->all());
+
+        $this->assertSame(['Umum', 'Umum'], $names);
+    }
+
     public function test_a_sale_stores_the_receipt_its_lines_its_payments_and_takes_the_stock(): void
     {
         $brush = $this->sellableProduct('Kuas', '100');

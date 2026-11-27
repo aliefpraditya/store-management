@@ -182,8 +182,8 @@ const isAdvance = computed(() => receiveTarget.value?.isAdvance === true);
 /** Whether the money received is not what is due, which asks for a reason (and, without the approval permission, for an admin). A part paid in advance has nothing to explain. */
 const isDifferent = computed(() => receiveTarget.value !== null && !isAdvance.value && receivedAmount.value !== roundMoney(Number(receiveTarget.value.amount_due)));
 
-/** A part paid in advance stays below what is left of the bill; paying all of it makes the sale no COD sale. */
-const isWithinBill = computed(() => !isAdvance.value || receivedAmount.value < roundMoney(Number(receiveTarget.value.amount_due)));
+/** Money paid in advance may be all of what is left of the bill, never more. */
+const isWithinBill = computed(() => !isAdvance.value || receivedAmount.value <= roundMoney(Number(receiveTarget.value.amount_due)));
 
 const canReceiveNow = computed(() => receivedAmount.value > 0 && isWithinBill.value && (!isDifferent.value || differenceReason.value.trim() !== '') && !isWorking.value);
 
@@ -292,7 +292,7 @@ async function act(url, body, successMessage) {
                             <q-btn v-if="sale.open_delivery_note_url" tag="a" :href="sale.open_delivery_note_url" target="_blank" rel="noopener" outline dense no-caps color="primary" icon="open_in_new" label="Buka surat jalan">
                                 <q-tooltip>Selesaikan pengiriman di halaman surat jalan: isi barang yang kembali{{ sale.is_cod ? ', lalu catat uang COD' : '' }}.</q-tooltip>
                             </q-btn>
-                            <q-btn v-if="sale.is_cod && canReceive" outline dense no-caps color="primary" label="Bayar di muka" :disable="isWorking" @click="openAdvance(sale)" />
+                            <q-btn v-if="sale.is_cod && canReceive && Number(sale.amount_due) > 0" outline dense no-caps color="primary" label="Bayar di muka" :disable="isWorking" @click="openAdvance(sale)" />
                             <q-btn v-if="sale.is_cod && Number(sale.advance_amount) === 0" outline dense no-caps color="negative" label="Void" :disable="isWorking" @click="openVoid(sale)" />
                         </div>
                     </div>
@@ -365,7 +365,7 @@ async function act(url, body, successMessage) {
             <q-card v-if="receiveTarget" class="void">
                 <q-card-section>
                     <div class="cod__title">{{ isAdvance ? 'Pembayaran di muka' : 'Terima uang' }} nota {{ receiveTarget.number }}</div>
-                    <small v-if="isAdvance" class="void__hint">Sisa tagihan COD {{ formatRupiah(receiveTarget.amount_due) }}. Bayarnya harus kurang dari itu, sisanya ditagih saat diantar. Setelah ini nota tidak bisa di-void.</small>
+                    <small v-if="isAdvance" class="void__hint">Sisa tagihan COD {{ formatRupiah(receiveTarget.amount_due) }}. Boleh dibayar sebagian (sisanya ditagih saat diantar) atau penuh. Setelah ini nota tidak bisa di-void.</small>
                     <small v-else class="void__hint">Uang yang harus diterima {{ formatRupiah(receiveTarget.amount_due) }}.</small>
                 </q-card-section>
 
@@ -386,7 +386,7 @@ async function act(url, body, successMessage) {
                         prefix="Rp"
                         label="Jumlah diterima"
                         :error="isAdvance && receivedAmount > 0 && !isWithinBill"
-                        error-message="Harus kurang dari sisa tagihan. Kalau lunas, nota ini bukan COD lagi."
+                        error-message="Tidak boleh melebihi sisa tagihan."
                     />
                     <q-input v-if="receiveMethod !== 'cash'" v-model="receiveReference" outlined dense maxlength="255" label="Rekening atau nomor referensi (opsional)" />
                     <q-input v-model="receiveNotes" outlined dense maxlength="255" label="Catatan (opsional)" placeholder="Mis. nama sopir yang menyerahkan uang" />

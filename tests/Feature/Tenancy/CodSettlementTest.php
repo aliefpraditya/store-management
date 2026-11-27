@@ -7,6 +7,7 @@ use App\Enums\DeliveryNoteStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\Permission;
 use App\Enums\UserRole;
+use App\Exceptions\SaleException;
 use App\Models\CashShift;
 use App\Models\CodAdvancePayment;
 use App\Models\CodSettlement;
@@ -177,19 +178,51 @@ class CodSettlementTest extends TestCase
         $this->assertSame('70000.00', $this->settlementOf($sale)->expected_amount);
     }
 
-    public function test_an_advance_never_covers_the_whole_bill(): void
+    public function test_an_advance_may_not_exceed_what_is_left_of_the_bill(): void
     {
         $sale = $this->sellCod();
-        $message = 'Pembayaran di muka harus kurang dari sisa tagihan COD (Rp 100.000). Kalau pelanggan melunasi, nota ini bukan COD lagi.';
 
-        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 100000]))->assertUnprocessable()->assertJsonPath('message', $message);
-        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 120000]))->assertUnprocessable()->assertJsonPath('message', $message);
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 120000]))->assertUnprocessable()
+            ->assertJsonPath('message', 'Pembayaran di muka tidak boleh melebihi sisa tagihan COD (Rp 100.000).');
         $this->assertCount(0, $this->advancesOf($sale));
 
         $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 60000]))->assertOk();
-        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 40000]))->assertUnprocessable()
-            ->assertJsonPath('message', 'Pembayaran di muka harus kurang dari sisa tagihan COD (Rp 40.000). Kalau pelanggan melunasi, nota ini bukan COD lagi.');
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 50000]))->assertUnprocessable()
+            ->assertJsonPath('message', 'Pembayaran di muka tidak boleh melebihi sisa tagihan COD (Rp 40.000).');
         $this->assertCount(1, $this->advancesOf($sale));
+    }
+
+    public function test_a_sale_already_rung_up_as_cod_can_be_paid_in_full_before_delivery(): void
+    {
+        $sale = $this->sellCod();
+        $this->actingAs($this->admin)->post($this->saleUrl('cod-advance', $sale), $this->receiveBody(['method' => 'transfer', 'amount' => 100000]))
+            ->assertSessionHas('success', 'Pembayaran di muka dicatat. Sisanya ditagih saat barang diantar.');
+
+        $this->actingAs($this->admin)->get($this->saleUrl('show', $sale))->assertInertia(fn (Assert $page) => $page->where('cod_advance', null));
+
+        $this->store->run(fn () => app(CodSaleService::class)->markDelivered($sale));
+
+        $this->actingAs($this->admin)->getJson($this->url('cod.settlements'))->assertOk()->assertJsonPath('meta.total', 0);
+        $this->actingAs($this->admin)->postJson($this->url('cod.settle', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer']))->assertUnprocessable()
+            ->assertJsonPath('message', 'Seluruh tagihan COD nota ini sudah terpotong retur, jadi tidak ada uang yang perlu diterima.');
+        $this->actingAs($this->admin)->get($this->noteUrl('show', $sale))->assertInertia(fn (Assert $page) => $page
+            ->where('cod.state', 'settled')
+            ->where('cod.amount_due', '0.00')
+            ->where('cod.advance_amount', '100000.00'));
+    }
+
+    public function test_a_cod_sale_cannot_be_rung_up_fully_paid(): void
+    {
+        $this->store->run(function (): void {
+            $this->expectException(SaleException::class);
+
+            app(SaleService::class)->create($this->shift, $this->cashier, [
+                'client_uuid' => (string) Str::uuid(),
+                'items' => [['product_unit_id' => $this->unitOf($this->brush, 'PCS')->id, 'quantity' => 10]],
+                'payments' => [['method' => 'transfer', 'amount' => 100000], ['method' => 'cod', 'amount' => 1000]],
+                'delivery_note' => ['recipient_name' => 'Pak Budi', 'recipient_address' => 'Jl. Mawar 5', 'recipient_phone' => '0812'],
+            ]);
+        });
     }
 
     public function test_an_advance_is_taken_once_when_the_same_submit_comes_twice(): void

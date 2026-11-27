@@ -11,7 +11,7 @@ use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * Lives in the store database. Money a customer paid on a COD receipt before its goods were delivered: part of the bill,
- * never all of it. `received_by` is a central user id (no foreign key across databases).
+ * or all of it, since a sale already rung up as COD may be paid in full before delivery. `received_by` is a central user id (no foreign key across databases).
  */
 #[Fillable(['client_uuid', 'sale_id', 'cash_shift_id', 'business_date', 'received_at', 'method', 'amount', 'reference', 'notes', 'received_by', 'received_by_name'])]
 class CodAdvancePayment extends Model implements AuditableContract

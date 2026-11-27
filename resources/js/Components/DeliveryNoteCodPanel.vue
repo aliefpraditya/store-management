@@ -24,6 +24,9 @@ const dateTimeFormat = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium', t
 
 const stateChip = computed(() => STATE_CHIPS[props.cod.state]);
 
+/** The bill was paid in advance, so there is no money to receive on delivery. */
+const isPaidInAdvance = computed(() => props.cod.settlement === null && Number(props.cod.advance_amount) > 0 && Number(props.cod.amount_due) <= 0);
+
 const isNothingToReceive = computed(() => props.cod.state === 'unsettled' && Number(props.cod.amount_due) <= 0);
 
 const isReceivable = computed(() => props.cod.state === 'unsettled' && props.cod.is_goods_delivered && !isNothingToReceive.value);
@@ -70,6 +73,8 @@ function confirmApprove() {
             <q-btn v-if="cod.state === 'awaiting_approval' && cod.can_approve" color="primary" unelevated no-caps dense label="Setujui Selisih" @click="confirmApprove" />
             <p v-else-if="cod.state === 'awaiting_approval'" class="cod__note">Uangnya sudah dicatat. Selisihnya menunggu persetujuan Admin, dan hari belum bisa ditutup sebelum itu.</p>
         </template>
+
+        <p v-else-if="isPaidInAdvance" class="cod__note">Tagihan sudah lunas lewat pembayaran di muka {{ formatRupiah(cod.advance_amount) }}, jadi tidak ada uang yang perlu diterima.</p>
 
         <p v-else-if="!cod.is_goods_delivered" class="cod__note">Uang bisa diterima setelah barang diantar. Selesaikan pengiriman dulu, lalu isi barang yang kembali. Pembayaran sebagian sebelum diantar dicatat di halaman nota.<template v-if="Number(cod.advance_amount) > 0"> Sudah dibayar di muka {{ formatRupiah(cod.advance_amount) }}.</template></p>
 

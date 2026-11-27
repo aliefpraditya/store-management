@@ -257,7 +257,7 @@ class SaleService
             'business_date' => $shift->business_date,
             'cashier_id' => $cashier->id,
             'cashier_name' => $cashier->name,
-            'customer_name' => filled($saleInput['customer_name'] ?? null) ? trim($saleInput['customer_name']) : null,
+            'customer_name' => filled($saleInput['customer_name'] ?? null) ? trim($saleInput['customer_name']) : Sale::GENERAL_CUSTOMER_NAME,
             'subtotal' => (string) $total,
             'total' => (string) $total,
             'paid_total' => (string) $paidTotal,

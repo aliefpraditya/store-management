@@ -90,9 +90,9 @@ class CodSaleException extends Exception
         return new self('Barang nota ini sudah diantar. Terima uangnya sebagai pelunasan COD, bukan pembayaran di muka.');
     }
 
-    public static function advanceMustBePartial(string $remainingText): self
+    public static function advanceExceedsBill(string $remainingText): self
     {
-        return new self("Pembayaran di muka harus kurang dari sisa tagihan COD ({$remainingText}). Kalau pelanggan melunasi, nota ini bukan COD lagi.");
+        return new self("Pembayaran di muka tidak boleh melebihi sisa tagihan COD ({$remainingText}).");
     }
 
     public static function alreadySettled(): self

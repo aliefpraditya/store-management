@@ -35,6 +35,7 @@ class DeliveryNoteCodResource extends JsonResource
         return [
             'sale_number' => $sale->number,
             'state' => match (true) {
+                $settlement === null && $row['advance_amount']->isPositive() && $row['amount_due']->isZero() => 'settled',
                 $settlement === null => 'unsettled',
                 $settlement->status === CodSettlementStatus::AwaitingApproval => 'awaiting_approval',
                 default => 'settled',

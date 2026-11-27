@@ -29,6 +29,9 @@ class Sale extends Model implements AuditableContract
     /** @use HasFactory<SaleFactory> */
     use Auditable, HasFactory;
 
+    /** What a receipt names as its customer when the cashier did not ask for a name. */
+    public const GENERAL_CUSTOMER_NAME = 'Umum';
+
     /** @var list<string> */
     protected array $auditEvents = ['updated'];
 
@@ -107,7 +110,7 @@ class Sale extends Model implements AuditableContract
     }
 
     /**
-     * Money paid on the COD part before the goods were delivered; never the whole of it.
+     * Money paid on the COD part before the goods were delivered, up to the whole of it.
      *
      * @return HasMany<CodAdvancePayment, $this>
      */

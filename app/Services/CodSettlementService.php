@@ -30,10 +30,10 @@ use Illuminate\Support\Facades\DB;
  * Receiving the money of a COD sale. Delivering the goods and receiving the money are two steps: the goods go out on a
  * delivery note, and the money is confirmed by someone who holds it, once, after the delivery.
  *
- * A customer may pay part of it before the goods leave ({@see receiveAdvance()}). That is not a settlement: the sale stays
- * COD for what is left, which is what the settlement later expects. It can never cover the whole bill, since a sale paid in
- * full is no COD sale; and once there is one the sale cannot be voided (see {@see SaleVoidService::voidBlocker()}),
- * because that would leave money to give back.
+ * A customer may pay part of it, or all of it, before the goods leave ({@see receiveAdvance()}). That is not a settlement:
+ * what is left is what the settlement later expects, and a bill paid in full has nothing left to receive on delivery. Once
+ * there is an advance the sale cannot be voided (see {@see SaleVoidService::voidBlocker()}), because that would leave money
+ * to give back. A sale cannot be rung up fully paid as COD: the COD row must be the rest of the bill, and above zero.
  *
  * What is owed is the COD part minus what returns cut from it: a return of goods of an unpaid COD sale lowers the bill
  * instead of paying anything out ({@see offsetFor()}). What is received may differ from what is owed (a lost note, a
@@ -140,8 +140,8 @@ class CodSettlementService
 
             $amount = BigDecimal::of((string) $input['amount']);
 
-            if (! $amount->isPositive() || $amount->isGreaterThanOrEqualTo($remaining)) {
-                throw CodSaleException::advanceMustBePartial('Rp '.number_format((float) (string) $remaining, 0, ',', '.'));
+            if ($amount->isGreaterThan($remaining)) {
+                throw CodSaleException::advanceExceedsBill('Rp '.number_format((float) (string) $remaining, 0, ',', '.'));
             }
 
             $shift = $this->shiftToReceiveIn($receiver, $method);
