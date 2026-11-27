@@ -8,6 +8,7 @@ use App\Enums\PaymentMethod;
 use App\Enums\Permission;
 use App\Enums\UserRole;
 use App\Models\CashShift;
+use App\Models\CodAdvancePayment;
 use App\Models\CodSettlement;
 use App\Models\DeliveryNote;
 use App\Models\Product;
@@ -21,6 +22,7 @@ use App\Services\DeliveryNoteService;
 use App\Services\SaleReturnService;
 use App\Services\SaleService;
 use App\Services\ShiftService;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -59,6 +61,11 @@ class CodSettlementTest extends TestCase
     private function url(string $name, array $parameters = []): string
     {
         return route("tenant.cashier.{$name}", ['tenant' => $this->store->code, ...$parameters]);
+    }
+
+    private function saleUrl(string $name, Sale $sale): string
+    {
+        return route("tenant.sales.{$name}", ['tenant' => $this->store->code, 'sale' => $sale->id]);
     }
 
     private function grant(User $user, Permission ...$permissions): void
@@ -106,6 +113,14 @@ class CodSettlementTest extends TestCase
     }
 
     /**
+     * @return Collection<int, CodAdvancePayment>
+     */
+    private function advancesOf(Sale $sale): Collection
+    {
+        return $this->store->run(fn (): Collection => CodAdvancePayment::query()->where('sale_id', $sale->id)->get());
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function summary(): array
@@ -124,16 +139,156 @@ class CodSettlementTest extends TestCase
         ]));
     }
 
-    public function test_the_money_cannot_be_received_before_the_goods_are_delivered(): void
+    public function test_the_money_cannot_be_settled_before_the_goods_are_delivered(): void
     {
         $sale = $this->sellCod();
         $this->grant($this->cashier, Permission::CodReceive);
 
         $this->actingAs($this->cashier)->postJson($this->url('cod.settle', ['sale' => $sale->id]), $this->receiveBody())->assertUnprocessable()
             ->assertJsonPath('code', 4223)
-            ->assertJsonPath('message', 'Barang nota ini belum diantar, jadi uangnya belum bisa diterima. Tandai sudah diantar dulu.');
+            ->assertJsonPath('message', 'Barang nota ini belum diantar, jadi uang pelunasannya belum bisa diterima. Tandai sudah diantar dulu, atau catat sebagai pembayaran di muka bila pelanggan baru membayar sebagian.');
 
         $this->assertNull($this->settlementOf($sale));
+    }
+
+    public function test_part_of_the_bill_paid_before_delivery_lowers_what_is_collected_on_delivery(): void
+    {
+        $sale = $this->sellCod();
+        $this->grant($this->cashier, Permission::CodReceive);
+
+        $this->actingAs($this->cashier)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['amount' => 30000, 'notes' => 'DP dari istri']))->assertOk()
+            ->assertJsonPath('data.number', $sale->number);
+
+        $advance = $this->advancesOf($sale)->sole();
+        $this->assertSame(['30000.00', PaymentMethod::Cash, $this->shift->id, 'DP dari istri'], [$advance->amount, $advance->method, $advance->cash_shift_id, $advance->notes]);
+
+        $summary = $this->summary();
+        $this->assertSame(['cash' => '30000.00', 'transfer' => '0.00', 'qris' => '0.00', 'edc' => '0.00', 'total' => '30000.00'], $summary['cod_received']);
+        $this->assertSame('30000.00', $summary['expected_cash']);
+
+        $this->store->run(fn () => app(CodSaleService::class)->markDelivered($sale));
+        $this->actingAs($this->admin)->getJson($this->url('cod.settlements'))->assertOk()
+            ->assertJsonPath('data.0.amount_due', '70000.00')
+            ->assertJsonPath('data.0.advance_amount', '30000.00')
+            ->assertJsonPath('data.0.cod_amount', '100000.00');
+
+        $this->actingAs($this->admin)->postJson($this->url('cod.settle', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 70000]))->assertOk()
+            ->assertJsonPath('data.state', 'confirmed');
+        $this->assertSame('70000.00', $this->settlementOf($sale)->expected_amount);
+    }
+
+    public function test_an_advance_never_covers_the_whole_bill(): void
+    {
+        $sale = $this->sellCod();
+        $message = 'Pembayaran di muka harus kurang dari sisa tagihan COD (Rp 100.000). Kalau pelanggan melunasi, nota ini bukan COD lagi.';
+
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 100000]))->assertUnprocessable()->assertJsonPath('message', $message);
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 120000]))->assertUnprocessable()->assertJsonPath('message', $message);
+        $this->assertCount(0, $this->advancesOf($sale));
+
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 60000]))->assertOk();
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 40000]))->assertUnprocessable()
+            ->assertJsonPath('message', 'Pembayaran di muka harus kurang dari sisa tagihan COD (Rp 40.000). Kalau pelanggan melunasi, nota ini bukan COD lagi.');
+        $this->assertCount(1, $this->advancesOf($sale));
+    }
+
+    public function test_an_advance_is_taken_once_when_the_same_submit_comes_twice(): void
+    {
+        $sale = $this->sellCod();
+        $body = $this->receiveBody(['method' => 'transfer', 'amount' => 20000]);
+
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $body)->assertOk();
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $body)->assertOk();
+
+        $this->assertCount(1, $this->advancesOf($sale));
+    }
+
+    public function test_an_advance_cannot_be_taken_once_the_goods_are_delivered(): void
+    {
+        $sale = $this->sellDeliveredCod();
+
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 20000]))->assertUnprocessable()
+            ->assertJsonPath('message', 'Barang nota ini sudah diantar. Terima uangnya sebagai pelunasan COD, bukan pembayaran di muka.');
+        $this->assertCount(0, $this->advancesOf($sale));
+    }
+
+    public function test_a_sale_with_an_advance_cannot_be_voided_any_more(): void
+    {
+        $sale = $this->sellCod();
+        $this->actingAs($this->admin)->post($this->saleUrl('cod-advance', $sale), $this->receiveBody(['method' => 'transfer', 'amount' => 30000]))
+            ->assertSessionHas('success', 'Pembayaran di muka dicatat. Sisanya ditagih saat barang diantar.');
+
+        $message = 'Nota ini sudah menerima pembayaran di muka, jadi tidak bisa di-void. Pakai Retur untuk barang yang tidak jadi diambil.';
+
+        $this->actingAs($this->admin)->get($this->saleUrl('show', $sale))->assertInertia(fn (Assert $page) => $page
+            ->where('void_blocker', $message)
+            ->where('cod_advance.amount_due', '70000.00')
+            ->where('sale.cod_advance_payments.0.amount', '30000.00'));
+
+        $this->actingAs($this->admin)->postJson($this->url('cod.void', ['sale' => $sale->id]), ['reason' => 'Batal'])->assertUnprocessable()->assertJsonPath('message', $message);
+    }
+
+    public function test_the_receipt_page_offers_an_advance_only_while_the_goods_are_not_delivered_and_only_to_who_may_receive_money(): void
+    {
+        $sale = $this->sellCod();
+
+        $this->actingAs($this->admin)->get($this->saleUrl('show', $sale))->assertInertia(fn (Assert $page) => $page
+            ->where('cod_advance.amount_due', '100000.00')
+            ->where('cod_advance.receive_url', $this->saleUrl('cod-advance', $sale)));
+
+        $this->grant($this->cashier, Permission::SalesView);
+        $this->actingAs($this->cashier)->get($this->saleUrl('show', $sale))->assertInertia(fn (Assert $page) => $page->where('cod_advance', null));
+        $this->actingAs($this->cashier)->post($this->saleUrl('cod-advance', $sale), $this->receiveBody(['amount' => 20000]))->assertForbidden();
+        $this->actingAs($this->cashier)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['amount' => 20000]))->assertForbidden();
+        $this->assertCount(0, $this->advancesOf($sale));
+
+        $this->store->run(fn () => app(CodSaleService::class)->markDelivered($sale));
+        $this->actingAs($this->admin)->get($this->saleUrl('show', $sale))->assertInertia(fn (Assert $page) => $page->where('cod_advance', null));
+    }
+
+    public function test_cash_taken_in_advance_needs_a_running_shift_but_a_transfer_does_not(): void
+    {
+        $sale = $this->sellCod();
+
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['amount' => 20000]))->assertUnprocessable()
+            ->assertJsonPath('code', 4223);
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 20000]))->assertOk();
+
+        $this->assertNull($this->advancesOf($sale)->sole()->cash_shift_id);
+        $this->assertSame('0.00', $this->summary()['cod_received']['total']);
+    }
+
+    public function test_the_till_list_tells_what_was_paid_in_advance_and_what_is_left(): void
+    {
+        $sale = $this->sellCod();
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'qris', 'amount' => 25000]))->assertOk();
+
+        $this->actingAs($this->cashier)->getJson($this->url('cod.index'))->assertOk()
+            ->assertJsonPath('data.0.advance_amount', '25000.00')
+            ->assertJsonPath('data.0.amount_due', '75000.00')
+            ->assertJsonPath('data.0.advance_url', $this->url('cod.advance', ['sale' => $sale->id]));
+    }
+
+    public function test_a_return_after_an_advance_cuts_only_what_is_left_of_the_bill(): void
+    {
+        $sale = $this->sellCod();
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 30000]))->assertOk();
+
+        $return = $this->returnBrushes($sale, 8);
+
+        $this->assertSame('70000.00', (string) $return->cod_offset_amount);
+    }
+
+    public function test_the_day_closing_figures_count_what_was_paid_in_advance(): void
+    {
+        $sale = $this->sellCod();
+        $this->grant($this->cashier, Permission::CodReceive);
+        $this->actingAs($this->admin)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['method' => 'transfer', 'amount' => 30000]))->assertOk();
+        $this->actingAs($this->cashier)->postJson($this->url('cod.advance', ['sale' => $sale->id]), $this->receiveBody(['amount' => 10000]))->assertOk();
+
+        $figures = $this->store->run(fn (): array => app(DailyClosingService::class)->summarize(today()));
+
+        $this->assertSame(['10000.00', '30000.00', '0.00', '0.00'], [$figures['cod_received_cash'], $figures['cod_received_transfer'], $figures['cod_received_qris'], $figures['cod_received_edc']]);
     }
 
     public function test_a_cashier_without_the_permission_can_neither_receive_the_money_nor_see_the_list(): void
@@ -336,7 +491,8 @@ class CodSettlementTest extends TestCase
 
         $this->actingAs($this->admin)->get($this->noteUrl('show', $sale))->assertInertia(fn (Assert $page) => $page
             ->where('cod.state', 'unsettled')
-            ->where('cod.is_goods_delivered', false));
+            ->where('cod.is_goods_delivered', false)
+            ->where('cod.advance_amount', '0.00'));
 
         $this->actingAs($this->admin)->post($this->noteUrl('cod-settlement', $sale), $this->receiveBody())->assertSessionHas('error');
         $this->assertNull($this->settlementOf($sale));

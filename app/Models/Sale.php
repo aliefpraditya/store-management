@@ -107,6 +107,16 @@ class Sale extends Model implements AuditableContract
     }
 
     /**
+     * Money paid on the COD part before the goods were delivered; never the whole of it.
+     *
+     * @return HasMany<CodAdvancePayment, $this>
+     */
+    public function codAdvancePayments(): HasMany
+    {
+        return $this->hasMany(CodAdvancePayment::class);
+    }
+
+    /**
      * What is left to pay when the goods are delivered; zero for a sale that is not COD. Needs `payments` loaded.
      */
     public function codAmount(): string

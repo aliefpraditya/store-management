@@ -5,8 +5,11 @@ namespace App\Http\Resources;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\Permission;
 use App\Http\Middleware\EnsureUserCanAccessStore;
+use App\Models\CodAdvancePayment;
 use App\Models\DeliveryNote;
 use App\Models\Sale;
+use App\Services\CodSettlementService;
+use Brick\Math\BigDecimal;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -15,7 +18,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * in advance) and where its delivery stands. The
  * delivery is finished on the delivery note's page, so the list only points there (`open_delivery_note_url`, for those who
  * may view delivery notes).
- * Expects `payments` and `deliveryNotes` to be loaded.
+ * Expects `payments`, `deliveryNotes` and `codAdvancePayments` to be loaded.
  *
  * @mixin Sale
  */
@@ -50,7 +53,10 @@ class CodSaleResource extends JsonResource
             'open_delivery_note_url' => $openNote !== null && EnsureUserCanAccessStore::grants($request, Permission::DeliveryNotesView)
                 ? route('tenant.delivery-notes.show', ['tenant' => $tenant, 'delivery_note' => $openNote->id])
                 : null,
+            'advance_amount' => (string) $this->codAdvancePayments->reduce(fn (BigDecimal $sum, CodAdvancePayment $advance): BigDecimal => $sum->plus((string) $advance->amount), BigDecimal::zero())->toScale(2),
+            'amount_due' => $this->isCod() ? (string) app(CodSettlementService::class)->amountDueOf($this->resource)->toScale(2) : '0.00',
             'void_url' => route('tenant.cashier.cod.void', ['tenant' => $tenant, 'sale' => $this->id]),
+            'advance_url' => route('tenant.cashier.cod.advance', ['tenant' => $tenant, 'sale' => $this->id]),
         ];
     }
 }

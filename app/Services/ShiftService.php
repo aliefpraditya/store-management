@@ -10,6 +10,7 @@ use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Exceptions\ShiftException;
 use App\Models\CashShift;
+use App\Models\CodAdvancePayment;
 use App\Models\CodSettlement;
 use App\Models\CustomerOrderPayment;
 use App\Models\DailyClosing;
@@ -242,18 +243,21 @@ class ShiftService
     }
 
     /**
-     * The money received for COD sales in this shift, per method, with the total. Cash is the only part that is in the
-     * drawer. What waits for an approval counts too: the money is already in hand, only the difference is not decided.
+     * The money received for COD sales in this shift, per method, with the total: the settlements after delivery and the
+     * payments taken in advance. Cash is the only part that is in the drawer. What waits for an approval counts too: the
+     * money is already in hand, only the difference is not decided.
      *
      * @return array{cash: string, transfer: string, qris: string, edc: string, total: string}
      */
     private function codReceivedOf(CashShift $shift): array
     {
-        $receivedByMethod = CodSettlement::query()
-            ->where('cash_shift_id', $shift->id)
-            ->groupBy('method')
-            ->selectRaw('method, sum(amount) as amount')
-            ->pluck('amount', 'method');
+        $receivedByMethod = [];
+
+        foreach ([CodSettlement::class, CodAdvancePayment::class] as $moneyModel) {
+            foreach ($moneyModel::query()->where('cash_shift_id', $shift->id)->groupBy('method')->selectRaw('method, sum(amount) as amount')->pluck('amount', 'method') as $method => $amount) {
+                $receivedByMethod[$method] = BigDecimal::of((string) ($receivedByMethod[$method] ?? 0))->plus((string) $amount);
+            }
+        }
 
         $received = [];
         $total = BigDecimal::zero();

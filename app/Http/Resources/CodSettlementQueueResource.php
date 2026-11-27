@@ -15,7 +15,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * A delivered COD sale as the till's "money not received yet" list shows it. The resource is one row of
  * {@see CodSettlementService::settlementQueue()}, with `payments`, `codSettlement` already loaded on its sale.
  *
- * @property array{sale: Sale, offset_amount: BigDecimal, amount_due: BigDecimal, has_unreturned_goods: bool, is_goods_delivered: bool} $resource
+ * @property array{sale: Sale, offset_amount: BigDecimal, advance_amount: BigDecimal, amount_due: BigDecimal, has_unreturned_goods: bool, is_goods_delivered: bool} $resource
  */
 class CodSettlementQueueResource extends JsonResource
 {
@@ -39,6 +39,7 @@ class CodSettlementQueueResource extends JsonResource
             'delivery_note' => $latestNote === null ? null : DeliveryNoteLinkResource::make($latestNote)->resolve($request),
             'cod_amount' => $sale->codAmount(),
             'offset_amount' => (string) $this->resource['offset_amount']->toScale(2),
+            'advance_amount' => (string) $this->resource['advance_amount']->toScale(2),
             'amount_due' => (string) $this->resource['amount_due']->toScale(2),
             'has_unreturned_goods' => $this->resource['has_unreturned_goods'],
             'state' => $settlement?->status === CodSettlementStatus::AwaitingApproval ? 'awaiting_approval' : 'unsettled',

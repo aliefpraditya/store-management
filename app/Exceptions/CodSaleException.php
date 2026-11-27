@@ -77,7 +77,22 @@ class CodSaleException extends Exception
 
     public static function notDeliveredYet(): self
     {
-        return new self('Barang nota ini belum diantar, jadi uangnya belum bisa diterima. Tandai sudah diantar dulu.');
+        return new self('Barang nota ini belum diantar, jadi uang pelunasannya belum bisa diterima. Tandai sudah diantar dulu, atau catat sebagai pembayaran di muka bila pelanggan baru membayar sebagian.');
+    }
+
+    public static function advanceReceived(): self
+    {
+        return new self('Nota ini sudah menerima pembayaran di muka, jadi tidak bisa di-void. Pakai Retur untuk barang yang tidak jadi diambil.');
+    }
+
+    public static function advanceAfterDelivery(): self
+    {
+        return new self('Barang nota ini sudah diantar. Terima uangnya sebagai pelunasan COD, bukan pembayaran di muka.');
+    }
+
+    public static function advanceMustBePartial(string $remainingText): self
+    {
+        return new self("Pembayaran di muka harus kurang dari sisa tagihan COD ({$remainingText}). Kalau pelanggan melunasi, nota ini bukan COD lagi.");
     }
 
     public static function alreadySettled(): self

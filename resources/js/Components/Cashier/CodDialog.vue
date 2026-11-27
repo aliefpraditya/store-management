@@ -157,9 +157,18 @@ async function submitVoid() {
 
 /** Opens the window for the money of a delivered sale; the amount starts at what is due, the way it usually comes in. */
 function openReceive(settlement) {
-    receiveTarget.value = settlement;
+    openReceiveWindow(settlement, Number(settlement.amount_due));
+}
+
+/** Opens the same window for a part of the bill paid before the goods leave; the amount is left for the cashier to fill. */
+function openAdvance(sale) {
+    openReceiveWindow({ number: sale.number, amount_due: sale.amount_due, settle_url: sale.advance_url, isAdvance: true }, '');
+}
+
+function openReceiveWindow(target, startingAmount) {
+    receiveTarget.value = target;
     receiveMethod.value = 'cash';
-    receiveAmount.value = Number(settlement.amount_due);
+    receiveAmount.value = startingAmount;
     receiveReference.value = '';
     receiveNotes.value = '';
     differenceReason.value = '';
@@ -168,10 +177,15 @@ function openReceive(settlement) {
 
 const receivedAmount = computed(() => roundMoney(Number(receiveAmount.value) || 0));
 
-/** Whether the money received is not what is due, which asks for a reason (and, without the approval permission, for an admin). */
-const isDifferent = computed(() => receiveTarget.value !== null && receivedAmount.value !== roundMoney(Number(receiveTarget.value.amount_due)));
+const isAdvance = computed(() => receiveTarget.value?.isAdvance === true);
 
-const canReceiveNow = computed(() => receivedAmount.value > 0 && (!isDifferent.value || differenceReason.value.trim() !== '') && !isWorking.value);
+/** Whether the money received is not what is due, which asks for a reason (and, without the approval permission, for an admin). A part paid in advance has nothing to explain. */
+const isDifferent = computed(() => receiveTarget.value !== null && !isAdvance.value && receivedAmount.value !== roundMoney(Number(receiveTarget.value.amount_due)));
+
+/** A part paid in advance stays below what is left of the bill; paying all of it makes the sale no COD sale. */
+const isWithinBill = computed(() => !isAdvance.value || receivedAmount.value < roundMoney(Number(receiveTarget.value.amount_due)));
+
+const canReceiveNow = computed(() => receivedAmount.value > 0 && isWithinBill.value && (!isDifferent.value || differenceReason.value.trim() !== '') && !isWorking.value);
 
 /** The receive window stays open when the server refuses, so what was typed is not lost. */
 async function submitReceive() {
@@ -186,7 +200,7 @@ async function submitReceive() {
         difference_reason: isDifferent.value ? differenceReason.value.trim() : null,
     };
 
-    const isDone = await act(settlement.settle_url, body, `Uang nota ${settlement.number} dicatat.`);
+    const isDone = await act(settlement.settle_url, body, isAdvance.value ? `Pembayaran di muka nota ${settlement.number} dicatat.` : `Uang nota ${settlement.number} dicatat.`);
 
     if (isDone) {
         receiveTarget.value = null;
@@ -271,13 +285,15 @@ async function act(url, body, successMessage) {
                                 <template v-else>belum ada</template>
                             </small>
                             <small v-if="Number(sale.deposit_amount) > 0">DP sudah diterima {{ formatRupiah(sale.deposit_amount) }}</small>
+                            <small v-if="Number(sale.advance_amount) > 0">Dibayar di muka {{ formatRupiah(sale.advance_amount) }}, sisa COD {{ formatRupiah(sale.amount_due) }}</small>
                         </div>
                         <b class="sale__amount">{{ formatRupiah(sale.is_cod ? sale.cod_amount : sale.total) }}</b>
                         <div class="sale__actions">
                             <q-btn v-if="sale.open_delivery_note_url" tag="a" :href="sale.open_delivery_note_url" target="_blank" rel="noopener" outline dense no-caps color="primary" icon="open_in_new" label="Buka surat jalan">
                                 <q-tooltip>Selesaikan pengiriman di halaman surat jalan: isi barang yang kembali{{ sale.is_cod ? ', lalu catat uang COD' : '' }}.</q-tooltip>
                             </q-btn>
-                            <q-btn v-if="sale.is_cod" outline dense no-caps color="negative" label="Void" :disable="isWorking" @click="openVoid(sale)" />
+                            <q-btn v-if="sale.is_cod && canReceive" outline dense no-caps color="primary" label="Bayar di muka" :disable="isWorking" @click="openAdvance(sale)" />
+                            <q-btn v-if="sale.is_cod && Number(sale.advance_amount) === 0" outline dense no-caps color="negative" label="Void" :disable="isWorking" @click="openVoid(sale)" />
                         </div>
                     </div>
                 </template>
@@ -348,8 +364,9 @@ async function act(url, body, successMessage) {
         <q-dialog :model-value="receiveTarget !== null" persistent @update:model-value="receiveTarget = null">
             <q-card v-if="receiveTarget" class="void">
                 <q-card-section>
-                    <div class="cod__title">Terima uang nota {{ receiveTarget.number }}</div>
-                    <small class="void__hint">Uang yang harus diterima {{ formatRupiah(receiveTarget.amount_due) }}.</small>
+                    <div class="cod__title">{{ isAdvance ? 'Pembayaran di muka' : 'Terima uang' }} nota {{ receiveTarget.number }}</div>
+                    <small v-if="isAdvance" class="void__hint">Sisa tagihan COD {{ formatRupiah(receiveTarget.amount_due) }}. Bayarnya harus kurang dari itu, sisanya ditagih saat diantar. Setelah ini nota tidak bisa di-void.</small>
+                    <small v-else class="void__hint">Uang yang harus diterima {{ formatRupiah(receiveTarget.amount_due) }}.</small>
                 </q-card-section>
 
                 <q-card-section class="void__fields">
@@ -358,7 +375,19 @@ async function act(url, body, successMessage) {
                     <q-btn-toggle v-model="receiveMethod" :options="METHOD_OPTIONS" no-caps unelevated toggle-color="primary" color="grey-3" text-color="grey-8" />
                     <p v-if="receiveMethod === 'cash'" class="void__note">Uang tunai masuk ke laci shift Anda yang sedang berjalan dan menambah tunai seharusnya.</p>
 
-                    <q-input v-model.number="receiveAmount" type="number" min="0" step="any" outlined dense autofocus prefix="Rp" label="Jumlah diterima" />
+                    <q-input
+                        v-model.number="receiveAmount"
+                        type="number"
+                        min="0"
+                        step="any"
+                        outlined
+                        dense
+                        autofocus
+                        prefix="Rp"
+                        label="Jumlah diterima"
+                        :error="isAdvance && receivedAmount > 0 && !isWithinBill"
+                        error-message="Harus kurang dari sisa tagihan. Kalau lunas, nota ini bukan COD lagi."
+                    />
                     <q-input v-if="receiveMethod !== 'cash'" v-model="receiveReference" outlined dense maxlength="255" label="Rekening atau nomor referensi (opsional)" />
                     <q-input v-model="receiveNotes" outlined dense maxlength="255" label="Catatan (opsional)" placeholder="Mis. nama sopir yang menyerahkan uang" />
 
@@ -373,7 +402,7 @@ async function act(url, body, successMessage) {
 
                 <q-card-actions align="right">
                     <q-btn flat no-caps label="Kembali" :disable="isWorking" @click="receiveTarget = null" />
-                    <q-btn color="primary" unelevated no-caps label="Catat Uang Diterima" :loading="isWorking" :disable="!canReceiveNow" @click="submitReceive" />
+                    <q-btn color="primary" unelevated no-caps :label="isAdvance ? 'Catat Pembayaran di Muka' : 'Catat Uang Diterima'" :loading="isWorking" :disable="!canReceiveNow" @click="submitReceive" />
                 </q-card-actions>
             </q-card>
         </q-dialog>

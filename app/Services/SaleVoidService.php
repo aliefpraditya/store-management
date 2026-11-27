@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Voiding a COD sale: the customer did not take the goods (or would not pay when they came), so the receipt is
  * cancelled and the goods go back on the shelf. Only COD sales can be voided, and only while none of the goods were
- * delivered; later returns go through Retur. A cashier or an admin may do it, always with a reason, and on any day:
+ * delivered and nothing was paid in advance after the sale (a deposit taken at the sale still goes back); later returns go through Retur. A cashier or an admin may do it, always with a reason, and on any day:
  * the sale may have been made yesterday and delivered today. The void is booked on the business day of the voider's
  * running shift (the same day the cash it gives back is booked on, even when the shift runs past midnight), or on the
  * day it is done when the voider has no shift.
@@ -94,6 +94,7 @@ class SaleVoidService
             ! $sale->isCod() => CodSaleException::notCod(),
             DailyClosing::isClosedOn(today()) => CodSaleException::dayClosed(today()->format('d/m/Y')),
             $sale->payments->contains('method', PaymentMethod::ReturnCredit) => CodSaleException::paidByReturnCredit(),
+            $sale->codAdvancePayments()->exists() => CodSaleException::advanceReceived(),
             $this->collectsCustomerOrder($sale) => CodSaleException::collectsCustomerOrder(),
             $this->hasReturns($sale) => CodSaleException::hasReturns(),
             $sale->deliveryNotes->contains(fn (DeliveryNote $note): bool => $note->status->hasDeliveredGoods()) => CodSaleException::alreadyDelivered(),

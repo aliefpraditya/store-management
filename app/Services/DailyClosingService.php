@@ -15,6 +15,7 @@ use App\Enums\SaleStatus;
 use App\Enums\ShiftDifferenceStatus;
 use App\Exceptions\DailyClosingException;
 use App\Models\CashShift;
+use App\Models\CodAdvancePayment;
 use App\Models\CodSettlement;
 use App\Models\CustomerOrderPayment;
 use App\Models\DailyClosing;
@@ -260,24 +261,23 @@ class DailyClosingService
     }
 
     /**
-     * The money received on the day for COD sales sold on any day, per method. The cash part is already in the shifts'
-     * expected cash; the rest went to the accounts.
+     * The money received on the day for COD sales sold on any day, per method: the settlements after delivery and the
+     * payments taken in advance. The cash part is already in the shifts' expected cash; the rest went to the accounts.
      *
      * @return array{cod_received_cash: string, cod_received_transfer: string, cod_received_qris: string, cod_received_edc: string}
      */
     private function codReceivedFigures(string $dateText): array
     {
-        $receivedByMethod = CodSettlement::query()
-            ->where('business_date', $dateText)
-            ->groupBy('method')
-            ->selectRaw('method, sum(amount) as amount')
-            ->pluck('amount', 'method');
+        $receivedAmountOf = fn (PaymentMethod $method): BigDecimal => collect([CodSettlement::class, CodAdvancePayment::class])->reduce(
+            fn (BigDecimal $sum, string $moneyModel): BigDecimal => $sum->plus((string) $moneyModel::query()->where('business_date', $dateText)->where('method', $method)->sum('amount')),
+            BigDecimal::zero(),
+        );
 
         return [
-            'cod_received_cash' => $this->money($receivedByMethod[PaymentMethod::Cash->value] ?? 0),
-            'cod_received_transfer' => $this->money($receivedByMethod[PaymentMethod::Transfer->value] ?? 0),
-            'cod_received_qris' => $this->money($receivedByMethod[PaymentMethod::Qris->value] ?? 0),
-            'cod_received_edc' => $this->money($receivedByMethod[PaymentMethod::Edc->value] ?? 0),
+            'cod_received_cash' => $this->money($receivedAmountOf(PaymentMethod::Cash)),
+            'cod_received_transfer' => $this->money($receivedAmountOf(PaymentMethod::Transfer)),
+            'cod_received_qris' => $this->money($receivedAmountOf(PaymentMethod::Qris)),
+            'cod_received_edc' => $this->money($receivedAmountOf(PaymentMethod::Edc)),
         ];
     }
 

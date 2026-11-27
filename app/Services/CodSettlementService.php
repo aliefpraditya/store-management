@@ -11,6 +11,7 @@ use App\Enums\SaleReturnStatus;
 use App\Enums\SaleStatus;
 use App\Exceptions\CodSaleException;
 use App\Models\CashShift;
+use App\Models\CodAdvancePayment;
 use App\Models\CodSettlement;
 use App\Models\DailyClosing;
 use App\Models\DeliveryNoteItem;
@@ -29,6 +30,11 @@ use Illuminate\Support\Facades\DB;
  * Receiving the money of a COD sale. Delivering the goods and receiving the money are two steps: the goods go out on a
  * delivery note, and the money is confirmed by someone who holds it, once, after the delivery.
  *
+ * A customer may pay part of it before the goods leave ({@see receiveAdvance()}). That is not a settlement: the sale stays
+ * COD for what is left, which is what the settlement later expects. It can never cover the whole bill, since a sale paid in
+ * full is no COD sale; and once there is one the sale cannot be voided (see {@see SaleVoidService::voidBlocker()}),
+ * because that would leave money to give back.
+ *
  * What is owed is the COD part minus what returns cut from it: a return of goods of an unpaid COD sale lowers the bill
  * instead of paying anything out ({@see offsetFor()}). What is received may differ from what is owed (a lost note, a
  * short payment); that takes a reason, and unless the one who received it may approve differences, it waits for
@@ -36,7 +42,7 @@ use Illuminate\Support\Facades\DB;
  * closing the day.
  *
  * @phpstan-type SettlementInput array{client_uuid: string, method: string, amount: numeric-string|float|int, reference?: string|null, notes?: string|null, difference_reason?: string|null}
- * @phpstan-type QueueRow array{sale: Sale, offset_amount: BigDecimal, amount_due: BigDecimal, has_unreturned_goods: bool, is_goods_delivered: bool}
+ * @phpstan-type QueueRow array{sale: Sale, offset_amount: BigDecimal, advance_amount: BigDecimal, amount_due: BigDecimal, has_unreturned_goods: bool, is_goods_delivered: bool}
  */
 class CodSettlementService
 {
@@ -49,12 +55,14 @@ class CodSettlementService
     ) {}
 
     /**
-     * What the customer owes on delivery: the COD part minus what returns cut from it, never below zero. Needs
-     * `payments` loaded. It does not look at whether the money was received, see {@see outstandingOf()}.
+     * What the customer owes on delivery: the COD part minus what returns cut from it and what was paid in advance, never
+     * below zero. Needs `payments` loaded. It does not look at whether the money was received, see {@see outstandingOf()}.
      */
     public function amountDueOf(Sale $sale): BigDecimal
     {
-        $due = BigDecimal::of($sale->codAmount())->minus((string) $this->offsetsOf([$sale->id])->get($sale->id, '0'));
+        $due = BigDecimal::of($sale->codAmount())
+            ->minus((string) $this->offsetsOf([$sale->id])->get($sale->id, '0'))
+            ->minus((string) $this->advancesOf([$sale->id])->get($sale->id, '0'));
 
         return $due->isNegative() ? BigDecimal::zero() : $due;
     }
@@ -99,6 +107,103 @@ class CodSettlementService
     }
 
     /**
+     * Records part of the bill paid before the goods leave. A `client_uuid` that was already recorded returns that payment,
+     * so a double submit cannot take the money twice.
+     *
+     * @param  array{client_uuid: string, method: string, amount: numeric-string|float|int, reference?: string|null, notes?: string|null}  $input
+     *
+     * @throws CodSaleException
+     */
+    public function receiveAdvance(Sale $sale, User $receiver, array $input): CodAdvancePayment
+    {
+        return DB::transaction(function () use ($sale, $receiver, $input): CodAdvancePayment {
+            DailyClosing::lockAgainstClosing();
+
+            $lockedSale = Sale::query()->with('payments')->lockForUpdate()->findOrFail($sale->id);
+
+            $alreadyRecorded = CodAdvancePayment::query()->where('client_uuid', $input['client_uuid'])->first();
+
+            if ($alreadyRecorded !== null) {
+                if ($alreadyRecorded->received_by !== $receiver->id || $alreadyRecorded->sale_id !== $lockedSale->id) {
+                    throw CodSaleException::settlementIdInUse();
+                }
+
+                return $alreadyRecorded;
+            }
+
+            $remaining = $this->requireAdvanceable($lockedSale);
+            $method = PaymentMethod::tryFrom($input['method']);
+
+            if ($method === null || ! in_array($method, PaymentMethod::forCashier(), true)) {
+                throw CodSaleException::methodNotAccepted();
+            }
+
+            $amount = BigDecimal::of((string) $input['amount']);
+
+            if (! $amount->isPositive() || $amount->isGreaterThanOrEqualTo($remaining)) {
+                throw CodSaleException::advanceMustBePartial('Rp '.number_format((float) (string) $remaining, 0, ',', '.'));
+            }
+
+            $shift = $this->shiftToReceiveIn($receiver, $method);
+
+            return CodAdvancePayment::query()->create([
+                'client_uuid' => $input['client_uuid'],
+                'sale_id' => $lockedSale->id,
+                'cash_shift_id' => $shift?->id,
+                'business_date' => $shift?->business_date ?? today(),
+                'received_at' => now(),
+                'method' => $method,
+                'amount' => (string) $amount->toScale(2),
+                'reference' => filled($input['reference'] ?? null) ? trim($input['reference']) : null,
+                'notes' => filled($input['notes'] ?? null) ? trim($input['notes']) : null,
+                'received_by' => $receiver->id,
+                'received_by_name' => $receiver->name,
+            ]);
+        });
+    }
+
+    /**
+     * Whether part of the bill of this sale can be taken in advance now, and how much of the bill is left. Everything is
+     * read under the sale lock.
+     *
+     * @throws CodSaleException
+     */
+    private function requireAdvanceable(Sale $lockedSale): BigDecimal
+    {
+        if (DailyClosing::isClosedOn(today())) {
+            throw CodSaleException::settlementDayClosed(today()->toDateString());
+        }
+
+        if ($lockedSale->status === SaleStatus::Voided) {
+            throw CodSaleException::alreadyVoided();
+        }
+
+        if ($lockedSale->status !== SaleStatus::Completed) {
+            throw CodSaleException::notCompleted($lockedSale->status->label());
+        }
+
+        if (! $lockedSale->isCod()) {
+            throw CodSaleException::notCod();
+        }
+
+        if ($this->codSales->isDelivered($lockedSale->load('deliveryNotes'))) {
+            throw CodSaleException::advanceAfterDelivery();
+        }
+
+        if ($this->hasPendingReturn($lockedSale)) {
+            throw CodSaleException::returnPending();
+        }
+
+        $remaining = $this->amountDueOf($lockedSale);
+
+        if ($remaining->isZero()) {
+            throw CodSaleException::nothingToReceive();
+        }
+
+        return $remaining;
+    }
+
+    /**
      * Approves a difference in what was received.
      *
      * @throws CodSaleException
@@ -133,9 +238,10 @@ class CodSettlementService
         $sales = $this->settlementQueueQuery()->with(['payments', 'codSettlement', 'deliveryNotes'])->orderByDesc('id')->limit($limit)->get();
 
         $offsets = $this->offsetsOf($sales->modelKeys());
+        $advances = $this->advancesOf($sales->modelKeys());
         $saleIdsWithUnreturnedGoods = $this->saleIdsWithUnreturnedGoods($sales->modelKeys());
 
-        return $sales->map(fn (Sale $sale): array => $this->queueRowOf($sale, $offsets, $saleIdsWithUnreturnedGoods))->all();
+        return $sales->map(fn (Sale $sale): array => $this->queueRowOf($sale, $offsets, $advances, $saleIdsWithUnreturnedGoods))->all();
     }
 
     /**
@@ -148,7 +254,7 @@ class CodSettlementService
     {
         $sale->loadMissing(['payments', 'codSettlement', 'deliveryNotes']);
 
-        return $this->queueRowOf($sale, $this->offsetsOf([$sale->id]), $this->saleIdsWithUnreturnedGoods([$sale->id]));
+        return $this->queueRowOf($sale, $this->offsetsOf([$sale->id]), $this->advancesOf([$sale->id]), $this->saleIdsWithUnreturnedGoods([$sale->id]));
     }
 
     public function settlementQueueCount(): int
@@ -169,17 +275,20 @@ class CodSettlementService
      * would leave.
      *
      * @param  Collection<int, string>  $offsets  per sale, see {@see offsetsOf()}
+     * @param  Collection<int, string>  $advances  per sale, see {@see advancesOf()}
      * @param  list<int>  $saleIdsWithUnreturnedGoods
      * @return QueueRow
      */
-    private function queueRowOf(Sale $sale, Collection $offsets, array $saleIdsWithUnreturnedGoods): array
+    private function queueRowOf(Sale $sale, Collection $offsets, Collection $advances, array $saleIdsWithUnreturnedGoods): array
     {
         $offset = BigDecimal::of((string) $offsets->get($sale->id, '0'));
-        $due = BigDecimal::of($sale->codAmount())->minus($offset);
+        $advance = BigDecimal::of((string) $advances->get($sale->id, '0'));
+        $due = BigDecimal::of($sale->codAmount())->minus($offset)->minus($advance);
 
         return [
             'sale' => $sale,
             'offset_amount' => $offset,
+            'advance_amount' => $advance,
             'amount_due' => $sale->codSettlement !== null ? BigDecimal::of((string) $sale->codSettlement->expected_amount) : ($due->isNegative() ? BigDecimal::zero() : $due),
             'has_unreturned_goods' => in_array($sale->id, $saleIdsWithUnreturnedGoods, true),
             'is_goods_delivered' => $this->codSales->isDelivered($sale),
@@ -366,7 +475,8 @@ class CodSettlementService
                     ->whereDoesntHave('codSettlement')
                     ->whereRaw(
                         "(select coalesce(sum(sale_payments.amount), 0) from sale_payments where sale_payments.sale_id = sales.id and sale_payments.method = ?)
-                        - (select coalesce(sum(sale_returns.cod_offset_amount), 0) from sale_returns where sale_returns.sale_id = sales.id and sale_returns.status in ({$statusPlaceholders})) > 0",
+                        - (select coalesce(sum(sale_returns.cod_offset_amount), 0) from sale_returns where sale_returns.sale_id = sales.id and sale_returns.status in ({$statusPlaceholders}))
+                        - (select coalesce(sum(cod_advance_payments.amount), 0) from cod_advance_payments where cod_advance_payments.sale_id = sales.id) > 0",
                         [PaymentMethod::Cod->value, ...$holdingStatuses],
                     ))
                 ->orWhereHas('codSettlement', fn (Builder $settlement) => $settlement->where('status', CodSettlementStatus::AwaitingApproval)));
@@ -386,6 +496,21 @@ class CodSettlementService
             ->groupBy('sale_id')
             ->selectRaw('sale_id, sum(cod_offset_amount) as offset_amount')
             ->pluck('offset_amount', 'sale_id');
+    }
+
+    /**
+     * What was paid in advance on the COD part, per sale.
+     *
+     * @param  list<int>  $saleIds
+     * @return Collection<int, string>
+     */
+    private function advancesOf(array $saleIds): Collection
+    {
+        return CodAdvancePayment::query()
+            ->whereIn('sale_id', $saleIds)
+            ->groupBy('sale_id')
+            ->selectRaw('sale_id, sum(amount) as advance_amount')
+            ->pluck('advance_amount', 'sale_id');
     }
 
     /**

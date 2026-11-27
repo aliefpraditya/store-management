@@ -18,7 +18,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
  * were delivered so the money can be received, and what was received. The resource is a row of
  * {@see CodSettlementService::rowOf()} with the note it is shown on.
  *
- * @property array{row: array{sale: Sale, offset_amount: BigDecimal, amount_due: BigDecimal, has_unreturned_goods: bool, is_goods_delivered: bool}, note: DeliveryNote} $resource
+ * @property array{row: array{sale: Sale, offset_amount: BigDecimal, advance_amount: BigDecimal, amount_due: BigDecimal, has_unreturned_goods: bool, is_goods_delivered: bool}, note: DeliveryNote} $resource
  */
 class DeliveryNoteCodResource extends JsonResource
 {
@@ -42,6 +42,7 @@ class DeliveryNoteCodResource extends JsonResource
             'is_goods_delivered' => $row['is_goods_delivered'],
             'cod_amount' => $sale->codAmount(),
             'offset_amount' => (string) $row['offset_amount']->toScale(2),
+            'advance_amount' => (string) $row['advance_amount']->toScale(2),
             'amount_due' => (string) $row['amount_due']->toScale(2),
             'has_unreturned_goods' => $row['has_unreturned_goods'],
             'settlement' => $settlement === null ? null : CodSettlementResource::make($settlement)->resolve(),

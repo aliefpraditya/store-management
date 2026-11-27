@@ -67,7 +67,7 @@ class CodSaleService
      */
     public function undeliveredSales(int $limit): Collection
     {
-        return $this->undeliveredSalesQuery()->with(['payments', 'deliveryNotes'])->orderByDesc('id')->limit($limit)->get();
+        return $this->undeliveredSalesQuery()->with(['payments', 'deliveryNotes', 'codAdvancePayments'])->orderByDesc('id')->limit($limit)->get();
     }
 
     /**

@@ -73,6 +73,7 @@ Route::prefix('t/{tenant}')
             Route::post('cod/{sale}/deliveries', [CashierCodController::class, 'delivered'])->name('cod.delivered');
             Route::post('cod/{sale}/voids', [CashierCodController::class, 'void'])->name('cod.void');
             Route::get('cod/settlements', [CashierCodController::class, 'settlements'])->middleware('permission:cod.receive,cod.approve')->name('cod.settlements');
+            Route::post('cod/{sale}/advances', [CashierCodController::class, 'advance'])->middleware('permission:cod.receive')->name('cod.advance');
             Route::post('cod/{sale}/settlements', [CashierCodController::class, 'settle'])->middleware('permission:cod.receive')->name('cod.settle');
             Route::post('cod/{sale}/settlements/approval', [CashierCodController::class, 'approve'])->middleware('permission:cod.approve')->name('cod.approve');
             Route::get('orders', [CashierOrderController::class, 'index'])->name('orders.index');
@@ -164,6 +165,7 @@ Route::prefix('t/{tenant}')
         Route::post('sales/{sale}/voids', [SaleHistoryController::class, 'void'])->middleware('permission:sales.void')->name('tenant.sales.void');
         Route::post('sales/{sale}/delivery-mode', [SaleHistoryController::class, 'changeToDelivery'])->middleware('permission:delivery_notes.manage')->name('tenant.sales.delivery-mode');
         Route::post('sales/{sale}/cod-settlement/approval', [SaleHistoryController::class, 'approveCodSettlement'])->middleware('permission:cod.approve')->name('tenant.sales.cod-settlement.approve');
+        Route::post('sales/{sale}/cod-advances', [SaleHistoryController::class, 'receiveCodAdvance'])->middleware(['permission:sales.view', 'permission:cod.receive'])->name('tenant.sales.cod-advance');
 
         Route::get('products/search', ProductSearchController::class)->middleware('permission:stock_opnames.count,stock_opnames.post,stock_history.view')->name('tenant.products.search');
 

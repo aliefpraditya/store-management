@@ -51,6 +51,9 @@ class SaleDetailResource extends JsonResource
                     'approve_url' => route('tenant.sales.cod-settlement.approve', ['tenant' => tenant('code'), 'sale' => $this->id]),
                 ]
                 : null,
+            'cod_advance_payments' => $this->relationLoaded('codAdvancePayments')
+                ? CodAdvancePaymentResource::collection($this->codAdvancePayments)->resolve($request)
+                : [],
             'delivery_notes' => $this->relationLoaded('deliveryNotes')
                 ? $this->deliveryNotes->map(fn ($note): array => [
                     'number' => $note->number,

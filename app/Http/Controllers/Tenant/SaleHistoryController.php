@@ -2,15 +2,20 @@
 
 namespace App\Http\Controllers\Tenant;
 
+use App\Enums\PaymentMethod;
+use App\Enums\Permission;
 use App\Enums\SaleStatus;
 use App\Exceptions\CodSaleException;
 use App\Exceptions\DeliveryNoteException;
 use App\Http\Controllers\Concerns\AnswersPrints;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\EnsureUserCanAccessStore;
 use App\Http\Requests\Tenant\DateRangeRequest;
+use App\Http\Requests\Tenant\ReceiveCodSettlementRequest;
 use App\Http\Requests\Tenant\VoidSaleRequest;
 use App\Http\Resources\SaleDetailResource;
 use App\Http\Resources\SaleHistoryRowResource;
+use App\Models\DeliveryNote;
 use App\Models\Sale;
 use App\Models\Store;
 use App\Services\CodSettlementService;
@@ -65,16 +70,17 @@ class SaleHistoryController extends Controller
         ]);
     }
 
-    public function show(Sale $sale): Response
+    public function show(Request $request, Sale $sale): Response
     {
         /** @var Store $store */
         $store = tenant();
 
-        $sale->load(['items', 'payments', 'register', 'deliveryNotes', 'codSettlement']);
+        $sale->load(['items', 'payments', 'register', 'deliveryNotes', 'codSettlement', 'codAdvancePayments']);
 
         return Inertia::render('Tenant/Sales/Show', [
             'sale' => SaleDetailResource::make($sale)->resolve(),
             'void_blocker' => $sale->isCod() ? $this->saleVoids->voidBlocker($sale)?->getMessage() : null,
+            'cod_advance' => $this->codAdvanceOf($request, $sale),
             'urls' => [
                 'index' => route('tenant.sales.index', ['tenant' => $store->code]),
                 'new_delivery_note' => route('tenant.delivery-notes.create', ['tenant' => $store->code, 'sale' => $sale->id]),
@@ -134,6 +140,20 @@ class SaleHistoryController extends Controller
     }
 
     /**
+     * Takes part of the bill of a COD sale before its goods are delivered. What is left is still collected on delivery.
+     */
+    public function receiveCodAdvance(ReceiveCodSettlementRequest $request, Sale $sale): RedirectResponse
+    {
+        try {
+            $this->codSettlements->receiveAdvance($sale, $request->user(), $request->validated());
+        } catch (CodSaleException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return back()->with('success', 'Pembayaran di muka dicatat. Sisanya ditagih saat barang diantar.');
+    }
+
+    /**
      * Approves the difference in the money that was received for a COD sale.
      */
     public function approveCodSettlement(Request $request, Sale $sale): RedirectResponse
@@ -145,5 +165,33 @@ class SaleHistoryController extends Controller
         }
 
         return back()->with('success', 'Penerimaan uang COD disetujui.');
+    }
+
+    /**
+     * What the receipt page needs to take part of the bill in advance: how much of it is left and where to send the payment.
+     * Null when no advance can be taken (not a COD sale, not completed, already delivered, nothing left) or the user may
+     * not receive money.
+     *
+     * @return array{amount_due: string, methods: list<array<string, string>>, receive_url: string}|null
+     */
+    private function codAdvanceOf(Request $request, Sale $sale): ?array
+    {
+        $isDelivered = $sale->deliveryNotes->contains(fn (DeliveryNote $note): bool => $note->status->hasDeliveredGoods());
+
+        if ($sale->status !== SaleStatus::Completed || ! $sale->isCod() || $isDelivered || ! EnsureUserCanAccessStore::grants($request, Permission::CodReceive)) {
+            return null;
+        }
+
+        $remaining = $this->codSettlements->amountDueOf($sale);
+
+        if ($remaining->isZero()) {
+            return null;
+        }
+
+        return [
+            'amount_due' => (string) $remaining->toScale(2),
+            'methods' => PaymentMethod::cashierOptions(),
+            'receive_url' => route('tenant.sales.cod-advance', ['tenant' => tenant('code'), 'sale' => $sale->id]),
+        ];
     }
 }

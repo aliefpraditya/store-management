@@ -75,6 +75,20 @@ class CashierCodController extends Controller
         return response()->json(['data' => ['number' => $sale->number, 'state' => $settlement->status->value]]);
     }
 
+    /**
+     * Takes part of the bill of a COD sale that is not delivered yet. What is left is collected on delivery.
+     */
+    public function advance(ReceiveCodSettlementRequest $request, Sale $sale): JsonResponse
+    {
+        try {
+            $this->settlements->receiveAdvance($sale, $request->user(), $request->validated());
+        } catch (CodSaleException $exception) {
+            return $this->refused($exception);
+        }
+
+        return response()->json(['data' => ['number' => $sale->number]]);
+    }
+
     public function approve(Request $request, Sale $sale): JsonResponse
     {
         try {

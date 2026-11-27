@@ -6,12 +6,15 @@ import { postJson } from '../../../Composables/postJson';
 import { printSheet } from '../../../Composables/printSheet';
 import { formatRupiah } from '../../../Composables/useMoneyFormat';
 import { formatQuantity } from '../../../Composables/useQuantityFormat';
+import CodReceiveForm from '../../../Components/CodReceiveForm.vue';
 import StoreLayout from '../../../Layouts/StoreLayout.vue';
 
 const props = defineProps({
     sale: { type: Object, required: true },
     /** Why a COD sale cannot be voided now, or null when it can (also null for a sale that is not COD). */
     void_blocker: { type: String, default: null },
+    /** What it takes to receive part of the COD bill before delivery (amount_due, methods, receive_url), or null when none can be taken or the user may not. */
+    cod_advance: { type: Object, default: null },
     urls: { type: Object, required: true },
 });
 
@@ -43,6 +46,7 @@ async function printReceipt() {
     }
 }
 
+const isAdvanceOpen = ref(false);
 const isVoidOpen = ref(false);
 const voidReason = ref('');
 const refundAccount = ref('');
@@ -107,6 +111,7 @@ function submitVoid() {
 
         <template #actions>
             <q-btn outline no-caps dense color="primary" icon="print" :label="printCount > 0 ? 'Cetak Ulang' : 'Cetak'" :loading="isPrinting" class="q-mr-sm" @click="printReceipt" />
+            <q-btn v-if="cod_advance" outline no-caps dense color="primary" icon="payments" label="Bayar di Muka" class="q-mr-sm" @click="isAdvanceOpen = true" />
             <q-btn v-if="canVoid" outline no-caps dense color="negative" icon="block" label="Void Nota COD" class="q-mr-sm" @click="openVoid" />
             <q-btn v-if="sale.status === 'completed'" outline no-caps dense color="primary" icon="undo" label="Buat Retur" class="q-mr-sm" @click="router.visit(urls.new_return)" />
             <template v-if="sale.status === 'completed' && canManageDelivery">
@@ -145,6 +150,13 @@ function submitVoid() {
                 <small v-if="sale.status === 'completed' && void_blocker" class="receipt__cod-blocked">Tidak bisa di-void: {{ void_blocker }}</small>
             </section>
 
+            <section v-if="sale.cod_advance_payments.length > 0" class="receipt__settlement">
+                <b>Dibayar di muka</b>
+                <small v-for="(advance, index) in sale.cod_advance_payments" :key="index">
+                    {{ formatRupiah(advance.amount) }} lewat {{ advance.method_label }}<template v-if="advance.reference"> ({{ advance.reference }})</template>
+                    oleh {{ advance.received_by_name }}, {{ dateTimeFormat.format(new Date(advance.received_at)) }}<template v-if="advance.notes"> · {{ advance.notes }}</template>
+                </small>
+            </section>
             <section v-if="sale.cod_settlement" class="receipt__settlement" :class="{ 'receipt__settlement--waiting': sale.cod_settlement.status === 'awaiting_approval' }">
                 <b>Pelunasan COD: {{ sale.cod_settlement.status_label }}</b>
                 <small>
@@ -187,6 +199,19 @@ function submitVoid() {
             </dl>
         </article>
 
+        <q-dialog v-if="cod_advance" v-model="isAdvanceOpen">
+            <q-card class="payment-dialog">
+                <q-card-section>
+                    <div class="void-dialog__title">Pembayaran di muka nota {{ sale.number }}</div>
+                    <small class="void-dialog__hint">Pelanggan membayar sebagian sebelum barang diantar. Sisanya tetap ditagih saat diantar. Setelah ada pembayaran di muka, nota tidak bisa di-void; barang yang tidak jadi diambil lewat Retur.</small>
+                </q-card-section>
+
+                <q-card-section>
+                    <p class="payment-dialog__due">Sisa tagihan COD <b>{{ formatRupiah(cod_advance.amount_due) }}</b></p>
+                    <CodReceiveForm :cod="cod_advance" is-advance @received="isAdvanceOpen = false" />
+                </q-card-section>
+            </q-card>
+        </q-dialog>
         <q-dialog v-model="isVoidOpen" persistent>
             <q-card class="void-dialog">
                 <q-card-section>
@@ -317,9 +342,14 @@ function submitVoid() {
     color: #be123c;
 }
 
-.void-dialog {
+.void-dialog,
+.payment-dialog {
     width: 440px;
     max-width: 94vw;
+}
+
+.payment-dialog__due {
+    margin: 0 0 12px;
 }
 
 .void-dialog__title {
